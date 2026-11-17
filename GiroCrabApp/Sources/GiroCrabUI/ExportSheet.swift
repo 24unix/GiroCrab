@@ -3,7 +3,8 @@ import GiroCrabCore
 
 // MARK: - Umsätze exportieren (GitHub #53 / #372)
 //
-// Output mode → searchable account list (by bank) → period → format.
+// One compact sheet: format → period → accounts → options. It opens on the last period
+// and accounts (limited to the sidebar's scope); "Exportieren …" hands over to the system save panel.
 // PDF = white-label Umsatzliste; CAMT.053 needs exactly one account (#372).
 
 struct ExportSheet: View {
@@ -13,70 +14,79 @@ struct ExportSheet: View {
     @State private var busy = false
     /// Export error, shown on the sheet itself (the app's alert would stay hidden behind it).
     @State private var failure: String?
-    @State private var showDetails = ExportOptions.load().hasNonDefaultContent
-    /// Booking count and file name for the current choices, loaded off the main thread
-    /// (`nil` while loading). Refreshed only when `previewKey` changes.
+    @State private var showDetails = false
+    /// Booking count for the current choices, loaded off the main thread (`nil` while
+    /// loading). Refreshed only when `previewKey` changes.
     @State private var previewCount: Int?
-    @State private var previewName: String?
-    @State private var accountSearch = ""
     @State private var selectedIDs: Set<Int64> = []
-    /// Bank names that are collapsed (accounts hidden).
-    @State private var collapsedBanks: Set<String> = []
     @State private var customFromDate = Date()
     @State private var customToDate = Date()
+    @State private var showAccountPicker = false
+    /// Saved account choice, read once; a context-menu export writes it back unchanged.
+    @State private var savedAccountIDs: [Int64] = []
 
-    private var selectionCount: Int {
-        model.exportBookingIDs?.count
-            ?? (model.isMultiSelection ? model.selectedBookingIDs.count : (model.selectedBookingID == nil ? 0 : 1))
+    /// The three format choices; CAMT.053 has a version of its own.
+    private enum FormatFamily: String, CaseIterable, Identifiable {
+        case pdf, csv, camt
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .pdf: return String(localized: "PDF")
+            case .csv: return "CSV"
+            case .camt: return String(localized: "CAMT.053")
+            }
+        }
     }
 
-    private var canUseSelection: Bool { selectionCount > 0 }
+    private var formatFamily: Binding<FormatFamily> {
+        Binding(
+            get: {
+                switch options.format {
+                case .pdf: return .pdf
+                case .csv: return .csv
+                case .camt053v08, .camt053v02: return .camt
+                }
+            },
+            set: { family in
+                switch family {
+                case .pdf: options.format = .pdf
+                case .csv: options.format = .csv
+                case .camt: if !options.format.isCamt { options.format = .camt053v08 }
+                }
+            })
+    }
+
+    /// The marked bookings: those of the context menu, else the list's selection.
+    private var markedIDs: Set<Int64> {
+        model.exportBookingIDs
+            ?? (model.selectedBookingIDs.isEmpty ? Set(model.selectedBookingID.map { [$0] } ?? []) : model.selectedBookingIDs)
+    }
+
+    private var selectionCount: Int { markedIDs.count }
 
     private var exportIDs: Set<Int64>? {
-        guard options.scope == .selection else { return nil }
-        return model.exportBookingIDs
-            ?? (model.selectedBookingIDs.isEmpty
-                ? model.selectedBookingID.map { [$0] }
-                : model.selectedBookingIDs)
+        options.scope == .selection ? markedIDs : nil
     }
 
-    /// Accounts available in the current sidebar scope (Übersicht → all).
+    /// Every active account; the sidebar scope only decides what is ticked on open.
     private var poolAccounts: [Account] {
-        let ids = model.exportScopeAccountIDs
-        let pool = model.allAccounts.filter { !$0.isArchived }
-        if ids.isEmpty { return pool }
-        return pool.filter { ids.contains($0.id) }
+        model.allAccounts.filter { !$0.isArchived }
     }
 
-    private var filteredAccounts: [Account] {
-        let q = accountSearch.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = poolAccounts.sorted {
-            if $0.bankName != $1.bankName {
-                return $0.bankName.localizedCaseInsensitiveCompare($1.bankName) == .orderedAscending
-            }
-            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-        guard !q.isEmpty else { return base }
-        return base.filter {
-            $0.name.localizedCaseInsensitiveContains(q)
-                || $0.bankName.localizedCaseInsensitiveContains(q)
-                || $0.iban.localizedCaseInsensitiveContains(q)
-                || $0.owner.localizedCaseInsensitiveContains(q)
-        }
-    }
-
+    /// Same bank grouping as the sidebar (`bankGroupKey`), "Ohne Bank" last.
     private var accountsByBank: [(bank: String, accounts: [Account])] {
-        let none = String(localized: "Ohne Bank")
-        let grouped = Dictionary(grouping: filteredAccounts) { a in
-            a.bankName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? none : a.bankName
+        let grouped = Dictionary(grouping: poolAccounts) { model.bankGroupKey(for: $0) }
+        return grouped.keys.sorted { a, b in
+            if a.isEmpty != b.isEmpty { return b.isEmpty }
+            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        }.map { bank in
+            (bank.isEmpty ? String(localized: "Ohne Bank") : bank,
+             grouped[bank]!.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
         }
-        return grouped.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-            .map { bank in (bank, grouped[bank]!.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) }
     }
 
     private var selectedAccounts: [Account] {
         poolAccounts.filter { selectedIDs.contains($0.id) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     /// Context-menu „Umsatz exportieren“ — lock to the marked bookings (no account/period chrome).
@@ -86,12 +96,13 @@ struct ExportSheet: View {
         showsOutputMode && options.accountOutput == .perAccount
     }
 
-    /// „Jedes Konto einzeln“ only when multiple accounts can actually produce separate files.
+    /// „Pro Konto eine Datei“ only when several accounts can produce separate files.
     private var showsOutputMode: Bool {
-        !isSelectionExport
-            && !options.format.isCamt
-            && options.scope != .selection
-            && selectedAccounts.count > 1
+        #if os(macOS)
+        options.scope != .selection && !options.format.isCamt && selectedAccounts.count > 1
+        #else
+        false // iOS has no multi-file save
+        #endif
     }
 
     /// A loan's balance is no sum of its own bookings, a depot has none: CAMT.053
@@ -100,11 +111,14 @@ struct ExportSheet: View {
         account.kind != .loan && account.kind != .brokerage
     }
 
-    private var camtAccountOK: Bool {
-        guard options.format.isCamt else { return true }
-        let ids = effectiveAccountIDs
+    /// Exactly one account a CAMT.053 statement can cover.
+    private func camtSelectionOK<S: Collection>(_ ids: S) -> Bool where S.Element == Int64 {
         guard ids.count == 1, let id = ids.first, let account = model.account(for: id) else { return false }
         return camtUsable(account)
+    }
+
+    private var camtAccountOK: Bool {
+        !options.format.isCamt || camtSelectionOK(effectiveAccountIDs)
     }
 
     /// First account a CAMT.053 statement can cover.
@@ -113,8 +127,7 @@ struct ExportSheet: View {
     }
 
     private var canExport: Bool {
-        !busy && camtAccountOK && !effectiveAccountIDs.isEmpty
-            && (isBulk || (previewCount ?? 0) > 0 || options.scope == .selection)
+        !busy && camtAccountOK && !effectiveAccountIDs.isEmpty && (isBulk || (previewCount ?? 0) > 0)
     }
 
     /// Accounts used for the export query (selection → accounts of the marked bookings).
@@ -127,15 +140,8 @@ struct ExportSheet: View {
     }
 
     private var accountIDsForSelectedBookings: Set<Int64> {
-        let ids = exportIDs ?? []
+        guard let ids = exportIDs else { return [] }
         return Set(model.bookings.filter { ids.contains($0.id) }.map(\.accountId))
-    }
-
-    private var suggestedName: String {
-        if isBulk {
-            return String(localized: "\(selectedAccounts.count) × Umsaetze-….pdf")
-        }
-        return previewName ?? "…"
     }
 
     /// Everything the preview depends on; a change reloads it (`.task(id:)` cancels the old load).
@@ -145,65 +151,37 @@ struct ExportSheet: View {
         var bookingIDs: Set<Int64>?
     }
 
+    /// Column and layout toggles don't change the count, so they don't reload it.
     private var previewKey: PreviewKey {
-        PreviewKey(options: options, accountIDs: effectiveAccountIDs, bookingIDs: exportIDs)
+        var counted = ExportOptions()
+        counted.format = options.format
+        counted.scope = options.scope
+        counted.periodPreset = options.periodPreset
+        counted.customFrom = options.customFrom
+        counted.customTo = options.customTo
+        counted.direction = options.direction
+        return PreviewKey(options: counted, accountIDs: effectiveAccountIDs, bookingIDs: exportIDs)
     }
 
-    private var exportPeriod: ExportPeriodPreset {
+    private func period(for options: ExportOptions) -> ExportPeriodPreset {
         options.scope == .selection ? .current : options.periodPreset
     }
 
-    private var fallbackTitle: String {
-        if options.scope == .selection {
-            return selectionCount == 1
-                ? String(localized: "Umsatz")
-                : String(localized: "\(selectionCount) Umsaetze")
-        }
-        let n = effectiveAccountIDs.count
-        if n == 1, let a = model.allAccounts.first(where: { $0.id == effectiveAccountIDs[0] }) { return a.name }
-        return String(localized: "\(n) Konten")
-    }
-
-    private var saveTitle: String {
-        if busy { return String(localized: "Wird erstellt …") }
-        if isBulk {
-            return String(localized: "Alle speichern (\(selectedAccounts.count))")
-        }
-        let count = previewCount.map { " (\($0))" } ?? ""
-        switch options.format {
-        case .pdf: return String(localized: "PDF speichern\(count)")
-        case .csv: return String(localized: "CSV speichern\(count)")
-        case .camt053v08, .camt053v02: return String(localized: "CAMT speichern\(count)")
-        }
+    private var countText: String {
+        if options.scope != .selection, selectedIDs.isEmpty { return String(localized: "Bitte mindestens ein Konto wählen.") }
+        guard let n = previewCount else { return "…" }
+        if n == 0 { return String(localized: "Keine Umsätze") }
+        let rows = n == 1 ? String(localized: "1 Umsatz") : String(localized: "\(n) Umsätze")
+        return isBulk ? String(localized: "\(rows) in \(selectedAccounts.count) Dateien") : rows
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                if isSelectionExport {
-                    selectionSummarySection
-                } else {
-                    if showsOutputMode { outputModeSection }
-                    if options.scope != .selection { accountPickerSection }
-                    periodSection
-                }
                 formatSection
+                scopeSection
                 if options.format == .pdf || options.format == .csv {
                     detailsSection
-                }
-                Section {
-                    LabeledContent("Datei") {
-                        Text(suggestedName)
-                            .sensitive() // named after the account
-                            .appFont(.caption, design: .monospaced)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.trailing)
-                            .textSelection(.enabled)
-                    }
-                } footer: {
-                    Text("„Speichern“ legt direkt in Downloads ab. „Unter …“ fragt nach dem Ort.")
-                        .leadingFooter()
                 }
             }
             .formStyle(.grouped)
@@ -216,27 +194,14 @@ struct ExportSheet: View {
                     Button("Abbrechen") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    HStack(spacing: 12) {
-                        #if os(macOS)
-                        if !isBulk {
-                            Button("Unter …") { Task { await export(askWhere: true) } }
-                                .disabled(!canExport || (previewCount == 0 && !isBulk))
-                        }
-                        #endif
-                        Button(saveTitle) { Task { await export(askWhere: false) } }
-                            .disabled(!canExport || (!isBulk && previewCount == 0))
-                            .keyboardShortcut(.defaultAction)
-                    }
+                    Button(busy ? String(localized: "Wird erstellt …") : String(localized: "Exportieren …")) { Task { await export() } }
+                        .disabled(!canExport)
+                        .keyboardShortcut(.defaultAction)
                 }
             }
         }
         #if os(macOS)
-        .desktopFrame(
-            minWidth: isSelectionExport ? 440 : 520,
-            idealWidth: isSelectionExport ? 480 : 560,
-            minHeight: isSelectionExport ? 380 : 620,
-            idealHeight: isSelectionExport ? 460 : 720
-        )
+        .desktopFrame(minWidth: 420, idealWidth: 460, minHeight: 360, idealHeight: 460)
         #endif
         .alert(String(localized: "Export fehlgeschlagen"),
                isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
@@ -247,21 +212,15 @@ struct ExportSheet: View {
         .onAppear { bootstrap() }
         .onDisappear { persistOptions() }
         .task(id: previewKey) { await refreshPreview() }
-        .onChange(of: options) { _, _ in persistOptions() }
-        .onChange(of: selectedIDs) { _, ids in
-            guard !isSelectionExport else { return }
-            options.selectedAccountIDs = Array(ids).sorted()
-            persistOptions()
+        .onChange(of: options.periodPreset) { _, preset in
+            if preset == .custom { syncCustomDatesFromOptions() }
         }
-        .onChange(of: canUseSelection) { _, ok in
-            if !ok, !isSelectionExport { options.scope = .filtered }
+        .onChange(of: selectionCount) { _, n in
+            if n == 0, !isSelectionExport { options.scope = .filtered }
         }
         .onChange(of: options.format) { _, format in
-            if format.isCamt {
-                options.accountOutput = .combined
-                if !isSelectionExport, !camtAccountOK, let first = firstCamtAccount {
-                    selectedIDs = [first.id]
-                }
+            if format.isCamt, !isSelectionExport, !camtAccountOK, let first = firstCamtAccount {
+                selectedIDs = [first.id]
             }
         }
     }
@@ -273,280 +232,139 @@ struct ExportSheet: View {
         return String(localized: "Umsätze exportieren")
     }
 
-    /// Write current options to UserDefaults without mutating `@State` (avoids onChange loops).
-    /// Selection-export keeps period/account prefs for the next menu/toolbar open.
+    /// Saves the choices when the sheet closes. The context-menu export keeps the saved
+    /// accounts (it ticks the marked bookings' accounts).
     private func persistOptions() {
         var snapshot = options
-        if isSelectionExport {
-            let previous = ExportOptions.load()
-            snapshot.scope = previous.scope == .selection ? .filtered : previous.scope
-            snapshot.periodPreset = previous.periodPreset
-            snapshot.customFrom = previous.customFrom
-            snapshot.customTo = previous.customTo
-            snapshot.selectedAccountIDs = previous.selectedAccountIDs
-            snapshot.accountOutput = previous.accountOutput
-            // Keep the saved format; the selection export may use it too.
-            snapshot.format = previous.format
-        } else {
-            snapshot.selectedAccountIDs = Array(selectedIDs).sorted()
-            if snapshot.scope == .selection { snapshot.scope = .filtered }
-        }
+        snapshot.scope = .filtered
+        snapshot.selectedAccountIDs = isSelectionExport ? savedAccountIDs : Array(selectedIDs).sorted()
         snapshot.save()
     }
 
     // MARK: - Sections
 
-    private var selectionSummarySection: some View {
+    private var formatSection: some View {
         Section {
-            LabeledContent(
-                selectionCount == 1
-                    ? String(localized: "Dieser Umsatz")
-                    : String(localized: "Auswahl"),
-                value: selectionCount == 1
-                    ? String(localized: "1 Buchung")
-                    : String(localized: "\(selectionCount) Buchungen")
-            )
-        } footer: {
-            Text("Nur die markierten Buchungen. Konten und Zeitraum brauchst du hier nicht.")
-                .leadingFooter()
-        }
-    }
-
-    private var outputModeSection: some View {
-        Section {
-            ForEach(ExportAccountOutput.allCases) { mode in
-                choiceRow(title: mode.title, subtitle: mode.help, selected: options.accountOutput == mode) {
-                    options.accountOutput = mode
-                }
+            Picker("Format", selection: formatFamily) {
+                ForEach(FormatFamily.allCases) { Text($0.title).tag($0) }
             }
-        } header: {
-            Text("Ausgabe").appSectionHeader()
-        }
-    }
-
-    private var accountPickerSection: some View {
-        Section {
-            if poolAccounts.count > 8 {
-                TextField("Konto, Bank oder IBAN", text: $accountSearch)
-                    .textFieldStyle(.roundedBorder)
-            }
-            HStack {
-                Text(String(localized: "\(selectedIDs.count) von \(poolAccounts.count) gewählt"))
-                    .appFont(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Alle") { selectedIDs = Set(poolAccounts.map(\.id)) }
-                    .disabled(selectedIDs.count == poolAccounts.count)
-                Button("Keine") { selectedIDs = [] }
-                    .disabled(selectedIDs.isEmpty)
-            }
-            .buttonStyle(.borderless)
-
-            HStack {
-                Button(collapsedBanks.count == accountsByBank.count ? "Alle aufklappen" : "Alle zuklappen") {
-                    if collapsedBanks.count == accountsByBank.count {
-                        collapsedBanks = []
-                    } else {
-                        collapsedBanks = Set(accountsByBank.map(\.bank))
-                    }
-                }
-                .buttonStyle(.borderless)
-                .appFont(.caption)
-                Spacer()
-            }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    ForEach(accountsByBank, id: \.bank) { group in
-                        bankHeader(group.bank, accounts: group.accounts)
-                        if !collapsedBanks.contains(group.bank) {
-                            ForEach(group.accounts, id: \.id) { account in
-                                accountCheckRow(account)
-                            }
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: accountListHeight)
-        } header: {
-            Text("Konten").appSectionHeader()
-        } footer: {
-            Group {
-                if options.format.isCamt {
-                    Text("CAMT.053 gilt immer für genau ein Konto (#372).")
-                } else if isBulk {
-                    Text("Pro gewähltem Konto entsteht eine eigene Datei.")
-                }
-            }
-            .leadingFooter()
-        }
-    }
-
-    private var accountListHeight: CGFloat {
-        let n = filteredAccounts.count
-        if n <= 6 { return CGFloat(max(n, 1)) * 36 + CGFloat(accountsByBank.count) * 28 }
-        return min(320, CGFloat(min(n, 12)) * 36 + 80)
-    }
-
-    private func bankHeader(_ bank: String, accounts: [Account]) -> some View {
-        let ids = Set(accounts.map(\.id))
-        let selected = ids.intersection(selectedIDs)
-        let allOn = selected.count == ids.count
-        let someOn = !selected.isEmpty && !allOn
-        let expanded = !collapsedBanks.contains(bank)
-        return HStack(spacing: 6) {
-            Button {
-                if expanded { collapsedBanks.insert(bank) }
-                else { collapsedBanks.remove(bank) }
-            } label: {
-                Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16, alignment: .center)
-            }
-            .buttonStyle(.plain)
-            .help(expanded ? String(localized: "Zuklappen") : String(localized: "Aufklappen"))
-            .accessibilityLabel(expanded ? Text("Zuklappen") : Text("Aufklappen"))
-
-            Button {
-                if options.format.isCamt {
-                    // A group without a CAMT-capable account: leave the choice alone.
-                    if let one = accounts.first(where: camtUsable) { selectedIDs = [one.id] }
-                } else if allOn {
-                    selectedIDs.subtract(ids)
-                } else {
-                    selectedIDs.formUnion(ids)
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: allOn ? "checkmark.square.fill" : (someOn ? "minus.square.fill" : "square"))
-                        .foregroundStyle(allOn || someOn ? Color.accentColor : .secondary)
-                    Text(bank)
-                        .appFont(.subheadline, weight: .semibold)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text("\(selected.count)/\(accounts.count)")
-                        .appFont(.caption, monospacedDigit: true)
-                        .foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 4)
-        .background(.background)
-    }
-
-    private func accountCheckRow(_ account: Account) -> some View {
-        let on = selectedIDs.contains(account.id)
-        let usable = !options.format.isCamt || camtUsable(account)
-        return Button {
-            guard usable else { return }
+            .pickerStyle(.segmented)
             if options.format.isCamt {
-                selectedIDs = [account.id]
-            } else if on {
-                selectedIDs.remove(account.id)
-            } else {
-                selectedIDs.insert(account.id)
+                Picker("Version", selection: $options.format) {
+                    Text("Aktuell").tag(BookingExportFormat.camt053v08)
+                    Text("Älter, für ältere Programme").tag(BookingExportFormat.camt053v02)
+                }
             }
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: on ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(on ? Color.accentColor : .secondary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(account.name)
-                        .foregroundStyle(usable ? .primary : .secondary)
-                        .lineLimit(1)
-                        .sensitive()
-                    if options.format.isCamt, !camtUsable(account) {
-                        Text("Nicht für Darlehen und Depots")
-                            .appFont(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    } else {
-                        let sub = accountSubtitle(account)
-                        if !sub.isEmpty {
-                            Text(sub)
-                                .appFont(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .sensitive()
-                        }
+        } footer: {
+            Text(options.format.subtitle).leadingFooter()
+        }
+    }
+
+    private var scopeSection: some View {
+        Section {
+            if isSelectionExport {
+                LabeledContent(
+                    selectionCount == 1
+                        ? String(localized: "Dieser Umsatz")
+                        : String(localized: "Auswahl"),
+                    value: selectionCount == 1
+                        ? String(localized: "1 Buchung")
+                        : String(localized: "\(selectionCount) Buchungen")
+                )
+            } else {
+                Picker("Zeitraum", selection: periodChoice) {
+                    if selectionCount > 0 {
+                        Text(selectionCount == 1
+                             ? String(localized: "Markierter Umsatz")
+                             : String(localized: "Markierte Umsätze (\(selectionCount))"))
+                            .tag(PeriodChoice.selection)
+                    }
+                    ForEach(periodChoices) { Text(periodTitle($0)).tag(PeriodChoice.preset($0)) }
+                }
+                if options.scope == .filtered {
+                    if options.periodPreset == .custom {
+                        DatePicker("Von", selection: $customFromDate, in: ...customToDate, displayedComponents: .date)
+                        DatePicker("Bis", selection: $customToDate, in: customFromDate..., displayedComponents: .date)
+                    }
+                    LabeledContent("Konten") {
+                        accountButton
+                    }
+                    if showsOutputMode {
+                        Toggle("Pro Konto eine Datei", isOn: perAccountBinding)
                     }
                 }
-                Spacer(minLength: 4)
             }
-            .padding(.vertical, 5)
-            .padding(.leading, 22)
-            .padding(.trailing, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!usable)
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-
-    private func accountSubtitle(_ account: Account) -> String {
-        var parts: [String] = []
-        if !account.owner.isEmpty { parts.append(account.owner) }
-        if !account.iban.isEmpty { parts.append(formatIBAN(account.iban)) }
-        return parts.joined(separator: " · ")
-    }
-
-    private var periodSection: some View {
-        Section {
-            if canUseSelection {
-                choiceRow(
-                    title: selectionCount > 1
-                        ? String(localized: "Auswahl (\(selectionCount))")
-                        : String(localized: "Dieser Umsatz"),
-                    subtitle: String(localized: "Nur die markierten Buchungen"),
-                    selected: options.scope == .selection
-                ) {
-                    options.scope = .selection
-                }
+            LabeledContent("Umfang") {
+                Text(countText).foregroundStyle(.secondary)
             }
-            ForEach(ExportPeriodPreset.menuCases) { preset in
-                choiceRow(
-                    title: preset.title,
-                    subtitle: periodSubtitle(preset),
-                    selected: options.scope == .filtered && options.periodPreset == preset
-                ) {
-                    options.scope = .filtered
-                    options.periodPreset = preset
-                    if preset == .custom { syncCustomDatesFromOptions() }
-                }
-            }
-            if options.scope == .filtered, options.periodPreset == .custom {
-                DatePicker("Von", selection: $customFromDate, in: ...customToDate, displayedComponents: .date)
-                DatePicker("Bis", selection: $customToDate, in: customFromDate..., displayedComponents: .date)
-            }
-        } header: {
-            Text("Zeitraum").appSectionHeader()
+        } footer: {
+            scopeFooter
         }
         .onChange(of: customFromDate) { _, d in
             options.customFrom = DateText.iso(d)
-            persistOptions()
         }
         .onChange(of: customToDate) { _, d in
             options.customTo = DateText.iso(d)
-            persistOptions()
         }
     }
 
-    private func periodSubtitle(_ preset: ExportPeriodPreset) -> String? {
+    @ViewBuilder
+    private var scopeFooter: some View {
+        if options.format.isCamt, !camtAccountOK {
+            if effectiveAccountIDs.count == 1 {
+                Text("Für Darlehen und Depots gibt es keinen CAMT.053-Auszug.").leadingFooter()
+            } else {
+                Text("CAMT.053 gilt immer für genau ein Konto.").leadingFooter()
+            }
+        } else if options.scope == .selection, options.format.isCamt {
+            Text("CAMT.053 für markierte Buchungen enthält deren Zeitraum mit den echten Salden des Kontos.")
+                .leadingFooter()
+        } else if isBulk {
+            Text("Du wählst gleich einen Ordner für die Dateien.").leadingFooter()
+        }
+    }
+
+    private var perAccountBinding: Binding<Bool> {
+        Binding(
+            get: { options.accountOutput == .perAccount },
+            set: { options.accountOutput = $0 ? .perAccount : .combined })
+    }
+
+    /// Period pop-up entry: the marked bookings or a period preset.
+    private enum PeriodChoice: Hashable {
+        case selection
+        case preset(ExportPeriodPreset)
+    }
+
+    private var periodChoice: Binding<PeriodChoice> {
+        Binding(
+            get: { options.scope == .selection ? .selection : .preset(options.periodPreset) },
+            set: { choice in
+                switch choice {
+                case .selection:
+                    options.scope = .selection
+                case .preset(let preset):
+                    options.scope = .filtered
+                    options.periodPreset = preset
+                }
+            })
+    }
+
+    private var periodChoices: [ExportPeriodPreset] {
+        ExportPeriodPreset.menuCases.filter { $0 != .sinceSalary || model.salaryCycle != nil }
+    }
+
+    private func periodTitle(_ preset: ExportPeriodPreset) -> String {
         switch preset {
-        case .current: return model.periodTitle
-        case .custom:
-            if options.customFrom.isEmpty { return String(localized: "Von–Bis wählen") }
-            return "\(PrintReportBuilder.statementDate(options.customFrom)) – \(PrintReportBuilder.statementDate(options.customTo))"
+        case .current:
+            return String(localized: "Aktuelle Ansicht (\(model.periodTitle))")
         case .sinceSalary:
             if let c = model.salaryCycle {
                 return String(localized: "Seit \(PrintReportBuilder.statementDate(c.lastDate))")
             }
-            return String(localized: "Kein Gehalt erkannt")
-        default: return nil
+            return preset.title
+        default:
+            return preset.title
         }
     }
 
@@ -561,121 +379,101 @@ struct ExportSheet: View {
         if customFromDate > customToDate { swap(&customFromDate, &customToDate) }
     }
 
-    private var formatSection: some View {
-        Section {
-            ForEach(BookingExportFormat.allCases) { format in
-                choiceRow(title: format.title, subtitle: format.subtitle, selected: options.format == format) {
-                    options.format = format
-                }
+    // MARK: Accounts
+
+    private var accountSummary: String {
+        let n = selectedIDs.count
+        if n == 0 { return String(localized: "Keine") }
+        if n == 1, let only = selectedAccounts.first { return only.name }
+        if n == poolAccounts.count { return String(localized: "Alle Konten") }
+        return String(localized: "\(n) Konten")
+    }
+
+    private var accountButton: some View {
+        Button {
+            showAccountPicker = true
+        } label: {
+            HStack(spacing: 4) {
+                Text(accountSummary).sensitive()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
-        } header: {
-            Text("Format").appSectionHeader()
-        } footer: {
-            if options.format.isCamt, !camtAccountOK {
-                if effectiveAccountIDs.count == 1, let id = effectiveAccountIDs.first,
-                   let account = model.account(for: id), !camtUsable(account) {
-                    Text("Für Darlehen und Depots gibt es keinen CAMT.053-Auszug.")
-                        .leadingFooter()
-                } else {
-                    Text("CAMT.053 gilt immer für genau ein Konto (#372).")
-                        .leadingFooter()
-                }
-            } else if options.scope == .selection, options.format.isCamt {
-                Text("CAMT.053 für markierte Buchungen enthält deren Zeitraum mit den echten Salden des Kontos.")
-                    .leadingFooter()
-            }
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.primary)
+        .capturablePopover(isPresented: $showAccountPicker, arrowEdge: .bottom) {
+            ExportAccountPicker(groups: accountsByBank, selectedIDs: $selectedIDs,
+                                singleChoice: options.format.isCamt, isUsable: { !options.format.isCamt || camtUsable($0) })
         }
     }
 
+    // MARK: Options
+
     private var detailsSection: some View {
         Section {
-            Toggle("Kategorie", isOn: $options.showCategory)
-            Toggle("Notizen", isOn: $options.showNote)
             DisclosureGroup(isExpanded: $showDetails) {
+                Toggle("Kategorie", isOn: $options.showCategory)
+                Toggle("Notizen", isOn: $options.showNote)
+                if options.format == .csv {
+                    Toggle("IBAN der Gegenseite", isOn: $options.showIban)
+                    Toggle("Tags", isOn: $options.showTags)
+                }
                 Toggle("Tagessaldo-Spalte", isOn: $options.showDailyBalance)
                 if options.format == .csv {
                     Toggle("Saldo-Spalte (nach jeder Buchung)", isOn: $options.showRunningBalance)
                 }
-                Toggle("Nach Konto gruppieren", isOn: $options.groupByAccount)
+                if options.format == .pdf {
+                    Toggle("Nach Konto gruppieren", isOn: $options.groupByAccount)
+                }
                 Toggle("Nur erste Zeile Verwendungszweck", isOn: $options.firstLineOnly)
                 Picker("Reihenfolge", selection: $options.newestFirst) {
                     Text("Älteste zuerst").tag(false)
                     Text("Neueste zuerst").tag(true)
                 }
             } label: {
-                Text("Weitere Optionen")
+                Text("Optionen")
             }
         } footer: {
             if options.format == .pdf {
-                Text("Einstellungen bleiben gespeichert. Anfangssaldo und Endsaldo stehen immer im Kopf.")
-                    .leadingFooter()
+                Text("Anfangssaldo und Endsaldo stehen immer im Kopf.").leadingFooter()
             }
         }
-    }
-
-    private func choiceRow(title: String, subtitle: String?, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(.primary)
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle).appFont(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(selected ? Color.accentColor : .clear)
-                    .accessibilityHidden(!selected)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     // MARK: - Lifecycle
 
     private func bootstrap() {
+        savedAccountIDs = options.selectedAccountIDs
         if isSelectionExport {
-            // Context menu: only the marked bookings — ignore saved period/account prefs.
+            // Context menu: only the marked bookings.
             options.scope = .selection
             let bookingAccounts = accountIDsForSelectedBookings
             selectedIDs = bookingAccounts.isEmpty ? Set(poolAccounts.map(\.id)) : bookingAccounts
         } else {
-            // Menu / toolbar / account: full period export (never reopen stuck on „Dieser Umsatz“).
+            // Menu / toolbar: period and accounts as last chosen; the accounts within the
+            // sidebar's scope (an account or group), else all of the sidebar's accounts.
             options.scope = .filtered
+            if options.periodPreset == .custom { syncCustomDatesFromOptions() }
             let pool = Set(poolAccounts.map(\.id))
-            var ids = Set(options.selectedAccountIDs).intersection(pool)
-            if ids.isEmpty {
-                if model.exportScopeAccountIDs.count == 1 {
-                    ids = Set(model.exportScopeAccountIDs)
-                } else {
-                    ids = pool
-                }
-            }
-            if options.format.isCamt, ids.count != 1 {
-                ids = firstCamtAccount.map { [$0.id] } ?? []
-            } else if options.format.isCamt, let one = ids.first,
-                      let account = model.account(for: one), !camtUsable(account) {
+            let sidebar = Set(model.exportScopeAccountIDs)
+            let scope = sidebar.isEmpty ? pool : sidebar.intersection(pool)
+            var ids = Set(options.selectedAccountIDs).intersection(scope)
+            if ids.isEmpty { ids = scope }
+            if options.format.isCamt, !camtSelectionOK(ids) {
                 ids = firstCamtAccount.map { [$0.id] } ?? []
             }
             selectedIDs = ids
-            options.selectedAccountIDs = Array(ids).sorted()
-            if accountsByBank.count > 4 {
-                collapsedBanks = Set(accountsByBank.map(\.bank))
-            }
-            if options.periodPreset == .custom { syncCustomDatesFromOptions() }
+            showDetails = options.hasNonDefaultContent
         }
     }
 
-    /// Loads count + file name off the main thread. Runs from `.task(id: previewKey)`, so a
+    /// Loads the booking count off the main thread. Runs from `.task(id: previewKey)`, so a
     /// newer choice cancels this load; a cancelled or stale load never publishes.
     private func refreshPreview() async {
         let key = previewKey
-        guard !key.accountIDs.isEmpty || options.scope == .selection else {
+        guard !key.accountIDs.isEmpty else {
             previewCount = 0
-            previewName = nil
             return
         }
         previewCount = nil
@@ -683,18 +481,12 @@ struct ExportSheet: View {
             guard let bookings = try await loadBookings(accountIDs: key.accountIDs, bookingIDs: key.bookingIDs,
                                                         options: key.options)?.bookings,
                   !Task.isCancelled, key == previewKey else { return }
-            let report = model.exportReport(bookings: bookings, accountIDs: key.accountIDs, period: exportPeriod,
+            let report = model.exportReport(bookings: bookings, accountIDs: key.accountIDs, period: period(for: key.options),
                                             bookingIDs: key.bookingIDs, options: key.options)
             previewCount = report.rows.count
-            let range = camtRange(options: key.options, accountIDs: key.accountIDs,
-                                  period: exportPeriod, bookingIDs: key.bookingIDs)
-            previewName = BookingExportBuilder.defaultFilename(
-                accounts: report.accounts, rows: report.rows, format: key.options.format,
-                fallbackTitle: fallbackTitle, rangeFrom: range?.from, rangeTo: range?.to)
         } catch {
             guard !Task.isCancelled else { return }
             previewCount = 0
-            previewName = nil
         }
     }
 
@@ -716,48 +508,23 @@ struct ExportSheet: View {
                               withBalances: Bool = false) async throws -> (bookings: [Booking], balances: [Int64: Int64])? {
         try await model.loadExportPage(
             accountIDs: accountIDs.isEmpty ? nil : accountIDs,
-            period: options.scope == .selection ? .current : options.periodPreset,
+            period: period(for: options),
             bookingIDs: bookingIDs, options: options, ignoreListFilters: options.format.isCamt,
             withBalances: withBalances)
     }
 
     @MainActor
-    private func export(askWhere: Bool) async {
+    private func export() async {
         busy = true
         defer { busy = false }
-        let ids = effectiveAccountIDs
-        guard !ids.isEmpty || options.scope == .selection else {
-            failure = String(localized: "Bitte mindestens ein Konto wählen.")
-            return
-        }
-        if isBulk {
-            await exportBulk(accountIDs: ids)
-            return
-        }
         do {
-            let file = try await buildFile(
-                accountIDs: ids.isEmpty ? Array(poolAccounts.map(\.id)) : ids,
-                bookingIDs: exportIDs,
-                options: options
-            )
-            finishAndPresent(file: file, askWhere: askWhere)
-        } catch is CancellationError {
-            return
-        } catch let CoreError.InvalidInput(message) {
-            failure = message
-        } catch {
-            failure = describe(error)
-        }
-    }
-
-    @MainActor
-    private func exportBulk(accountIDs: [Int64]) async {
-        var files: [(data: Data, filename: String)] = []
-        do {
-            for id in accountIDs {
-                if let file = try await buildFileOptional(accountIDs: [id], bookingIDs: nil, options: options) {
-                    files.append(file)
-                }
+            if isBulk {
+                let files = try await buildFiles(accountIDs: effectiveAccountIDs)
+                finish { model.presentExportFiles(files, format: options.format) }
+            } else {
+                guard let file = try await buildFileOptional(accountIDs: effectiveAccountIDs, bookingIDs: exportIDs,
+                                                             options: options) else { throw ExportError.empty }
+                finishAndPresent(file: file)
             }
         } catch is CancellationError {
             return
@@ -765,42 +532,38 @@ struct ExportSheet: View {
             failure = message
         } catch {
             failure = describe(error)
-            return
-        }
-        guard !files.isEmpty else {
-            failure = String(localized: "Keine Umsätze für den Export.")
-            return
-        }
-        model.exportBookingIDs = nil
-        model.exportPreferSelection = false
-        dismiss()
-        DispatchQueue.main.async {
-            model.presentExportFiles(files)
         }
     }
 
-    private func finishAndPresent(file: (data: Data, filename: String), askWhere: Bool) {
-        model.exportBookingIDs = nil
-        model.exportPreferSelection = false
-        dismiss()
-        DispatchQueue.main.async {
-            model.presentExportFile(data: file.data, format: options.format, filename: file.filename, askWhere: askWhere)
-        }
-    }
-
+    /// One file per account; accounts without bookings in the period are skipped.
     @MainActor
-    private func buildFile(accountIDs: [Int64], bookingIDs: Set<Int64>?,
-                           options: ExportOptions) async throws -> (data: Data, filename: String) {
-        guard let file = try await buildFileOptional(accountIDs: accountIDs, bookingIDs: bookingIDs, options: options) else {
-            throw ExportError.empty
+    private func buildFiles(accountIDs: [Int64]) async throws -> [(data: Data, filename: String)] {
+        var files: [(data: Data, filename: String)] = []
+        for id in accountIDs {
+            if let file = try await buildFileOptional(accountIDs: [id], bookingIDs: nil, options: options) {
+                files.append(file)
+            }
         }
-        return file
+        guard !files.isEmpty else { throw ExportError.empty }
+        return files
+    }
+
+    private func finishAndPresent(file: (data: Data, filename: String)) {
+        finish { model.presentExportFile(data: file.data, format: options.format, filename: file.filename) }
+    }
+
+    /// Closes the sheet, then runs `present` (the save panel must not open over the sheet).
+    private func finish(_ present: @escaping () -> Void) {
+        model.exportBookingIDs = nil
+        model.exportPreferSelection = false
+        dismiss()
+        DispatchQueue.main.async(execute: present)
     }
 
     @MainActor
     private func buildFileOptional(accountIDs: [Int64], bookingIDs: Set<Int64>?,
                                    options: ExportOptions) async throws -> (data: Data, filename: String)? {
-        let period = options.scope == .selection ? ExportPeriodPreset.current : options.periodPreset
+        let period = period(for: options)
         // nil = vault locked or swapped while loading: nothing to export.
         guard let loaded = try await loadBookings(accountIDs: accountIDs, bookingIDs: bookingIDs, options: options,
                                                   withBalances: options.format == .csv && options.showRunningBalance) else {
@@ -822,6 +585,7 @@ struct ExportSheet: View {
             }
             report.dailyBalances = balances
         }
+        let range = camtRange(options: options, accountIDs: accountIDs, period: period, bookingIDs: bookingIDs)
         let data: Data
         switch options.format {
         case .csv:
@@ -833,8 +597,6 @@ struct ExportSheet: View {
             // The core reads entries and booked balances from the vault. Marked
             // bookings export their own period; a period export uses the same
             // bounds as the list, without its search/category filters.
-            let range = camtRange(options: options, accountIDs: accountIDs, period: period,
-                                  bookingIDs: bookingIDs)
             let request = BookingExportBuilder.camtRequest(
                 accountID: accountID, format: options.format,
                 from: range?.from, to: range?.to, bookingIDs: bookingIDs)
@@ -850,14 +612,11 @@ struct ExportSheet: View {
             throw ExportError.unsupported
             #endif
         }
-        let range = camtRange(options: options, accountIDs: accountIDs, period: period,
-                              bookingIDs: bookingIDs)
         let name = BookingExportBuilder.defaultFilename(
             accounts: report.accounts, rows: report.rows, format: options.format,
             fallbackTitle: report.title, rangeFrom: range?.from, rangeTo: range?.to)
         return (data, name)
     }
-
 }
 
 private enum ExportError: LocalizedError {
@@ -873,5 +632,127 @@ private enum ExportError: LocalizedError {
         case .empty:
             return String(localized: "Keine Umsätze für den Export.")
         }
+    }
+}
+
+/// Account choice of the export sheet: searchable, grouped by bank, a bank's checkbox
+/// toggles all its accounts. `singleChoice` (CAMT.053) picks exactly one account.
+private struct ExportAccountPicker: View {
+    let groups: [(bank: String, accounts: [Account])]
+    @Binding var selectedIDs: Set<Int64>
+    let singleChoice: Bool
+    let isUsable: (Account) -> Bool
+    @State private var search = ""
+
+    private var shownGroups: [(bank: String, accounts: [Account])] {
+        let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return groups }
+        return groups.compactMap { g in
+            let hits = g.bank.localizedCaseInsensitiveContains(q)
+                ? g.accounts : g.accounts.filter { $0.matchesSidebarSearch(q) }
+            return hits.isEmpty ? nil : (g.bank, hits)
+        }
+    }
+
+    var body: some View {
+        let allIDs = Set(groups.flatMap { $0.accounts.map(\.id) })
+        VStack(spacing: 0) {
+            if allIDs.count > 8 {
+                TextField("Konto, Bank oder IBAN", text: $search)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(10)
+                Divider()
+            }
+            List {
+                ForEach(shownGroups, id: \.bank) { group in
+                    Section {
+                        ForEach(group.accounts, id: \.id) { row($0) }
+                    } header: {
+                        if groups.count > 1 { bankHeader(group) }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            if !singleChoice {
+                Divider()
+                HStack {
+                    Button("Alle") { selectedIDs = allIDs }
+                        .disabled(selectedIDs == allIDs)
+                    Button("Keine") { selectedIDs = [] }
+                        .disabled(selectedIDs.isEmpty)
+                    Spacer()
+                    Text(String(localized: "\(selectedIDs.count) von \(allIDs.count) gewählt"))
+                        .appFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .padding(10)
+            }
+        }
+        .frame(width: 340, height: 380)
+    }
+
+    private func bankHeader(_ group: (bank: String, accounts: [Account])) -> some View {
+        let ids = Set(group.accounts.filter(isUsable).map(\.id))
+        let chosen = ids.intersection(selectedIDs)
+        let allOn = !ids.isEmpty && chosen.count == ids.count
+        return HStack(spacing: 8) {
+            if !singleChoice {
+                Button {
+                    if allOn { selectedIDs.subtract(ids) } else { selectedIDs.formUnion(ids) }
+                } label: {
+                    Image(systemName: allOn ? "checkmark.square.fill" : (chosen.isEmpty ? "square" : "minus.square.fill"))
+                        .foregroundStyle(chosen.isEmpty ? Color.secondary : Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(allOn ? "Alle von \(group.bank) abwählen" : "Alle von \(group.bank) wählen"))
+            }
+            Text(group.bank).appFont(.subheadline, weight: .semibold)
+        }
+    }
+
+    private func row(_ account: Account) -> some View {
+        let on = selectedIDs.contains(account.id)
+        let usable = isUsable(account)
+        let caption = usable ? subtitle(account) : ""
+        return Button {
+            if singleChoice {
+                selectedIDs = [account.id]
+            } else {
+                selectedIDs.formSymmetricDifference([account.id])
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: singleChoice
+                      ? (on ? "largecircle.fill.circle" : "circle")
+                      : (on ? "checkmark.square.fill" : "square"))
+                    .foregroundStyle(on ? Color.accentColor : .secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(account.name).lineLimit(1).sensitive()
+                    if !usable {
+                        Text("Nicht für Darlehen und Depots")
+                            .appFont(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if !caption.isEmpty {
+                        Text(caption)
+                            .appFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .sensitive()
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!usable)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private func subtitle(_ account: Account) -> String {
+        [account.owner, account.iban.isEmpty ? "" : formatIBAN(account.iban)]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 }

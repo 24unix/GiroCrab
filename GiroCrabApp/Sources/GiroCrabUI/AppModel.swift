@@ -546,8 +546,6 @@ public final class AppModel {
     var standingUnknown: String?
     /// Bumped whenever a sync wrote a row to the Abrufprotokoll (#238); the log window reloads on it.
     var syncLogVersion = 0
-    var csvExport = CSVFileDocument(data: Data())
-    var showCSVExporter = false
     /// Unified booking export (PDF / CSV / XML).
     var showExportSheet = false
     var exportFile = ExportFileDocument(data: Data())
@@ -818,6 +816,10 @@ public final class AppModel {
             if let c = categories.first(where: { $0.depth == 0 }) {
                 newCategoryRequest = NewCategoryRequest(parent: c.id)
             }
+        case "export":
+            // Export dialog on the current view's demo bookings.
+            period = Period.previousMonth()
+            openBookingExport()
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
             period = Period.previousMonth()

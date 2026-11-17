@@ -89,13 +89,6 @@ enum BookingExportFormat: String, CaseIterable, Identifiable, Codable {
 enum ExportScope: String, CaseIterable, Identifiable, Codable {
     case filtered, selection
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .filtered: return String(localized: "Zeitraum")
-        case .selection: return String(localized: "Auswahl")
-        }
-    }
 }
 
 /// Period chosen inside the export sheet (does not change the main list).
@@ -169,27 +162,13 @@ enum ExportAccountOutput: String, CaseIterable, Identifiable, Codable {
     case combined
     case perAccount
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .combined: return String(localized: "Alle in einer Datei")
-        case .perAccount: return String(localized: "Jedes Konto einzeln")
-        }
-    }
-
-    var help: String {
-        switch self {
-        case .combined: return String(localized: "Eine Umsatzliste mit den gewählten Konten")
-        case .perAccount: return String(localized: "Eine Datei pro gewähltem Konto nach Downloads")
-        }
-    }
 }
 
 /// Choices of the export dialog; remembered across launches (separate from print).
 struct ExportOptions: Codable, Equatable {
     var format: BookingExportFormat = .pdf
     var scope: ExportScope = .filtered
-    var periodPreset: ExportPeriodPreset = .lastMonth
+    var periodPreset: ExportPeriodPreset = .current
     /// ISO bounds when `periodPreset == .custom` (export-only, not the main list).
     var customFrom: String = ""
     var customTo: String = ""
@@ -208,6 +187,9 @@ struct ExportOptions: Codable, Equatable {
     var showDailyBalance = false
     /// CSV: balance after each booking (#577).
     var showRunningBalance = false
+    /// CSV: counterparty IBAN and tag columns.
+    var showIban = false
+    var showTags = false
     var firstLineOnly = true
     var direction: PrintDirection = .all
     /// Oldest first (statement convention).
@@ -246,6 +228,8 @@ struct ExportOptions: Codable, Equatable {
         showCurrentBalance = try c.decodeIfPresent(Bool.self, forKey: .showCurrentBalance) ?? d.showCurrentBalance
         showDailyBalance = try c.decodeIfPresent(Bool.self, forKey: .showDailyBalance) ?? d.showDailyBalance
         showRunningBalance = try c.decodeIfPresent(Bool.self, forKey: .showRunningBalance) ?? d.showRunningBalance
+        showIban = try c.decodeIfPresent(Bool.self, forKey: .showIban) ?? d.showIban
+        showTags = try c.decodeIfPresent(Bool.self, forKey: .showTags) ?? d.showTags
         firstLineOnly = try c.decodeIfPresent(Bool.self, forKey: .firstLineOnly) ?? d.firstLineOnly
         direction = try c.decodeIfPresent(PrintDirection.self, forKey: .direction) ?? d.direction
         newestFirst = try c.decodeIfPresent(Bool.self, forKey: .newestFirst) ?? d.newestFirst
@@ -255,7 +239,7 @@ struct ExportOptions: Codable, Equatable {
         case format, scope, periodPreset, customFrom, customTo, selectedAccountIDs, accountOutput
         case accountID, bulkPerAccount // legacy decode only
         case showCategory, showNote, showTotals, groupByAccount, showCurrentBalance
-        case showDailyBalance, showRunningBalance, firstLineOnly, direction, newestFirst
+        case showDailyBalance, showRunningBalance, showIban, showTags, firstLineOnly, direction, newestFirst
     }
 
     func encode(to encoder: Encoder) throws {
@@ -274,6 +258,8 @@ struct ExportOptions: Codable, Equatable {
         try c.encode(showCurrentBalance, forKey: .showCurrentBalance)
         try c.encode(showDailyBalance, forKey: .showDailyBalance)
         try c.encode(showRunningBalance, forKey: .showRunningBalance)
+        try c.encode(showIban, forKey: .showIban)
+        try c.encode(showTags, forKey: .showTags)
         try c.encode(firstLineOnly, forKey: .firstLineOnly)
         try c.encode(direction, forKey: .direction)
         try c.encode(newestFirst, forKey: .newestFirst)
@@ -314,6 +300,8 @@ struct ExportOptions: Codable, Equatable {
         if let b = json["showCurrentBalance"] as? Bool { o.showCurrentBalance = b }
         if let b = json["showDailyBalance"] as? Bool { o.showDailyBalance = b }
         if let b = json["showRunningBalance"] as? Bool { o.showRunningBalance = b }
+        if let b = json["showIban"] as? Bool { o.showIban = b }
+        if let b = json["showTags"] as? Bool { o.showTags = b }
         if let b = json["firstLineOnly"] as? Bool { o.firstLineOnly = b }
         if let b = json["newestFirst"] as? Bool { o.newestFirst = b }
         return o
@@ -332,6 +320,8 @@ struct ExportOptions: Codable, Equatable {
             || showNote != d.showNote
             || showDailyBalance != d.showDailyBalance
             || showRunningBalance != d.showRunningBalance
+            || showIban != d.showIban
+            || showTags != d.showTags
             || groupByAccount != d.groupByAccount
             || firstLineOnly != d.firstLineOnly
             || newestFirst != d.newestFirst
@@ -355,7 +345,7 @@ struct ExportOptions: Codable, Equatable {
     }
 }
 
-/// Last save folder for Umsatz-Export (defaults to Downloads).
+/// Last save folder for Umsatz-Export (the save panel starts there; Downloads at first).
 enum ExportDirectory {
     private static let key = "export.lastDirectory"
 
@@ -428,14 +418,16 @@ enum BookingExportBuilder {
             }
             return ExportCsvRow(
                 date: r.date, accountName: r.accountName, counterparty: r.counterparty,
+                counterpartyIban: r.counterpartyIban,
                 purpose: PrintReportBuilder.displayPurpose(r, firstLineOnly: options.firstLineOnly),
-                category: r.category, note: r.note, amountCents: r.amountCents, currency: r.currency,
+                category: r.category, note: r.note, tags: r.tagNames.joined(separator: ", "), amountCents: r.amountCents, currency: r.currency,
                 dayBalanceCents: dayBalance,
                 balanceCents: report.runningBalances[r.id])
         }
         let columns = ExportCsvColumns(category: options.showCategory, note: options.showNote,
                                        dailyBalance: options.showDailyBalance,
-                                       runningBalance: options.showRunningBalance)
+                                       runningBalance: options.showRunningBalance,
+                                       iban: options.showIban, tags: options.showTags)
         return exportCsv(rows: out, columns: columns, balanceLines: lines)
     }
 

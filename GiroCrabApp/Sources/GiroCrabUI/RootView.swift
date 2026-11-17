@@ -92,8 +92,7 @@ public struct GiroCrabScenes: Scene {
                 Button("Vorhandene Daten importieren …") { model.openMoneyMoneyImport() }
                     .disabled(!model.isUnlocked)
                 Button("Umsätze exportieren …") { model.openBookingExport() }
-                    .disabled(!model.isUnlocked)
-                Button("Umsätze als CSV exportieren …") { model.exportFilteredBookingsCSV() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
                     .disabled(!model.isUnlocked)
             }
             CommandGroup(replacing: .printItem) {

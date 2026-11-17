@@ -23,9 +23,17 @@ pub struct ExportCsvRow {
     pub date: String,
     pub account_name: String,
     pub counterparty: String,
+    /// Counterparty IBAN (column "IBAN").
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub counterparty_iban: String,
     pub purpose: String,
     pub category: String,
     pub note: String,
+    /// Tag names, comma-separated (column "Tags", #228).
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tags: String,
     pub amount_cents: i64,
     pub currency: String,
     /// End-of-day balance, set on the last row of a day; `None` = empty cell.
@@ -57,6 +65,14 @@ pub struct ExportCsvColumns {
     #[uniffi(default)]
     #[cfg_attr(feature = "serde", serde(default))]
     pub running_balance: bool,
+    /// Counterparty IBAN after "Name".
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub iban: bool,
+    /// Tag names after "Notiz".
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tags: bool,
 }
 
 /// Excel CSV (UTF-8 BOM, semicolon, decimal comma, CRLF).
@@ -75,12 +91,19 @@ pub fn export_csv(
             csv_field(&l.date, false)
         ));
     }
-    let mut header = vec!["Datum", "Konto", "Name", "Verwendungszweck"];
+    let mut header = vec!["Datum", "Konto", "Name"];
+    if columns.iban {
+        header.push("IBAN");
+    }
+    header.push("Verwendungszweck");
     if columns.category {
         header.push("Kategorie");
     }
     if columns.note {
         header.push("Notiz");
+    }
+    if columns.tags {
+        header.push("Tags");
     }
     header.extend(["Betrag", "Währung"]);
     if columns.running_balance {
@@ -96,13 +119,19 @@ pub fn export_csv(
             csv_field(&r.date, false),
             csv_field(&r.account_name, true),
             csv_field(&r.counterparty, true),
-            csv_field(&r.purpose, true),
         ];
+        if columns.iban {
+            cols.push(csv_field(&r.counterparty_iban, false));
+        }
+        cols.push(csv_field(&r.purpose, true));
         if columns.category {
             cols.push(csv_field(&r.category, true));
         }
         if columns.note {
             cols.push(csv_field(&r.note, true));
+        }
+        if columns.tags {
+            cols.push(csv_field(&r.tags, true));
         }
         cols.push(csv_amount(r.amount_cents));
         cols.push(csv_field(&r.currency, false));
@@ -1623,9 +1652,11 @@ mod tests {
             date: "2025-03-02".into(),
             account_name: "Giro".into(),
             counterparty: "Supermarkt <Nord>".into(),
+            counterparty_iban: "DE02120300000000202051".into(),
             purpose: "Einkauf".into(),
             category: "Lebensmittel".into(),
             note: "Woche".into(),
+            tags: "Urlaub, Bar".into(),
             amount_cents: -4_599,
             currency: "EUR".into(),
             day_balance_cents: Some(1_000_000),
@@ -1642,15 +1673,17 @@ mod tests {
             note: true,
             daily_balance: true,
             running_balance: true,
+            iban: true,
+            tags: true,
         };
         let csv = export_csv(vec![row.clone()], all, vec![line]);
         assert!(csv.starts_with('\u{FEFF}'));
         assert!(csv.contains("# \"'=HYPERLINK(\"\"x\"\")\";10000,00;EUR;2025-03-31\r\n"));
         assert!(csv.contains(
-            "Datum;Konto;Name;Verwendungszweck;Kategorie;Notiz;Betrag;Währung;Saldo;Tagessaldo\r\n"
+            "Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Notiz;Tags;Betrag;Währung;Saldo;Tagessaldo\r\n"
         ));
         assert!(csv.contains(
-            "2025-03-02;Giro;Supermarkt <Nord>;Einkauf;Lebensmittel;Woche;-45,99;EUR;25,00;10000,00\r\n"
+            "2025-03-02;Giro;Supermarkt <Nord>;DE02120300000000202051;Einkauf;Lebensmittel;Woche;Urlaub, Bar;-45,99;EUR;25,00;10000,00\r\n"
         ));
         let lean = export_csv(vec![row], ExportCsvColumns::default(), vec![]);
         assert!(lean.contains("Datum;Konto;Name;Verwendungszweck;Betrag;Währung\r\n"));

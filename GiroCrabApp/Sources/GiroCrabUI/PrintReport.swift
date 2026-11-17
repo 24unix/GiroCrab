@@ -110,12 +110,17 @@ struct PrintRow: Identifiable, Equatable {
     let purpose: String
     let category: String
     let note: String
+    /// CSV only: counterparty IBAN and tag names.
+    let counterpartyIban: String
+    let tagNames: [String]
 
     init(id: Int64, accountId: Int64, accountName: String, date: String, amountCents: Int64,
-         currency: String = "EUR", counterparty: String, purpose: String, category: String = "", note: String = "") {
+         currency: String = "EUR", counterparty: String, purpose: String, category: String = "", note: String = "",
+         counterpartyIban: String = "", tagNames: [String] = []) {
         self.id = id; self.accountId = accountId; self.accountName = accountName; self.date = date
         self.amountCents = amountCents; self.currency = currency; self.counterparty = counterparty
         self.purpose = purpose; self.category = category; self.note = note
+        self.counterpartyIban = counterpartyIban; self.tagNames = tagNames
     }
 
     init(_ b: Booking) {
@@ -123,7 +128,8 @@ struct PrintRow: Identifiable, Equatable {
         self.init(id: b.id, accountId: b.accountId, accountName: b.accountName, date: b.bookingDate,
                   amountCents: b.amountCents, currency: b.currency, counterparty: name,
                   purpose: b.cleanPurpose.isEmpty ? b.purpose : b.cleanPurpose,
-                  category: b.categoryPath, note: b.note)
+                  category: b.categoryPath, note: b.note, counterpartyIban: b.counterpartyIban,
+                  tagNames: b.tags.map(\.name))
     }
 }
 

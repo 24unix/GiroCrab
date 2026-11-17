@@ -444,19 +444,6 @@ extension AppModel {
         showExportSheet = true
     }
 
-    /// Exports every booking matching the current list filter as Excel-friendly CSV
-    /// (quick path; the export sheet offers CSV with Salden and other formats).
-    func exportFilteredBookingsCSV() {
-        guard let vault else { return }
-        do {
-            let csv = try vault.exportBookingsCsv(filter: currentFilter)
-            csvExport = CSVFileDocument(data: Data(csv.utf8))
-            showCSVExporter = true
-        } catch {
-            showError(String(localized: "Export fehlgeschlagen"), error.localizedDescription)
-        }
-    }
-
     // MARK: - Booking list, KPIs & history
 
     func reloadBookings() {

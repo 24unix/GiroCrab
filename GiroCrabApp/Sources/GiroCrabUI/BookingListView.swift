@@ -338,14 +338,6 @@ private struct BookingOutputSheets: ViewModifier {
         .capturableSheet(isPresented: $model.showPrintSheet) { PrintSheet() }
         .capturableSheet(isPresented: $model.showExportSheet) { ExportSheet() }
         .fileExporter(
-            isPresented: $model.showCSVExporter,
-            document: model.csvExport,
-            contentType: .commaSeparatedText,
-            defaultFilename: "GiroCrab-Buchungen"
-        ) { result in
-            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
-        }
-        .fileExporter(
             isPresented: $model.showExportExporter,
             document: model.exportFile,
             contentType: model.exportContentType,

@@ -190,6 +190,17 @@
         }
       }
     },
+    "%@ in %lld Dateien" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ in %lld files"
+          }
+        }
+      }
+    },
     "%@ kopieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -733,6 +744,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Categorize %lld Transactions…"
+          }
+        }
+      }
+    },
+    "%lld Dateien gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld files saved"
           }
         }
       }
@@ -2351,6 +2373,17 @@
         }
       }
     },
+    "1 Umsatz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 transaction"
+          }
+        }
+      }
+    },
     "1 Woche" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2945,6 +2978,17 @@
         }
       }
     },
+    "Aktuelle Ansicht (%@)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current view (%@)"
+          }
+        }
+      }
+    },
     "Aktueller Bestand" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3517,6 +3561,28 @@
         }
       }
     },
+    "Alle von %@ abwählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deselect all of %@"
+          }
+        }
+      }
+    },
+    "Alle von %@ wählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select all of %@"
+          }
+        }
+      }
+    },
     "Alle zuklappen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3981,6 +4047,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Opening balance"
+          }
+        }
+      }
+    },
+    "Anfangssaldo und Endsaldo stehen immer im Kopf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opening and closing balances always appear in the header."
           }
         }
       }
@@ -7684,6 +7761,17 @@
         }
       }
     },
+    "CAMT.053 gilt immer für genau ein Konto." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053 always covers exactly one account."
+          }
+        }
+      }
+    },
     "CAMT.053 ist für Darlehenskonten nicht verfügbar." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10620,6 +10708,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Printer"
+          }
+        }
+      }
+    },
+    "Du wählst gleich einen Ordner für die Dateien." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You'll choose a folder for the files next."
           }
         }
       }
@@ -14966,6 +15065,17 @@
         }
       }
     },
+    "IBAN der Gegenseite" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Counterparty IBAN"
+          }
+        }
+      }
+    },
     "IBAN kopieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17008,6 +17118,17 @@
         }
       }
     },
+    "Keine Umsätze" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No transactions"
+          }
+        }
+      }
+    },
     "Keine Umsätze erkannt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19045,6 +19166,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mark"
+          }
+        }
+      }
+    },
+    "Markierte Umsätze (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selected transactions (%lld)"
+          }
+        }
+      }
+    },
+    "Markierter Umsatz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selected transaction"
           }
         }
       }
@@ -22048,6 +22191,17 @@
         }
       }
     },
+    "Optionen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Options"
+          }
+        }
+      }
+    },
     "Orange" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22066,6 +22220,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Folder"
+          }
+        }
+      }
+    },
+    "Ordner für %lld Dateien wählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a folder for %lld files"
           }
         }
       }
@@ -22930,6 +23095,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Private person – no logo"
+          }
+        }
+      }
+    },
+    "Pro Konto eine Datei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One file per account"
           }
         }
       }
@@ -27057,6 +27233,17 @@
         }
       }
     },
+    "Umfang" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scope"
+          }
+        }
+      }
+    },
     "Umsatz" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -31076,6 +31263,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Similar to “%@”."
+          }
+        }
+      }
+    },
+    "Älter, für ältere Programme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Older, for legacy software"
           }
         }
       }

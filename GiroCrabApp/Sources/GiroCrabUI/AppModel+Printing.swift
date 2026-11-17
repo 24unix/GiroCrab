@@ -9,21 +9,9 @@ import AppKit
 extension AppModel {
     // MARK: - Printing (GitHub #53) & Umsatz-Export (#53 PDF / #372 CAMT)
 
-    /// Writes export bytes: either straight into Downloads (or last folder), or via save panel.
-    func presentExportFile(data: Data, format: BookingExportFormat, filename: String, askWhere: Bool = false) {
+    /// Writes export bytes through the system save panel (iOS: share/file exporter).
+    func presentExportFile(data: Data, format: BookingExportFormat, filename: String) {
         #if os(macOS)
-        if !askWhere {
-            // Never replace an existing file silently: `Name-2.pdf`, `Name-3.pdf`, …
-            let url = ExportDirectory.freeURL(in: ExportDirectory.preferred, filename: filename)
-            do {
-                try data.write(to: url, options: .withoutOverwriting)
-                ExportDirectory.remember(fileURL: url)
-                toast = String(localized: "Gespeichert: \(url.lastPathComponent)")
-            } catch {
-                showError(String(localized: "Export fehlgeschlagen"), error.localizedDescription)
-            }
-            return
-        }
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
@@ -47,14 +35,22 @@ extension AppModel {
         #endif
     }
 
-    /// Saves several files into Downloads (or last folder) without a panel.
-    func presentExportFiles(_ files: [(data: Data, filename: String)]) {
+    /// Saves one file per account into a folder the user picks (never replacing existing files).
+    func presentExportFiles(_ files: [(data: Data, filename: String)], format: BookingExportFormat) {
         guard !files.isEmpty else { return }
         #if os(macOS)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = ExportDirectory.preferred
+        panel.title = String(localized: "Ordner für \(files.count) Dateien wählen")
+        panel.prompt = String(localized: "Sichern")
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
         var saved = 0
         var lastURL: URL?
         var firstName = files[0].filename
-        let directory = ExportDirectory.preferred
         for file in files {
             let url = ExportDirectory.freeURL(in: directory, filename: file.filename)
             do {
@@ -70,16 +66,16 @@ extension AppModel {
         if let lastURL { ExportDirectory.remember(fileURL: lastURL) }
         toast = saved == 1
             ? String(localized: "Gespeichert: \(firstName)")
-            : String(localized: "\(saved) Dateien in Downloads gespeichert")
+            : String(localized: "\(saved) Dateien gespeichert")
         #else
         // iOS: fall back to the first file via the share sheet.
         if let first = files.first {
-            presentExportFile(data: first.data, format: .pdf, filename: first.filename, askWhere: true)
+            presentExportFile(data: first.data, format: format, filename: first.filename)
         }
         #endif
     }
 
-    /// Accounts of the sidebar selection (empty = all) – what the export sheet offers.
+    /// Accounts of the sidebar selection (empty = all) – which accounts the export sheet ticks.
     var exportScopeAccountIDs: [Int64] { selectionAccountIDs }
 
     /// Everything the list shows (account, period, search, scope, status) without the list limit.

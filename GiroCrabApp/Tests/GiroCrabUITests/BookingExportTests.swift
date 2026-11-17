@@ -344,7 +344,7 @@ final class BookingExportTests: XCTestCase {
         let legacy = Data(#"{"format":"xml","scope":"filtered"}"#.utf8)
         let migrated = try JSONDecoder().decode(ExportOptions.self, from: legacy)
         XCTAssertEqual(migrated.format, .camt053v08)
-        XCTAssertEqual(migrated.periodPreset, .lastMonth)
+        XCTAssertEqual(migrated.periodPreset, .current)
     }
 
     func testExportBookingsRespectAccountAndPeriod() async throws {
