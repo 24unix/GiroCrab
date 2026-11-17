@@ -634,13 +634,59 @@ impl Vault {
                 AND external_ref NOT LIKE 'switch-stale-%'",
             params![connection_id, SWITCH_MARK],
         )?;
+        // The same leftover for bookings: one an earlier switch marked and
+        // the next fetch did not take back (outside its window), next to the
+        // bank's booking that came again under its own id. Same booking: what
+        // the user set on the stale twin goes over, its key is freed, it goes.
+        let stale_bookings: Vec<(i64, i64, bool)> = tx
+            .prepare(
+                // includes soft-deleted twins: they hold the key just the same
+                "SELECT s.id, b.id, s.deleted_ms IS NOT NULL
+                   FROM transactions b JOIN accounts a ON a.id = b.account_id
+                   JOIN transactions s ON s.account_id = b.account_id AND s.external_id = 'mm-switch-' || b.external_id
+                  WHERE a.connection_id = ?1 AND b.deleted_ms IS NULL AND b.external_id NOT LIKE 'mm-%'",
+            )?
+            .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        for (stale, live, deleted) in stale_bookings {
+            if !deleted {
+                // SET expressions see the old values of the live booking
+                tx.execute(
+                    "UPDATE transactions SET
+                        note = CASE WHEN transactions.note = '' THEN s.note ELSE transactions.note END,
+                        note_ms = CASE WHEN transactions.note = '' THEN s.note_ms ELSE transactions.note_ms END,
+                        checked = MAX(transactions.checked, s.checked),
+                        checked_ms = CASE WHEN transactions.checked = 0 AND s.checked = 1
+                                          THEN s.checked_ms ELSE transactions.checked_ms END,
+                        category_id = CASE WHEN transactions.category_source <> 'manual' AND s.category_source = 'manual'
+                                           THEN s.category_id ELSE transactions.category_id END,
+                        category_ms = CASE WHEN transactions.category_source <> 'manual' AND s.category_source = 'manual'
+                                           THEN s.category_ms ELSE transactions.category_ms END,
+                        category_source = CASE WHEN transactions.category_source <> 'manual' AND s.category_source = 'manual'
+                                               THEN 'manual' ELSE transactions.category_source END
+                       FROM (SELECT note, note_ms, checked, checked_ms, category_id, category_ms, category_source
+                               FROM transactions WHERE id = ?2) AS s
+                      WHERE transactions.id = ?1",
+                    params![live, stale],
+                )?;
+            }
+            tx.execute(
+                "UPDATE transactions SET external_id = 'switch-stale-' || id || ':' || substr(external_id, 11)
+                  WHERE id = ?1",
+                [stale],
+            )?;
+            if !deleted {
+                crate::sync_merge::soft_delete_booking(&tx, stale)?;
+            }
+        }
         // Live bookings: re-adoptable like imported ones (`mm-*`, with a
         // fingerprint). Tombstones keep their ids for multi-device merges.
         let rows: Vec<(i64, String, i64, String, String, String)> = {
             let mut st = tx.prepare(
                 "SELECT t.id, t.booking_date, t.amount_cents, t.counterparty_iban, t.counterparty, t.purpose
                    FROM transactions t JOIN accounts a ON a.id = t.account_id
-                  WHERE a.connection_id = ?1 AND t.deleted_ms IS NULL AND t.external_id NOT LIKE 'mm-%'",
+                  WHERE a.connection_id = ?1 AND t.deleted_ms IS NULL AND t.external_id NOT LIKE 'mm-%'
+                    AND t.external_id NOT LIKE 'switch-stale-%'",
             )?;
             let r = st
                 .query_map([connection_id], |r| {
@@ -1479,5 +1525,59 @@ mod tests {
             )
             .unwrap();
         assert_eq!(deleted, None);
+    }
+
+    /// The same leftover for bookings: an earlier switch marked a booking the
+    /// next fetch did not take back (outside its window); the bank's booking
+    /// came again under its own id. Switching again must not fail; the stale
+    /// twin goes, what the user set on it stays with the live booking.
+    #[test]
+    fn switching_again_merges_a_stale_marked_booking_into_the_live_one() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-stale-booking");
+        let (v, c, giro, _, booking) = comdirect_vault(dir.path(), "v.db");
+        let stale = {
+            let db = v.db().unwrap();
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty,
+                                          purpose, note, note_ms, checked, checked_ms)
+                 VALUES (?1, 'mm-switch-rest-1', '2026-11-03', -8600, 'Vattenfall', 'Abschlag', 'Strom', 5, 1, 5)",
+                [giro],
+            )
+            .unwrap();
+            db.last_insert_rowid()
+        };
+
+        assert_eq!(v.switch_comdirect_access(c).unwrap(), "fints:20041155");
+        let db = v.db().unwrap();
+        let live: Vec<(i64, String, String, bool)> = db
+            .prepare(
+                "SELECT id, external_id, note, checked FROM transactions
+                  WHERE account_id = ?1 AND deleted_ms IS NULL",
+            )
+            .unwrap()
+            .query_map([giro], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            live,
+            vec![(
+                booking,
+                "mm-switch-rest-1".to_string(),
+                "Strom".to_string(),
+                true
+            )]
+        );
+        let stale_id: String = db
+            .query_row(
+                "SELECT external_id FROM transactions WHERE id = ?1",
+                [stale],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            !stale_id.starts_with("mm-"),
+            "no takeover candidate any more: {stale_id}"
+        );
     }
 }
