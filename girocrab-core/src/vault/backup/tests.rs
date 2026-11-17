@@ -128,3 +128,60 @@ fn backup_from_a_newer_app_is_refused() {
     assert!(matches!(err, CoreError::SchemaTooNew { .. }), "{err:?}");
     assert_eq!(dest.account_count().unwrap(), 0);
 }
+
+fn forget_marker(v: &Vault) {
+    v.db()
+        .unwrap()
+        .execute(
+            "DELETE FROM settings WHERE key = 'pre_0_8_0_fints_backup_done'",
+            [],
+        )
+        .unwrap();
+}
+
+#[test]
+fn pre_fints_reg_backup_is_made_once_and_never_overwritten() {
+    let key = vec![5u8; 32];
+    let p = temp_path("prefints");
+    let bak = Vault::pre_fints_reg_backup_path(&path(&p));
+
+    // new vault: nothing to preserve, only the marker is set
+    let v = Vault::open(path(&p), key.clone()).unwrap();
+    assert!(!Path::new(&bak).exists());
+    assert!(v
+        .get_setting("pre_0_8_0_fints_backup_done".into())
+        .unwrap()
+        .is_some());
+
+    // an existing vault from before the update: has data, no marker
+    v.seed_demo_data().unwrap();
+    let before = bookings(&v);
+    assert!(before > 0);
+    forget_marker(&v);
+    drop(v);
+
+    let v = Vault::open(path(&p), key.clone()).unwrap();
+    assert!(Path::new(&bak).exists(), "backup written on first open");
+    assert!(!Path::new(&format!("{bak}.tmp")).exists());
+    assert!(v
+        .get_setting("pre_0_8_0_fints_backup_done".into())
+        .unwrap()
+        .is_some());
+    let copy = Vault::open(bak.clone(), key.clone()).unwrap();
+    assert_eq!(bookings(&copy), before);
+    drop(copy);
+
+    // later changes must not touch the safety copy, with or without marker
+    v.db()
+        .unwrap()
+        .execute("DELETE FROM transactions", [])
+        .unwrap();
+    drop(v);
+    let v = Vault::open(path(&p), key.clone()).unwrap();
+    forget_marker(&v);
+    drop(v);
+    let v = Vault::open(path(&p), key.clone()).unwrap();
+    drop(v);
+    let copy = Vault::open(bak, key).unwrap();
+    assert_eq!(bookings(&copy), before, "backup was not overwritten");
+}

@@ -54,7 +54,87 @@ impl Vault {
     }
 }
 
+/// Setting key marking that the one-time safety copy before the built-in FinTS
+/// registration (0.8.0) was handled (made, or not needed for an empty vault).
+pub(crate) const PRE_FINTS_REG_BACKUP_KEY: &str = "pre_0_8_0_fints_backup_done";
+
 impl Vault {
+    /// Path of the safety copy next to the vault file.
+    pub(crate) fn pre_fints_reg_backup_path(vault_path: &str) -> String {
+        format!("{vault_path}.pre-0.8.0-fints.bak")
+    }
+
+    /// Before the first migration/open by an app with the built-in FinTS
+    /// registration: copies an existing vault (with accounts or bookings) to
+    /// `<vault>.pre-0.8.0-fints.bak`, encrypted with the device key, via a
+    /// temporary file and an atomic rename. Never overwrites an existing copy.
+    /// Returns true if the marker setting still has to be written after the
+    /// migration (false: already done, or the connection cannot read the vault).
+    /// Best effort: a failed copy never blocks opening the vault.
+    pub(crate) fn pre_fints_reg_backup(conn: &Connection, vault_path: &str, key: &[u8]) -> bool {
+        // Wrong key / not yet readable / no settings table yet (very old vault).
+        let marker: Result<Option<String>, _> = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                [PRE_FINTS_REG_BACKUP_KEY],
+                |r| r.get(0),
+            )
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                e => Err(e),
+            });
+        let marker = match marker {
+            Ok(m) => m,
+            // Cannot tell: probe sqlite_master; an unreadable vault is skipped,
+            // a readable one without settings table still needs the backup.
+            Err(_) => {
+                if conn
+                    .query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+                        r.get::<_, i64>(0)
+                    })
+                    .is_err()
+                {
+                    return false;
+                }
+                None
+            }
+        };
+        if marker.is_some() {
+            return false;
+        }
+        let count = |table: &str| -> i64 {
+            conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap_or(0)
+        };
+        if count("accounts") == 0 && count("transactions") == 0 {
+            return true; // new/empty vault: nothing to preserve
+        }
+        let dest = Self::pre_fints_reg_backup_path(vault_path);
+        if std::path::Path::new(&dest).exists() {
+            return true;
+        }
+        let tmp = format!("{dest}.tmp");
+        remove_with_sidecars(&tmp);
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap_or(0);
+        let hex_key = Zeroizing::new(format!("x'{}'", hex::encode(key)));
+        let copied = conn
+            .execute(
+                "ATTACH DATABASE ?1 AS prefints KEY ?2",
+                params![tmp, &*hex_key],
+            )
+            .and_then(|_| conn.query_row("SELECT sqlcipher_export('prefints')", [], |_| Ok(())))
+            .and_then(|_| conn.execute_batch(&format!("PRAGMA prefints.user_version = {version}")));
+        let _ = conn.execute_batch("DETACH DATABASE prefints");
+        let renamed = copied.is_ok() && std::fs::rename(&tmp, &dest).is_ok();
+        remove_with_sidecars(&tmp);
+        if !renamed {
+            eprintln!("vault: pre-FinTS safety backup failed");
+        }
+        renamed
+    }
+
     /// Copies the backup into `staging` under the device key, then over the
     /// open vault (SQLite backup API, same key on both sides).
     fn restore_via(&self, staging: &str, backup_path: &str, password: &str) -> CoreResult<()> {

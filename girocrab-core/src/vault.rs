@@ -404,8 +404,13 @@ impl Vault {
                     Ok(())
                 });
             }
+            let mark_backup = Self::pre_fints_reg_backup(&conn, &path, &key);
             match Self::migrate(&mut conn) {
                 Ok(()) => {
+                    if mark_backup {
+                        let _ =
+                            Self::set_setting_inner(&conn, backup::PRE_FINTS_REG_BACKUP_KEY, "1");
+                    }
                     if compat.is_some() {
                         tried.push("ok");
                         eprintln!("vault: opened with cipher_compatibility={compat:?}");
