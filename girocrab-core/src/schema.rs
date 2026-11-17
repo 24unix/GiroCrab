@@ -39,6 +39,7 @@
 //! - 27: built-in category and account-group identities, separate from names (#678).
 //! - 28: rules that set tags (#580): `rules.tag_uuids`, and `rules.category_id` may be NULL
 //!   (a rule that only adds tags); the table is rebuilt for the dropped NOT NULL.
+//! - 29: `depot_values`: value of a securities depot per day, one point per fetch.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -83,6 +84,7 @@ const STEPS: &[Step] = &[
     Step::Hook(holding_native_currency),                       // 26
     Step::Hook(builtin_roles),                                 // 27 (#678)
     Step::Hook(rule_tags),                                     // 28 (#580)
+    Step::Sql(crate::depot_values::SCHEMA),                    // 29: depot value history
 ];
 
 /// Step 28 (#580): rules may set tags (`tag_uuids`, a JSON array of tag uuids, so a
@@ -900,7 +902,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 28);
+        assert_eq!(SCHEMA_VERSION, 29);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

@@ -3031,3 +3031,102 @@ CREATE VIEW payments AS SELECT rowid, version, uuid, tombstone, type, sender, re
         .unwrap();
     assert_eq!(r.transfer_templates_created, 1);
 }
+
+/// `portfolio_chart` of the depot (account 3): days at 12:00, starting 2026-03-07.
+const VALUE_HISTORY: &str = "
+CREATE TABLE portfolio_chart (account_key INTEGER, currency TEXT, timestamp INTEGER, balance REAL, securities_key INTEGER);
+-- a position sold and bought again: a second row of the same ISIN
+INSERT INTO securities (rowid, account_key, ident, isin, quantity, amount, deleted) VALUES
+  (4, 3, 'Muster World ETF', 'IE00B4L5Y983', 0, 0, 1);
+-- depot total: sold out on day 4, then zeros on
+INSERT INTO portfolio_chart VALUES
+  (3,'EUR',1772884800,1005,0),(3,'EUR',1772971200,1015,0),(3,'EUR',1773057600,1020,0),
+  (3,'EUR',1773144000,0,0),(3,'EUR',1773230400,0,0),(3,'EUR',1773316800,0,0);
+-- ETF: row 1 and the sold twin (row 4) disagree on day 2, the larger one wins
+INSERT INTO portfolio_chart VALUES
+  (3,'EUR',1772884800,700,1),(3,'EUR',1772971200,710,1),(3,'EUR',1773057600,720,1),
+  (3,'EUR',1773144000,0,1),(3,'EUR',1773230400,0,1),
+  (3,'EUR',1772884800,0,4),(3,'EUR',1772971200,800,4);
+-- cash without ISIN; a 0 before its first value is no point
+INSERT INTO portfolio_chart VALUES
+  (3,'EUR',1772798400,0,2),(3,'EUR',1772884800,300,2),(3,'EUR',1772971200,300,2),(3,'EUR',1773057600,300,2),(3,'EUR',1773144000,0,2);
+-- sold position: its closing 0 is a point, the zeros after it are not
+INSERT INTO portfolio_chart VALUES
+  (3,'EUR',1772884800,5,3),(3,'EUR',1772971200,5,3),(3,'EUR',1773057600,0,3),(3,'EUR',1773144000,0,3);
+";
+
+#[test]
+fn value_history_of_a_depot_is_imported_as_delivered_and_once() {
+    let v = vault();
+    let path = fake_db_with(false, VALUE_HISTORY);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let depot = p.accounts.iter().find(|a| a.name == "Depot").unwrap();
+    // every row: total 6 + ETF 7 + cash 5 + sold 4
+    assert_eq!(depot.value_history_count, 22);
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
+        .unwrap();
+    assert_eq!(r.value_history_imported, 22);
+    let id = account_by_name(&v, "Depot").id;
+    let total = v.depot_value_history(vec![id], 10_000).unwrap();
+    assert_eq!(total[0].date, "2026-03-07");
+    assert_eq!(
+        total[..4].iter().map(|p| p.value_cents).collect::<Vec<_>>(),
+        [100_500, 101_500, 102_000, 0]
+    );
+    assert!(
+        total[4..].iter().all(|p| p.value_cents == 0),
+        "a sold-out depot stays at 0"
+    );
+    let series = |key: &str| -> Vec<i64> {
+        v.position_value_history(id, key.into())
+            .unwrap()
+            .iter()
+            .map(|p| p.value_cents)
+            .collect()
+    };
+    assert_eq!(
+        series("IE00B4L5Y983"),
+        [70_000, 80_000, 72_000, 0],
+        "the larger of two rows of one ISIN; the series ends with the sale"
+    );
+    assert_eq!(
+        series("cash"),
+        [30_000, 30_000, 30_000, 0],
+        "no point for the 0 before the first value"
+    );
+    // no valid ISIN: keyed by its name
+    assert_eq!(
+        series("name:verkauft ag"),
+        [500, 500, 0],
+        "one closing zero"
+    );
+
+    // a second run adds nothing
+    let r2 = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
+        .unwrap();
+    assert_eq!(r2.value_history_imported, 0);
+    let n: i64 = v
+        .db()
+        .unwrap()
+        .query_row("SELECT count(*) FROM depot_observations", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n, 22);
+}
+
+#[test]
+fn a_database_without_value_history_imports_as_before() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    assert!(p.accounts.iter().all(|a| a.value_history_count == 0));
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
+        .unwrap();
+    assert_eq!(r.value_history_imported, 0);
+}

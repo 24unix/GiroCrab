@@ -60,6 +60,40 @@ pub(crate) fn booked_after(
     )?)
 }
 
+/// Per booking day the sum of the bookings of `ids` after `after` (up to `until`) that move their
+/// balances: the same ones as in the list's running balance (#577), so a computed balance counts
+/// pending ones and starts at its opening date.
+pub(crate) fn booked_per_day(
+    db: &Connection,
+    ids: &[i64],
+    after: &str,
+    until: Option<&str>,
+) -> Result<HashMap<String, i64>, CoreError> {
+    if ids.is_empty() {
+        return Ok(Default::default());
+    }
+    let list = (0..ids.len())
+        .map(|n| format!("?{}", n + 3))
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut stmt = db.prepare(&format!(
+        "SELECT t.booking_date, SUM(t.amount_cents) {COUNTED_FROM}
+          WHERE t.account_id IN ({list}) AND t.booking_date > ?1 AND (?2 IS NULL OR t.booking_date <= ?2)
+            AND t.deleted_ms IS NULL AND {}
+          GROUP BY t.booking_date",
+        counts_sql()
+    ))?;
+    let args: Vec<rusqlite::types::Value> =
+        [after.to_string().into(), until.map(str::to_string).into()]
+            .into_iter()
+            .chain(ids.iter().map(|&i| i.into()))
+            .collect();
+    let rows = stmt.query_map(rusqlite::params_from_iter(args), |r| {
+        Ok((r.get(0)?, r.get(1)?))
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
 /// What the walk needs of one chosen account.
 struct Chosen {
     id: i64,

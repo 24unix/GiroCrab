@@ -318,6 +318,8 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         ),
         params![twin, bank],
     )?;
+    // the imported depot history belongs to the bank's account from now on (#578)
+    crate::depot_values::move_account(conn, twin, bank)?;
     super::soft_delete_account(conn, twin)?;
     Ok(())
 }

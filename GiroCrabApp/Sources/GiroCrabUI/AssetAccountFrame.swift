@@ -104,15 +104,6 @@ struct AssetAccountFrame<Top: View, Header: View, Metrics: View, Analysis: View,
     }
 }
 
-private struct AssetChartAlignmentKey: EnvironmentKey { static let defaultValue = Alignment.leading }
-extension EnvironmentValues {
-    /// Where the chart's notes sit: under the value (trailing) in the wide header, across (leading) otherwise.
-    var assetChartAlignment: Alignment {
-        get { self[AssetChartAlignmentKey.self] }
-        set { self[AssetChartAlignmentKey.self] = newValue }
-    }
-}
-
 /// Header card of a holdings view: title, current value, a value chart and the footer row with the
 /// period menu, documents and kind-specific actions. Wide: the name, details and actions on the left,
 /// the value with its chart below on the right (about 40 % of the card). Narrow and on iPhone: name
@@ -163,7 +154,6 @@ struct AssetHeaderCard<Subtitle: View, ValueNote: View, Accessory: View, Actions
     }
 
     private var currency: String { account.currency.isEmpty ? "EUR" : account.currency }
-    private var wide: Bool { width >= 640 * textScale && !compactHeader }
     /// Too narrow for name and value side by side (iPhone, large text): one below the other.
     private var stacked: Bool { width > 0 && width < 460 * textScale }
 
@@ -174,21 +164,7 @@ struct AssetHeaderCard<Subtitle: View, ValueNote: View, Accessory: View, Actions
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 9) {
-            if wide {
-                HStack(alignment: .top, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        titleBlock
-                        Spacer(minLength: 0)
-                        footer
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    VStack(alignment: .trailing, spacing: 8) {
-                        valueBlock
-                        accessory().frame(maxWidth: .infinity).environment(\.assetChartAlignment, .trailing)
-                    }
-                    .frame(width: max(280 * textScale, width * 0.42), alignment: .topTrailing)
-                }
-            } else if stacked {
+            if stacked {
                 // iPhone width: the name gets the full line, the value sits below it, nothing is cut off
                 titleBlock
                 HStack(alignment: .firstTextBaseline) {
@@ -301,17 +277,20 @@ struct AssetValueChart: View {
         /// Not supported (yet): says so plainly instead of drawing anything.
         case unavailable(String)
         case failed(String, retry: (() -> Void)?)
-        /// The valuations of the selected period, oldest first.
-        case points([DailyBalance])
+        /// The value history of securities depots: a step line in the depots' currency, with the
+        /// coverage of the sum (partial sums are dashed and say so).
+        /// `from` / `to`: the shown period (ISO, nil = open); the axis spans it.
+        case depot([DepotValuePoint], from: String?, to: String?)
     }
 
-    @Environment(\.assetChartAlignment) private var alignment
     /// iPhone: the chart grows with Dynamic Type, so the two axis labels never touch.
     @ScaledMetric(relativeTo: .caption2) private var scaledHeight: CGFloat = 44
     let content: Content
     var currency = "EUR"
     /// Small print under the chart (e.g. that a change in value is no return).
     var footnote: LocalizedStringKey?
+    /// What a sum leaves out (depots in another currency), shown like a partial sum.
+    var excludedNote: String?
 
     var body: some View {
         switch content {
@@ -327,32 +306,48 @@ struct AssetValueChart: View {
                 if let retry { Button("Erneut versuchen", action: retry).buttonStyle(.borderless).appFont(.caption) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        case .points(let points):
-            if points.isEmpty {
-                note(String(localized: "Keine Bewertungen im gewählten Zeitraum"))
-            } else if points.count == 1, let only = points.first {
-                Text("Nur eine Bewertung: \(DateText.medium(only.date)) · \(Money.format(only.balanceCents, currency: currency))")
-                    .sensitive(.amounts)
-                    .appFont(.caption).foregroundStyle(Theme.secondary)
-                    .frame(maxWidth: .infinity, alignment: alignment)
-            } else {
-                // iOS: 44 pt = HIG minimum hit region; macOS: room for the min/max/0 axis labels (GitHub #203)
-                // the whole chart is protected: the curve, the axes and the hover readout alike
-                #if os(iOS)
-                BalanceChart(points: points) { _ in }.frame(height: scaledHeight).sensitive()
-                #else
-                BalanceChart(points: points) { _ in }.frame(height: 72).sensitive()
-                #endif
-                if let footnote {
-                    Text(footnote).appFont(.caption2).foregroundStyle(Theme.tertiary)
-                }
+        case .depot(let points, let from, let to):
+            depotChart(points, from: from, to: to)
+        }
+    }
+
+    @ViewBuilder
+    private func depotChart(_ points: [DepotValuePoint], from: String?, to: String?) -> some View {
+        if points.isEmpty {
+            note(String(localized: "Keine Bewertungen im gewählten Zeitraum"))
+        } else if points.count == 1, let only = points.first {
+            Text("Nur eine Bewertung: \(DateText.medium(only.date)) · \(Money.format(only.valueCents, currency: currency))")
+                .sensitive(.amounts)
+                .appFont(.caption).foregroundStyle(Theme.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            let period = from.flatMap { DateText.parseISODay($0) }.map { start in
+                start...(to.flatMap { DateText.parseISODay($0) } ?? Date())
+            }
+            #if os(iOS)
+            DepotValueChart(points: points, currency: currency, period: period).frame(height: scaledHeight * 1.6).sensitive(.amounts)
+            #else
+            DepotValueChart(points: points, currency: currency, period: period).frame(height: 84).sensitive(.amounts)
+            #endif
+            if let start = DepotValueHistory.startNote(points, from: from) {
+                Text(start).appFont(.caption2).foregroundStyle(Theme.secondary)
+            }
+            if let coverage = DepotValueHistory.coverageNote(points) {
+                Label(coverage, systemImage: "chart.line.uptrend.xyaxis")
+                    .appFont(.caption2, weight: .semibold).foregroundStyle(Theme.warning)
+            }
+            if let excludedNote {
+                Label(excludedNote, systemImage: "dollarsign.circle")
+                    .appFont(.caption2, weight: .semibold).foregroundStyle(Theme.warning)
+            }
+            if let footnote {
+                Text(footnote).appFont(.caption2).foregroundStyle(Theme.tertiary)
             }
         }
     }
 
     private func note(_ text: String) -> some View {
         Text(text).appFont(.caption).foregroundStyle(Theme.secondary)
-            .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
-            .frame(maxWidth: .infinity, alignment: alignment)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

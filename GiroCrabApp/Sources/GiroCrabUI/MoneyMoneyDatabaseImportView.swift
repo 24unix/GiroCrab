@@ -623,6 +623,7 @@ struct MoneyMoneyDatabaseImportView: View {
             countRow("Depotpositionen", r.holdingsImported)
             countRow("Überweisungsvorlagen", r.transferTemplatesCreated,
                      detail: r.transferTemplatesExisting > 0 ? String(localized: "\(r.transferTemplatesExisting) bereits vorhanden") : nil)
+            countRow("Wertverlauf-Einträge", r.valueHistoryImported)
             countRow("Bankzugänge", r.connectionsCreated,
                      detail: r.connectionsExisting > 0 ? String(localized: "\(r.connectionsExisting) bereits vorhanden") : nil)
         } header: { Text("Übernommen").appSectionHeader() }
@@ -783,6 +784,7 @@ struct MoneyMoneyDatabaseImportView: View {
         if let f = a.firstDate, let l = a.lastDate { parts.append("\(DateText.medium(f)) – \(DateText.medium(l))") }
         if a.pendingCount > 0 { parts.append(String(localized: "\(a.pendingCount) vorgemerkt")) }
         if a.holdingCount > 0 { parts.append(String(localized: "\(a.holdingCount) Depotpositionen")) }
+        if a.valueHistoryCount > 0 { parts.append(String(localized: "\(a.valueHistoryCount) Wertverlauf-Einträge")) }
         if a.statementCount > 0 { parts.append(String(localized: "\(a.statementCount) Dokumente")) }
         if !a.groupName.isEmpty { parts.append(String(localized: "Gruppe „\(a.groupName)“")) }
         return parts.joined(separator: " · ")

@@ -603,39 +603,36 @@ impl Vault {
         let ids: Vec<i64> = chosen.iter().map(|a| a.id).collect();
         let today = chrono::Local::now().date_naive();
         let start = today - chrono::Duration::days(days.max(1) as i64 - 1);
-        let mut per_day: HashMap<String, i64> = HashMap::new();
-        if !ids.is_empty() {
+        // Securities depots with a valuation history (`depot_values`) take their course from it;
+        // the walk back over bookings is only for the other accounts, so nothing counts twice.
+        let depot_series = crate::depot_values::series(&*self.db()?, &ids, start, today)?;
+        let book_ids: Vec<i64> = ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                depot_series
+                    .as_ref()
+                    .is_none_or(|s| s.firsts.iter().all(|f| f.0 != *id))
+            })
+            .collect();
+        // the depots with a history enter with their values of each day, not with today's balance
+        if depot_series.is_some() {
+            balance = chosen
+                .iter()
+                .filter(|a| book_ids.contains(&a.id))
+                .map(|a| a.balance_cents)
+                .sum();
+        }
+        let from = start.format("%Y-%m-%d").to_string();
+        let per_day = {
             let db = self.db()?;
-            for a in &chosen {
+            for a in chosen.iter().filter(|a| book_ids.contains(&a.id)) {
                 if !a.balance_derived {
                     balance += super::balances::booked_after(&db, a.id, &a.balance_date)?;
                 }
             }
-            let list = (0..ids.len())
-                .map(|n| format!("?{}", n + 2))
-                .collect::<Vec<_>>()
-                .join(",");
-            // the same bookings move it as in the list's running balance (#577):
-            // a computed balance counts pending ones and starts at its opening date
-            let mut stmt = db.prepare(&format!(
-                "SELECT t.booking_date, SUM(t.amount_cents) {}
-                  WHERE t.account_id IN ({list}) AND t.booking_date > ?1 AND t.deleted_ms IS NULL AND {}
-                  GROUP BY t.booking_date",
-                super::balances::COUNTED_FROM,
-                super::balances::counts_sql()
-            ))?;
-            let date = start.format("%Y-%m-%d").to_string();
-            let args: Vec<rusqlite::types::Value> = std::iter::once(date.into())
-                .chain(ids.iter().map(|&i| i.into()))
-                .collect();
-            let rows = stmt.query_map(rusqlite::params_from_iter(args), |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-            })?;
-            for row in rows {
-                let (d, s) = row?;
-                per_day.insert(d, s);
-            }
-        }
+            super::balances::booked_per_day(&db, &book_ids, &from, None)?
+        };
         // Sachwerte (#87): no bookings, their value moves with prices – the walk
         // back keeps today's value, the daily valuation replaces it per day
         let valuation = if ids.is_empty() {
@@ -655,6 +652,38 @@ impl Vault {
             day -= chrono::Duration::days(1);
         }
         out.reverse();
+        // Depot values enter directly. Before its first point a depot walks back over its own
+        // bookings from that first value (none: it stays at it), so it never jumps into a chart
+        // that cannot say "partial sum" (that is `depot_value_history`'s job). Without other
+        // accounts and bookings the history starts on the first day a depot has a value.
+        if let Some(depots) = depot_series {
+            let mut first_known = depots.covered.iter().position(|&c| c > 0).unwrap_or(0);
+            for (p, v) in out.iter_mut().zip(&depots.values) {
+                p.balance_cents += v;
+            }
+            let db = self.db()?;
+            for (id, first_day, first_value) in &depots.firsts {
+                let Ok(first) = chrono::NaiveDate::parse_from_str(first_day, "%Y-%m-%d") else {
+                    continue;
+                };
+                let k = (first - start).num_days();
+                if k <= 0 {
+                    continue;
+                }
+                let booked = super::balances::booked_per_day(&db, &[*id], &from, Some(first_day))?;
+                if !booked.is_empty() {
+                    first_known = 0; // its walk back is real history
+                }
+                let mut value = *first_value;
+                for i in (0..k as usize).rev() {
+                    value -= booked.get(&out[i + 1].date).copied().unwrap_or(0);
+                    out[i].balance_cents += value;
+                }
+            }
+            if book_ids.is_empty() && valuation.is_none() {
+                out.drain(..first_known);
+            }
+        }
         if let Some(values) = valuation {
             let now = values.last().copied().unwrap_or(0);
             for (p, v) in out.iter_mut().zip(values) {
@@ -662,6 +691,51 @@ impl Vault {
             }
         }
         Ok(out)
+    }
+
+    /// Value history of securities depots for the last `days` days, from the first day any of
+    /// them has a value. `account_ids` empty = all depots counted in the total. Each day says
+    /// how many of the depots were covered (see [`crate::models::DepotValuePoint`]); a depot's
+    /// first value starts a new coverage, so the chart can break the line there. Empty when no
+    /// depot has a value.
+    pub fn depot_value_history(
+        &self,
+        account_ids: Vec<i64>,
+        days: u32,
+    ) -> Result<Vec<DepotValuePoint>, CoreError> {
+        let accounts = self.list_accounts()?;
+        let single = account_ids.len() == 1;
+        let ids: Vec<i64> = accounts
+            .iter()
+            .filter(|a| {
+                a.kind == AccountKind::Brokerage
+                    && (single || a.currency == "EUR")
+                    && if account_ids.is_empty() {
+                        a.in_total
+                    } else {
+                        account_ids.contains(&a.id)
+                    }
+            })
+            .map(|a| a.id)
+            .collect();
+        let today = chrono::Local::now().date_naive();
+        let start = today - chrono::Duration::days(days.max(1) as i64 - 1);
+        let Some(series) = crate::depot_values::series(&*self.db()?, &ids, start, today)? else {
+            return Ok(vec![]);
+        };
+        let Some(first) = series.covered.iter().position(|&c| c > 0) else {
+            return Ok(vec![]);
+        };
+        Ok((first..series.values.len())
+            .map(|i| DepotValuePoint {
+                date: (start + chrono::Duration::days(i as i64))
+                    .format("%Y-%m-%d")
+                    .to_string(),
+                value_cents: series.values[i],
+                covered_depots: series.covered[i],
+                total_depots: series.total_depots,
+            })
+            .collect())
     }
 
     pub fn rename_account(&self, account_id: i64, name: String) -> Result<(), CoreError> {
@@ -693,6 +767,8 @@ impl Vault {
                 what: trf("Konto {0}", &[&account_id]),
             });
         }
+        // a depot's value history counts only while it is one (#578)
+        crate::depot_values::rebuild(&db, account_id, None)?;
         Ok(())
     }
 

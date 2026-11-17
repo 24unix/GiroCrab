@@ -2010,6 +2010,17 @@
         }
       }
     },
+    "%u Wertverlauf-Einträge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u value history entries"
+          }
+        }
+      }
+    },
     "%u bereits vorhanden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7002,17 +7013,6 @@
         }
       }
     },
-    "Bewertungsverlauf noch nicht verfügbar" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Valuation history not available yet"
-          }
-        }
-      }
-    },
     "Bezahldienst" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8952,6 +8952,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Depot value as reported by the bank. The clearing account's balance is not included."
+          }
+        }
+      }
+    },
+    "Depotwert von %@ am %@ auf %@ am %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depot value from %@ on %@ to %@ on %@"
           }
         }
       }
@@ -18862,6 +18873,17 @@
         }
       }
     },
+    "Letzter Wert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latest value"
+          }
+        }
+      }
+    },
     "Letztes Jahr" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21118,6 +21140,17 @@
         }
       }
     },
+    "Nicht mehr im Depot seit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No longer in the depot since"
+          }
+        }
+      }
+    },
     "Nicht verbinden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21268,6 +21301,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not fetched yet"
+          }
+        }
+      }
+    },
+    "Noch kein Verlauf für diese Position" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No history for this position yet"
+          }
+        }
+      }
+    },
+    "Noch kein Verlauf: der Wert wird ab dem ersten Abruf festgehalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No history yet: the value is kept from the first fetch on"
           }
         }
       }
@@ -22011,6 +22066,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Bank"
+          }
+        }
+      }
+    },
+    "Ohne Depots in anderer Währung (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluding depots in another currency (%lld)"
           }
         }
       }
@@ -26738,6 +26804,17 @@
         }
       }
     },
+    "Teilsumme · %lld von %lld Depots" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partial sum · %lld of %lld depots"
+          }
+        }
+      }
+    },
     "Teilverkauf oder Zukauf: die neue Gesamtanzahl ab einem Datum. 0 = alles verkauft. Der Verlauf davor bleibt erhalten. Wird sofort gespeichert." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27932,6 +28009,17 @@
         }
       }
     },
+    "Verkaufte Positionen (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sold positions (%lld)"
+          }
+        }
+      }
+    },
     "Verknüpfung lösen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27950,6 +28038,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sales"
+          }
+        }
+      }
+    },
+    "Verlauf ab" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "History since"
           }
         }
       }
@@ -29032,6 +29131,17 @@
         }
       }
     },
+    "Wert der Position (Menge × Kurs). Käufe und Verkäufe verändern ihn – er ist kein Kursverlauf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Value of the position (quantity × price). Purchases and sales change it – it is not a price chart."
+          }
+        }
+      }
+    },
     "Wert gesamt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29083,6 +29193,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "value of %@"
+          }
+        }
+      }
+    },
+    "Werte ab %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Values from %@"
           }
         }
       }
@@ -29160,6 +29281,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Value date"
+          }
+        }
+      }
+    },
+    "Wertverlauf anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show value history"
+          }
+        }
+      }
+    },
+    "Wertverlauf konnte nicht geladen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Value history could not be loaded"
+          }
+        }
+      }
+    },
+    "Wertverlauf-Einträge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Value history entries"
+          }
+        }
+      }
+    },
+    "Wertänderung, keine Rendite: Käufe, Verkäufe und Übertragungen verändern den Wert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change in value, not a return: purchases, sales and transfers change the value."
           }
         }
       }
@@ -30922,6 +31087,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "sold"
+          }
+        }
+      }
+    },
+    "verkauft %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sold %@"
           }
         }
       }

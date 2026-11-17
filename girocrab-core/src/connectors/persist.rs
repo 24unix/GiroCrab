@@ -336,11 +336,15 @@ pub(crate) fn store_fetch(
                     {
                         let (group, sym, order) = group_for(acc.kind);
                         let gid = Vault::ensure_group(&tx, group, sym, order)?;
-                        tx.execute(
+                        let changed = tx.execute(
                             // a symbol the user picked (symbol_ms > 0) stays
                             "UPDATE accounts SET kind = ?1, sf_symbol = CASE WHEN symbol_ms > 0 THEN sf_symbol ELSE ?2 END, group_id = ?3 WHERE id = ?4 AND kind <> ?1",
                             params![acc.kind.as_str(), acc.kind.sf_symbol(), gid, id],
                         )?;
+                        if changed > 0 {
+                            // a history imported while it was another kind counts now (#578)
+                            crate::depot_values::rebuild(&tx, id, None)?;
+                        }
                     }
                     id
                 }
@@ -508,6 +512,12 @@ pub(crate) fn store_fetch(
             depots.len(),
             by_account.len()
         ));
+        // the inventory before this fetch: a position missing from the new one was sold (#578)
+        let mut previous: HashMap<i64, Vec<String>> = HashMap::new();
+        for acc_id in by_account.keys() {
+            let held = crate::depot_values::positions::held_keys(&tx, *acc_id)?;
+            previous.insert(*acc_id, held.into_iter().collect());
+        }
         for (acc_id, list) in &by_account {
             tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
             for remote in list {
@@ -756,6 +766,36 @@ pub(crate) fn store_fetch(
             if let Some(id) = account_ids.get(&acc.external_ref) {
                 Vault::derive_initial_balance(&tx, *id)?;
             }
+        }
+        // Value history of depots (#578), after every balance update above: what this fetch
+        // reported per depot. A depot whose inventory came (maybe an empty one) confirms a 0 and
+        // closes sold positions; one whose total came without positions (an overview) records the
+        // total alone. An unread balance records no total (its positions still count).
+        let observed_ms = chrono::Utc::now().timestamp_millis();
+        let unknown: std::collections::HashSet<i64> = data
+            .balances_unknown
+            .iter()
+            .filter_map(|r| account_ids.get(r).copied())
+            .collect();
+        // every fetched account once: with its inventory, or (an overview) the total alone
+        let fetched = data
+            .accounts
+            .iter()
+            .filter_map(|acc| account_ids.get(&acc.external_ref).copied())
+            .chain(by_account.keys().copied())
+            .collect::<std::collections::BTreeSet<i64>>();
+        for id in fetched {
+            let positions: Option<Vec<&crate::models::Holding>> = by_account
+                .get(&id)
+                .map(|list| list.iter().map(|r| &r.holding).collect());
+            crate::depot_values::record_fetch(
+                &tx,
+                id,
+                positions.as_deref(),
+                previous.get(&id).map_or(&[][..], |p| p.as_slice()),
+                !unknown.contains(&id),
+                observed_ms,
+            )?;
         }
         let categorized = Vault::apply_rules_inner(&tx, true)?;
         if let Some(state) = data.state {

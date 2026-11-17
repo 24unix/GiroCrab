@@ -167,3 +167,8 @@ fn classify_asset(
 ) -> AssetClassification {
     crate::asset_classification::classify_asset(holding, imported, user, confirmed_direct_crypto)
 }
+
+#[uniffi::export]
+fn holding_position_key(isin: String, name: String) -> Option<String> {
+    crate::depot_values::observations::position_key(&isin, &name)
+}

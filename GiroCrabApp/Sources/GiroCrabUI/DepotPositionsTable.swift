@@ -29,6 +29,15 @@ struct DepotPositionsTable<RowMenu: View>: View {
     /// Which depot(s) hold a position, where the table spans several (Vermögen).
     private var depotLabelOf: ((DepotPosition) -> String?)?
 
+    /// Positions with a value history (#578) get a chart button and a menu item that call `open`.
+    private var history: (available: (DepotPosition) -> Bool, open: (DepotPosition) -> Void)?
+
+    func valueHistory(available: @escaping (DepotPosition) -> Bool, open: @escaping (DepotPosition) -> Void) -> Self {
+        var copy = self
+        copy.history = (available, open)
+        return copy
+    }
+
     func depotLabel(_ label: @escaping (DepotPosition) -> String?) -> Self {
         var copy = self
         copy.depotLabelOf = label
@@ -87,7 +96,7 @@ struct DepotPositionsTable<RowMenu: View>: View {
     private var valueW: CGFloat { 104 * textScale }
     private var shareW: CGFloat { 64 * textScale }
     private var gainW: CGFloat { 124 * textScale }
-    private var editW: CGFloat { 22 * textScale }
+    private var editW: CGFloat { (history == nil ? 22 : 44) * textScale }
 
     private var columnHeader: some View {
         HStack(spacing: 10) {
@@ -222,7 +231,7 @@ struct DepotPositionsTable<RowMenu: View>: View {
                 .frame(width: valueW, alignment: .trailing)
             Text(shareText(p)).sensitive(.amounts).foregroundStyle(Theme.secondary).frame(width: shareW, alignment: .trailing)
             gainBlock(p, alignment: .trailing).frame(width: gainW, alignment: .trailing)
-            editButton(p).frame(width: editW)
+            rowButtons(p).frame(width: editW)
         }
         .appFont(.callout, monospacedDigit: true)
         .lineLimit(1)
@@ -284,7 +293,7 @@ struct DepotPositionsTable<RowMenu: View>: View {
                 .lineLimit(1)
                 #if os(macOS)
                 // a narrow window keeps the pencil at hand; on iPhone it is in the details
-                editButton(p)
+                rowButtons(p)
                 #endif
                 disclosureButton(open: open) { toggle(p.id) }
             }
@@ -365,6 +374,23 @@ struct DepotPositionsTable<RowMenu: View>: View {
         .padding(.leading, 2)
     }
 
+    /// The chart button (only with a value history) beside the pencil.
+    private func rowButtons(_ p: DepotPosition) -> some View {
+        HStack(spacing: 0) {
+            if let history, history.available(p) {
+                Button {
+                    history.open(p)
+                } label: {
+                    Image(systemName: "chart.xyaxis.line").appFont(.caption).foregroundStyle(Theme.secondary).padding(4).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Wertverlauf anzeigen")
+                .accessibilityLabel("Wertverlauf anzeigen")
+            }
+            editButton(p)
+        }
+    }
+
     /// Edits asset class and instrument; only where the position has a stable classification key.
     @ViewBuilder
     private func editButton(_ p: DepotPosition) -> some View {
@@ -388,6 +414,9 @@ struct DepotPositionsTable<RowMenu: View>: View {
             Button("Klassifizierung bearbeiten", systemImage: "pencil") {
                 onClassify(ClassificationEditRequest(name: p.holding.name, classification: p.asset.classification))
             }
+        }
+        if let history, history.available(p) {
+            Button("Wertverlauf anzeigen", systemImage: "chart.xyaxis.line") { history.open(p) }
         }
         rowMenu(p)
         Button("Position kopieren", systemImage: "doc.on.doc") { copyToPasteboard(HoldingFigures.clipboardLine(p.holding)) }

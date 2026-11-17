@@ -11,8 +11,9 @@ Sie bestehen aus denselben Bausteinen in derselben Reihenfolge, damit sich Depot
 gleich anfühlen:
 
 1. **Kopf** (`AssetHeaderCard` in `AssetAccountFrame.swift`; in `Vermögen` die Summenkarte, ebenfalls vollbreit mit dem Gesamtwert rechts, auf dem iPhone untereinander): Name, Bank/Status, Wert (groß) und – rechts unter dem
-   Gesamtwert – der Wertverlauf. Solange es für Wertpapierdepots keine belastbare Historie gibt, steht dort ehrlich
-   „Bewertungsverlauf noch nicht verfügbar“ (Hook `DepotDetailView.valuationHistory`; es wird nichts aus Buchungen geschätzt).
+   Gesamtwert – der Wertverlauf (`DepotValueChart`, #578/#761): die Depotwerte, die die Bank bei jedem Abruf gemeldet
+   hat, und die Historie eines Datenbank-Imports (`depot_values`, siehe `docs/DEPOT_DATENMODELL.md`). Vor dem ersten
+   Wert ist nichts gezeichnet, bekannte Werte gelten bis zum nächsten weiter; es wird nichts aus Buchungen geschätzt.
 2. **Vier Kennzahlen** (`DepotKPITiles.swift`, `DepotKPIs.securities` / `.tangibles`):
    - Wertpapiere: Unrealisierte GuV · Tagesveränderung · Ausschüttungen · Gebühren & Steuern
    - Sachwerte: Einstandswert · Unrealisierte GuV · Tagesveränderung · Größte Position (der Gesamtwert steht schon im Kopf)
@@ -20,7 +21,9 @@ gleich anfühlen:
    Darstellung (Kreis | Balken | Kacheln). Alle Darstellungen verwenden dieselben Farben (`DepotColors`) und
    dieselbe Datenbasis (`DepotComposition`).
 4. **Positionen | Aktivitäten** (nur Wertpapierdepots): eine sortierbare Positionstabelle
-   (`DepotPositionsTable`) bzw. die Aktivitätenliste (`DepotActivitiesView`).
+   (`DepotPositionsTable`) bzw. die Aktivitätenliste (`DepotActivitiesView`). Eine Position mit Wertverlauf hat einen
+   Diagramm-Knopf, der den Tageswert der Position zeigt (`PositionHistorySheet`); Positionen, die nicht mehr im
+   Bestand sind, aber einen Verlauf haben, stehen eingeklappt unter „Verkaufte Positionen“.
 
 **Reihenfolge:** Kopf → Kennzahlen → Zusammensetzung → Tabelle gilt für Einzeldepot und Sachwerte-Konto. In `Vermögen › Wertpapiere / Sachwerte` steht die Zusammensetzung direkt unter dem Kopf, die Kennzahlen folgen darunter; bei Wertpapieren kommt vor der Tabelle die Depotübersicht (Karte „Wertpapiere“, jede Zeile öffnet das Depot, Chevron `›`). Im Kopf von `Wertpapiere` wählt ein Zeitraum-Picker den Zeitraum von Ausschüttungen sowie Gebühren & Steuern.
 
@@ -108,8 +111,8 @@ Funktionen verstecken noch Touch-Abstände einführen. Entscheidungen laufen üb
 - **Tests**: neue Rechenlogik in `DepotMetricsTests` (Reine Funktionen vor Views). Layout wird mit
   `--screenshot` geprüft, schmale Fenster mit `--window-width`, große Schrift mit `--text-size larger`,
   Datenschutz mit `--redact`.
-- **Verlauf**: Zeitreihen/Historie sind bewusst ein eigener Branch (`feat/depot-value-history`); diese Ansichten
-  enthalten nur den Hook dafür.
+- **Verlauf**: Werte kommen nur aus gemeldeten Depotwerten und einem Import (`depot_values`), nie aus Kursen oder
+  Buchungen geschätzt. Der Wert einer Position ist Menge × Kurs, also kein Kursverlauf; das Blatt sagt das.
 
 ## Prüfen
 

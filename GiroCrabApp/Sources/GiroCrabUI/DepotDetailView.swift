@@ -8,7 +8,30 @@ struct DepotData {
     let revision: Int
     let assets: [ClassifiedAsset]
     let transactions: [SecurityTransaction]
+    /// The depot's value history (all of it; the period cuts it for the chart).
+    let valuePoints: [DepotValuePoint]
+    /// Held positions with a value history (#578) by `DepotPosition.id`, worked out once per load.
+    let heldHistory: [String: ValuePosition]
+    /// Positions no longer held that have a history, the latest sale first.
+    let soldPositions: [ValuePosition]
     var holdings: [Holding] { assets.map(\.holding) }
+
+    init(accountId: Int64, revision: Int, assets: [ClassifiedAsset], transactions: [SecurityTransaction],
+         valuePoints: [DepotValuePoint], valuePositions: [ValuePosition]) {
+        self.accountId = accountId
+        self.revision = revision
+        self.assets = assets
+        self.transactions = transactions
+        self.valuePoints = valuePoints
+        let held = Dictionary(valuePositions.filter(\.held).map { ($0.position, $0) }, uniquingKeysWith: { first, _ in first })
+        heldHistory = Dictionary(DepotPosition.make(assets).compactMap { p in
+            holdingPositionKey(isin: p.holding.isin, name: p.holding.name).flatMap { held[$0] }.map { (p.id, $0) }
+        }, uniquingKeysWith: { first, _ in first })
+        soldPositions = valuePositions.filter { !$0.held }.sorted { $0.lastDate > $1.lastDate }
+    }
+
+    /// The history of a held position.
+    func valuePosition(_ p: DepotPosition) -> ValuePosition? { heldHistory[p.id] }
 }
 
 enum DepotLoadState {
@@ -69,6 +92,8 @@ struct DepotDetailView: View {
     /// Positions behind the slice clicked in the composition card (nil: all).
     @State private var compositionFilter: Set<String>?
     @State private var editingClassification: ClassificationEditRequest?
+    @State private var historyRequest: PositionHistoryRequest?
+    @State private var demoSheetShown = false
 
     private var currency: String { account.currency.isEmpty ? "EUR" : account.currency }
 
@@ -104,6 +129,7 @@ struct DepotDetailView: View {
             content: { wide in content(wide: wide) }
         )
         .capturableSheet(item: $editingClassification) { AssetClassificationSheet(request: $0).environment(model) }
+        .capturableSheet(item: $historyRequest) { PositionHistorySheet(request: $0).environment(model) }
         .task(id: loadKey) { await reload() }
     }
 
@@ -134,11 +160,21 @@ struct DepotDetailView: View {
         if case .loaded(let d) = load, d.accountId == id, d.revision == revision {} else { load = .loading }
         do {
             let result = try await model.vaultOffMain { vault in
-                (try vault.classifiedAssets(accountId: id), try vault.listSecurityTransactions(accountId: id))
+                (try vault.classifiedAssets(accountId: id), try vault.listSecurityTransactions(accountId: id),
+                 try vault.depotValueHistory(accountIds: [id], days: DepotValueHistory.lookbackDays),
+                 try vault.depotValuePositions(accountId: id))
             }
             // nil: locked or swapped meanwhile; a cancelled load never replaces newer data
             guard !Task.isCancelled, let result else { return }
-            load = .loaded(DepotData(accountId: id, revision: revision, assets: result.0, transactions: result.1))
+            let data = DepotData(accountId: id, revision: revision, assets: result.0, transactions: result.1,
+                                 valuePoints: result.2, valuePositions: result.3)
+            load = .loaded(data)
+            // (developer) `--demo-sheet position-history`: once, the first position that has a history
+            if model.options.demoSheetName == "position-history", !demoSheetShown,
+               let p = DepotPosition.make(data.assets).lazy.compactMap({ data.valuePosition($0) }).first {
+                demoSheetShown = true
+                historyRequest = PositionHistoryRequest(accountId: id, position: p)
+            }
         } catch {
             guard !Task.isCancelled else { return }
             load = .failed(describe(error))
@@ -185,7 +221,10 @@ struct DepotDetailView: View {
                         .help("Der gemeldete Depotwert und die Summe der Positionen weichen voneinander ab, z. B. durch unterschiedliche Bewertungszeitpunkte.")
                 }
             },
-            accessory: { AssetValueChart(content: valuationHistory, currency: currency) },
+            accessory: {
+                AssetValueChart(content: valuationHistory, currency: currency,
+                                footnote: DepotValueHistory.footnote)
+            },
             actions: { EmptyView() }
         )
     }
@@ -220,6 +259,21 @@ struct DepotDetailView: View {
 
     @ViewBuilder
     private func positionsTab(_ data: DepotData, wide: Bool) -> some View {
+        heldPositions(data, wide: wide)
+        let sold = data.soldPositions.filter { matches($0, query: query) }
+        if !sold.isEmpty, compositionFilter == nil {
+            SoldPositionsSection(positions: sold) { historyRequest = PositionHistoryRequest(accountId: account.id, position: $0) }
+        }
+    }
+
+    /// A sold position matches the search by name or key (ISIN).
+    private func matches(_ p: ValuePosition, query: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty || p.name.localizedCaseInsensitiveContains(q) || p.position.localizedCaseInsensitiveContains(q)
+    }
+
+    @ViewBuilder
+    private func heldPositions(_ data: DepotData, wide: Bool) -> some View {
         let positions = DepotPosition.make(data.assets)
         let shown = DepotPosition.sorted(DepotPosition.filtered(DepotPosition.filtered(positions, query: query), keys: compositionFilter, inventory: positions), by: sort)
         if data.assets.isEmpty {
@@ -241,6 +295,11 @@ struct DepotDetailView: View {
                 DepotPositionsTable(positions: shown, totalCount: positions.count, sort: $sort, wide: wide,
                                     currency: currency, onClassify: { editingClassification = $0 },
                                     copyAll: { copyToPasteboard(positions.map { HoldingFigures.clipboardLine($0.holding) }.joined(separator: "\n")) })
+                    .valueHistory(available: { data.valuePosition($0) != nil },
+                                  open: { p in
+                                      guard let v = data.valuePosition(p) else { return }
+                                      historyRequest = PositionHistoryRequest(accountId: account.id, position: v)
+                                  })
             }
         }
     }
@@ -261,12 +320,12 @@ struct DepotDetailView: View {
                              expandedKey: "depotAnalysisExpanded", displayKey: "depotCompositionDisplay")
     }
 
-    /// The depot's valuation history for the header chart. There is no reliable one yet, so the
-    /// chart says so: nothing is derived from bookings or activities and no line is drawn.
-    /// Hook for `feat/depot-value-history`: return `.points(...)` of the period's valuations (and
-    /// `.loading` while the selection loads) here; the header, its layout and the chart need no change.
+    /// The depot's valuation history for the header chart: the values the core holds (the bank's own
+    /// reports at each fetch, imported values), cut to the selected period. Before its first value
+    /// the depot has none: nothing is drawn there, and nothing is derived from bookings.
     private var valuationHistory: AssetValueChart.Content {
-        .unavailable(String(localized: "Bewertungsverlauf noch nicht verfügbar"))
+        guard let data else { return .loading }
+        return DepotValueHistory.chartContent(data.valuePoints, period: model.depotPeriodRange)
     }
 
     // MARK: activities

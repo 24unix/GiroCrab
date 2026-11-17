@@ -174,6 +174,8 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
         "UPDATE OR IGNORE security_transactions SET account_id = ?1 WHERE account_id = ?2",
         params![keep, dup],
     )?;
+    // the value history would go with the deleted account's cascade (#578)
+    crate::depot_values::move_account(conn, dup, keep)?;
     // direct debit and order data (#143, #239, #240): the caller deletes `dup`, and
     // these tables reference it without a cascade (a leftover row would fail the delete)
     conn.execute(

@@ -2537,6 +2537,114 @@ impl Vault {
                 )?;
             }
         }
+        // Valuation history of the three depots (`depot_observations`, derived into
+        // `depot_values`), deterministic. Each depot shows a case the chart has to handle:
+        // - Welt-Depot: a year of fetched values, no gaps, with the history of its positions and
+        //   of one position sold 60 days ago.
+        // - Einzeltitel-Depot: connected only 120 days ago, so the sum of the depots is partial
+        //   before that ("2 von 3 Depots") and the line breaks where it joins.
+        // - Krypto-Depot: gaps of one to three days (the last value carries on), and an older
+        //   stretch from an import; the fetched values win where both exist.
+        {
+            use crate::depot_values::observations::{
+                record_as, ObservedValue, KIND_POSITION, KIND_TOTAL, SOURCE_FETCH, SOURCE_IMPORT,
+            };
+            let noon = |d: &str| {
+                chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                    .ok()
+                    .and_then(|d| d.and_hms_opt(12, 0, 0))
+                    .map_or(0, |t| t.and_utc().timestamp_millis())
+            };
+            let value =
+                |kind, position: &str, name: &str, date: String, cents: i64| ObservedValue {
+                    kind,
+                    position: position.into(),
+                    source_ref: String::new(),
+                    name: name.into(),
+                    currency: "EUR".into(),
+                    observed_ms: noon(&date),
+                    value_date: date,
+                    value_cents: cents,
+                };
+            for (key, start, vol, weekends, seed) in [
+                ("demo-depot", 0.55_f64, 0.0065_f64, false, 0x51F1_5EED_u64),
+                ("demo-einzeltitel", 0.72, 0.011, false, 0xA11C_E5ED),
+                ("demo-krypto", 0.60, 0.03, true, 0xC0FF_EE5D),
+            ] {
+                let id = acc_ids[key];
+                let end: i64 = tx.query_row(
+                    "SELECT balance_cents FROM accounts WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                let positions: Vec<(String, String, i64)> = {
+                    let mut q = tx.prepare(
+                        "SELECT isin, name, value_cents FROM holdings WHERE account_id = ?1 ORDER BY id",
+                    )?;
+                    let rows = q.query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+                    rows.collect::<Result<_, _>>()?
+                };
+                let levels = demo_depot_levels(seed, start, vol, weekends, today);
+                let value_at =
+                    |ago: i64| -> i64 { (end as f64 * levels[ago as usize]).round() as i64 };
+                let day = |ago: i64| (today - Duration::days(ago)).format("%Y-%m-%d").to_string();
+                let (mut fetched, mut imported) = (Vec::new(), Vec::new());
+                for ago in (0..=365_i64).rev() {
+                    match key {
+                        "demo-einzeltitel" if ago > 120 => continue,
+                        // gaps: 2 days out of every 9, plus a single day now and then
+                        "demo-krypto"
+                            if ago > 0
+                                && ago < 365
+                                && (ago % 9 == 4 || ago % 9 == 5 || ago % 31 == 7) =>
+                        {
+                            continue
+                        }
+                        _ => {}
+                    }
+                    if key == "demo-krypto" && ago > 200 {
+                        // imported history; deliberately a little off where it overlaps the fetches
+                        imported.push(value(KIND_TOTAL, "", "", day(ago), value_at(ago)));
+                        continue;
+                    }
+                    fetched.push(value(KIND_TOTAL, "", "", day(ago), value_at(ago)));
+                    if key != "demo-krypto" {
+                        // the positions move with the depot, each a little on its own
+                        for (k, (isin, name, cents)) in positions.iter().enumerate() {
+                            let wobble = 1.0
+                                + 0.015 * ((ago as f64 * 0.4 + k as f64).sin() - (k as f64).sin());
+                            let v = (*cents as f64 * levels[ago as usize] * wobble).round() as i64;
+                            fetched.push(value(KIND_POSITION, isin, name, day(ago), v));
+                        }
+                    }
+                    if key == "demo-depot" && ago >= 60 {
+                        // a position sold 60 days ago: its history ends with a 0
+                        let v = if ago == 60 {
+                            0
+                        } else {
+                            (180_000.0 * levels[ago as usize]).round() as i64
+                        };
+                        fetched.push(value(
+                            KIND_POSITION,
+                            "IE00BKM4GZ66",
+                            "iShares Core MSCI EM IMI UCITS ETF",
+                            day(ago),
+                            v,
+                        ));
+                    }
+                }
+                if key == "demo-krypto" {
+                    // overlap: import values 2 % higher for the days 200..=190 that fetches also cover
+                    for ago in 190..=200_i64 {
+                        let v = (value_at(ago) as f64 * 1.02).round() as i64;
+                        imported.push(value(KIND_TOTAL, "", "", day(ago), v));
+                    }
+                }
+                record_as(&tx, id, SOURCE_FETCH, &fetched)?;
+                record_as(&tx, id, SOURCE_IMPORT, &imported)?;
+                crate::depot_values::rebuild(&tx, id, None)?;
+            }
+        }
         // manual loan without a bank account (#36): Stand two months ago, rates from the Giro
         // (linked by `apply_rules_inner` below)
         let car = crate::loans::create_in(
@@ -2685,6 +2793,66 @@ impl Vault {
         tx.commit()?;
         Ok(n)
     }
+}
+
+/// A deterministic, natural-looking path of a depot's value over the last 365 days: `levels[ago]` is
+/// the value `ago` days back relative to today (`levels[0]` is 1.0, so the history ends exactly at
+/// the depot's balance). Daily moves are random with a volatility that changes every few weeks,
+/// now and then a sharp drop that recovers a little, a drift towards today's value (`start` is the
+/// share of today's value a year back), and standing values on weekends unless `weekends`.
+fn demo_depot_levels(
+    seed: u64,
+    start: f64,
+    vol: f64,
+    weekends: bool,
+    today: NaiveDate,
+) -> Vec<f64> {
+    use chrono::Weekday;
+    let mut state = seed;
+    let mut next = move || -> f64 {
+        // splitmix64: small, deterministic, good enough for demo data
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        (z >> 11) as f64 / (1u64 << 53) as f64
+    };
+    const DAYS: usize = 365;
+    let trades = |ago: usize| {
+        weekends
+            || !matches!(
+                (today - Duration::days(ago as i64)).weekday(),
+                Weekday::Sat | Weekday::Sun
+            )
+    };
+    let active = (0..=DAYS).filter(|&a| trades(a)).count().max(1);
+    let drift = -start.ln() / active as f64;
+    // log value from a year back (index DAYS) to today (index 0), before scaling
+    let mut w = vec![0.0_f64; DAYS + 1];
+    let (mut regime, mut regime_left, mut rebound) = (1.0_f64, 0_u32, 0_u32);
+    for ago in (0..DAYS).rev() {
+        let mut r = 0.0;
+        if trades(ago) {
+            if regime_left == 0 {
+                regime = 0.55 + 1.5 * next();
+                regime_left = 15 + (next() * 40.0) as u32;
+            }
+            regime_left -= 1;
+            let gauss = (next() + next() + next() + next() - 2.0) * 3.0_f64.sqrt();
+            r = drift + regime * vol * gauss;
+            if next() < 0.007 {
+                r -= (3.0 + 4.0 * next()) * vol;
+                rebound = 6;
+            } else if rebound > 0 {
+                r += 0.5 * vol;
+                rebound -= 1;
+            }
+        }
+        w[ago] = w[ago + 1] + r;
+    }
+    let today_log = w[0];
+    w.iter().map(|x| (x - today_log).exp()).collect()
 }
 
 #[cfg(test)]
@@ -3029,6 +3197,108 @@ mod tests {
             3
         );
         assert!(singles.iter().all(|t| t.cash_transaction_id.is_none()));
+    }
+
+    #[test]
+    fn the_demo_value_paths_end_at_today_and_look_like_markets() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 17).unwrap(); // a Tuesday
+        let calm = demo_depot_levels(7, 0.55, 0.0065, false, today);
+        assert_eq!(calm.len(), 366);
+        assert_eq!(calm[0], 1.0, "ends exactly at today's value");
+        assert_eq!(
+            calm,
+            demo_depot_levels(7, 0.55, 0.0065, false, today),
+            "deterministic"
+        );
+        // standing values on weekends (13 Nov 2026 is a Friday: 14th and 15th repeat it)
+        assert_eq!(calm[3], calm[4]);
+        assert_eq!(calm[2], calm[3]);
+        // no market on weekends is a stretch of equal values; crypto trades every day
+        let crypto = demo_depot_levels(9, 0.6, 0.03, true, today);
+        assert_ne!(crypto[3], crypto[4]);
+        // it moves: many changes of direction, no jump of a fifth in one day, a plausible start
+        for path in [&calm, &crypto] {
+            let moves: Vec<f64> = path.windows(2).map(|w| w[0].ln() - w[1].ln()).collect();
+            let turns = moves.windows(2).filter(|m| m[0] * m[1] < 0.0).count();
+            assert!(turns > 80, "{turns} turns");
+            assert!(moves.iter().all(|m| m.abs() < 0.2));
+            assert!(path[365] > 0.2 && path[365] < 1.5, "start {}", path[365]);
+        }
+    }
+
+    #[test]
+    fn demo_depots_show_partial_coverage_gaps_and_an_import_stretch() {
+        let dir_dir = crate::test_support::TempDir::new("girocrab-test");
+        let v = Vault::open(
+            dir_dir.join("v.db").to_string_lossy().to_string(),
+            vec![7u8; 32],
+        )
+        .unwrap();
+        v.seed_demo_data().unwrap();
+        let id = |name: &str| {
+            v.list_accounts()
+                .unwrap()
+                .into_iter()
+                .find(|a| a.name == name)
+                .unwrap()
+                .id
+        };
+        let (welt, einzel, krypto) = (
+            id("Welt-Depot ETF"),
+            id("Einzeltitel-Depot"),
+            id("Krypto-Depot"),
+        );
+        // all three: the last value is today's, the history starts with the first known day
+        let all = v.depot_value_history(vec![], 400).unwrap();
+        assert_eq!(
+            all.first().unwrap().covered_depots,
+            2,
+            "partial before the third joins"
+        );
+        assert_eq!(all.last().unwrap().covered_depots, 3);
+        assert!(all.iter().all(|p| p.total_depots == 3));
+        // the Einzeltitel-Depot joins 120 days ago: coverage rises by one exactly there
+        let joins = all
+            .windows(2)
+            .filter(|w| w[1].covered_depots > w[0].covered_depots)
+            .count();
+        assert_eq!(joins, 1);
+        let alone = v.depot_value_history(vec![einzel], 400).unwrap();
+        assert_eq!(alone.len(), 121);
+        // each depot ends at its balance
+        for (name, depot) in [("Welt", welt), ("Einzeltitel", einzel), ("Krypto", krypto)] {
+            let acc = v
+                .list_accounts()
+                .unwrap()
+                .into_iter()
+                .find(|a| a.id == depot)
+                .unwrap();
+            let h = v.depot_value_history(vec![depot], 400).unwrap();
+            assert_eq!(h.last().unwrap().value_cents, acc.balance_cents, "{name}");
+        }
+        // the Welt-Depot has a value for every day of the year, the Krypto-Depot has gaps in its
+        // fetched stretch (the history still carries the last value on)
+        assert_eq!(v.depot_value_history(vec![welt], 400).unwrap().len(), 366);
+        let db = v.db().unwrap();
+        let fetched: i64 = db
+            .query_row(
+                "SELECT count(*) FROM depot_values WHERE account_id = ?1 AND source = 'fetch'",
+                [krypto],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let imported: i64 = db
+            .query_row(
+                "SELECT count(*) FROM depot_values WHERE account_id = ?1 AND source = 'import'",
+                [krypto],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            fetched > 100 && fetched < 201,
+            "gaps in the fetched stretch: {fetched}"
+        );
+        assert!(imported > 100, "an imported stretch exists: {imported}");
     }
 
     #[test]
