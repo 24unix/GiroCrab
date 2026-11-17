@@ -784,6 +784,8 @@ export component MainWindow inherits Window {
     in-out property <string> transfer-pre-iban;
     in-out property <string> transfer-pre-amount;
     in-out property <string> transfer-pre-purpose;
+    in-out property <bool> girocode-open: false;
+    in-out property <image> girocode-image;
     // ---- navigation and views (views_ui.rs)
     in property <[SideRow]> side-rows;
     in-out property <string> side-selected: "all";
@@ -979,6 +981,9 @@ export component MainWindow inherits Window {
     callback import-file();
     callback transfer-submit(int, string, string, string, string, bool, string);
     callback transfer-start();
+    // clipboard text -> empty transfer fields; GiroCode (EPC QR) for the current fields (#663)
+    callback transfer-paste(string);
+    callback transfer-girocode();
 
     // account / category management, About, keyboard shortcuts
     in property <[color]> palette;
@@ -1050,8 +1055,18 @@ export component MainWindow inherits Window {
     in property <bool> tan-has-image: false;
     in-out property <string> tan-text;
 
+    // Slint has no clipboard API of its own: a zero-size TextInput pastes it, the text is cleared again.
+    function paste-transfer() {
+        clip.text = "";
+        clip.paste();
+        root.transfer-paste(clip.text);
+        clip.text = "";
+    }
+    clip := TextInput { x: 0px; y: 0px; width: 0px; height: 0px; visible: false; single-line: false; }
+
     fs := FocusScope {
     capture-key-pressed(event) => {
+        if (root.transfer-open && event.modifiers.control && event.modifiers.shift && (event.text == "V" || event.text == "v" || event.text == "\u{16}")) { root.paste-transfer(); return accept; }
         if (root.unlocked && event.modifiers.control && event.modifiers.shift && (event.text == "P" || event.text == "p" || event.text == "\u{10}")) { root.privacy = !root.privacy; root.privacy-changed(); return accept; }
         if (root.unlocked && event.modifiers.control && (event.text == "," || event.text == ";")) { SettingsImportState.request(); return accept; }
         if (root.unlocked && !root.busy && event.modifiers.control && !event.modifiers.shift && (event.text == "e" || event.text == "\u{5}")) { SettingsImportState.request(); SettingsImportState.tab = 1; return accept; }
@@ -1921,10 +1936,14 @@ export component MainWindow inherits Window {
                 Text { text: "Überweisung"; font-size: 18px; font-weight: 700; color: Theme.text; }
                 Text { text: "Von Konto"; font-size: 11px; color: Theme.muted; }
                 tr-account := ComboBox { model: root.transfer-accounts; current-index: 0; }
-                tr-name := LineEdit { text: root.transfer-pre-name; placeholder-text: "Empfänger (Name)"; }
-                tr-iban := LineEdit { text: root.transfer-pre-iban; placeholder-text: "IBAN des Empfängers"; }
-                tr-amount := LineEdit { text: root.transfer-pre-amount; placeholder-text: "Betrag in EUR, z. B. 12,50"; }
-                tr-purpose := LineEdit { text: root.transfer-pre-purpose; placeholder-text: "Verwendungszweck (max. 140 Zeichen)"; }
+                tr-name := LineEdit { text <=> root.transfer-pre-name; edited => { root.girocode-open = false; } placeholder-text: "Empfänger (Name)"; }
+                tr-iban := LineEdit { text <=> root.transfer-pre-iban; edited => { root.girocode-open = false; } placeholder-text: "IBAN des Empfängers"; }
+                tr-amount := LineEdit { text <=> root.transfer-pre-amount; edited => { root.girocode-open = false; } placeholder-text: "Betrag in EUR, z. B. 12,50"; }
+                tr-purpose := LineEdit { text <=> root.transfer-pre-purpose; edited => { root.girocode-open = false; } placeholder-text: "Verwendungszweck (max. 140 Zeichen)"; }
+                HorizontalLayout {
+                    alignment: start;
+                    Button { text: "Aus Zwischenablage einfügen"; clicked => { root.paste-transfer(); } }
+                }
                 tr-instant := Switch { text: "Echtzeitüberweisung (sofort, rund um die Uhr)"; checked: false; }
                 tr-date := LineEdit {
                     placeholder-text: "Ausführungstermin TT.MM.JJJJ (leer = sofort)";
@@ -1939,10 +1958,23 @@ export component MainWindow inherits Window {
                     color: Theme.muted; font-size: 11px; wrap: word-wrap;
                 }
                 if root.transfer-status != "": Text { text: root.transfer-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
+                if root.girocode-open: VerticalLayout {
+                    spacing: 6px;
+                    Rectangle {
+                        height: 232px;
+                        background: #ffffff;
+                        Image { source: root.girocode-image; image-fit: contain; image-rendering: pixelated; width: parent.width - 8px; height: parent.height - 8px; }
+                    }
+                    Text {
+                        text: "Scannen Sie den Code mit der App Ihrer Bank. Ausführungsdatum und Echtzeitüberweisung wählen Sie dort.";
+                        color: Theme.muted; font-size: 11px; wrap: word-wrap;
+                    }
+                }
                 HorizontalLayout {
                     alignment: end;
                     spacing: 8px;
                     Button { text: "Abbrechen"; clicked => { root.transfer-open = false; } }
+                    Button { text: "Als GiroCode anzeigen"; clicked => { root.transfer-girocode(); } }
                     Button {
                         text: "Senden";
                         primary: true;

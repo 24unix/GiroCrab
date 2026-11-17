@@ -8,6 +8,7 @@ mod assets_loans;
 mod assets_loans_ui;
 mod cockpit;
 mod daily;
+mod girocode;
 mod groups;
 mod groups_ui;
 mod lists;
@@ -1455,12 +1456,30 @@ fn transfer_prefill_from_args(args: impl IntoIterator<Item = String>) -> Option<
     None
 }
 
+/// Current text of the transfer dialog's fields.
+fn transfer_fields(win: &MainWindow) -> girocode::Fields {
+    girocode::Fields {
+        name: win.get_transfer_pre_name().to_string(),
+        iban: win.get_transfer_pre_iban().to_string(),
+        amount: win.get_transfer_pre_amount().to_string(),
+        purpose: win.get_transfer_pre_purpose().to_string(),
+    }
+}
+
+fn set_transfer_fields(win: &MainWindow, f: &girocode::Fields) {
+    win.set_transfer_pre_name(f.name.clone().into());
+    win.set_transfer_pre_iban(f.iban.clone().into());
+    win.set_transfer_pre_amount(f.amount.clone().into());
+    win.set_transfer_pre_purpose(f.purpose.clone().into());
+}
+
 fn apply_transfer_prefill(win: &MainWindow, p: &TransferPrefill) {
     win.set_transfer_pre_name(p.recipient.clone().into());
     win.set_transfer_pre_iban(p.iban.clone().into());
     win.set_transfer_pre_amount(p.amount.clone().into());
     win.set_transfer_pre_purpose(p.purpose.clone().into());
     win.set_transfer_status(SharedString::new());
+    win.set_girocode_open(false);
     win.set_transfer_open(true);
 }
 
@@ -2012,6 +2031,38 @@ fn main() -> Result<(), slint::PlatformError> {
         win.on_transfer_start(move || {
             let Some(win) = weak.upgrade() else { return };
             apply_transfer_prefill(&win, &TransferPrefill::default());
+        });
+    }
+    {
+        let weak = win.as_weak();
+        win.on_transfer_paste(move |clipboard| {
+            let Some(win) = weak.upgrade() else { return };
+            let current = transfer_fields(&win);
+            match girocode::paste_into(&current, clipboard.as_str()) {
+                Ok(f) => {
+                    set_transfer_fields(&win, &f);
+                    win.set_transfer_status(SharedString::new());
+                    win.set_girocode_open(false);
+                }
+                Err(e) => win.set_transfer_status(e.into()),
+            }
+        });
+    }
+    {
+        let weak = win.as_weak();
+        win.on_transfer_girocode(move || {
+            let Some(win) = weak.upgrade() else { return };
+            match girocode::girocode_image(&transfer_fields(&win)) {
+                Ok(img) => {
+                    win.set_girocode_image(img);
+                    win.set_girocode_open(true);
+                    win.set_transfer_status(SharedString::new());
+                }
+                Err(e) => {
+                    win.set_girocode_open(false);
+                    win.set_transfer_status(e.into());
+                }
+            }
         });
     }
     {
