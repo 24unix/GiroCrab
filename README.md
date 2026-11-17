@@ -11,12 +11,12 @@
 <p align="center">FinTS 3.0 · PSD2 · SEPA · Datenimport — 100&nbsp;% lokal verschlüsselt, kostenlos, Daten bleiben auf deinem Gerät.</p>
 
 <p align="center">
-  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.8.0 · Apple Silicon (.dmg)" width="260" height="56"></a>
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.8.5 · Apple Silicon (.dmg)" width="260" height="56"></a>
   &nbsp;
   <a href="https://testflight.apple.com/join/KBmvKVpT"><img src="docs/assets/download-ios.svg" alt="iOS &amp; iPadOS App – kostenlos via Apple TestFlight" width="260" height="56"></a>
 </p>
 
-<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.8.0</sub></p>
+<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.8.5</sub></p>
 
 <p align="center">
   <a href="https://github.com/GiroCrab/GiroCrab/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/GiroCrab/GiroCrab?label=release&color=2ea44f"></a>
@@ -52,6 +52,13 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 ### Für wen ist GiroCrab?
 
 GiroCrab ist eine freie, quelloffene Banking-App (GPLv3) für macOS, Linux (Qt 6 / QML) und – derzeit als Beta über TestFlight – für iPhone und iPad. Alle Daten liegen verschlüsselt auf deinem Gerät. GiroCrab ist ein junges Community-Projekt: Die Bankenabdeckung wächst noch (siehe Bank-Tabelle), und PSD2-Zugänge laufen über einen eigenen, kostenlosen Enable-Banking-Zugang.
+
+### ✨ Neu in v0.8.5
+
+- 🔐 **Schlüsselbund- & iCloud-Übernahme:** Verbesserte Wiederherstellung und Übernahme bestehender Tresorschlüssel auf macOS und iOS sowie klarerer Hinweis im Demo-Modus.
+- 🏦 **Banken & Konten:** Korrekturen bei Enable Banking (u. a. Spuerkeess), überarbeitete Kontoseiten in den Mobile-Apps und stabilere Kategorie-/Konten-Navigation auf Windows.
+- 📱 **iOS / TestFlight – v0.8.5 unter der Haube (Build 22 unter Version 0.7.5):** Damit Updates ohne Review-Wartezeit sofort bei euch landen, erscheint der komplette **v0.8.5-Funktionsumfang** auf iOS direkt als Build 22 unter Version `0.7.5`.
+- 🧪 **Windows & Android (Alpha-Vorschau):** Erstmals hängen automatische Alpha-Installer für Windows und Android zum Ausprobieren direkt am Release.
 
 ### ✨ Neu in v0.8.0
 - 🏦 **Integrierte FinTS-Produktregistrierung:** Offizielle FinTS-Produktregistrierungs-ID ist direkt im Release hinterlegt – der manuelle Eintrag entfällt.
@@ -252,7 +259,7 @@ Die Demo enthält fiktive Konten und erfundene Buchungen – keine echten Daten.
 ### 📦 Download (macOS)
 
 Das fertige Disk-Image [`GiroCrab-macOS-arm64.dmg`](https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg) (Apple Silicon, macOS 14+) gibt es unter [GitHub Releases](../../releases) – ohne Rust oder Xcode.
-Aktuelle Version: **v0.8.0**. DMG öffnen und `GiroCrab.app` nach `/Programme` ziehen – die App ist **von Apple notarisiert** und aktualisiert sich per Sparkle selbst.
+Aktuelle Version: **v0.8.5**. DMG öffnen und `GiroCrab.app` nach `/Programme` ziehen – die App ist **von Apple notarisiert** und aktualisiert sich per Sparkle selbst.
 **iPhone / iPad:** [TestFlight-Beta beitreten](https://testflight.apple.com/join/KBmvKVpT).
 
 **Intel-Macs:** Die offiziellen Binaries sind nur für Apple Silicon (`arm64`). Auf Intel-Macs lässt sich GiroCrab mit Swift/Xcode selbst aus dem Quellcode bauen (siehe [Schnellstart](#schnellstart)).
@@ -287,6 +294,13 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 ### Who is GiroCrab for?
 
 GiroCrab is a free, open-source banking app (GPLv3) for macOS, Linux (Qt 6 / QML) and – currently in beta via TestFlight – for iPhone and iPad. All data stays encrypted on your device. GiroCrab is a young community project: bank coverage is still growing (see the bank table), and PSD2 access works through your own free Enable Banking account.
+
+### ✨ What's new in v0.8.5
+
+- 🔐 **Keychain & iCloud Key Adoption:** Improved recovery and adoption of existing vault keys on macOS and iOS, plus clearer demo-mode persistence hints.
+- 🏦 **Banks & Accounts:** Enable Banking fixes (including Spuerkeess), refined mobile account views, and improved category/account navigation on Windows.
+- 📱 **iOS / TestFlight – Full v0.8.5 under the hood (Build 22 under version 0.7.5):** To deliver updates without Apple review delays, the complete **v0.8.5 feature set** ships on iOS as Build 22 under version `0.7.5`.
+- 🧪 **Windows & Android (Alpha Preview):** Experimental alpha builds for Windows and Android are now attached directly to the release for early testing.
 
 ### ✨ What's new in v0.8.0
 - 🏦 **Built-in FinTS Product Registration:** Official FinTS product registration ID is now bundled out of the box in release builds – no manual setup required.
@@ -453,7 +467,7 @@ Adding a bank usually takes under 100 lines – start from
 ### Download (macOS)
 
 The pre-built disk image [`GiroCrab-macOS-arm64.dmg`](https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg) (Apple Silicon, macOS 14+) is available under
-[GitHub Releases](../../releases) – no Rust or Xcode required. Current version: **v0.8.0**. Open the DMG and drag `GiroCrab.app` to `/Applications` – the app is **notarized by Apple** and updates itself via Sparkle.
+[GitHub Releases](../../releases) – no Rust or Xcode required. Current version: **v0.8.5**. Open the DMG and drag `GiroCrab.app` to `/Applications` – the app is **notarized by Apple** and updates itself via Sparkle.
 **iPhone / iPad:** [join the TestFlight beta](https://testflight.apple.com/join/KBmvKVpT).
 
 **Intel Macs:** the official binaries are Apple Silicon (`arm64`) only. On Intel Macs you can build GiroCrab yourself from source with Swift/Xcode (see [Quickstart](#quickstart)).
