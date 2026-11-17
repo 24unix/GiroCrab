@@ -1457,49 +1457,7 @@ impl FinTsConnector {
                 Err(e) => errors.push(trf("Kontenliste (HKSPA) – {0}", &[&e])),
             }
         }
-        let mut out: Vec<(SepaAccount, Option<UpdAccount>)> = Vec::new();
-        for u in self.upd.clone() {
-            // Only accounts of this bank with at least one usable transaction
-            let usable = u.allowed.is_empty()
-                || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU"]
-                    .iter()
-                    .any(|t| u.allowed.contains(*t));
-            if crate::depot_debug::enabled() {
-                let mut allowed: Vec<&str> = u.allowed.iter().map(String::as_str).collect();
-                allowed.sort_unstable();
-                crate::depot_debug::log(&format!(
-                    "fints UPD account: kind_code={} has_iban={} usable={usable} allowed=[{}]",
-                    u.kind_code,
-                    !u.iban.is_empty(),
-                    allowed.join(",")
-                ));
-            }
-            if !usable {
-                continue;
-            }
-            let s = sepa.iter().find(|s| {
-                (!u.iban.is_empty() && s.iban == u.iban)
-                    || (s.account_number == u.account_number && !u.account_number.is_empty())
-            });
-            let acc = SepaAccount {
-                iban: s.map(|s| s.iban.clone()).unwrap_or_else(|| u.iban.clone()),
-                bic: s.map(|s| s.bic.clone()).unwrap_or_default(),
-                account_number: u.account_number.clone(),
-                sub_account: u.sub_account.clone(),
-                blz: if u.blz.is_empty() {
-                    self.blz.clone()
-                } else {
-                    u.blz.clone()
-                },
-            };
-            out.push((acc, Some(u)));
-        }
-        for s in sepa {
-            if !out.iter().any(|(a, _)| a.iban == s.iban) {
-                out.push((s, None));
-            }
-        }
-        out
+        merge_upd_with_sepa(&self.upd, sepa, &self.blz)
     }
 
     async fn balance(
@@ -2794,6 +2752,92 @@ impl FinTsConnector {
     }
 }
 
+/// Accounts from the UPD (HIUPD) merged with the SEPA account list (HISPA), which adds
+/// BIC and IBAN. Returns (account, upd); HISPA accounts missing from the UPD follow
+/// with `None`. `blz` fills in a bank code the UPD leaves empty.
+///
+/// An account with an IBAN of its own is paired by that IBAN first. An account without
+/// one may take the IBAN of a HISPA entry with the same account number, but never an
+/// IBAN that another UPD account carries itself or that an earlier account already
+/// took: comdirect reports its depot (no IBAN) with the account number of the
+/// Girokonto, and the depot then shared the Girokonto's key – one account with the
+/// positions and the depot value as balance (#805).
+fn merge_upd_with_sepa(
+    upd: &[UpdAccount],
+    sepa: Vec<SepaAccount>,
+    blz: &str,
+) -> Vec<(SepaAccount, Option<UpdAccount>)> {
+    // IBANs the bank assigns to UPD accounts themselves: never handed to another one.
+    let mut claimed: HashSet<String> = upd
+        .iter()
+        .filter(|u| !u.iban.is_empty())
+        .map(|u| u.iban.clone())
+        .collect();
+    let mut out: Vec<(SepaAccount, Option<UpdAccount>)> = Vec::new();
+    for u in upd {
+        // Only accounts of this bank with at least one usable transaction
+        let usable = u.allowed.is_empty()
+            || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU"]
+                .iter()
+                .any(|t| u.allowed.contains(*t));
+        if crate::depot_debug::enabled() {
+            let mut allowed: Vec<&str> = u.allowed.iter().map(String::as_str).collect();
+            allowed.sort_unstable();
+            crate::depot_debug::log(&format!(
+                "fints UPD account: kind_code={} has_iban={} usable={usable} allowed=[{}]",
+                u.kind_code,
+                !u.iban.is_empty(),
+                allowed.join(",")
+            ));
+        }
+        if !usable {
+            continue;
+        }
+        let by_iban = sepa.iter().find(|s| !u.iban.is_empty() && s.iban == u.iban);
+        let s = by_iban.or_else(|| {
+            sepa.iter().find(|s| {
+                !u.account_number.is_empty()
+                    && s.account_number == u.account_number
+                    && !claimed.contains(&s.iban)
+            })
+        });
+        let iban = s.map(|s| s.iban.clone()).unwrap_or_else(|| u.iban.clone());
+        if !iban.is_empty() {
+            claimed.insert(iban.clone());
+        }
+        let acc = SepaAccount {
+            iban,
+            bic: s.map(|s| s.bic.clone()).unwrap_or_default(),
+            account_number: u.account_number.clone(),
+            sub_account: u.sub_account.clone(),
+            blz: if u.blz.is_empty() {
+                blz.to_string()
+            } else {
+                u.blz.clone()
+            },
+        };
+        out.push((acc, Some(u.clone())));
+    }
+    for s in sepa {
+        if !out.iter().any(|(a, _)| a.iban == s.iban) {
+            out.push((s, None));
+        }
+    }
+    if crate::depot_debug::enabled() {
+        let mut labels: Vec<String> = out.iter().map(|(a, _)| account_label(a)).collect();
+        labels.sort_unstable();
+        let before = labels.len();
+        labels.dedup();
+        if labels.len() != before {
+            crate::depot_debug::log(&format!(
+                "fints accounts: {} of {before} share a key with another account",
+                before - labels.len()
+            ));
+        }
+    }
+    out
+}
+
 /// Stable per-account key (`external_ref`). Loans (Darlehen) have no IBAN and often share
 /// one account number, distinguished only by the Unterkontomerkmal – it must be part of
 /// the key, otherwise every sub-account collapses into one account with all bookings.
@@ -4056,6 +4100,96 @@ mod tests {
             "decoupled SecureGo plus preferred over 942"
         );
         assert_eq!(c.st.tan_method_name, "SecureGo plus");
+    }
+
+    /// UPD account for the merge tests (invented numbers, public example IBANs).
+    fn upd_acc(number: &str, sub: &str, iban: &str, product: &str, allowed: &[&str]) -> UpdAccount {
+        UpdAccount {
+            iban: iban.into(),
+            account_number: number.into(),
+            sub_account: sub.into(),
+            blz: "20041155".into(),
+            kind_code: 1,
+            currency: "EUR".into(),
+            owner: "Max Mustermann".into(),
+            product: product.into(),
+            allowed: allowed.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn sepa_acc(iban: &str, number: &str) -> SepaAccount {
+        SepaAccount {
+            iban: iban.into(),
+            bic: "COBADEHDXXX".into(),
+            account_number: number.into(),
+            sub_account: String::new(),
+            blz: "20041155".into(),
+        }
+    }
+
+    const IBAN_A: &str = "DE89370400440532013000";
+    const IBAN_B: &str = "DE02120300000000202051";
+
+    #[test]
+    fn depot_without_iban_keeps_own_key_next_to_girokonto_with_same_number() {
+        // comdirect (#805): every account has Kontoart 1, the depot has no IBAN and
+        // the Girokonto's account number; HISPA lists only the two cash accounts.
+        let upd = [
+            upd_acc("1234567", "", IBAN_A, "Girokonto", &["HKSAL", "HKCAZ"]),
+            upd_acc(
+                "7654321",
+                "",
+                IBAN_B,
+                "Verrechnungskonto",
+                &["HKSAL", "HKCAZ"],
+            ),
+            upd_acc("1234567", "", "", "Depot", &["HKWPD"]),
+        ];
+        let sepa = vec![sepa_acc(IBAN_A, "1234567"), sepa_acc(IBAN_B, "7654321")];
+        let out = merge_upd_with_sepa(&upd, sepa, "20041155");
+        let labels: Vec<String> = out.iter().map(|(a, _)| account_label(a)).collect();
+        assert_eq!(labels, [IBAN_A, IBAN_B, "1234567"]);
+        let depot = &out[2];
+        assert!(depot.0.iban.is_empty() && depot.0.bic.is_empty());
+        assert_eq!(depot.1.as_ref().map(|u| u.product.as_str()), Some("Depot"));
+    }
+
+    #[test]
+    fn account_without_iban_still_takes_unclaimed_iban_by_account_number() {
+        // Unchanged behaviour: the IBAN of a HISPA entry no UPD account carries
+        // goes to the UPD account with that number, and is not listed twice.
+        let upd = [upd_acc("1234567", "", "", "Girokonto", &["HKSAL"])];
+        let out = merge_upd_with_sepa(&upd, vec![sepa_acc(IBAN_A, "1234567")], "20041155");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0.iban, IBAN_A);
+        assert_eq!(out[0].0.bic, "COBADEHDXXX");
+    }
+
+    #[test]
+    fn unclaimed_iban_goes_to_one_account_only() {
+        // Two UPD accounts without IBAN share a number: only the first one may take
+        // the HISPA IBAN, the second keeps a key of its own.
+        let upd = [
+            upd_acc("1234567", "", "", "Girokonto", &["HKSAL"]),
+            upd_acc("1234567", "01", "", "Darlehen", &["HKSAL"]),
+        ];
+        let out = merge_upd_with_sepa(&upd, vec![sepa_acc(IBAN_A, "1234567")], "20041155");
+        let labels: Vec<String> = out.iter().map(|(a, _)| account_label(a)).collect();
+        assert_eq!(labels, [IBAN_A, "1234567-01"]);
+    }
+
+    #[test]
+    fn own_iban_wins_over_account_number_match() {
+        // HISPA lists another account with the same number first: the UPD account
+        // keeps its own IBAN instead of taking the first number match.
+        let upd = [upd_acc("1234567", "", IBAN_B, "Girokonto", &["HKSAL"])];
+        let sepa = vec![sepa_acc(IBAN_A, "1234567"), sepa_acc(IBAN_B, "1234567")];
+        let out = merge_upd_with_sepa(&upd, sepa, "20041155");
+        assert_eq!(out[0].0.iban, IBAN_B);
+        // the other HISPA account is listed on its own
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].0.iban, IBAN_A);
+        assert!(out[1].1.is_none());
     }
 
     #[test]
