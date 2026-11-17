@@ -2,9 +2,11 @@ pragma Singleton
 import QtQuick
 import QtCore
 
-// BalanceBars.swift: look of the balance history in the header (GitHub #203). The line
-// shows every day, bars the average balance per day, month or year. Stored like the Mac's
-// UserDefaults `chart.balanceStyle` / `chart.balanceBarUnit` (GiroCrab.conf, section [chart]).
+// BalanceBars.swift: look of the chart in the header (GitHub #203, #634). The line shows
+// every day, bars the average balance per day, month or year, the pie shares (a category's
+// subcategories, an account's expenses by category). Stored like the Mac's UserDefaults
+// `chart.balanceStyle` / `chart.balanceBarUnit` (GiroCrab.conf, section [chart]); whether the
+// chart shows at all is a separate fold (`headerChartCollapsed`, ViewLayout.headerChartCollapsedKey).
 QtObject {
     id: prefs
 
@@ -13,17 +15,52 @@ QtObject {
         property string balanceStyle: "line"
         property string balanceBarUnit: "auto"
     }
+    /// `@AppStorage(ViewLayout.headerChartCollapsedKey)`: top level like the other ViewLayout keys.
+    property Settings layout: Settings {
+        property bool headerChartCollapsed: false
+    }
 
-    // BalanceChartStyle
-    readonly property var styles: [{ id: "line", title: qsTr("Linie") }, { id: "bars", title: qsTr("Balken") }]
-    readonly property string style: store.balanceStyle === "bars" ? "bars" : "line"
+    // BalanceChartStyle (title, systemImage)
+    readonly property var styles: [{ id: "line", title: qsTr("Linie"), symbol: "chart.xyaxis.line" },
+                                   { id: "bars", title: qsTr("Balken"), symbol: "chart.bar.xaxis" },
+                                   { id: "pie", title: qsTr("Kreis"), symbol: "chart.pie" }]
+    readonly property string style: styles.some(s => s.id === store.balanceStyle) ? store.balanceStyle : "line"
     function setStyle(id) { store.balanceStyle = id }
 
-    // BalanceBarUnit
+    /// HeaderChartControls: „Ausgeblendet“ folds only the chart and keeps the chosen type.
+    readonly property bool collapsed: layout.headerChartCollapsed
+    function setCollapsed(on) { layout.headerChartCollapsed = on }
+
+    // BalanceBarUnit (titles); `units` = balanceCases (accounts, groups)
     readonly property var units: [{ id: "auto", title: qsTr("Automatisch") }, { id: "day", title: qsTr("Tage") },
                                   { id: "month", title: qsTr("Monate") }, { id: "year", title: qsTr("Jahre") }]
+    /// BalanceBarUnit.categoryCases: quarters only exist for category sums (#634).
+    readonly property var categoryUnits: [{ id: "day", title: qsTr("Tage") }, { id: "month", title: qsTr("Monate") },
+                                          { id: "quarter", title: qsTr("Quartale") }, { id: "year", title: qsTr("Jahre") }]
+    function unitTitle(id) {
+        const u = units.concat(categoryUnits).find(u => u.id === id)
+        return u ? u.title : ""
+    }
     readonly property string barUnit: units.some(u => u.id === store.balanceBarUnit) ? store.balanceBarUnit : "auto"
     function setBarUnit(id) { store.balanceBarUnit = id }
+
+    /// AppModel.swift › categoryBarUnit (#557): not stored; "auto" follows the global setting.
+    property string categoryBarUnit: "auto"
+    /// AppModel+Loading.swift › effectiveCategoryBarUnit: own choice (also quarters, #634),
+    /// else the global setting, else months.
+    readonly property string effectiveCategoryBarUnit: categoryBarUnit !== "auto" ? categoryBarUnit
+        : barUnit === "auto" ? "month" : barUnit
+    /// BalanceBarUnit.keyLength: characters of the ISO date that identify one bar; quarters
+    /// are loaded as months and grouped in the chart.
+    readonly property int categoryKeyLength: effectiveCategoryBarUnit === "year" ? 4 : effectiveCategoryBarUnit === "day" ? 10 : 7
+    /// BarUnitMenu on the category chart: `model.categoryBarUnit = $0; model.reloadCategoryHistory()`
+    function setCategoryBarUnit(id) {
+        if (categoryBarUnit === id) return
+        categoryBarUnit = id
+        AppModel.reloadCategoryHistory()
+    }
+    // the global choice changes the category chart while it follows it
+    onBarUnitChanged: if (categoryBarUnit === "auto") AppModel.reloadCategoryHistory()
 
     /// BalanceBarUnit.resolved(dayCount:): days up to two months, months up to six years, years beyond.
     function resolvedUnit(dayCount) {
