@@ -1,7 +1,8 @@
 //! Tag totals (#228, part 3): bookings and sums per tag under the booking
-//! list's filter, and a tag's bookings per account. SQL aggregates only; the
-//! filters that need the enriched booking take one enriched pass, like
-//! `count_transactions`.
+//! list's filter, and a tag's bookings per account. The filter's ids and shares
+//! come from SQL (the parts SQL can't apply, scope, merchant and "Ohne
+//! Kategorie", from the cached booking classes, like `count_transactions`); the
+//! tags from one pass over their links.
 
 use std::collections::HashMap;
 
@@ -9,7 +10,7 @@ use rusqlite::params_from_iter;
 
 use crate::error::CoreError;
 use crate::models::BookingFilter;
-use crate::vault::bookings::needs_enrichment;
+use crate::vault::bookings::filters_by_class;
 use crate::vault::Vault;
 
 /// Bookings and their sum for one tag (or for the untagged bookings).
@@ -38,9 +39,6 @@ pub struct TagAccountCount {
 const FROM_SQL: &str = "FROM transactions t JOIN accounts a ON a.id = t.account_id \
      LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL";
 
-const UNTAGGED_SQL: &str = "NOT EXISTS (SELECT 1 FROM transaction_tags x JOIN tags g \
-     ON g.id = x.tag_id AND g.deleted_ms IS NULL WHERE x.transaction_id = t.id)";
-
 #[uniffi::export]
 impl Vault {
     /// Per tag: the bookings `filter` keeps and their net sum, with the
@@ -59,43 +57,21 @@ impl Vault {
             ..filter
         };
         let db = self.db()?;
-        if needs_enrichment(&filter) {
-            return enriched_totals(&db, &filter);
-        }
-        let (cte, where_sql, args, share_sql) = Vault::filter_clauses(&db, &filter)?;
-        let mut out: Vec<TagTotal> = Vec::new();
-        let mut stmt = db.prepare(&format!(
-            "{cte}SELECT x.tag_id, COUNT(*), IFNULL(SUM({share_sql}), 0) {FROM_SQL} \
-             JOIN transaction_tags x ON x.transaction_id = t.id \
-             JOIN tags g ON g.id = x.tag_id AND g.deleted_ms IS NULL \
-             WHERE {where_sql} GROUP BY x.tag_id ORDER BY x.tag_id"
-        ))?;
-        let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
-            Ok(TagTotal {
-                tag_id: Some(r.get(0)?),
-                booking_count: r.get::<_, i64>(1)? as u32,
-                sum_cents: r.get(2)?,
-            })
-        })?;
-        for row in rows {
-            out.push(row?);
-        }
-        let (count, sum): (i64, i64) = db.query_row(
-            &format!(
-                "{cte}SELECT COUNT(*), IFNULL(SUM({share_sql}), 0) {FROM_SQL} \
-                 WHERE {where_sql} AND {UNTAGGED_SQL}"
-            ),
-            params_from_iter(args.iter().map(|b| b.as_ref())),
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )?;
-        if count > 0 {
-            out.push(TagTotal {
-                tag_id: None,
-                booking_count: count as u32,
-                sum_cents: sum,
-            });
-        }
-        Ok(out)
+        // Ids and shares of the filter, then one pass over the tag links: no lookup of a
+        // booking row per link (that read ~200 ms on 41k bookings with a third tagged).
+        let kept = if filters_by_class(&filter) {
+            self.kept_shares(&db, &filter)?
+        } else {
+            let (cte, where_sql, args, share_sql) = Vault::filter_clauses(&db, &filter)?;
+            let mut stmt = db.prepare(&format!(
+                "{cte}SELECT t.id, {share_sql} {FROM_SQL} WHERE {where_sql}"
+            ))?;
+            let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        totals_of(&db, kept)
     }
 
     /// The live bookings of tag `tag_id` per account, most bookings first; these
@@ -136,9 +112,15 @@ impl Vault {
             };
             let (cte, where_sql, mut args, _) = Vault::filter_clauses(&db, &filter)?;
             args.push(Box::new(loan));
+            let not_own = args.len();
+            args.push(Box::new(tag_id));
+            // starts from the tag's links: the loan clause (IBAN / number in the purpose)
+            // would otherwise scan every booking once per loan
             let n: i64 = db.query_row(
                 &format!(
-                    "{cte}SELECT COUNT(*) {FROM_SQL} WHERE {where_sql} AND t.account_id != ?{}",
+                    "{cte}SELECT COUNT(*) {FROM_SQL} WHERE t.id IN \
+                     (SELECT transaction_id FROM transaction_tags WHERE tag_id = ?{}) \
+                     AND {where_sql} AND t.account_id != ?{not_own}",
                     args.len()
                 ),
                 params_from_iter(args.iter().map(|b| b.as_ref())),
@@ -156,13 +138,9 @@ impl Vault {
     }
 }
 
-/// `tag_totals` for filters that need the enriched booking (scope, merchant,
-/// "Ohne Kategorie"): one enriched pass, then one pass over the tag links.
-fn enriched_totals(
-    db: &rusqlite::Connection,
-    filter: &BookingFilter,
-) -> Result<Vec<TagTotal>, CoreError> {
-    let kept = Vault::kept_shares(db, filter)?;
+/// Bookings and sum per tag of the `(booking id, share)` rows `kept`, plus the
+/// untagged row; one pass over the live tags' links.
+fn totals_of(db: &rusqlite::Connection, kept: Vec<(i64, i64)>) -> Result<Vec<TagTotal>, CoreError> {
     let mut links: HashMap<i64, Vec<i64>> = HashMap::new();
     let mut stmt = db.prepare(
         "SELECT x.transaction_id, x.tag_id FROM transaction_tags x \

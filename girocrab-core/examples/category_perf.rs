@@ -29,11 +29,11 @@
 //! (was 5.3), preview_rule with hits 0.7 ms (4.2), count_transactions(uncategorized)
 //! 18 ms (58), merchant_history 1.4 ms (33; the first one after a write still resolves
 //! every booking). investment_dashboard still finishes every booking (~220 ms).
+//! Tags (#228, 2026-11-17, COPIES=600, 41,469 bookings, a third tagged): tag_totals 19 ms
+//!   (94 ms as a SQL join that read a booking row per link; 22 ms with a scope filter, was
+//!   179), tag_account_counts 21 ms (25), list_tags 1.5 ms (68: same per-link row lookup).
 //! OUT=<file> writes the vault with the app's demo key and stops (open it with
 //! GIROCRAB_DEMO_VAULT=<file> .build/debug/GiroCrabMac --demo-seed).
-//!   tag_totals (#228, a third of the bookings tagged, 2026-11-16)  ~80 ms (SQL; off main),
-//!     150 ms with a scope filter (enriched pass); tag_account_counts ~20 ms (incl. the
-//!     linked loans); list_tags 58 ms
 //! RULE_INDEX=1 creates the covering indexes by hand on a vault that lacks them.
 //! STEP_DAYS (default 183) is the shift between copies: 7 with COPIES=600 spans ~11.5 years.
 //! PAYPAL=n adds a payment-service account with n uncategorised bookings, half of them
