@@ -2,7 +2,7 @@ name: Android Build
 
 on:
   push:
-    branches: [feat/android-parity, fix/android-workflow-green]
+    branches: [main, feat/android-parity, fix/android-workflow-green]
     paths: ['GiroCrabAndroid/**', '.github/workflows/android.yml']
   pull_request:
     paths: ['GiroCrabAndroid/**', '.github/workflows/android.yml']

@@ -609,7 +609,7 @@ private fun DepotMetric(label: String, value: String, color: Color) {
 // ---- Manual booking / balance correction on offline accounts (#81 / #813) ------------------
 
 /** Parses "12,50" / "12.50" / "-3" into cents; null when invalid. */
-private fun parseCents(text: String): Long? =
+private fun parseSignedCents(text: String): Long? =
     text.trim().replace(',', '.').toBigDecimalOrNull()?.movePointRight(2)?.toLong()
 
 @Composable
@@ -621,7 +621,7 @@ private fun ManualBookingDialog(accounts: List<Account>, onDismiss: () -> Unit, 
     var counterparty by remember { mutableStateOf("") }
     var purpose by remember { mutableStateOf("") }
     val account = accounts.first { it.id == accountId }
-    val entered = parseCents(amount)
+    val entered = parseSignedCents(amount)
     // Correction: the entered figure is the new balance; the booking is the difference.
     val cents = entered?.let { e ->
         if (correction) e - account.balanceCents else if (expense) -kotlin.math.abs(e) else kotlin.math.abs(e)
