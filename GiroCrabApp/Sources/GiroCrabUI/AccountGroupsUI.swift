@@ -84,11 +84,10 @@ struct AccountsSectionHeader: View {
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 2) {
+            HStack(spacing: DisclosureChevron.gap) {
                 Button(action: toggle) { DisclosureChevron(open: open) }
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.secondary)
-                    .padding(.trailing, DisclosureChevron.gap - 2)
                     .accessibilityLabel(open ? "Konten einklappen" : "Konten ausklappen")
                     .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
                 Text("Konten")

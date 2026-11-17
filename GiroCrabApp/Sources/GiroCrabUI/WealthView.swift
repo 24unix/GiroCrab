@@ -705,9 +705,14 @@ struct WealthView: View {
                         HStack {
                             Image(systemName: a.sfSymbol).foregroundStyle(tint).frame(width: 20)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(a.name).sensitive().lineLimit(1)
-                                if !a.bankName.isEmpty {
-                                    Text(a.bankName).appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
+                                Text(a.name).sensitive().lineLimit(2)
+                                if !a.bankName.isEmpty || !a.owner.isEmpty {
+                                    HStack(spacing: 4) {
+                                        if !a.bankName.isEmpty { Text(a.bankName) }
+                                        if !a.bankName.isEmpty && !a.owner.isEmpty { Text(verbatim: "·") }
+                                        if !a.owner.isEmpty { Text(a.owner).sensitive() }
+                                    }
+                                    .appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                                 }
                             }
                             Spacer()
