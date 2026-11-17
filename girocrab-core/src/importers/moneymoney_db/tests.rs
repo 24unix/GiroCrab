@@ -2035,14 +2035,7 @@ fn import_reports_progress_and_can_be_cancelled() {
 fn document_lookup_uses_the_source_index() {
     let v = vault();
     let db = v.db().unwrap();
-    let plan: Vec<String> = db
-        .prepare(&format!("EXPLAIN QUERY PLAN {DOCUMENT_EXISTS_SQL}"))
-        .unwrap()
-        .query_map(["moneymoney:1:abc"], |r| r.get::<_, String>(3))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
-    let plan = plan.join(" | ");
+    let plan = crate::test_support::query_plan(&db, DOCUMENT_EXISTS_SQL, ["moneymoney:1:abc"]);
     assert!(plan.contains("booking_documents_source"), "{plan}");
     assert!(!plan.contains("SCAN booking_documents"), "{plan}");
 }

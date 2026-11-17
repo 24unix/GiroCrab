@@ -126,18 +126,11 @@ mod tests {
     fn pairing_uses_the_amount_index() {
         let f = fx();
         let db = f.v.db().unwrap();
-        let plan: Vec<String> = db
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", super::pairs_sql()))
-            .unwrap()
-            .query_map([], |r| r.get(3))
-            .unwrap()
-            .collect::<Result<_, _>>()
-            .unwrap();
+        let plan = crate::test_support::query_plan(&db, &super::pairs_sql(), []);
         let by_amount = plan
-            .iter()
-            .filter(|l| l.contains("USING INDEX tx_amount_date (amount_cents=?"))
+            .matches("USING INDEX tx_amount_date (amount_cents=?")
             .count();
-        assert_eq!(by_amount, 2, "{plan:#?}");
+        assert_eq!(by_amount, 2, "{plan}");
     }
 
     struct Fx {

@@ -56,7 +56,8 @@ CREATE INDEX IF NOT EXISTS holdings_account ON holdings(account_id);
 /// Indexes for the queries every reload runs (idempotent, also for existing
 /// vaults; measured on a vault with ~19 000 bookings):
 /// - `tx_date_id`: the booking list is ordered by date, then id – with the
-///   old `tx_date` (date only) SQLite sorted every result again.
+///   old `tx_date` (date only) SQLite sorted every result again. Schema step 30
+///   rebuilds it to cover the date-range counts.
 /// - The sidebar counters ("ohne Kategorie", "neu") per account use
 ///   `tx_account_category` / `tx_account_checked`; they also cover
 ///   `deleted_ms` and are defined in `sync_merge::COVERING_INDEXES`.
@@ -596,16 +597,7 @@ mod upgrade_tests {
 #[cfg(test)]
 mod index_tests {
     use super::*;
-
-    fn plan(db: &Connection, sql: &str) -> String {
-        db.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-            .unwrap()
-            .query_map([], |r| r.get::<_, String>(3))
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap()
-            .join(" | ")
-    }
+    use crate::test_support::query_plan;
 
     /// The queries every reload runs use their indexes (shapes as in
     /// `list_transactions`, `list_accounts` and `marked_salary_ibans`).
@@ -616,11 +608,12 @@ mod index_tests {
         let v = Vault::open(path.to_string_lossy().into(), vec![4u8; 32]).unwrap();
         let db = v.db().unwrap();
         // booking list: in index order, no sorting afterwards
-        let p = plan(
+        let p = query_plan(
             &db,
             "SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id
              LEFT JOIN categories cat ON cat.id = t.category_id
              WHERE 1=1 ORDER BY t.booking_date DESC, t.id DESC",
+            [],
         );
         assert!(
             p.contains("tx_date_id") && !p.contains("TEMP B-TREE"),
@@ -628,22 +621,42 @@ mod index_tests {
         );
         // sidebar counters: from the index, without reading the bookings
         for (cond, index) in [
+            ("1", "COVERING INDEX tx_account_checked (account_id=?)"),
             (
                 "t.category_id IS NULL",
                 "COVERING INDEX tx_account_category",
             ),
             ("t.checked = 0", "COVERING INDEX tx_account_checked"),
         ] {
-            let p = plan(
+            let p = query_plan(
                 &db,
-                &format!("SELECT count(*) FROM transactions t WHERE t.account_id = 1 AND {cond}"),
+                &format!(
+                    "SELECT count(*) FROM transactions t
+                     WHERE t.account_id = 1 AND {cond} AND t.deleted_ms IS NULL"
+                ),
+                [],
             );
             assert!(p.contains(index), "{p}");
         }
-        let p = plan(
+        // `count_transactions` over a period: from `tx_date_id` alone, but for one
+        // account still by account first, not through every account's bookings
+        let period = "SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id
+             LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL
+             WHERE t.deleted_ms IS NULL AND a.deleted_ms IS NULL
+               AND t.booking_date >= ?1 AND t.booking_date <= ?2";
+        let p = query_plan(&db, period, ["2026-01-01", "2026-12-31"]);
+        assert!(p.contains("COVERING INDEX tx_date_id"), "{p}");
+        let p = query_plan(
+            &db,
+            &format!("{period} AND t.account_id IN (?3)"),
+            params!["2026-01-01", "2026-12-31", 1],
+        );
+        assert!(p.contains("tx_account_date (account_id=?"), "{p}");
+        let p = query_plan(
             &db,
             "SELECT DISTINCT counterparty_iban FROM transactions
              WHERE salary_flag = 1 AND counterparty_iban != '' AND amount_cents > 0",
+            [],
         );
         assert!(p.contains("tx_salary_marked"), "{p}");
         // the superseded index is gone, also in vaults that had it

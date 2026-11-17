@@ -40,6 +40,7 @@
 //! - 28: rules that set tags (#580): `rules.tag_uuids`, and `rules.category_id` may be NULL
 //!   (a rule that only adds tags); the table is rebuilt for the dropped NOT NULL.
 //! - 29: `depot_values`: value of a securities depot per day, one point per fetch.
+//! - 30: `tx_date_id` covers `deleted_ms`, `account_id` and `category_id` ([`TX_DATE_ID_COVERING`]).
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -85,6 +86,7 @@ const STEPS: &[Step] = &[
     Step::Hook(builtin_roles),                                 // 27 (#678)
     Step::Hook(rule_tags),                                     // 28 (#580)
     Step::Sql(crate::depot_values::SCHEMA),                    // 29: depot value history
+    Step::Sql(TX_DATE_ID_COVERING),                            // 30
 ];
 
 /// Step 28 (#580): rules may set tags (`tag_uuids`, a JSON array of tag uuids, so a
@@ -241,6 +243,15 @@ fn builtin_roles(conn: &Connection) -> CoreResult<()> {
     }
     Ok(())
 }
+
+/// Step 30. A count over a date range (`count_transactions` with a period, the list's
+/// jump to a day) reads only the index: besides the date it checks `deleted_ms` and joins
+/// accounts and categories. Without these columns it read every booking row in the range
+/// (eleven years of a 44,000-booking vault: 31 ms → 8.5 ms).
+const TX_DATE_ID_COVERING: &str = "
+DROP INDEX IF EXISTS tx_date_id;
+CREATE INDEX tx_date_id ON transactions(booking_date DESC, id DESC, deleted_ms, account_id, category_id);
+";
 
 /// Step 25. Not partial on `deleted_ms IS NULL`: SQLite then picked it for
 /// plain scans of live bookings (`list_categories`), six times slower.
@@ -926,7 +937,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 29);
+        assert_eq!(SCHEMA_VERSION, 30);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

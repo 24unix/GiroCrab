@@ -939,6 +939,7 @@ pub fn simple_pdf(lines: &[String]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::query_plan;
 
     #[test]
     fn file_names_cut_on_char_boundaries_and_stay_in_folder() {
@@ -955,16 +956,6 @@ mod tests {
         assert_eq!(safe_name("../x"), "_x");
         assert_eq!(safe_name(".hidden"), "hidden");
         assert_eq!(safe_name("Beleg 1.pdf"), "Beleg_1.pdf");
-    }
-
-    fn plan(db: &Connection, sql: &str, args: impl rusqlite::Params) -> String {
-        db.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-            .unwrap()
-            .query_map(args, |r| r.get::<_, String>(3))
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap()
-            .join(" | ")
     }
 
     /// The document list must come from the covering index: a table scan
@@ -1008,7 +999,7 @@ mod tests {
         }
         {
             let db = v.db().unwrap();
-            let p = plan(
+            let p = query_plan(
                 &db,
                 &list_all_documents_sql(),
                 params![None::<i64>, None::<String>, None::<String>, 0],

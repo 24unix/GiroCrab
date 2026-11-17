@@ -47,6 +47,23 @@ pub(crate) fn thread_temp_path(name: &str) -> PathBuf {
     THREAD_DIR.with(|d| d.join(&format!("{name}-{}", uuid::Uuid::new_v4())))
 }
 
+/// `EXPLAIN QUERY PLAN` of `sql`, one line per step joined by " | ". Bind
+/// placeholders as the real call does: SQLite plans the statement before it
+/// sees their values, so a literal can pick a different index than `?`.
+pub(crate) fn query_plan(
+    db: &rusqlite::Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> String {
+    db.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+        .unwrap()
+        .query_map(params, |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join(" | ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::TempDir;

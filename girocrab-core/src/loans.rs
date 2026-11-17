@@ -430,11 +430,12 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
             Some((id, live)) => live.then_some(id),
             None if fp.is_empty() => None,
             None => {
-                // includes soft-deleted rows: an ambiguous or deleted match links nothing
+                // includes soft-deleted rows: an ambiguous or deleted match links nothing;
+                // `import_fp != ''` lets SQLite use the partial index `tx_import_fp`
                 let ids: Vec<(i64, bool)> = conn
-                    .prepare(
+                    .prepare_cached(
                         "SELECT id, deleted_ms IS NULL FROM transactions
-                          WHERE account_id = ?1 AND import_fp = ?2 LIMIT 2",
+                          WHERE account_id = ?1 AND import_fp = ?2 AND import_fp != '' LIMIT 2",
                     )?
                     .query_map(params![acc, fp], |r| Ok((r.get(0)?, r.get(1)?)))?
                     .collect::<Result<_, _>>()?;

@@ -1118,6 +1118,13 @@ fn purposes_alike(a: &str, b: &str) -> bool {
     a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count() >= MIN
 }
 
+/// An imported row with fingerprint `?2`. `import_fp != ''` is always true for a
+/// fingerprint, but SQLite uses the partial index `tx_import_fp` only when the query
+/// repeats its condition: a bound `import_fp = ?2` does not imply it.
+const IMPORTED_BY_FP_SQL: &str = "SELECT id FROM transactions
+     WHERE account_id = ?1 AND import_fp = ?2 AND import_fp != ''
+       AND external_id LIKE 'mm-%' AND deleted_ms IS NULL LIMIT 1";
+
 /// A FinTS/API booking arrives that was already imported from MoneyMoney:
 /// take over the row (category + note stay) instead of inserting a duplicate.
 /// Exact fingerprint first, then a unique fuzzy twin (see [`find_twin`]).
@@ -1146,9 +1153,7 @@ pub(crate) fn adopt_import(
     }
     let fp = fingerprint(date, cents, iban, name, purpose);
     let mut row: Option<i64> = conn
-        .prepare_cached(
-            "SELECT id FROM transactions WHERE account_id = ?1 AND import_fp = ?2 AND external_id LIKE 'mm-%' AND deleted_ms IS NULL LIMIT 1",
-        )?
+        .prepare_cached(IMPORTED_BY_FP_SQL)?
         .query_row(params![account_id, fp], |r| r.get(0))
         .optional()?;
     if row.is_none() {
@@ -1935,6 +1940,17 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         assert_eq!(cp, "Stadtwerke Köln");
         // out of the ±2 day window: no adoption
         assert!(!adopt_import(&db, acc, "f3", "2026-06-01", -1250, "", "REWE", "x", "").unwrap());
+    }
+
+    #[test]
+    fn fingerprint_lookup_uses_the_partial_index() {
+        let (_dir, v) = vault();
+        let p =
+            crate::test_support::query_plan(&v.db().unwrap(), IMPORTED_BY_FP_SQL, params![1, "x"]);
+        assert!(
+            p.contains("INDEX tx_import_fp (account_id=? AND import_fp=?)"),
+            "{p}"
+        );
     }
 
     #[test]

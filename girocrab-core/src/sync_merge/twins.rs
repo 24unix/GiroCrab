@@ -70,14 +70,16 @@ fn twin_score(
     bank: &Ident,
 ) -> CoreResult<Option<i64>> {
     // includes soft-deleted rows: tombstones still tell which bookings the
-    // MoneyMoney account had; a booking a fetch took over keeps its fingerprint
+    // MoneyMoney account had; a booking a fetch took over keeps its fingerprint.
+    // `b.import_fp != ''` lets SQLite use the partial index `tx_import_fp`.
     let (total, found): (i64, i64) = conn.query_row(
         &format!(
             "SELECT count(*), IFNULL(sum(
                     EXISTS (SELECT 1 FROM {bank_schema}.transactions b
                              WHERE b.account_id = ?2 AND b.external_id = m.external_id)
                  OR (m.import_fp != '' AND EXISTS (SELECT 1 FROM {bank_schema}.transactions b
-                             WHERE b.account_id = ?2 AND b.import_fp = m.import_fp))), 0)
+                             WHERE b.account_id = ?2 AND b.import_fp = m.import_fp
+                               AND b.import_fp != ''))), 0)
                FROM {mm_schema}.transactions m WHERE m.account_id = ?1"
         ),
         params![mm.id, bank.id],
