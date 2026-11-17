@@ -161,7 +161,7 @@ component SideLine inherits Rectangle {
             height: 24px;
             y: (parent.height - self.height) / 2;
             border-radius: 6px;
-            background: #161b22;
+            background: Theme.surface;
             border-width: 1px;
             border-color: r.dot.with-alpha(0.22);
             Rectangle { border-radius: 6px; background: r.dot.with-alpha(0.10); }
@@ -1091,13 +1091,16 @@ export component MainWindow inherits Window {
         vertical-stretch: 1;
         // ---- sidebar
         Rectangle {
-            width: 270px;
+            min-width: 270px;
+            max-width: 270px;
+            horizontal-stretch: 0;
             background: Theme.sidebar;
             VerticalLayout {
                 padding: 10px;
                 spacing: 6px;
                 ListView {
                     vertical-stretch: 1;
+                    min-height: 120px;
                     for r in root.side-rows: Rectangle {
                         height: r.kind == 5 ? 68px : r.kind == 1 ? 26px : r.kind == 2 ? 22px : r.key == "all" ? 38px : r.progress >= 0 ? 40px : (r.kind == 3 && r.detail != "") ? 40px : 30px;
                         if r.kind == 5: VerticalLayout {
@@ -1154,7 +1157,6 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     GhostButton {
-                        width: parent.width;
                         text: "+ Konto hinzufügen";
                         clicked => {
                             root.add-status = "";
@@ -1189,6 +1191,7 @@ export component MainWindow inherits Window {
                     spacing: 12px;
                     VerticalLayout {
                         horizontal-stretch: 1;
+                        min-width: max(120px, bal.preferred-width);
                         alignment: center;
                         spacing: 4px;
                         Text {
@@ -1196,9 +1199,10 @@ export component MainWindow inherits Window {
                             font-size: 16px; font-weight: 700; color: Theme.text; overflow: elide;
                         }
                         if root.selected-subtitle != "": Text { text: root.selected-subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
-                        Text { text: root.selected-balance; font-size: 18px; font-weight: 700; color: Theme.text; overflow: elide; }
+                        bal := Text { text: root.selected-balance; font-size: 18px; font-weight: 700; color: Theme.text; overflow: clip; wrap: no-wrap; }
                     }
                     HorizontalLayout {
+                        horizontal-stretch: 0;
                         alignment: end;
                         spacing: 8px;
                         GhostButton {

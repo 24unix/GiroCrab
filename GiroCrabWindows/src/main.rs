@@ -1106,6 +1106,10 @@ fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
     match render_header(win, vault, selected) {
         Ok(sel) => {
             refresh_transfer_sources(win, vault);
+            // Fill the sidebar and the account count now; the background refresh follows.
+            if let Ok(accounts) = vault.list_accounts() {
+                views_ui::set_accounts_now(win, accounts);
+            }
             views_ui::sync_target(sel);
             if sel.is_some() {
                 views_ui::apply_view(win, vault);

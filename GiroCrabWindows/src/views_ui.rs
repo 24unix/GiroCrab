@@ -170,6 +170,12 @@ pub fn invalidate_planned_count() {
 }
 
 /// Reloads accounts, groups, categories and counts for the sidebar on a worker thread.
+/// Stores the accounts and draws the sidebar at once (before the background refresh returns).
+pub fn set_accounts_now(win: &MainWindow, accounts: Vec<Account>) {
+    with_ui(|u| u.accounts = accounts);
+    render_sidebar(win);
+}
+
 pub fn refresh_sidebar(win: &MainWindow, vault: &Arc<Vault>) {
     let (weak, v) = (win.as_weak(), vault.clone());
     let cached = with_ui(|u| u.planned_count);
