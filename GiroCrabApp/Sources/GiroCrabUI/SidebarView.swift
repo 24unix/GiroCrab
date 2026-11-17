@@ -260,8 +260,9 @@ struct SidebarView: View {
     private var kindGroupRows: some View {
         ForEach(model.groups) { group in
             let listed = group.accounts.filter(isShown)
-            // While searching, hide empty kind sections so only hits remain.
-            if !model.isSidebarAccountSearching || !listed.isEmpty {
+            // Hide kind sections without a hit while searching, and ones holding
+            // only archived accounts while those are hidden (#814).
+            if model.isSidebarSectionListed(group.accounts) {
             let open = model.isKindGroupOpen(group.id)
             let toggle = {
                 withAnimation(Motion.animation(.easeInOut(duration: 0.15))) {
@@ -296,7 +297,7 @@ struct SidebarView: View {
     private var bankGroupRows: some View {
         ForEach(model.bankGroups) { group in
             let listed = group.accounts.filter(isShown)
-            if !model.isSidebarAccountSearching || !listed.isEmpty {
+            if model.isSidebarSectionListed(group.accounts) {
                 let open = model.isBankGroupOpen(group.id)
                 let toggle = {
                     withAnimation(Motion.animation(.easeInOut(duration: 0.15))) {

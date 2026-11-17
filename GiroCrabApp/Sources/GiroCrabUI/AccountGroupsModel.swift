@@ -48,10 +48,38 @@ extension AppModel {
         (showArchivedAccounts || !account.isArchived) && account.matchesSidebarSearch(sidebarAccountSearch)
     }
 
+    /// Whether a kind or bank section is shown. While searching: only with a
+    /// hit. Otherwise it stays unless archived accounts are hidden and it holds
+    /// nothing but archived accounts (#814); a section without accounts stays.
+    func isSidebarSectionListed(_ accounts: [Account]) -> Bool {
+        let listed = accounts.contains(where: isSidebarAccountListed)
+        if isSidebarAccountSearching { return listed }
+        return listed || accounts.isEmpty || showArchivedAccounts
+    }
+
+    /// Archived accounts are hidden and this group (with its subgroups) holds
+    /// accounts, all of them archived (#814). A group without accounts stays.
+    func isUserGroupOnlyArchived(_ g: UserGroup) -> Bool {
+        guard !showArchivedAccounts else { return false }
+        let accounts = userGroupSubtree(g.uuid).flatMap(\.accounts)
+        return !accounts.isEmpty && accounts.allSatisfy(\.isArchived)
+    }
+
+    /// `isUserGroupOnlyArchived` for the group or any group above it, so a
+    /// subgroup never stays behind under a hidden parent.
+    private func isUserGroupHiddenAsArchived(_ g: UserGroup) -> Bool {
+        var node: UserGroup? = g
+        while let n = node {
+            if isUserGroupOnlyArchived(n) { return true }
+            node = n.parentUuid.flatMap { p in userGroups.first { $0.uuid == p } }
+        }
+        return false
+    }
+
     /// Shown in the sidebar while searching: name matches, or a listed account
     /// lives in this group or a subgroup. Collapse is ignored so matches stay reachable.
     func isUserGroupListed(_ g: UserGroup) -> Bool {
-        guard isSidebarAccountSearching else { return isUserGroupVisible(g) }
+        guard isSidebarAccountSearching else { return isUserGroupVisible(g) && !isUserGroupHiddenAsArchived(g) }
         let q = sidebarAccountSearch
         return userGroupSubtree(g.uuid).contains { node in
             Self.sidebarTextMatches(node.name, query: q)
