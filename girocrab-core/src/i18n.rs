@@ -14,9 +14,8 @@
 //! while `cargo test` runs them in parallel threads.
 //!
 //! Built-in account group and starter category names are stored in German in
-//! the vault (the code finds groups by name and classifies bookings by the
-//! top-level category name). They are translated only on the way out via
-//! [`display_name`] / [`display_path`], so user-renamed entries stay as written.
+//! the vault. Immutable `builtin_role` keys identify them independently of
+//! editable names. Only unchanged names with a role are translated.
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -142,8 +141,16 @@ fn fill(template: &str, args: &[&dyn Display]) -> String {
     out
 }
 
-/// Display name of a stored account group or category name: built-in German
-/// defaults are translated, anything else (user names) is returned as is.
+/// Display an explicitly identified built-in; custom and renamed entries stay literal.
+pub(crate) fn role_name(stored: &str, role: Option<&str>) -> String {
+    if role == Some(stored) {
+        display_name(stored)
+    } else {
+        stored.to_owned()
+    }
+}
+
+/// Translate a catalog key. Callers displaying vault data must use `role_name`.
 pub fn display_name(stored: &str) -> String {
     display_name_in(current(), stored)
 }

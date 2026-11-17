@@ -405,138 +405,139 @@ pub const DEMO_ACCOUNTS: &[DemoAccountSpec] = &[
     },
 ];
 
-type Tree<'a> = &'a [(
+pub(crate) type Tree<'a> = &'a [(
     &'static str,
     &'static str,
     &'static str,
     &'a [(&'static str, &'static str)],
 )];
 
+pub(crate) const STARTER_TREE: Tree = &[
+    (
+        "Einnahmen",
+        "arrow.down.circle.fill",
+        "#2E9D6A",
+        &[
+            ("Gehalt", "briefcase.fill"),
+            ("Zinsen & Dividenden", "percent"),
+            ("Erstattungen", "arrow.uturn.backward.circle"),
+            ("Sonstige Einnahmen", "plus.circle"),
+        ],
+    ),
+    (
+        "Wohnen & Energie",
+        "house.fill",
+        "#B7782F",
+        &[
+            ("Miete", "building.2.fill"),
+            ("Energie", "bolt.fill"),
+            ("Internet & Telefon", "wifi"),
+            ("Haushalt", "sofa.fill"),
+        ],
+    ),
+    (
+        "Lebensmittel",
+        "cart.fill",
+        "#B5474F",
+        &[
+            ("Supermarkt", "cart"),
+            ("Bäcker & Metzger", "fork.knife.circle"),
+            ("Lebensmittelrettung", "leaf.fill"),
+            ("Restaurants & Cafés", "fork.knife"),
+            ("Lieferdienste", "takeoutbag.and.cup.and.straw.fill"),
+        ],
+    ),
+    (
+        "Mobilität",
+        "car.fill",
+        "#3A6FB0",
+        &[
+            ("ÖPNV & Bahn", "tram.fill"),
+            ("Tanken", "fuelpump.fill"),
+            ("Fahrrad", "bicycle"),
+            ("Reisen", "airplane"),
+        ],
+    ),
+    (
+        "Einkaufen",
+        "bag.fill",
+        "#7D5BA6",
+        &[
+            ("Online-Shopping", "shippingbox.fill"),
+            ("Elektronik", "desktopcomputer"),
+            ("Drogerie", "cross.vial.fill"),
+        ],
+    ),
+    (
+        "Freizeit",
+        "sparkles",
+        "#2F8F9D",
+        &[
+            ("Streaming & Musik", "play.tv.fill"),
+            ("Sport & Fitness", "figure.run"),
+            ("Spiele", "gamecontroller.fill"),
+        ],
+    ),
+    (
+        "Versicherungen",
+        "shield.lefthalf.filled",
+        "#4B5D73",
+        &[
+            ("Krankenversicherung", "cross.case.fill"),
+            ("Haftpflicht & Hausrat", "shield.fill"),
+            ("Mitgliedschaften", "person.badge.shield.checkmark.fill"),
+        ],
+    ),
+    (
+        "Gebühren & Bargeld",
+        "eurosign.circle.fill",
+        "#7A808A",
+        &[
+            ("Bankgebühren", "building.columns"),
+            ("Bargeld", "banknote"),
+        ],
+    ),
+    (
+        "Kredite & Darlehen",
+        "house.circle.fill",
+        "#6B7280",
+        &[("Darlehensraten", "house")],
+    ),
+    (
+        "Sparen & Investieren",
+        "chart.line.uptrend.xyaxis.circle.fill",
+        "#1F7A5C",
+        &[
+            ("ETF-Sparpläne", "chart.line.uptrend.xyaxis"),
+            ("Krypto", "bitcoinsign.circle"),
+            ("Aktien", "chart.bar.fill"),
+            ("Saveback & Round up", "gift.fill"),
+        ],
+    ),
+    (
+        "Umbuchungen",
+        "arrow.left.arrow.right.circle.fill",
+        "#9AA0A6",
+        &[
+            ("Kreditkartenabrechnung", "creditcard.fill"),
+            ("Tagesgeld", "banknote.fill"),
+            ("Eigene Konten", "arrow.left.arrow.right"),
+        ],
+    ),
+];
+
 fn categories(conn: &Connection) -> CoreResult<std::collections::HashMap<&'static str, i64>> {
-    let tree: Tree = &[
-        (
-            "Einnahmen",
-            "arrow.down.circle.fill",
-            "#2E9D6A",
-            &[
-                ("Gehalt", "briefcase.fill"),
-                ("Zinsen & Dividenden", "percent"),
-                ("Erstattungen", "arrow.uturn.backward.circle"),
-                ("Sonstige Einnahmen", "plus.circle"),
-            ],
-        ),
-        (
-            "Wohnen & Energie",
-            "house.fill",
-            "#B7782F",
-            &[
-                ("Miete", "building.2.fill"),
-                ("Energie", "bolt.fill"),
-                ("Internet & Telefon", "wifi"),
-                ("Haushalt", "sofa.fill"),
-            ],
-        ),
-        (
-            "Lebensmittel",
-            "cart.fill",
-            "#B5474F",
-            &[
-                ("Supermarkt", "cart"),
-                ("Bäcker & Metzger", "fork.knife.circle"),
-                ("Lebensmittelrettung", "leaf.fill"),
-                ("Restaurants & Cafés", "fork.knife"),
-                ("Lieferdienste", "takeoutbag.and.cup.and.straw.fill"),
-            ],
-        ),
-        (
-            "Mobilität",
-            "car.fill",
-            "#3A6FB0",
-            &[
-                ("ÖPNV & Bahn", "tram.fill"),
-                ("Tanken", "fuelpump.fill"),
-                ("Fahrrad", "bicycle"),
-                ("Reisen", "airplane"),
-            ],
-        ),
-        (
-            "Einkaufen",
-            "bag.fill",
-            "#7D5BA6",
-            &[
-                ("Online-Shopping", "shippingbox.fill"),
-                ("Elektronik", "desktopcomputer"),
-                ("Drogerie", "cross.vial.fill"),
-            ],
-        ),
-        (
-            "Freizeit",
-            "sparkles",
-            "#2F8F9D",
-            &[
-                ("Streaming & Musik", "play.tv.fill"),
-                ("Sport & Fitness", "figure.run"),
-                ("Spiele", "gamecontroller.fill"),
-            ],
-        ),
-        (
-            "Versicherungen",
-            "shield.lefthalf.filled",
-            "#4B5D73",
-            &[
-                ("Krankenversicherung", "cross.case.fill"),
-                ("Haftpflicht & Hausrat", "shield.fill"),
-                ("Mitgliedschaften", "person.badge.shield.checkmark.fill"),
-            ],
-        ),
-        (
-            "Gebühren & Bargeld",
-            "eurosign.circle.fill",
-            "#7A808A",
-            &[
-                ("Bankgebühren", "building.columns"),
-                ("Bargeld", "banknote"),
-            ],
-        ),
-        (
-            "Kredite & Darlehen",
-            "house.circle.fill",
-            "#6B7280",
-            &[("Darlehensraten", "house")],
-        ),
-        (
-            "Sparen & Investieren",
-            "chart.line.uptrend.xyaxis.circle.fill",
-            "#1F7A5C",
-            &[
-                ("ETF-Sparpläne", "chart.line.uptrend.xyaxis"),
-                ("Krypto", "bitcoinsign.circle"),
-                ("Aktien", "chart.bar.fill"),
-                ("Saveback & Round up", "gift.fill"),
-            ],
-        ),
-        (
-            "Umbuchungen",
-            "arrow.left.arrow.right.circle.fill",
-            "#9AA0A6",
-            &[
-                ("Kreditkartenabrechnung", "creditcard.fill"),
-                ("Tagesgeld", "banknote.fill"),
-                ("Eigene Konten", "arrow.left.arrow.right"),
-            ],
-        ),
-    ];
     let mut map = std::collections::HashMap::new();
-    for (i, (name, sym, color, kids)) in tree.iter().enumerate() {
+    for (i, (name, sym, color, kids)) in STARTER_TREE.iter().enumerate() {
         conn.execute(
-            "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (NULL, ?1, ?2, ?3, ?4)",
+            "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order, builtin_role) VALUES (NULL, ?1, ?2, ?3, ?4, ?1)",
             params![name, sym, color, i as i32],
         )?;
         let pid = conn.last_insert_rowid();
         map.insert(*name, pid);
         for (j, (kid, ksym)) in kids.iter().enumerate() {
             conn.execute(
-                "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order, builtin_role) VALUES (?1, ?2, ?3, ?4, ?5, ?2)",
                 params![pid, kid, ksym, color, j as i32],
             )?;
             map.insert(*kid, conn.last_insert_rowid());

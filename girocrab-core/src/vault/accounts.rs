@@ -6,7 +6,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::Vault;
 use crate::error::{CoreError, CoreResult};
-use crate::i18n::{display_name, tr, trf};
+use crate::i18n::{role_name, tr, trf};
 use crate::models::*;
 
 impl Vault {
@@ -52,7 +52,7 @@ impl Vault {
     ) -> CoreResult<i64> {
         if let Some(id) = conn
             .query_row(
-                "SELECT id FROM account_groups WHERE name = ?1",
+                "SELECT id FROM account_groups WHERE builtin_role = ?1",
                 [name],
                 |r| r.get(0),
             )
@@ -61,7 +61,7 @@ impl Vault {
             return Ok(id);
         }
         conn.execute(
-            "INSERT INTO account_groups(name, sf_symbol, sort_order) VALUES (?1, ?2, ?3)",
+            "INSERT INTO account_groups(name, sf_symbol, sort_order, builtin_role) VALUES (?1, ?2, ?3, ?1)",
             params![name, symbol, order],
         )?;
         Ok(conn.last_insert_rowid())
@@ -540,7 +540,7 @@ impl Vault {
         let accounts = self.list_accounts()?;
         let db = self.db()?;
         let mut stmt = db.prepare(
-            "SELECT id, name, sf_symbol, sort_order FROM account_groups ORDER BY sort_order, id",
+            "SELECT id, name, sf_symbol, sort_order, builtin_role FROM account_groups ORDER BY sort_order, id",
         )?;
         let groups = stmt
             .query_map([], |r| {
@@ -549,12 +549,13 @@ impl Vault {
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, i32>(3)?,
+                    r.get::<_, Option<String>>(4)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(groups
             .into_iter()
-            .map(|(id, name, sym, order)| {
+            .map(|(id, name, sym, order, role)| {
                 let accs: Vec<Account> = accounts
                     .iter()
                     .filter(|a| a.group_id == id)
@@ -568,7 +569,7 @@ impl Vault {
                     .sum();
                 AccountGroup {
                     id,
-                    name: display_name(&name),
+                    name: role_name(&name, role.as_deref()),
                     sf_symbol: sym,
                     sort_order: order,
                     balance_cents: balance,

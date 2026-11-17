@@ -4230,3 +4230,31 @@ fn merge_matches_an_unlinked_moneymoney_account_a_fetch_took_over() {
         );
     }
 }
+#[test]
+fn category_role_merge_converges_in_every_order() {
+    let roles = [
+        None,
+        Some("Freizeit"),
+        Some("Einnahmen"),
+        Some("Umbuchungen"),
+        Some("import:transfers"),
+    ];
+    let merge = |a: Option<&str>, b: Option<&str>| {
+        let mut role = a.map(str::to_owned);
+        super::merge_category_role(&mut role, b.map(str::to_owned));
+        role
+    };
+    for a in roles {
+        assert_eq!(merge(a, a).as_deref(), a);
+        for b in roles {
+            assert_eq!(merge(a, b), merge(b, a));
+            for c in roles {
+                assert_eq!(
+                    merge(merge(a, b).as_deref(), c),
+                    merge(a, merge(b, c).as_deref()),
+                    "{a:?}, {b:?}, {c:?}"
+                );
+            }
+        }
+    }
+}

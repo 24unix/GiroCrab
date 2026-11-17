@@ -7,21 +7,10 @@ use rusqlite::{params, params_from_iter, ToSql};
 
 use super::Vault;
 use crate::error::CoreError;
-use crate::i18n::{display_name, display_path, trf};
+use crate::i18n::trf;
 use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::money::parse_cents;
-
-/// A category segment that marks a transfer (MoneyMoney "Umbuchung",
-/// "Geldtransit" …).
-fn transfer_named(category_path: &str) -> bool {
-    category_path.split(" › ").any(|s| {
-        matches!(
-            s.trim().to_lowercase().as_str(),
-            "umbuchung" | "umbuchungen" | "geldtransit" | "transfer" | "transfers"
-        )
-    })
-}
 
 /// Booking between two own accounts. A transfer-named category always wins.
 /// Both transfer heuristics — the counterparty-IBAN check and `classify()`'s
@@ -31,8 +20,8 @@ fn transfer_named(category_path: &str) -> bool {
 /// investment / perk: an explicit category ("Sonstige Einnahmen" on a child's
 /// account) or an ETF savings plan on a depot settlement account must keep its
 /// flow (Issue #94).
-fn is_own_transfer(t: &Booking, own_ibans: &HashSet<String>) -> bool {
-    if transfer_named(&t.category_path) {
+fn is_own_transfer(t: &Booking, own_ibans: &HashSet<String>, transfer_category: bool) -> bool {
+    if transfer_category {
         return true;
     }
     if t.category_id.is_some() || matches!(t.flow, FlowKind::Investment | FlowKind::Perk) {
@@ -71,25 +60,19 @@ fn category_match_sql(cat_match: &str) -> String {
 
 /// Adds merchant, flow kind, payment method and clean purpose to a booking.
 /// `paypal`: its account is a PayPal account (see `BookingFinisher`).
-pub(crate) fn enrich(t: &mut Booking, paypal: bool) {
+pub(crate) fn enrich(t: &mut Booking, paypal: bool, top_role: &str) {
     t.merchant = MerchantResolver::resolve(&t.counterparty, &t.purpose);
     t.merchant_name = t.merchant.name.clone();
     t.merchant_domain = Some(t.merchant.domain.clone()).filter(|d| !d.is_empty());
     t.merchant_svg_path = Some(t.merchant.svg_path.clone()).filter(|d| !d.is_empty());
     t.merchant_hex_color = t.merchant.color_hex.clone();
-    let top = t
-        .category_path
-        .split(" › ")
-        .next()
-        .unwrap_or("")
-        .to_string();
     t.flow = classify(
         t.amount_cents,
         &t.counterparty,
         &t.purpose,
         &t.booking_text,
         &t.merchant,
-        &top,
+        top_role,
         t.account_kind,
     );
     t.payment_method = payment_method(
@@ -198,6 +181,8 @@ pub(crate) fn attach_tags(
 /// names, merchant, flow (salary, own transfers, loans), domain overrides.
 /// Only depends on the vault's data, so `ListCache` keeps it between calls.
 pub(super) struct BookingFinisher {
+    language: crate::i18n::Lang,
+    category_flows: HashMap<i64, super::categories::CategoryFlow>,
     paths: HashMap<i64, (String, String, String, String)>,
     salary_ibans: HashSet<String>,
     overrides: HashMap<String, String>,
@@ -211,6 +196,7 @@ pub(super) struct BookingFinisher {
 impl BookingFinisher {
     fn load(db: &rusqlite::Connection) -> Result<Self, CoreError> {
         let paths = Vault::category_paths(db)?;
+        let category_flows = Vault::category_flows(db)?;
         let loan_links = crate::loans::link_map(db)?;
         let salary_ibans = crate::salary::marked_salary_ibans(db)?;
         let overrides = crate::insights::load_overrides(db)?;
@@ -244,6 +230,8 @@ impl BookingFinisher {
             ids
         };
         Ok(Self {
+            language: crate::i18n::current(),
+            category_flows,
             paths,
             salary_ibans,
             overrides,
@@ -263,7 +251,10 @@ impl BookingFinisher {
             t.category_color_hex = color.clone();
             t.category_symbol = sym.clone();
         }
-        enrich(t, self.paypal_accounts.contains(&t.account_id));
+        let category_flow = t.category_id.and_then(|c| self.category_flows.get(&c));
+        let top_role = category_flow.map(|c| c.top_role.as_str()).unwrap_or("");
+        let transfer_category = category_flow.is_some_and(|c| c.is_transfer);
+        enrich(t, self.paypal_accounts.contains(&t.account_id), top_role);
         t.is_salary = crate::salary::is_salary(t, &self.salary_ibans);
         // A salary stays income although its booking text names a transfer
         // (comdirect: "Übertrag / Überweisung"); a transfer category still wins.
@@ -275,26 +266,20 @@ impl BookingFinisher {
         // a categorised credit ("Sonstige Einnahmen") on the child's account
         // must stay income instead of silently dropping out of the Einnahmen
         // KPI. Uncategorised bookings keep the wording heuristic.
-        if t.flow == FlowKind::Transfer
-            && t.category_id.is_some()
-            && !transfer_named(&t.category_path)
-        {
+        if t.flow == FlowKind::Transfer && t.category_id.is_some() && !transfer_category {
             t.flow = if t.amount_cents > 0 {
                 FlowKind::Income
             } else {
                 FlowKind::Consumption
             };
         }
-        if is_own_transfer(t, &self.own_ibans)
+        if is_own_transfer(t, &self.own_ibans, transfer_category)
             || (self.pair_transfers.contains(&t.id)
                 && t.category_id.is_none()
                 && !matches!(t.flow, FlowKind::Investment | FlowKind::Perk))
         {
             t.flow = FlowKind::Transfer;
         }
-        // Localise after `enrich`: flow classification needs the stored names.
-        t.category_name = display_name(&t.category_name);
-        t.category_path = display_path(&t.category_path);
         if let Some(d) = self.overrides.get(&t.merchant.key) {
             t.merchant.domain = d.clone();
             t.merchant.domain_candidates = vec![d.clone()];
@@ -863,7 +848,13 @@ impl Vault {
         db: &rusqlite::Connection,
     ) -> Result<Arc<BookingFinisher>, CoreError> {
         let changes = db.total_changes();
-        if let Some(finisher) = self.list_cache.at(changes).finisher.clone() {
+        if let Some(finisher) = self
+            .list_cache
+            .at(changes)
+            .finisher
+            .clone()
+            .filter(|f| f.language == crate::i18n::current())
+        {
             return Ok(finisher);
         }
         let finisher = Arc::new(BookingFinisher::load(db)?);
@@ -1873,18 +1864,32 @@ mod own_transfer_tests {
     }
 
     #[test]
-    fn explicit_transfer_category_is_a_transfer() {
+    fn explicit_imported_transfer_role_is_a_transfer() {
         let (_d, v, ids) = vault_with(&[
             ("Papa", 500_00, "x", Some("Umbuchung")),
             ("Papa", 500_00, "x", Some("Privat/Geldtransit")),
             // no own IBAN involved: the category alone decides
         ]);
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE categories SET builtin_role='import:transfers'
+            WHERE name IN ('Umbuchung','Geldtransit')",
+                [],
+            )
+            .unwrap();
         assert_eq!(flow_of(&v, ids[0]), FlowKind::Transfer);
         assert_eq!(flow_of(&v, ids[1]), FlowKind::Transfer);
         assert_eq!(
             v.selection_flow(vec![], None, None).unwrap().income_cents,
             0
         );
+    }
+
+    #[test]
+    fn custom_transfer_name_has_no_builtin_role() {
+        let (_d, v, ids) = vault_with(&[("Papa", 500_00, "x", Some("Umbuchungen"))]);
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Income);
     }
 
     /// comdirect books incoming transfers as "Übertrag / Überweisung": a

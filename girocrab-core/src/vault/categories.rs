@@ -6,20 +6,30 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::Vault;
 use crate::error::{CoreError, CoreResult};
-use crate::i18n::{display_name, display_path, tr};
+use crate::i18n::{role_name, tr};
 use crate::models::*;
+
+/// Classification metadata never passes through a booking's display fields.
+#[derive(Default)]
+pub(super) struct CategoryFlow {
+    pub(super) top_role: String,
+    pub(super) is_transfer: bool,
+}
 
 impl Vault {
     fn category_rows(
         conn: &Connection,
     ) -> CoreResult<Vec<(i64, Option<i64>, String, String, String, i32, Option<i64>)>> {
-        let mut stmt = conn.prepare("SELECT id, parent_id, name, sf_symbol, color_hex, sort_order, budget_cents FROM categories WHERE deleted_ms IS NULL")?;
+        let mut stmt = conn.prepare("SELECT id, parent_id, name, sf_symbol, color_hex, sort_order, budget_cents, builtin_role FROM categories WHERE deleted_ms IS NULL")?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
                     r.get(0)?,
                     r.get(1)?,
-                    r.get(2)?,
+                    role_name(
+                        &r.get::<_, String>(2)?,
+                        r.get::<_, Option<String>>(7)?.as_deref(),
+                    ),
                     r.get(3)?,
                     r.get(4)?,
                     r.get(5)?,
@@ -28,6 +38,32 @@ impl Vault {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    pub(super) fn category_flows(conn: &Connection) -> CoreResult<HashMap<i64, CategoryFlow>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, parent_id, builtin_role FROM categories WHERE deleted_ms IS NULL",
+        )?;
+        let rows: HashMap<i64, (Option<i64>, Option<String>)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?
+            .collect::<Result<_, _>>()?;
+        let mut out = HashMap::new();
+        for id in rows.keys() {
+            let mut flow = CategoryFlow::default();
+            let mut cur = Some(*id);
+            // Match the display tree's depth bound; malformed cycles cannot hang a load.
+            for _ in 0..32 {
+                let Some((parent, role)) = cur.and_then(|c| rows.get(&c)) else {
+                    break;
+                };
+                flow.top_role = role.clone().unwrap_or_default();
+                flow.is_transfer |=
+                    matches!(role.as_deref(), Some("Umbuchungen" | "import:transfers"));
+                cur = *parent;
+            }
+            out.insert(*id, flow);
+        }
+        Ok(out)
     }
 
     pub(crate) fn category_paths(
@@ -189,12 +225,12 @@ impl Vault {
                     out.push(Category {
                         id: k.0,
                         parent_id: k.1,
-                        name: display_name(&k.2),
+                        name: k.2.clone(),
                         sf_symbol: k.3.clone(),
                         color_hex: k.4.clone(),
                         sort_order: k.5,
                         depth,
-                        path: display_path(&path),
+                        path: path.clone(),
                         own_total_cents: own.0,
                         total_cents: total,
                         transaction_count: count,
@@ -349,20 +385,24 @@ impl Vault {
         }
         // The UI shows built-in names translated; saving that unchanged
         // display name keeps the stored German default (and its logic).
-        let stored: Option<(String, Option<i64>, String, String)> = db
+        let stored: Option<(String, Option<i64>, String, String, Option<String>)> = db
             .query_row(
-                "SELECT name, parent_id, sf_symbol, color_hex FROM categories WHERE id = ?1",
+                "SELECT name, parent_id, sf_symbol, color_hex, builtin_role FROM categories WHERE id = ?1",
                 [id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .optional()?;
         let name = match &stored {
-            Some((stored, ..)) if *stored != name && display_name(stored) == name => stored.clone(),
+            Some((stored, _, _, _, role))
+                if *stored != name && role_name(stored, role.as_deref()) == name =>
+            {
+                stored.clone()
+            }
             _ => name,
         };
         // only fields that really change get a stamp (newest edit wins per field)
         let now = crate::user_groups::now_ms();
-        let (old_name, old_parent, old_symbol, old_color) = stored.unwrap_or_default();
+        let (old_name, old_parent, old_symbol, old_color, _) = stored.unwrap_or_default();
         db.execute(
             "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4,
                     name_ms = CASE WHEN ?6 THEN ?10 ELSE name_ms END,
@@ -398,3 +438,6 @@ impl Vault {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod role_tests;

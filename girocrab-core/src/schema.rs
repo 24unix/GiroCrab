@@ -35,6 +35,9 @@
 //! - 25: index `tx_amount_date`: the payment-service transfer pairing
 //!   (`vault/transfer_pairs.rs`) looks up counter bookings by amount and date.
 //!
+//! - 26: native currency of a depot position and its prices (#625): `holdings.currency`, `native_*_cents`.
+//! - 27: built-in category and account-group identities, separate from names (#678).
+//!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
 //! `cargo run -p girocrab-core --example make_fixture_vault` and commit the
@@ -76,6 +79,7 @@ const STEPS: &[Step] = &[
     Step::Sql(RULE_ACCOUNTS),                                  // 24
     Step::Sql(TX_AMOUNT_DATE),                                 // 25
     Step::Hook(holding_native_currency),                       // 26
+    Step::Hook(builtin_roles),                                 // 27 (#678)
 ];
 
 /// Step 26 (#625): native currency of a position and its price/value in it
@@ -90,6 +94,81 @@ fn holding_native_currency(conn: &Connection) -> CoreResult<()> {
         if !has_column(conn, "holdings", col)? {
             conn.execute_batch(&format!("ALTER TABLE holdings ADD COLUMN {col} {def};"))?;
         }
+    }
+    Ok(())
+}
+
+/// Step 27: immutable built-in identity, separate from editable names. The
+/// original German catalog keys are stable role identifiers, never user input.
+fn builtin_roles(conn: &Connection) -> CoreResult<()> {
+    // Development vaults may already carry one of the two columns. Repair
+    // each table independently, without relabelling explicitly custom rows.
+    let categories_need_roles = !has_column(conn, "categories", "builtin_role")?;
+    let groups_need_roles = !has_column(conn, "account_groups", "builtin_role")?;
+    if categories_need_roles {
+        conn.execute_batch("ALTER TABLE categories ADD COLUMN builtin_role TEXT;")?;
+    }
+    if groups_need_roles {
+        conn.execute_batch(
+            "CREATE TABLE account_groups_roles (
+                id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+                sf_symbol TEXT NOT NULL DEFAULT 'folder', sort_order INTEGER NOT NULL DEFAULT 0,
+                builtin_role TEXT);
+            INSERT INTO account_groups_roles(id,name,sf_symbol,sort_order)
+                SELECT id,name,sf_symbol,sort_order FROM account_groups;
+            DROP TABLE account_groups;
+            ALTER TABLE account_groups_roles RENAME TO account_groups;
+            CREATE UNIQUE INDEX account_groups_role ON account_groups(builtin_role)
+                WHERE builtin_role IS NOT NULL;
+            CREATE UNIQUE INDEX account_groups_custom_name ON account_groups(name)
+                WHERE builtin_role IS NULL;",
+        )?;
+    }
+    if categories_need_roles {
+        // Legacy vaults have no provenance flag. Only recognise unchanged catalog
+        // entries with the starter icon, colour and parent, never by name alone.
+        for (name, symbol, color, kids) in crate::demo::STARTER_TREE {
+            conn.execute(
+                "UPDATE categories SET builtin_role=?1 WHERE name=?1 AND parent_id IS NULL
+            AND sf_symbol=?2 AND color_hex=?3 AND name_ms=0",
+                rusqlite::params![name, symbol, color],
+            )?;
+            for (kid, symbol) in *kids {
+                conn.execute(
+                    "UPDATE categories SET builtin_role=?1 WHERE name=?1
+                AND parent_id IN (SELECT id FROM categories WHERE builtin_role=?2)
+                AND sf_symbol=?3 AND color_hex=?4 AND name_ms=0",
+                    rusqlite::params![kid, name, symbol, color],
+                )?;
+            }
+        }
+    }
+    if groups_need_roles {
+        for kind in [
+            crate::models::AccountKind::Checking,
+            crate::models::AccountKind::CreditCard,
+            crate::models::AccountKind::Brokerage,
+            crate::models::AccountKind::Loan,
+        ] {
+            let (name, symbol, order) = crate::connectors::group_for(kind);
+            conn.execute("UPDATE account_groups SET builtin_role=?1 WHERE name=?1 AND sf_symbol=?2 AND sort_order=?3",
+            rusqlite::params![name, symbol, order])?;
+        }
+        conn.execute(
+            "UPDATE account_groups SET builtin_role='Importierte Konten'
+        WHERE name='Importierte Konten' AND sf_symbol='archivebox' AND sort_order=90",
+            [],
+        )?;
+    }
+    if categories_need_roles {
+        // Legacy imports used this distinctive icon/colour combination. Preserve
+        // their transfer semantics without granting translation of the name.
+        conn.execute(
+            "UPDATE categories SET builtin_role='import:transfers'
+        WHERE builtin_role IS NULL AND sf_symbol='tag' AND color_hex='#8E8E93'
+        AND lower(name) IN ('umbuchung','umbuchungen','geldtransit','transfer','transfers')",
+            [],
+        )?;
     }
     Ok(())
 }
@@ -254,6 +333,21 @@ pub(crate) fn check_not_too_new(conn: &Connection) -> CoreResult<()> {
 /// Brings the vault to [`SCHEMA_VERSION`]; nothing changes if a step fails.
 pub(crate) fn migrate(conn: &mut Connection) -> CoreResult<()> {
     check_not_too_new(conn)?;
+    let done: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if done == SCHEMA_VERSION {
+        return Ok(());
+    }
+    // SQLite's table-rebuild procedure requires foreign keys off outside the
+    // transaction (step 27 removes the old UNIQUE(name) constraint). Restore
+    // enforcement on both success and failure; validate before committing.
+    let foreign_keys: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
+    conn.pragma_update(None, "foreign_keys", false)?;
+    let result = migrate_transaction(conn);
+    conn.pragma_update(None, "foreign_keys", foreign_keys)?;
+    result
+}
+
+fn migrate_transaction(conn: &mut Connection) -> CoreResult<()> {
     let tx = conn.transaction()?;
     // read again inside the transaction: another connection may have migrated meanwhile
     let done: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
@@ -267,6 +361,16 @@ pub(crate) fn migrate(conn: &mut Connection) -> CoreResult<()> {
         }
     }
     tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    let invalid: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_check)",
+        [],
+        |r| r.get(0),
+    )?;
+    if invalid {
+        return Err(crate::error::CoreError::Database {
+            message: "Schema migration would violate foreign keys".into(),
+        });
+    }
     tx.commit()?;
     Ok(())
 }
@@ -625,6 +729,102 @@ CREATE INDEX loan_links_loan ON loan_links(loan_account_id);
 mod tests {
     use super::*;
 
+    fn schema25() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON").unwrap();
+        for step in &STEPS[..25] {
+            match step {
+                Step::Sql(sql) => conn.execute_batch(sql).unwrap(),
+                Step::Hook(f) => f(&conn).unwrap(),
+            }
+        }
+        conn.pragma_update(None, "user_version", 25).unwrap();
+        conn
+    }
+
+    #[test]
+    fn failed_role_migration_rolls_back_and_restores_foreign_keys() {
+        let mut conn = schema25();
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+            INSERT INTO accounts(group_id,external_ref,name) VALUES (999,'test','Test');
+            PRAGMA foreign_keys=ON;",
+        )
+        .unwrap();
+        assert!(migrate(&mut conn).is_err());
+        assert!(!has_column(&conn, "categories", "builtin_role").unwrap());
+        assert!(!has_column(&conn, "account_groups", "builtin_role").unwrap());
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            25
+        );
+        assert!(conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
+            .unwrap());
+    }
+
+    #[test]
+    fn partial_development_migration_preserves_custom_provenance() {
+        let mut conn = schema25();
+        conn.execute_batch("ALTER TABLE categories ADD COLUMN builtin_role TEXT;
+            INSERT INTO categories(name,sf_symbol,color_hex) VALUES ('Freizeit','sparkles','#2F8F9D');").unwrap();
+        migrate(&mut conn).unwrap();
+        assert!(has_column(&conn, "account_groups", "builtin_role").unwrap());
+        assert_eq!(
+            conn.query_row("SELECT builtin_role FROM categories", [], |r| r
+                .get::<_, Option<String>>(0))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn roles_migrate_catalog_entries_but_not_custom_names() {
+        let mut conn = schema25();
+        let (name, symbol, color, _) = crate::demo::STARTER_TREE
+            .iter()
+            .find(|r| r.0 == "Freizeit")
+            .unwrap();
+        conn.execute(
+            "INSERT INTO categories(name,sf_symbol,color_hex) VALUES (?1,?2,?3)",
+            rusqlite::params![name, symbol, color],
+        )
+        .unwrap();
+        let builtin = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO categories(name,parent_id) VALUES ('Freizeit',?1)",
+            [builtin],
+        )
+        .unwrap();
+        let custom = conn.last_insert_rowid();
+        conn.execute_batch("INSERT INTO account_groups(name,sf_symbol,sort_order) VALUES ('Kreditkarten','creditcard',2);
+            INSERT INTO accounts(group_id,external_ref,name) VALUES (1,'test','Test');
+            PRAGMA user_version=25;").unwrap();
+        migrate(&mut conn).unwrap();
+        let role = |conn: &Connection, id| {
+            conn.query_row(
+                "SELECT builtin_role FROM categories WHERE id=?1",
+                [id],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(role(&conn, builtin).as_deref(), Some("Freizeit"));
+        assert_eq!(role(&conn, custom), None);
+        assert!(conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
+            .unwrap());
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM accounts", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        // Reopening does not reassign provenance to subsequently created rows.
+        migrate(&mut conn).unwrap();
+        assert_eq!(role(&conn, custom), None);
+    }
+
     #[test]
     fn schema_version_counts_the_steps() {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -633,7 +833,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 26);
+        assert_eq!(SCHEMA_VERSION, 27);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

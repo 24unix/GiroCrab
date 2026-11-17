@@ -619,6 +619,7 @@ fn pick_match<'a>(cands: &[(&'a str, bool)]) -> Option<&'a str> {
 
 #[derive(Clone, PartialEq, Debug)]
 struct Cat {
+    role: Option<String>,
     id: i64,
     uuid: String,
     name: String,
@@ -639,6 +640,9 @@ struct Cat {
 
 impl Cat {
     fn merge(&mut self, o: Cat) {
+        // Identity is immutable; when combining a custom entry and a built-in,
+        // custom provenance wins so its name can never become translated.
+        merge_category_role(&mut self.role, o.role);
         take_newer(&mut self.name, &mut self.name_ms, o.name, o.name_ms);
         take_newer(&mut self.parent, &mut self.parent_ms, o.parent, o.parent_ms);
         take_newer(&mut self.symbol, &mut self.symbol_ms, o.symbol, o.symbol_ms);
@@ -654,12 +658,25 @@ impl Cat {
     }
 }
 
+fn merge_category_role(role: &mut Option<String>, other: Option<String>) {
+    if *role != other {
+        // Only the two transfer roles share semantics. All other conflicts
+        // become custom. This rule is commutative, associative and idempotent,
+        // so three-way device merges converge regardless of their order.
+        *role = match (role.as_deref(), other.as_deref()) {
+            (Some("Umbuchungen"), Some("import:transfers"))
+            | (Some("import:transfers"), Some("Umbuchungen")) => Some("import:transfers".into()),
+            _ => None,
+        };
+    }
+}
+
 fn load_categories(conn: &Connection, schema: &str) -> CoreResult<Vec<Cat>> {
     // includes soft-deleted rows
     let sql = format!(
         "SELECT c.id, c.uuid, c.name, p.uuid, c.sf_symbol, c.color_hex, c.budget_cents,
                 c.sort_order, c.name_ms, c.parent_ms, c.symbol_ms, c.color_ms, c.budget_ms,
-                c.order_ms, c.deleted_ms, c.merged_into
+                c.order_ms, c.deleted_ms, c.merged_into, c.builtin_role
          FROM {schema}.categories c LEFT JOIN {schema}.categories p ON p.id = c.parent_id
          ORDER BY c.id"
     );
@@ -667,6 +684,7 @@ fn load_categories(conn: &Connection, schema: &str) -> CoreResult<Vec<Cat>> {
         .prepare(&sql)?
         .query_map([], |r| {
             Ok(Cat {
+                role: r.get(16)?,
                 id: r.get(0)?,
                 uuid: r.get(1)?,
                 name: r.get(2)?,
@@ -788,6 +806,10 @@ fn combine_categories(state: &mut BTreeMap<String, Cat>) -> bool {
     for uuids in groups.into_values().filter(|g| g.len() > 1) {
         // BTreeMap order: the first is the lowest uuid
         let keep = &uuids[0];
+        for u in &uuids[1..] {
+            let role = state[u].role.clone();
+            merge_category_role(&mut state.get_mut(keep).unwrap().role, role);
+        }
         let keep_ms = state[keep].name_ms;
         for u in &uuids[1..] {
             let c = state.get_mut(u).unwrap();
@@ -904,7 +926,7 @@ pub(crate) fn merge_categories(
             "UPDATE categories SET name = ?2, parent_id = ?3, sf_symbol = ?4, color_hex = ?5,
                     budget_cents = ?6, sort_order = ?7, name_ms = ?8, parent_ms = ?9,
                     symbol_ms = ?10, color_ms = ?11, budget_ms = ?12, order_ms = ?13,
-                    deleted_ms = IFNULL(?14, -1), merged_into = ?15
+                    deleted_ms = IFNULL(?14, -1), merged_into = ?15, builtin_role = ?16
              WHERE id = ?1",
             params![
                 ids[&c.uuid],
@@ -921,7 +943,8 @@ pub(crate) fn merge_categories(
                 c.budget_ms,
                 c.order_ms,
                 c.deleted_ms,
-                c.merged_into
+                c.merged_into,
+                c.role
             ],
         )?;
     }

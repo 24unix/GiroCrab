@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use rusqlite::params;
 
 use crate::error::CoreError;
-use crate::i18n::{display_name, display_path, tr, trf};
+use crate::i18n::{role_name, tr, trf};
 use crate::models::*;
 use crate::vault::Vault;
 
@@ -115,14 +115,17 @@ impl Vault {
             }
         }
         let mut stmt = db.prepare(
-            "SELECT id, parent_id, name, sf_symbol, color_hex, budget_cents FROM categories WHERE deleted_ms IS NULL ORDER BY sort_order, name",
+            "SELECT id, parent_id, name, sf_symbol, color_hex, budget_cents, builtin_role FROM categories WHERE deleted_ms IS NULL ORDER BY sort_order, name",
         )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
                     r.get::<_, i64>(0)?,
                     r.get::<_, Option<i64>>(1)?,
-                    r.get::<_, String>(2)?,
+                    role_name(
+                        &r.get::<_, String>(2)?,
+                        r.get::<_, Option<String>>(6)?.as_deref(),
+                    ),
                     r.get::<_, String>(3)?,
                     r.get::<_, String>(4)?,
                     r.get::<_, Option<i64>>(5)?,
@@ -152,7 +155,7 @@ impl Vault {
                 }
             }
             parts.reverse();
-            display_path(&parts.join(" › "))
+            parts.join(" › ")
         };
         let mut out = Vec::new();
         for r in rows.iter().filter(|r| r.5.is_some()) {
@@ -173,7 +176,7 @@ impl Vault {
             let spent = (-sum).max(0);
             out.push(CategoryBudgetStatus {
                 category_id: r.0,
-                name: display_name(&r.2),
+                name: r.2.clone(),
                 path: path_of(r.0),
                 sf_symbol: r.3.clone(),
                 color_hex: r.4.clone(),

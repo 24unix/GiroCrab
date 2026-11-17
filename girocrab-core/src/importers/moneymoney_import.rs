@@ -610,7 +610,12 @@ pub(crate) fn find_or_create_category(
             )
             .optional()?;
         let id = match found {
-            Some(id) => id,
+            Some(id) => {
+                // An imported path is user-owned even when it reuses a starter
+                // row. Its literal name must survive a UI language switch.
+                conn.execute("UPDATE categories SET builtin_role=NULL WHERE id=?1", [id])?;
+                id
+            }
             None => {
                 let order: i32 = conn.query_row(
                     "SELECT IFNULL(MAX(sort_order), 0) + 1 FROM categories WHERE parent_id IS ?1",
@@ -628,6 +633,17 @@ pub(crate) fn find_or_create_category(
                 id
             }
         };
+        // Preserve the importer's established transfer semantics explicitly;
+        // this role never grants localisation of an imported name.
+        if matches!(
+            part.trim().to_lowercase().as_str(),
+            "umbuchung" | "umbuchungen" | "geldtransit" | "transfer" | "transfers"
+        ) {
+            conn.execute(
+                "UPDATE categories SET builtin_role='import:transfers' WHERE id=?1",
+                [id],
+            )?;
+        }
         cache.insert(key.clone(), id);
         parent = Some(id);
     }
@@ -1220,7 +1236,8 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
     };
     // preview of an import: no connection yet, a payment service reads as before
     let paypal = b.account_kind == AccountKind::PaymentService;
-    enrich(&mut b, paypal);
+    // Preview names are imported user text, never built-in category roles.
+    enrich(&mut b, paypal, "");
     b.is_salary = crate::salary::salary_signal(&b);
     b
 }

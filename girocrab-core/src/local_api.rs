@@ -536,9 +536,9 @@ impl Vault {
                 Some(ApiCategory {
                     id,
                     parent_id: parents.get(&id).copied().flatten(),
-                    name: crate::i18n::display_name(name),
+                    name: name.clone(),
                     depth: depth(id),
-                    path: crate::i18n::display_path(path),
+                    path: path.clone(),
                 })
             })
             .collect();
@@ -681,7 +681,7 @@ impl Vault {
                 .map(|(category_id, currency, net_cents)| ApiCategoryTotal {
                     category_path: category_id
                         .and_then(|c| paths.get(&c))
-                        .map(|(_, path, _, _)| crate::i18n::display_path(path))
+                        .map(|(_, path, _, _)| path.clone())
                         .unwrap_or_default(),
                     category_id,
                     currency,

@@ -16,21 +16,22 @@ impl Vault {
         let mut st = MergeStats::default();
         let tx = conn.unchecked_transaction()?;
 
-        // account groups (by name)
+        // Built-in groups match by immutable role; custom groups by literal name.
         let mut group_map: HashMap<i64, i64> = HashMap::new();
         {
-            let rows: Vec<(i64, String, String, i64)> = tx
-                .prepare("SELECT id, name, sf_symbol, sort_order FROM other.account_groups")?
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            let rows: Vec<(i64, String, String, i64, Option<String>)> = tx
+                .prepare("SELECT id, name, sf_symbol, sort_order, builtin_role FROM other.account_groups")?
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
                 .collect::<Result<_, _>>()?;
-            for (oid, name, sym, ord) in rows {
+            for (oid, name, sym, ord, role) in rows {
                 tx.execute(
-                    "INSERT OR IGNORE INTO account_groups(name, sf_symbol, sort_order) VALUES (?1,?2,?3)",
-                    params![name, sym, ord],
+                    "INSERT OR IGNORE INTO account_groups(name, sf_symbol, sort_order, builtin_role) VALUES (?1,?2,?3,?4)",
+                    params![name, sym, ord, role],
                 )?;
                 let id: i64 = tx.query_row(
-                    "SELECT id FROM account_groups WHERE name = ?1",
-                    [&name],
+                    "SELECT id FROM account_groups WHERE (?2 IS NOT NULL AND builtin_role=?2)
+                        OR (?2 IS NULL AND builtin_role IS NULL AND name=?1)",
+                    params![name, role],
                     |r| r.get(0),
                 )?;
                 group_map.insert(oid, id);

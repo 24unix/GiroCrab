@@ -1038,8 +1038,8 @@ fn contains_any(text: &str, needles: &[&str]) -> bool {
     needles.iter().any(|n| text.contains(n))
 }
 
-/// Classifies a booking. `top_category` is the name of the top-level category
-/// ("Sparen & Investieren", "Umbuchungen", "Kredite & Darlehen"...).
+/// Classifies a booking. `top_category` is the immutable role of the top-level
+/// category, using the original German catalog keys (empty for custom entries).
 pub fn classify(
     amount_cents: i64,
     counterparty: &str,
@@ -1068,7 +1068,7 @@ pub fn classify(
     {
         return FlowKind::Loan;
     }
-    if top_category == "Umbuchungen"
+    if matches!(top_category, "Umbuchungen" | "import:transfers")
         || contains_any(
             &t,
             &[
