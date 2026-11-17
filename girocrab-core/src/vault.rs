@@ -374,6 +374,13 @@ impl Vault {
                 })?;
             }
         }
+        // Owner-only from the first byte: SQLite opens the empty file we created and
+        // keeps its mode, instead of creating it with the process umask.
+        crate::fsutil::create_private(std::path::Path::new(dest_path)).map_err(|e| {
+            CoreError::Database {
+                message: format!("{dest_path}: {e}"),
+            }
+        })?;
         let conn = self.db()?;
         conn.execute("ATTACH DATABASE ?1 AS snap KEY ?2", params![dest_path, key])?;
         let res = conn
@@ -506,7 +513,15 @@ impl Vault {
     /// so copying the file (e.g. to iCloud) never misses committed frames.
     pub fn checkpoint(&self) -> Result<(), CoreError> {
         let conn = self.db()?;
-        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+        // Result row: (busy, WAL frames, frames checkpointed). busy = 1 means a
+        // reader blocked the checkpoint: the WAL is not flushed, so do not
+        // report success to a caller about to copy the main file.
+        let busy: i64 = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))?;
+        if busy != 0 {
+            return Err(CoreError::Database {
+                message: "wal_checkpoint: database busy, WAL not flushed".into(),
+            });
+        }
         Ok(())
     }
 

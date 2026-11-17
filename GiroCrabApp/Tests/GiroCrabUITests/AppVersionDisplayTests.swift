@@ -35,3 +35,21 @@ final class AppVersionTests: XCTestCase {
         XCTAssertTrue(AppVersion.displayString.hasPrefix("GiroCrab "))
     }
 }
+
+final class BankingPolicyVersionTests: XCTestCase {
+    func testMacBuildStringIsUsedAsIs() {
+        XCTAssertEqual(BankingVersion.policyVersion(build: "0.8.0", marketing: "0.8.0", core: "0.8.0"), "0.8.0")
+        XCTAssertEqual(BankingVersion.policyVersion(build: "0.8.0.123", marketing: "0.8.0", core: "0.8.0"), "0.8.0.123")
+    }
+
+    func testIOSBuildCounterFallsBackToCoreVersion() {
+        // "20" alone would compare newer than every minimumVersion
+        XCTAssertEqual(BankingVersion.policyVersion(build: "20", marketing: "0.6.1", core: "0.8.0"), "0.8.0")
+        XCTAssertEqual(BankingVersion.compare(
+            BankingVersion.policyVersion(build: "20", marketing: "0.6.1", core: "0.7.5"), "0.8.0"), .orderedAscending)
+    }
+
+    func testFallsBackToMarketingVersionWithoutCore() {
+        XCTAssertEqual(BankingVersion.policyVersion(build: "20", marketing: "0.6.1", core: ""), "0.6.1")
+    }
+}

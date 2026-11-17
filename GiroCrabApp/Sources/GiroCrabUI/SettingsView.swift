@@ -628,6 +628,7 @@ struct ICloudSyncSection: View {
     @State private var keychainSync = VaultKeyManager.shared.syncViaICloudKeychain
     @Binding var showKeySheet: Bool
     @State private var keyCopied = false
+    @State private var confirmKeyCopy = false
 
     var body: some View {
         Section {
@@ -705,12 +706,20 @@ struct ICloudSyncSection: View {
                     }
                 HStack {
                     Button(keyCopied ? "Schlüssel kopiert (60 s)" : "Tresor-Schlüssel kopieren", systemImage: "key") {
-                        Task {
-                            if let k = try? await VaultKeyManager.shared.exportKeyBase64() {
-                                VaultKeyManager.copyToPasteboard(k)
-                                keyCopied = true
+                        confirmKeyCopy = true
+                    }
+                    .confirmationDialog("Tresor-Schlüssel kopieren?", isPresented: $confirmKeyCopy, titleVisibility: .visible) {
+                        Button("Schlüssel kopieren") {
+                            Task {
+                                if let k = try? await VaultKeyManager.shared.exportKeyBase64() {
+                                    VaultKeyManager.copyKeyToPasteboard(k)
+                                    keyCopied = true
+                                }
                             }
                         }
+                        Button("Abbrechen", role: .cancel) {}
+                    } message: {
+                        Text("Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text, und lässt sich nur mit „Aus Zwischenablage einfügen“ in GiroCrab verwenden.")
                     }
                     Button("Schlüssel einfügen …", systemImage: "square.and.pencil") { showKeySheet = true }
                 }
@@ -815,6 +824,10 @@ struct KeyPasteSheet: View {
                 .autocorrectionDisabled()
                 .sensitive()
                 .disabled(working)
+            Button("Aus Zwischenablage einfügen", systemImage: "doc.on.clipboard") {
+                if let k = VaultKeyManager.keyFromPasteboard() { text = k }
+            }
+            .disabled(working)
             if case .failed(let message) = model.keyAdoption {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .appFont(.caption).foregroundStyle(Theme.negative)

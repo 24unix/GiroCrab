@@ -88,7 +88,7 @@ pub fn export_csv(
             "# {};{};{};{}\r\n",
             csv_field(&l.name, true),
             csv_amount(l.balance_cents),
-            csv_field(&l.currency, false),
+            csv_field(&l.currency, true),
             csv_field(&l.date, false)
         ));
     }
@@ -135,7 +135,7 @@ pub fn export_csv(
             cols.push(csv_field(&r.tags, true));
         }
         cols.push(csv_amount(r.amount_cents));
-        cols.push(csv_field(&r.currency, false));
+        cols.push(csv_field(&r.currency, true));
         if columns.running_balance {
             cols.push(r.balance_cents.map(csv_amount).unwrap_or_default());
         }

@@ -109,6 +109,7 @@
   "Gutschrift (Erstattung)": "Credit (refund)",
   "HBCI-Schlüsseldatei auswählen": "Choose HBCI Key File",
   "Ihr Computer verwendet jetzt %1, GiroCrab ist auf %2 eingestellt. Zum Wechseln startet GiroCrab neu.": "Your computer now uses %1, but GiroCrab is set to %2. GiroCrab restarts to switch.",
+  "Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt. Bank-Adressen, gespeicherte PINs und das Abrufintervall dieses Geräts bleiben erhalten.": "Your vault already contains accounts. They will be replaced by the contents of the backup. This device's bank addresses, stored PINs and fetch interval are kept.",
   "Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.": "Your transactions are kept in an encrypted vault.\nThe key never leaves this device’s keyring.",
   "Im Dateimanager anzeigen": "Show in File Manager",
   "Im Standardprogramm öffnen": "Open in Default App",

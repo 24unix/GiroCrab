@@ -350,6 +350,11 @@ pub fn validate_backup_password(pw: &str, repeat: &str, writing: bool) -> Result
     if pw.is_empty() {
         return Err("Bitte ein Passwort für die Sicherung angeben.".into());
     }
+    // Same floor as the core's `write_backup` (and the Mac dialog): the backup is only
+    // as strong as this password. Restoring takes any password, older backups may be shorter.
+    if writing && pw.chars().count() < 8 {
+        return Err("Das Passwort für die Sicherung muss mindestens 8 Zeichen lang sein.".into());
+    }
     if writing && pw != repeat {
         return Err("Die beiden Passwörter stimmen nicht überein.".into());
     }
@@ -527,9 +532,12 @@ mod tests {
     #[test]
     fn backup_rules() {
         assert!(validate_backup_password("", "", true).is_err());
-        assert!(validate_backup_password("a", "b", true).is_err());
+        assert!(validate_backup_password("geheim123", "geheim124", true).is_err());
         assert!(validate_backup_password("a", "", false).is_ok());
-        assert!(validate_backup_password("a", "a", true).is_ok());
+        // writing needs 8 characters, like the core
+        assert!(validate_backup_password("a", "a", true).is_err());
+        assert!(validate_backup_password("1234567", "1234567", true).is_err());
+        assert!(validate_backup_password("geheim123", "geheim123", true).is_ok());
     }
 
     #[test]

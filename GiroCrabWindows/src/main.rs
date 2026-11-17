@@ -32,6 +32,7 @@ mod views_ui;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -72,6 +73,20 @@ fn vault_path() -> PathBuf {
     } else {
         "vault.sqlite"
     })
+}
+
+/// Identity of the vault of the current, unlocked session (0 = locked). Background
+/// workers hold their own `Arc<Vault>` and finish after the user locked the app;
+/// they must not redraw real data nor reopen the window then, so every completion
+/// that paints vault data checks [`is_current`] first (a generation-checked lock).
+static SESSION: AtomicUsize = AtomicUsize::new(0);
+
+fn session_id(vault: &Arc<Vault>) -> usize {
+    Arc::as_ptr(vault) as *const () as usize
+}
+
+fn is_current(vault: &Arc<Vault>) -> bool {
+    SESSION.load(Ordering::SeqCst) == session_id(vault)
 }
 
 fn open_vault(demo: bool) -> Result<Arc<Vault>, String> {
@@ -610,6 +625,9 @@ fn refresh_dashboard(win: &MainWindow, vault: Arc<Vault>) {
             .list_category_budget_progress(year, month)
             .unwrap_or_default();
         let _ = weak.upgrade_in_event_loop(move |win| {
+            if !is_current(&vault) {
+                return;
+            }
             let privacy = privacy_on(&win);
             let (bars, ticks) = cockpit::chart(&flow);
             win.set_cashflow_bars(ModelRc::new(VecModel::from(
@@ -707,7 +725,7 @@ fn reload(win: &MainWindow, vault: Arc<Vault>) {
         let cats = vault.list_categories(None, None).map_err(|e| e.to_string());
         let _ = weak.upgrade_in_event_loop(move |win| {
             let vault = vault.clone();
-            if with_state(|st| st.generation) != generation {
+            if !is_current(&vault) || with_state(|st| st.generation) != generation {
                 return;
             }
             match (rows, cats) {
@@ -1140,6 +1158,10 @@ fn render_header(
 
 /// Header plus the view of the selected target (bookings reload, or the depot / list view).
 fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
+    // A worker that finished after the lock must not bring the vault back.
+    if !is_current(vault) {
+        return;
+    }
     // Privacy follows `toggle || !unlocked`: unlock first and start with the toggle off, so the
     // first paint shows real balances instead of masks.
     win.set_privacy(false);
@@ -1570,6 +1592,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         std::fs::metadata(vault_path()).is_ok_and(|m| m.len() > 0),
                     );
                     views_ui::invalidate_planned_count();
+                    SESSION.store(session_id(&v), Ordering::SeqCst);
                     show(&win, &v, None);
                     *vault.lock().unwrap() = Some(v);
                     win.set_message(SharedString::new());
@@ -1839,6 +1862,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let (weak, vault) = (win.as_weak(), vault.clone());
         win.on_lock(move || {
             let Some(win) = weak.upgrade() else { return };
+            SESSION.store(0, Ordering::SeqCst);
             *vault.lock().unwrap() = None;
             with_state(|st| *st = State::default());
             win.set_unlocked(false);

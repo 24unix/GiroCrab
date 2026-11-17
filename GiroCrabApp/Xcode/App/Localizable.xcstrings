@@ -6143,6 +6143,17 @@
         }
       }
     },
+    "Beim Ausschalten wird der Zugangsschlüssel widerrufen. Zum erneuten Einschalten erzeugen Sie einen neuen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switching access off revokes the access key. To switch it on again, create a new one."
+          }
+        }
+      }
+    },
     "Beim Entsperren %@ verlangen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9084,6 +9095,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The balance already matches."
+          }
+        }
+      }
+    },
+    "Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text, und lässt sich nur mit „Aus Zwischenablage einfügen“ in GiroCrab verwenden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The key decrypts your entire vault. It stays on the clipboard for 60 seconds, not as text, and can only be used with “Paste from Clipboard” in GiroCrab."
           }
         }
       }
@@ -15186,13 +15208,13 @@
         }
       }
     },
-    "Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt." : {
+    "Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt. Bank-Adressen, gespeicherte PINs und das Abrufintervall dieses Geräts bleiben erhalten." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your vault already contains accounts. They will be replaced by the contents of the backup."
+            "value" : "Your vault already contains accounts. They will be replaced by the contents of the backup. This device's bank addresses, stored PINs and fetch interval are kept."
           }
         }
       }
@@ -24498,6 +24520,17 @@
         }
       }
     },
+    "Schlüssel kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy key"
+          }
+        }
+      }
+    },
     "Schlüssel kopiert (60 s)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27185,6 +27218,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy vault key"
+          }
+        }
+      }
+    },
+    "Tresor-Schlüssel kopieren?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy vault key?"
           }
         }
       }

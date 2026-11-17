@@ -1128,13 +1128,13 @@ fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
         if let Some(e) = error {
             return Err(consent_error(&e, &description));
         }
-        if let Some(s) = state {
-            if !expected_state.is_empty() && s != expected_state {
-                return Err(CoreError::Authentication {
-                    message: tr("Status stimmt nicht überein – bitte die Zustimmung neu starten")
-                        .into(),
-                });
-            }
+        // A redirect URL must carry the state of this consent: without it the
+        // callback is not bound to the session we started (CSRF / replay).
+        if !expected_state.is_empty() && state.as_deref() != Some(expected_state) {
+            return Err(CoreError::Authentication {
+                message: tr("Status stimmt nicht überein – bitte die Zustimmung neu starten")
+                    .into(),
+            });
         }
         return code.ok_or_else(|| CoreError::InvalidInput {
             message: tr("Kein „code“ in der eingefügten Adresse").into(),
@@ -2548,6 +2548,12 @@ mod tests {
             "abc"
         );
         assert!(super::extract_code("https://localhost/cb?code=abc&state=bad", "s1").is_err());
+        // a callback without any state is refused when one was expected
+        assert!(super::extract_code("https://localhost/cb?code=abc", "s1").is_err());
+        assert_eq!(
+            super::extract_code("https://localhost/cb?code=abc", "").unwrap(),
+            "abc"
+        );
         assert_eq!(super::extract_code(" xyz ", "s1").unwrap(), "xyz");
     }
 

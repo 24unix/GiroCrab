@@ -75,12 +75,29 @@ fn load(conn: &Connection, schema: &str) -> CoreResult<BTreeMap<String, Row>> {
     Ok(rows)
 }
 
+/// A peer's tag with the local rules applied: name collapsed and cut to the
+/// length limit (a row without a usable name is dropped), colour reset when it
+/// is not `#RRGGBB`.
+fn sanitize_peer(mut r: Row) -> Option<Row> {
+    let name = r.name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        return None;
+    }
+    r.name = name.chars().take(super::MAX_NAME).collect();
+    r.color_hex = super::clean_color(&r.color_hex).unwrap_or_default();
+    Some(r)
+}
+
 /// Merges `other.tags` into `main.tags`, then moves booking links off merged
 /// and deleted tags.
 pub(crate) fn merge_attached(conn: &Connection) -> CoreResult<()> {
     let local = load(conn, "main")?;
     let mut state = local.clone();
     for (uuid, o) in load(conn, "other")? {
+        // A peer's rows get the checks local edits and the local API enforce:
+        // a name that is empty or absurdly long, or a colour that is no #RRGGBB,
+        // must not arrive through a sync folder.
+        let Some(o) = sanitize_peer(o) else { continue };
         state.entry(uuid).and_modify(|r| r.merge(&o)).or_insert(o);
     }
     // same name, different uuid: the smaller uuid survives (BTreeMap order)

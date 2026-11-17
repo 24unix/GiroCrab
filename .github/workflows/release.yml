@@ -55,7 +55,9 @@ jobs:
         run: cargo build --release --locked --manifest-path GiroCrabWindows/Cargo.toml
       - name: Package portable zip + installer
         shell: pwsh
-        run: ./scripts/package-windows.ps1 -Version "${{ github.ref_name }}"
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: ./scripts/package-windows.ps1 -Version "$env:TAG_NAME"
       - uses: actions/upload-artifact@v4
         with:
           name: girocrab-windows-x86_64
@@ -64,7 +66,9 @@ jobs:
       - name: Attach to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" dist/girocrab-windows-x86_64.zip dist/girocrab-windows-x86_64-setup.exe dist/SHA256SUMS.txt --clobber --repo "${{ github.repository }}"
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "$TAG_NAME" dist/girocrab-windows-x86_64.zip dist/girocrab-windows-x86_64-setup.exe dist/SHA256SUMS.txt --clobber --repo "$REPO"
 
   sync-docs-website:
     # Stable releases only. README goes through a PR (main is protected); the website is pushed to
@@ -75,11 +79,16 @@ jobs:
       GH_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN || github.token }}
       WEBSITE_DEPLOY_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Configure git push auth
         run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
       - name: Sync README and girocrab.de
-        run: scripts/sync-docs-and-website.sh --push --version "${{ github.event.release.tag_name }}"
+        # The tag name goes in through the environment, not into the script text: this step
+        # holds the website deploy token, and a tag name is attacker-chosen text for anyone
+        # who can push a tag.
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: scripts/sync-docs-and-website.sh --push --version "$TAG_NAME"

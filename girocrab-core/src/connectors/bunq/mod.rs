@@ -27,9 +27,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{
-    http_client, BankConnector, CancelOutcome, Challenge, ChallengeKind, ChallengeResponse,
-    ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction, TransferJob,
-    TransferResult,
+    http_client_same_host, BankConnector, CancelOutcome, Challenge, ChallengeKind,
+    ChallengeResponse, ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction,
+    TransferJob, TransferResult,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -753,7 +753,7 @@ impl BankConnector for BunqConnector {
             PRODUCTION
         }
         .into();
-        self.client = Some(http_client()?);
+        self.client = Some(http_client_same_host()?);
 
         let fp = key_fingerprint(&api_key);
         let stored: BunqState = serde_json::from_value(ctx.state.clone()).unwrap_or_default();

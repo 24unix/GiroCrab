@@ -152,6 +152,9 @@ pub fn parse(
         ..Default::default()
     };
     let mut occurrences: std::collections::HashMap<String, u32> = Default::default();
+    // A `:61:` that could not be read is dropped; its `:86:` details must then be
+    // dropped too, not attached to the previous booking.
+    let mut skip_86 = false;
     for (tag, value) in fields(text) {
         match tag.as_str() {
             "25" => stmt.account = value.trim().to_string(),
@@ -169,6 +172,7 @@ pub fn parse(
                 }
             }
             "61" => {
+                skip_86 = true;
                 let v = value.lines().next().unwrap_or("").trim();
                 let Some(value_date) = yymmdd(v) else {
                     continue;
@@ -223,13 +227,19 @@ pub fn parse(
                 } else {
                     rest
                 };
+                // MT940 amounts use a decimal comma only. A dot ("12.50") would end the
+                // scan at "12" and book whole euros, so it is scanned and rejected.
                 let amount_end = rest
-                    .find(|c: char| !(c.is_ascii_digit() || c == ','))
+                    .find(|c: char| !(c.is_ascii_digit() || c == ',' || c == '.'))
                     .unwrap_or(rest.len());
+                if rest[..amount_end].contains('.') {
+                    continue;
+                }
                 let Ok(amount) = parse_cents(&rest[..amount_end]) else {
                     continue;
                 };
                 let reference = rest[amount_end..].to_string();
+                skip_86 = false;
                 txs.push(RemoteTransaction {
                     account_ref: account_ref.to_string(),
                     external_id: String::new(),
@@ -250,6 +260,7 @@ pub fn parse(
                     ..Default::default()
                 });
             }
+            "86" if skip_86 => skip_86 = false,
             "86" => {
                 if let Some(t) = txs.last_mut() {
                     let d = parse_86(&value);
@@ -285,6 +296,24 @@ mod tests {
     const SAMPLE: &str = ":20:STARTUMSE\r\n:25:52090000/0012345678\r\n:28C:00000/001\r\n:60F:C250101EUR1000,00\r\n\
 :61:2501020102DR23,45NDDTNONREF\r\n:86:105?00FOLGELASTSCHRIFT?20EREF+123 MREF+M1 CRED+DE1?21SVWZ+Einkauf REWE Markt?22 Kassel?30GENODEF1S08?31DE02520900000000000001?32REWE Markt GmbH\r\n\
 :61:2501030103CR2500,00NTRFNONREF\r\n:86:166?00GUTSCHRIFT?20SVWZ+Gehalt Januar?32Muster GmbH\r\n:62F:C250103EUR3476,55\r\n-\r\n";
+
+    #[test]
+    fn dotted_amount_is_dropped_not_booked_as_whole_euros() {
+        let text = ":20:X\r\n:25:52090000/1\r\n:61:2501020102DR12.50NDDTNONREF\r\n:86:105?00LASTSCHRIFT?20SVWZ+Kaffee\r\n:62F:C250102EUR0,00\r\n-\r\n";
+        let (txs, _) = parse(text, "acc", "EUR");
+        assert!(txs.is_empty(), "{txs:?}");
+    }
+
+    #[test]
+    fn details_of_a_dropped_booking_do_not_land_on_the_previous_one() {
+        let text = ":20:X\r\n:25:52090000/1\r\n\
+:61:2501020102DR23,45NDDTNONREF\r\n:86:105?00LASTSCHRIFT?20SVWZ+Echt?32Haendler\r\n\
+:61:xxxxxx\r\n:86:105?00LASTSCHRIFT?20SVWZ+Fremd?32Angreifer\r\n:62F:C250102EUR0,00\r\n-\r\n";
+        let (txs, _) = parse(text, "acc", "EUR");
+        assert_eq!(txs.len(), 1);
+        assert_eq!(txs[0].purpose, "Echt");
+        assert_eq!(txs[0].counterparty, "Haendler");
+    }
 
     #[test]
     fn keeps_gvc_and_purpose_code() {

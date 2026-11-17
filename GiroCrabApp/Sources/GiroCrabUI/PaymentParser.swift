@@ -200,26 +200,42 @@ enum PaymentParser {
         return nil
     }
 
-    private static func inflate(_ zlib: Data) -> Data? {
+    /// Largest inflated stream that is looked at: an invoice document is a few hundred
+    /// kilobytes; a crafted PDF could otherwise have the buffer grow 512-fold.
+    static let maxInflatedBytes = 16 * 1024 * 1024
+
+    static func inflate(_ zlib: Data, limit: Int = maxInflatedBytes) -> Data? {
         let payload = zlib.dropFirst(2) // strip zlib header; Compression wants raw deflate
-        var cap = max(payload.count * 8, 64 * 1024)
-        for _ in 0..<4 {
+        var cap = min(max(payload.count * 8, 64 * 1024), limit)
+        while true {
             var out = [UInt8](repeating: 0, count: cap)
             let n = payload.withUnsafeBytes { src -> Int in
                 guard let base = src.bindMemory(to: UInt8.self).baseAddress else { return 0 }
                 return compression_decode_buffer(&out, cap, base, payload.count, nil, COMPRESSION_ZLIB)
             }
             if n > 0 && n < cap { return Data(out[0..<n]) }
-            cap *= 4
+            // full buffer or failure: try a bigger one, but never past the limit
+            guard cap < limit else { return nil }
+            cap = min(cap * 4, limit)
         }
-        return nil
+    }
+
+    /// Scale for rendering the first PDF page for QR detection: 3x, but never more
+    /// than `maxPixels` in the bitmap (a crafted media box of 200000 x 200000 pt
+    /// would otherwise ask for gigabytes). nil = unusable page size.
+    static func pdfRenderScale(for box: CGSize, base: CGFloat = 3, maxPixels: CGFloat = 40_000_000) -> CGFloat? {
+        guard box.width.isFinite, box.height.isFinite, box.width >= 1, box.height >= 1 else { return nil }
+        let pixels = box.width * base * box.height * base
+        let scale = pixels > maxPixels ? base * (maxPixels / pixels).squareRoot() : base
+        // at least a few pixels per module are needed for a QR code to be read
+        return scale >= 0.5 ? scale : nil
     }
 
     private static func image(from data: Data, isPDF: Bool) -> CGImage? {
         if isPDF {
             guard let page = PDFDocument(data: data)?.page(at: 0) else { return nil }
             let box = page.bounds(for: .mediaBox)
-            let scale: CGFloat = 3
+            guard let scale = pdfRenderScale(for: box.size) else { return nil }
             let size = CGSize(width: box.width * scale, height: box.height * scale)
             guard let ctx = CGContext(data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }

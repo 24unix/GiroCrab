@@ -455,9 +455,9 @@ pub(crate) fn cashflow_for(
         let Some(key) = key else { return };
         let e = acc.entry(key).or_default();
         match kpi_side(b.flow, amt) {
-            KpiSide::Income => e.0 += amt,
+            KpiSide::Income => e.0 = e.0.saturating_add(amt),
             // net: refunds reduce the expenses of their period
-            KpiSide::Expense => e.1 -= amt,
+            KpiSide::Expense => e.1 = e.1.saturating_sub(amt),
             KpiSide::Neutral => {}
         }
     })?;

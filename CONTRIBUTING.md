@@ -50,6 +50,11 @@ Database schema changes are a new migration step plus a fixture vault, see
    Optional: `git config core.hooksPath .githooks` runs `cargo fmt --check` before every push, like CI does,
    and warns after a checkout, pull or rebase when the xcframework in `generated/` no longer matches
    the Rust core (`./build-xcframework.sh --check`).
+   Mind the trust model: the hooks live in the working tree, so after a checkout or merge git runs the
+   hook scripts (and `build-xcframework.sh`) of the revision you just checked out. Only enable the
+   hooks if you would also build that code (a build runs its `build.rs` anyway), and don't check out
+   branches you don't trust with hooks enabled; `git -c core.hooksPath=/dev/null checkout <branch>`
+   skips them once.
 
 Unsure where to start? Pick one of the open `[Bank]` issues labelled
 [`help wanted`](https://github.com/GiroCrab/GiroCrab/issues?q=is%3Aopen+label%3A%22help+wanted%22+%22%5BBank%5D%22),

@@ -2792,7 +2792,7 @@ mod tests {
         let backup = dir.join("sicherung.girocrab");
         call_ok(
             "write_backup",
-            json!({ "dest_path": format!("file://{}", backup.display()), "password": "geheim" }),
+            json!({ "dest_path": format!("file://{}", backup.display()), "password": "geheim1234" }),
         );
         assert!(backup.exists());
         let tag = call_ok(
@@ -2808,7 +2808,7 @@ mod tests {
         assert!(wrong.get("err").is_some(), "wrong password must be refused");
         call_ok(
             "restore_backup",
-            json!({ "backup_path": backup.display().to_string(), "password": "geheim" }),
+            json!({ "backup_path": backup.display().to_string(), "password": "geheim1234" }),
         );
         let tags = call_ok("list_tags", json!({}));
         assert!(

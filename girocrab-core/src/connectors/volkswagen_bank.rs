@@ -35,8 +35,8 @@ use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE, ORIGIN, RE
 use serde_json::{json, Value};
 
 use super::{
-    http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    FetchResult, Phase, RemoteAccount, RemoteTransaction,
+    http_client_same_host, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
+    ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::{
     error::{CoreError, CoreResult},
@@ -119,7 +119,7 @@ struct HttpPortal {
 impl HttpPortal {
     fn client(&mut self) -> CoreResult<reqwest::Client> {
         if self.client.is_none() {
-            self.client = Some(http_client()?);
+            self.client = Some(http_client_same_host()?);
         }
         self.client.clone().ok_or_else(bad_response)
     }

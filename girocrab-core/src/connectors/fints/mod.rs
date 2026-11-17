@@ -280,8 +280,14 @@ fn card_since(since: &str, today: &str, storage_days: i64) -> String {
     let parse = |d: &str| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok();
     match (parse(since), parse(today)) {
         (Some(s), Some(t)) if storage_days > 0 => {
-            let oldest = t - chrono::Duration::days(storage_days);
-            s.max(oldest).format("%Y-%m-%d").to_string()
+            // the bank's number: an absurd value must not overflow the date arithmetic
+            // (a panic on a hostile reply); no bound cuts the range then
+            let oldest =
+                chrono::Duration::try_days(storage_days).and_then(|d| t.checked_sub_signed(d));
+            match oldest {
+                Some(oldest) => s.max(oldest).format("%Y-%m-%d").to_string(),
+                None => since.to_string(),
+            }
         }
         _ => since.to_string(),
     }
@@ -4017,6 +4023,11 @@ mod tests {
         assert_eq!(card_since("2023-11-15", "2026-11-15", 775), "2024-10-01");
         // unknown storage period: unchanged
         assert_eq!(card_since("2020-01-01", "2026-11-15", 0), "2020-01-01");
+        // a hostile HIKKUS value must not panic
+        assert_eq!(
+            card_since("2020-01-01", "2026-11-15", i64::MAX),
+            "2020-01-01"
+        );
     }
 
     #[test]

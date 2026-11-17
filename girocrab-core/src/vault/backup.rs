@@ -14,6 +14,16 @@ use super::Vault;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 
+/// Shortest password `write_backup` accepts (the macOS dialog requires the same).
+pub(crate) const MIN_BACKUP_PASSWORD_CHARS: usize = 8;
+
+/// Settings that belong to this device, not to the data: where logins are sent,
+/// stored PINs and the unattended-fetch interval. A restore keeps this device's
+/// values and drops the backup's, so a backup file can never repoint a bank
+/// endpoint that later receives a PIN.
+const DEVICE_SETTINGS_WHERE: &str = "key LIKE 'fints.url.%' OR key LIKE 'fints.tan_medium.%' \
+     OR key LIKE 'pin.%' OR key = 'sync.psd2_auto_hours'";
+
 fn not_a_backup() -> CoreError {
     CoreError::InvalidInput {
         message: tr("Falsches Passwort oder keine GiroCrab-Sicherung.").into(),
@@ -35,6 +45,14 @@ impl Vault {
         if password.is_empty() {
             return Err(CoreError::InvalidInput {
                 message: tr("Bitte ein Passwort für die Sicherung angeben.").into(),
+            });
+        }
+        // The backup is only as strong as this password (PBKDF2 over a guessable
+        // string is cheap to brute-force), so every front end gets the same floor.
+        if password.chars().count() < MIN_BACKUP_PASSWORD_CHARS {
+            return Err(CoreError::InvalidInput {
+                message: tr("Das Passwort für die Sicherung muss mindestens 8 Zeichen lang sein.")
+                    .into(),
             });
         }
         self.export_to(&dest_path, &password)
@@ -164,6 +182,27 @@ impl Vault {
             });
         }
         tmp.query_row("SELECT sqlcipher_export('main', 'bak')", [], |_| Ok(()))?;
+        // Device-owned settings stay as they are on this device.
+        let device: Vec<(String, String, i64)> = {
+            let live = self.db()?;
+            let mut stmt = live.prepare(&format!(
+                "SELECT key, value, is_secret FROM settings WHERE {DEVICE_SETTINGS_WHERE}"
+            ))?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            let rows: Vec<_> = rows.collect::<Result<_, _>>()?;
+            drop(stmt);
+            rows
+        };
+        tmp.execute(
+            &format!("DELETE FROM main.settings WHERE {DEVICE_SETTINGS_WHERE}"),
+            [],
+        )?;
+        for (k, v, secret) in device {
+            tmp.execute(
+                "INSERT INTO main.settings(key, value, is_secret) VALUES (?1, ?2, ?3)",
+                params![k, v, secret],
+            )?;
+        }
         tmp.execute_batch(&format!("PRAGMA main.user_version = {version}"))?;
         tmp.execute_batch("DETACH DATABASE bak")?;
 

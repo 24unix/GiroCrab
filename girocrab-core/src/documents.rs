@@ -732,7 +732,7 @@ impl Vault {
         } else {
             p.to_path_buf()
         };
-        std::fs::write(&target, bytes).map_err(|e| CoreError::InvalidInput {
+        crate::fsutil::write_private(&target, bytes).map_err(|e| CoreError::InvalidInput {
             message: trf("Export fehlgeschlagen: {0}", &[&e]),
         })?;
         Ok(target.to_string_lossy().to_string())
@@ -772,8 +772,10 @@ impl Vault {
                 k += 1;
             }
             let bytes = self.get_document_bytes(d.id)?;
-            std::fs::write(dir.join(&candidate), bytes).map_err(|e| CoreError::InvalidInput {
-                message: format!("{e}"),
+            crate::fsutil::write_private(dir.join(&candidate), bytes).map_err(|e| {
+                CoreError::InvalidInput {
+                    message: format!("{e}"),
+                }
             })?;
             n += 1;
         }
@@ -858,7 +860,7 @@ impl Vault {
                 k += 1;
             }
             if !already {
-                std::fs::write(&target, &bytes).map_err(io)?;
+                crate::fsutil::write_private(&target, &bytes).map_err(io)?;
                 written += 1;
             }
             self.db()?.execute(

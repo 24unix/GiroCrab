@@ -987,7 +987,7 @@ pub(crate) fn merge_rows(
             if note.is_empty() { 0 } else { now_ms() }
         ])?;
         st.new += 1;
-        st.balance_cents += r.amount_cents;
+        st.balance_cents = st.balance_cents.saturating_add(r.amount_cents);
         if !note.is_empty() {
             st.notes += 1;
         }

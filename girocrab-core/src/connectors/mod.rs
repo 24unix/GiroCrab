@@ -79,6 +79,39 @@ pub(crate) fn http_client() -> CoreResult<reqwest::Client> {
         .build()?)
 }
 
+/// Redirect policy for clients that send credentials (login forms, tokens, API
+/// keys): follows a redirect only inside the same host, so a bank or portal
+/// answer (or a man in the middle) cannot make the client replay a login body,
+/// session token or refresh token to a different host. A cross-host redirect
+/// ends the chain; the 3xx answer is then returned as it is.
+pub(crate) fn same_host_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt
+            .previous()
+            .last()
+            .is_some_and(|prev| prev.host_str() == attempt.url().host_str());
+        if same && attempt.previous().len() < 10 {
+            attempt.follow()
+        } else {
+            attempt.stop()
+        }
+    })
+}
+
+/// [`http_client`] with [`same_host_redirects`], for connectors that post credentials.
+pub(crate) fn http_client_same_host() -> CoreResult<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .user_agent(concat!(
+            "GiroCrab/",
+            env!("CARGO_PKG_VERSION"),
+            " (open source; +https://github.com/)"
+        ))
+        .timeout(std::time::Duration::from_secs(60))
+        .cookie_store(true)
+        .redirect(same_host_redirects())
+        .build()?)
+}
+
 /// HTTP client for FinTS: never follows redirects, so POST bodies carrying
 /// PIN/TAN cannot be replayed to a different location.
 pub(crate) fn http_client_no_redirect() -> CoreResult<reqwest::Client> {
@@ -92,7 +125,12 @@ pub(crate) fn http_client_no_redirect() -> CoreResult<reqwest::Client> {
 pub(crate) fn ensure_secure_fints_url(url: &str) -> CoreResult<()> {
     let lower = url.trim().to_ascii_lowercase();
     if lower.starts_with("https://") {
-        return Ok(());
+        if fints_presets::is_valid_fints_url(url.trim()) {
+            return Ok(());
+        }
+        return Err(CoreError::Protocol {
+            message: "FinTS URL is not a public https address".to_string(),
+        });
     }
     #[cfg(test)]
     if lower.starts_with("http://127.0.0.1") || lower.starts_with("http://localhost") {

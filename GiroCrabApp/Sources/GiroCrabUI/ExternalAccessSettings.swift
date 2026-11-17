@@ -65,6 +65,8 @@ struct ExternalAccessSettings: View {
                 .appFont(.callout).foregroundStyle(.secondary)
             Label("Programme wie KI-Assistenten können die geteilten Daten an einen Cloud-Dienst übertragen. Teilen Sie nur, was dort verarbeitet werden darf.", systemImage: "exclamationmark.triangle")
                 .appFont(.callout)
+            Text("Beim Ausschalten wird der Zugangsschlüssel widerrufen. Zum erneuten Einschalten erzeugen Sie einen neuen.")
+                .appFont(.callout).foregroundStyle(.secondary)
             if scope.enabled {
                 LabeledContent("Status", value: status(scope))
             }

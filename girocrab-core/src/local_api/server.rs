@@ -650,6 +650,18 @@ mod tests {
             })
             .unwrap();
         assert!(c.call(&token, "info")["result"].is_object());
+        // switching external access off revokes the key: on again does not bring it back
+        let on = vault.local_api_scope().unwrap();
+        assert!(on.enabled);
+        vault
+            .set_local_api_scope(ShareScope {
+                enabled: false,
+                ..on.clone()
+            })
+            .unwrap();
+        assert!(vault.local_api_scope().unwrap().token_sha256.is_empty());
+        vault.set_local_api_scope(on).unwrap();
+        assert_eq!(c.call(&token, "info")["error"]["code"], "unauthorized");
         server.stop();
     }
 
@@ -804,7 +816,11 @@ mod tests {
             .unwrap();
         let mut c = Client::connect(&d.socket());
         assert_eq!(c.call("", "info")["error"]["code"], "unauthorized");
-        assert_eq!(c.call(&token, "info")["error"]["code"], "disabled");
+        // switching off revoked the old key ...
+        assert_eq!(c.call(&token, "info")["error"]["code"], "unauthorized");
+        // ... a key created while it is off is valid but the interface says "disabled"
+        let fresh = vault.create_local_api_token().unwrap();
+        assert_eq!(c.call(&fresh, "info")["error"]["code"], "disabled");
         server.stop();
     }
 

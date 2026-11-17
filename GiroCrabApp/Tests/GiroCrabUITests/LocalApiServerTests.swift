@@ -201,6 +201,26 @@ final class LocalApiServerTests: XCTestCase {
         try await awaitRunning(true)
     }
 
+    func testSwitchingAccessOffRevokesTheKey() async throws {
+        _ = await model.createLocalApiToken()
+        let loaded = await model.loadLocalApiScope()
+        var on = try XCTUnwrap(loaded)
+        on.enabled = true
+        await model.saveLocalApiScope(on)
+        let withKey = await model.loadLocalApiScope()
+        XCTAssertFalse(try XCTUnwrap(withKey).tokenSha256.isEmpty)
+        var off = on
+        off.enabled = false
+        await model.saveLocalApiScope(off)
+        let afterOff = await model.loadLocalApiScope()
+        var stored = try XCTUnwrap(afterOff)
+        XCTAssertTrue(stored.tokenSha256.isEmpty, "the old key must not come back with the switch")
+        stored.enabled = true
+        await model.saveLocalApiScope(stored)
+        let afterOn = await model.loadLocalApiScope()
+        XCTAssertTrue(try XCTUnwrap(afterOn).tokenSha256.isEmpty)
+    }
+
     func testANewKeyIsShownUntilItIsNoLongerValid() async throws {
         let first = await model.createLocalApiToken()
         XCTAssertNotNil(first)

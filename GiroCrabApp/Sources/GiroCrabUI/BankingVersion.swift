@@ -86,6 +86,23 @@ public enum BankingVersion {
     }
 }
 
+extension BankingVersion {
+    /// Version the banking-policy lock compares with a rule's `minimumVersion`
+    /// (and the update channel is inferred from). macOS builds carry their version
+    /// string in `CFBundleVersion`. On iOS that key is only the upload counter
+    /// (e.g. "20"), which would read as 20.0.0 and compare newer than any rule, so
+    /// the lock could never engage; there the core version (the real build, while
+    /// TestFlight pins the marketing version) is used, else the marketing version.
+    public static func policyVersion(build: String?, marketing: String?, core: String) -> String {
+        let build = build?.trimmingCharacters(in: .whitespaces) ?? ""
+        let isCounter = !build.isEmpty && build.allSatisfy { $0.isASCII && $0.isNumber }
+        if !build.isEmpty && !isCounter { return build }
+        let core = core.trimmingCharacters(in: .whitespaces)
+        if !core.isEmpty { return core }
+        return marketing?.trimmingCharacters(in: .whitespaces) ?? build
+    }
+}
+
 /// Version line for Settings and bug reports. TestFlight pins
 /// `CFBundleShortVersionString` to an already reviewed version (a changed
 /// marketing version triggers a new beta review, a new build number does not),

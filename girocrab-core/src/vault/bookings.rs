@@ -1344,11 +1344,11 @@ impl Vault {
                 csv_field(&b.booking_date, false),
                 csv_field(&b.account_name, true),
                 csv_field(&b.counterparty, true),
-                csv_field(&b.counterparty_iban, false),
+                csv_field(&b.counterparty_iban, true),
                 csv_field(&b.purpose, true),
                 csv_field(&b.category_path, true),
                 csv_amount(b.amount_cents),
-                csv_field(&b.currency, false),
+                csv_field(&b.currency, true),
                 csv_field(
                     &b.tags
                         .iter()

@@ -360,9 +360,13 @@ pub fn parse_pain008(xml: &str) -> CoreResult<Vec<ParsedDebitBlock>> {
         let mut collections = Vec::new();
         for (i, &t) in txs.iter().enumerate() {
             let tx = &block[t..txs.get(i + 1).copied().unwrap_or(block.len())];
+            // an unreadable amount must not turn into 0: the file would be applied
+            // with a silently wrong collection
             let cents = tag_text(tx, "InstdAmt", 0)
                 .and_then(|a| crate::money::parse_cents(&a).ok())
-                .unwrap_or(0);
+                .ok_or_else(|| CoreError::InvalidInput {
+                    message: tr("Die Datei enthält einen unlesbaren Betrag (pain.008).").into(),
+                })?;
             collections.push(Collection {
                 debtor_name: nested(tx, "Dbtr", "Nm").unwrap_or_default(),
                 debtor_iban: nested(tx, "DbtrAcct", "IBAN").unwrap_or_default(),
@@ -374,6 +378,24 @@ pub fn parse_pain008(xml: &str) -> CoreResult<Vec<ParsedDebitBlock>> {
                 end_to_end_id: tag_text(tx, "EndToEndId", 0).unwrap_or_default(),
                 mandate_id: tag_text(tx, "MndtId", 0).unwrap_or_default(),
                 mandate_date: tag_text(tx, "DtOfSgntr", 0).unwrap_or_default(),
+            });
+        }
+        // The block's own control figures must match what it contains; a mismatch
+        // means a damaged or hand-edited file.
+        let declared_count =
+            tag_text(head, "NbOfTxs", 0).and_then(|c| c.trim().parse::<usize>().ok());
+        let declared_sum =
+            tag_text(head, "CtrlSum", 0).and_then(|c| crate::money::parse_cents(&c).ok());
+        let actual_sum = collections
+            .iter()
+            .try_fold(0i64, |acc: i64, c: &Collection| {
+                acc.checked_add(c.amount_cents)
+            });
+        if declared_count.is_some_and(|n| n != collections.len())
+            || declared_sum.is_some_and(|s| Some(s) != actual_sum)
+        {
+            return Err(CoreError::InvalidInput {
+                message: tr("Anzahl oder Kontrollsumme der Datei stimmen nicht mit den Lastschriften überein (pain.008).").into(),
             });
         }
         out.push(ParsedDebitBlock {
@@ -542,6 +564,20 @@ mod tests {
             assert_eq!(c.purpose, "Mitgliedsbeitrag 2026");
         }
         assert!(parse_pain008("<Document/>").is_err());
+    }
+
+    #[test]
+    fn control_figures_must_match_the_collections() {
+        let cs = [collection(1), collection(2)];
+        let xml = build_pain008(&base(&cs)).unwrap();
+        assert!(parse_pain008(&xml).is_ok());
+        // control sum: 12.51 + 12.52 = 25.03 in the block
+        let bad_sum = xml.replacen("<CtrlSum>25.03</CtrlSum>", "<CtrlSum>99.99</CtrlSum>", 2);
+        assert!(parse_pain008(&bad_sum).is_err());
+        let bad_count = xml.replacen("<NbOfTxs>2</NbOfTxs>", "<NbOfTxs>3</NbOfTxs>", 2);
+        assert!(parse_pain008(&bad_count).is_err());
+        let bad_amount = xml.replacen("12.51", "zwölf", 1);
+        assert!(parse_pain008(&bad_amount).is_err());
     }
 
     /// Developer aid: writes sample files for every scheme/version into the

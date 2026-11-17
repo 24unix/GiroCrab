@@ -9,11 +9,23 @@ import SwiftUI
 //   sheet with the full text, never a second window or the browser unasked.
 // * Not shown while a security lock is visible: one message at a time.
 
-private func markdown(_ s: String) -> AttributedString {
-    (try? AttributedString(
+private func markdown(_ s: String) -> AttributedString { announcementMarkdown(s) }
+
+/// Announcement text as markdown, with links limited to https: the text comes
+/// from a server, and a link with another scheme (`file:`, `x-apple.systempreferences:`,
+/// an app's custom scheme) would be opened by one click.
+func announcementMarkdown(_ s: String) -> AttributedString {
+    var text = (try? AttributedString(
         markdown: s,
         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
     )) ?? AttributedString(s)
+    for run in text.runs {
+        guard let url = run.link else { continue }
+        if url.scheme?.lowercased() != "https" || url.host?.isEmpty != false {
+            text[run.range].link = nil
+        }
+    }
+    return text
 }
 
 struct AnnouncementBanner: View {

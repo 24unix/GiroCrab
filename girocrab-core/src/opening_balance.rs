@@ -135,7 +135,7 @@ pub(crate) fn refresh(conn: &Connection, account_id: i64) -> CoreResult<()> {
     // a newer date stays (e.g. MoneyMoney's balance timestamp): no booking since
     conn.execute(
         "UPDATE accounts SET balance_cents = ?1, balance_date = max(balance_date, ?2) WHERE id = ?3",
-        params![cents + sum, last.max(date), account_id],
+        params![cents.saturating_add(sum), last.max(date), account_id],
     )?;
     Ok(())
 }

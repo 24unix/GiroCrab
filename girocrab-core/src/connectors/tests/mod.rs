@@ -1414,3 +1414,61 @@ mod payment_method;
 mod standing_order;
 mod statements_auto;
 mod transfer_cancel;
+
+/// Local server answering every request with a redirect to `location(port)`;
+/// returns (port, request counter).
+fn redirect_server(
+    location: fn(u16) -> String,
+) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = hits.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { break };
+            let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut buf = [0u8; 8192];
+            let _ = s.read(&mut buf);
+            let resp = if n == 0 {
+                format!(
+                    "HTTP/1.1 307 Moved\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    location(port)
+                )
+            } else {
+                "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+            };
+            let _ = s.write_all(resp.as_bytes());
+        }
+    });
+    (port, hits)
+}
+
+#[tokio::test]
+async fn credential_clients_do_not_follow_redirects_to_another_host() {
+    let (port, hits) = redirect_server(|p| format!("http://localhost:{p}/other"));
+    let c = super::http_client_same_host().unwrap();
+    let r = c
+        .post(format!("http://127.0.0.1:{port}/login"))
+        .body("user=a&pin=secret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 307);
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn credential_clients_still_follow_redirects_inside_the_host() {
+    let (port, hits) = redirect_server(|p| format!("http://127.0.0.1:{p}/next"));
+    let c = super::http_client_same_host().unwrap();
+    let r = c
+        .post(format!("http://127.0.0.1:{port}/login"))
+        .body("x")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+}

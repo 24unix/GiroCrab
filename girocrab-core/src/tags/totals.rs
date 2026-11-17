@@ -158,12 +158,12 @@ fn totals_of(db: &rusqlite::Connection, kept: Vec<(i64, i64)>) -> Result<Vec<Tag
                 for tag in tags {
                     let e = per_tag.entry(*tag).or_default();
                     e.0 += 1;
-                    e.1 += share;
+                    e.1 = e.1.saturating_add(share);
                 }
             }
             None => {
                 untagged_count += 1;
-                untagged_sum += share;
+                untagged_sum = untagged_sum.saturating_add(share);
             }
         }
     }

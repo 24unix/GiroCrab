@@ -449,7 +449,11 @@ public final class BankingPolicy {
     static func makeDefault() -> BankingPolicy {
         var keys = publicKeys
         var url = defaultURL
-        var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        var version = BankingVersion.policyVersion(
+            build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+            marketing: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+            core: coreVersion()
+        )
         var store: BankingPolicyStore = KeychainBankingPolicyStore()
         var buildDate = (Bundle.main.object(forInfoDictionaryKey: buildDateInfoKey) as? String)
             .flatMap { ISO8601DateFormatter().date(from: $0) }

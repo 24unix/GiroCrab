@@ -1612,7 +1612,7 @@ const HTTP_ERR: &str = r#"{"Error":[{"error_description":"nope"}]}"#;
 
 fn connector_with_draft(base: String) -> BunqConnector {
     let mut c = BunqConnector::new();
-    c.client = Some(http_client().unwrap());
+    c.client = Some(crate::connectors::http_client().unwrap());
     c.base = base;
     c.state.user_id = 1;
     c.order_submitted = true;

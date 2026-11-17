@@ -93,7 +93,7 @@ ColumnLayout {
     ConfirmDialog {
         id: confirmReplace
         heading: qsTr("Tresor ersetzen?")
-        message: qsTr("Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt.")
+        message: qsTr("Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt. Bank-Adressen, gespeicherte PINs und das Abrufintervall dieses Geräts bleiben erhalten.")
         actionTitle: qsTr("Ersetzen")
         onConfirmed: v.restore()
     }

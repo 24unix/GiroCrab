@@ -80,7 +80,10 @@ if [ "$DO_SITE" -eq 1 ]; then
   SITE="$TMP/site"
   if [ -n "${WEBSITE_DEPLOY_TOKEN:-}" ]; then
     AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$WEBSITE_DEPLOY_TOKEN" | base64 | tr -d '\n')"
-    GITC=(git -c "http.https://github.com/.extraheader=$AUTH")
+    # Via the environment, not `git -c`: command-line arguments are visible to
+    # every user in `ps`, the environment of the process is not.
+    export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="$AUTH"
+    GITC=(git)
     "${GITC[@]}" clone -q --depth 1 "${SITE_CLONE_URL:-https://github.com/$SITE_REPO.git}" "$SITE"
   elif [ -n "${CI:-}" ]; then
     echo "warning: WEBSITE_DEPLOY_TOKEN is not set – skipping the website (see docs/docs-website-sync.md)." >&2

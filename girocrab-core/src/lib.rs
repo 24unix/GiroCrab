@@ -39,6 +39,7 @@ pub mod ebon;
 pub mod error;
 pub mod export;
 mod ffi;
+mod fsutil;
 pub mod i18n;
 pub mod iban;
 pub mod importers;

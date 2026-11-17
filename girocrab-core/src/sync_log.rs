@@ -209,6 +209,17 @@ pub(crate) fn scrub(message: &str, login: &str) -> String {
     let login = login.trim();
     if login.chars().count() >= 4 {
         s = s.replace(login, "•••");
+    } else if login.chars().count() >= 2 {
+        // A short login ("jay", "m1") is replaced only as a whole word: plain
+        // `replace` would also eat the same letters inside other words.
+        // (`\b` needs a word character at both ends of the login.)
+        let (first, last) = (login.chars().next(), login.chars().last());
+        if first.is_some_and(char::is_alphanumeric) && last.is_some_and(char::is_alphanumeric) {
+            let pattern = format!(r"\b{}\b", regex::escape(login));
+            if let Ok(re) = Regex::new(&pattern) {
+                s = re.replace_all(&s, "•••").into_owned();
+            }
+        }
     }
     // before the key rule, or `Authorization: Bearer <token>` would leave the token behind
     static BEARER: LazyLock<Regex> =

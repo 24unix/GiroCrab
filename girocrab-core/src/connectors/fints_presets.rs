@@ -58,10 +58,37 @@ pub fn fints_presets() -> Vec<FinTsPreset> {
 }
 
 /// FinTS endpoints must be https URLs without whitespace.
+///
+/// The PIN goes to this address, so a prefix test is not enough: it must parse, carry
+/// no user info (`https://bank.de@evil.example/`), and name a public host, not a
+/// literal local, private or link-local address.
 pub fn is_valid_fints_url(url: &str) -> bool {
-    url.len() > "https://x".len()
-        && url.starts_with("https://")
-        && !url.chars().any(|c| c.is_whitespace())
+    if url.len() <= "https://x".len()
+        || !url.starts_with("https://")
+        || url.chars().any(|c| c.is_whitespace())
+    {
+        return false;
+    }
+    let Ok(u) = url::Url::parse(url) else {
+        return false;
+    };
+    if u.scheme() != "https" || !u.username().is_empty() || u.password().is_some() {
+        return false;
+    }
+    match u.host() {
+        Some(url::Host::Domain(d)) => {
+            let d = d.trim_end_matches('.').to_ascii_lowercase();
+            d.contains('.')
+                && d != "localhost"
+                && !d.ends_with(".localhost")
+                && !d.ends_with(".local")
+        }
+        Some(url::Host::Ipv4(ip)) => {
+            !(ip.is_loopback() || ip.is_private() || ip.is_link_local() || ip.is_unspecified())
+        }
+        Some(url::Host::Ipv6(ip)) => !(ip.is_loopback() || ip.is_unspecified()),
+        None => false,
+    }
 }
 
 /// Preset BLZs MoneyMoney imports map onto the generic connector.
@@ -108,6 +135,16 @@ mod tests {
             Some(ConnectorKind::FinTsGeneric)
         );
         assert!(!is_valid_fints_url("http://bank.de/fints"));
+        assert!(!is_valid_fints_url("https://bank.de@evil.example/fints"));
+        assert!(!is_valid_fints_url("https://user:pw@bank.de/fints"));
+        assert!(!is_valid_fints_url("https://localhost/fints"));
+        assert!(!is_valid_fints_url("https://intranet/fints"));
+        assert!(!is_valid_fints_url("https://127.0.0.1/fints"));
+        assert!(!is_valid_fints_url("https://192.168.1.5/fints"));
+        assert!(!is_valid_fints_url("https:///fints"));
+        assert!(is_valid_fints_url(
+            "https://fints1.atruvia.de/cgi-bin/hbciservlet"
+        ));
         assert!(known_fints_blz("37010050") && known_fints_blz("70010080"));
         for b in POSTBANK_BLZ {
             assert!(is_postbank_blz(b) && known_fints_blz(b), "{b}");

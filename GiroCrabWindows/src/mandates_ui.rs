@@ -709,6 +709,27 @@ fn wire_import_export(win: &MainWindow) {
     });
 }
 
+/// Writes the editor fields (amount, purpose, last) of the selected mandate into
+/// its collection pick and redraws the list. Nothing selected: nothing to commit.
+fn commit_coll_edit(win: &MainWindow) -> Result<(), SharedString> {
+    let gs = win.global::<MandatesState>();
+    let Ok(i) = usize::try_from(gs.get_sel_coll()) else {
+        return Ok(());
+    };
+    let cents = view::parse_amount(gs.get_c_amount().as_str())?;
+    let purpose = gs.get_c_purpose().to_string();
+    let last = gs.get_c_last();
+    with_ui(|u| {
+        if let Some(p) = u.picks.get_mut(i) {
+            p.amount_cents = cents;
+            p.purpose = purpose;
+            p.last = last;
+        }
+    });
+    render_picks(win);
+    Ok(())
+}
+
 fn wire_collection(win: &MainWindow) {
     let gs = win.global::<MandatesState>();
 
@@ -750,25 +771,10 @@ fn wire_collection(win: &MainWindow) {
     let weak = win.as_weak();
     gs.on_coll_edit_apply(move || {
         let Some(win) = weak.upgrade() else { return };
-        let gs = win.global::<MandatesState>();
-        let Ok(i) = usize::try_from(gs.get_sel_coll()) else {
-            return;
-        };
-        let cents = match view::parse_amount(gs.get_c_amount().as_str()) {
-            Ok(c) => c,
-            Err(e) => return set_status(&win, e),
-        };
-        let purpose = gs.get_c_purpose().to_string();
-        let last = gs.get_c_last();
-        with_ui(|u| {
-            if let Some(p) = u.picks.get_mut(i) {
-                p.amount_cents = cents;
-                p.purpose = purpose;
-                p.last = last;
-            }
-        });
-        render_picks(&win);
-        set_status(&win, SharedString::new());
+        match commit_coll_edit(&win) {
+            Ok(()) => set_status(&win, SharedString::new()),
+            Err(e) => set_status(&win, e),
+        }
     });
 
     let weak = win.as_weak();
@@ -793,6 +799,12 @@ fn wire_collection(win: &MainWindow) {
         };
         if blocked(&win) {
             return;
+        }
+        // The amount, purpose and "last" box of the selected mandate may still hold
+        // typed values that "Übernehmen" has not committed: the file must contain
+        // what the editor shows, not the previous amount.
+        if let Err(e) = commit_coll_edit(&win) {
+            return set_status(&win, e);
         }
         let due = match view::parse_date(win.global::<MandatesState>().get_c_date().as_str()) {
             Ok(d) => d,

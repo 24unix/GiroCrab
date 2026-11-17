@@ -107,9 +107,10 @@ pub(crate) fn derive_cycle(salaries: &[Booking], today: NaiveDate) -> Option<Sal
         };
         groups.entry(key).or_default().push(b);
     }
-    let (_, mut main) = groups
-        .into_iter()
-        .max_by_key(|(_, v)| v.iter().map(|b| b.amount_cents).sum::<i64>())?;
+    let (_, mut main) = groups.into_iter().max_by_key(|(_, v)| {
+        v.iter()
+            .fold(0i64, |acc, b| acc.saturating_add(b.amount_cents))
+    })?;
     main.sort_by(|a, b| a.booking_date.cmp(&b.booking_date));
     let last = *main.last()?;
     let last_date = NaiveDate::parse_from_str(&last.booking_date, "%Y-%m-%d").ok()?;
@@ -195,6 +196,30 @@ mod tests {
     use super::*;
     use crate::merchants::{FlowKind, MerchantResolver};
     use crate::models::{AccountKind, CategorySource};
+
+    #[test]
+    fn salary_payer_sums_saturate_instead_of_overflowing() {
+        let today = NaiveDate::from_ymd_opt(2026, 5, 20).unwrap();
+        let list = [
+            b(
+                1,
+                "2026-03-27",
+                i64::MAX,
+                "DE02120300000000202051",
+                "Gehalt",
+            ),
+            b(
+                2,
+                "2026-04-27",
+                i64::MAX,
+                "DE02120300000000202051",
+                "Gehalt",
+            ),
+            b(3, "2026-05-27", 300_000, "DE89370400440532013000", "Gehalt"),
+        ];
+        // must not panic (debug) or wrap to a negative total (release)
+        let _ = derive_cycle(&list, today);
+    }
 
     fn b(id: i64, date: &str, cents: i64, iban: &str, purpose: &str) -> Booking {
         Booking {

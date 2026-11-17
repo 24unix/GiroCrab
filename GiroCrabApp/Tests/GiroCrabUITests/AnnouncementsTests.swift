@@ -130,3 +130,25 @@ final class AnnouncementsTests: XCTestCase {
         XCTAssertNil(c.banner)
     }
 }
+
+final class AnnouncementMarkdownTests: XCTestCase {
+    private func links(_ md: String) -> [URL] {
+        announcementMarkdown(md).runs.compactMap(\.link)
+    }
+
+    func testHttpsLinksStayClickable() {
+        XCTAssertEqual(links("Siehe [Hinweis](https://girocrab.de/x)"), [URL(string: "https://girocrab.de/x")!])
+    }
+
+    func testOtherSchemesAreNotLinks() {
+        XCTAssertTrue(links("[a](file:///etc/hosts)").isEmpty)
+        XCTAssertTrue(links("[b](x-apple.systempreferences:com.apple.preference.security)").isEmpty)
+        XCTAssertTrue(links("[c](http://girocrab.de/x)").isEmpty)
+        XCTAssertTrue(links("[d](javascript:alert(1))").isEmpty)
+        XCTAssertTrue(links("[e](https:///nohost)").isEmpty)
+    }
+
+    func testTextSurvivesWithoutTheLink() {
+        XCTAssertEqual(String(announcementMarkdown("[Klick](file:///x)").characters), "Klick")
+    }
+}

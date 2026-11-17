@@ -33,7 +33,10 @@ die() { echo "announcements: $*" >&2; exit 1; }
 TOOL=""
 tool() {
   if [ -z "$TOOL" ]; then
-    TOOL="${TMPDIR:-/tmp}/girocrab-banking-policy-tool-$(id -u)"
+    # Inside the repo (git-ignored build/), 0700: a predictable file in the shared
+    # /tmp could be planted by another user and would then be executed.
+    mkdir -p build/tools && chmod 700 build/tools
+    TOOL="build/tools/girocrab-banking-policy-tool"
     local src=(scripts/banking-policy-tool/main.swift GiroCrabApp/Sources/GiroCrabUI/BankingVersion.swift)
     if [ ! -x "$TOOL" ] || [ -n "$(find "${src[@]}" -newer "$TOOL" 2>/dev/null)" ]; then
       swiftc -O -o "$TOOL" "${src[@]}" >/dev/null || die "cannot build banking-policy-tool (Xcode needed)"

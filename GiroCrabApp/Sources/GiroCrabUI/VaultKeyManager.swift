@@ -295,6 +295,45 @@ public final class VaultKeyManager: @unchecked Sendable {
         #endif
     }
 
+    /// Pasteboard type of the vault key. The key is never offered as plain text
+    /// (`.string`): clipboard history, text fields of other apps and "paste" in a
+    /// browser would all take it. Only GiroCrab's "Aus Zwischenablage einfügen"
+    /// reads this type.
+    public static let keyPasteboardType = "de.girocrab.tresor-key"
+
+    #if os(macOS)
+    /// Puts the key on `pasteboard` under [`keyPasteboardType`] only, marked
+    /// concealed/transient for clipboard managers (nspasteboard.org); cleared after 60 s.
+    @MainActor public static func copyKeyToPasteboard(_ text: String, pasteboard pb: NSPasteboard = .general) {
+        let custom = NSPasteboard.PasteboardType(keyPasteboardType)
+        let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+        let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+        pb.clearContents()
+        pb.declareTypes([custom, concealed, transient], owner: nil)
+        pb.setData(Data(text.utf8), forType: custom)
+        pb.setData(Data(), forType: concealed)
+        pb.setData(Data(), forType: transient)
+        let count = pb.changeCount
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+            if pb.changeCount == count { pb.clearContents() }
+        }
+    }
+
+    /// The key copied by [`copyKeyToPasteboard`], if the pasteboard still holds it.
+    @MainActor public static func keyFromPasteboard(_ pb: NSPasteboard = .general) -> String? {
+        pb.data(forType: NSPasteboard.PasteboardType(keyPasteboardType)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+    #else
+    @MainActor public static func copyKeyToPasteboard(_ text: String) {
+        UIPasteboard.general.setItems([[keyPasteboardType: Data(text.utf8)]],
+                                      options: [.expirationDate: Date().addingTimeInterval(60), .localOnly: true])
+    }
+
+    @MainActor public static func keyFromPasteboard() -> String? {
+        UIPasteboard.general.data(forPasteboardType: keyPasteboardType).flatMap { String(data: $0, encoding: .utf8) }
+    }
+    #endif
+
     /// Removes the key. The encrypted vault becomes unreadable!
     public func destroyKey() {
         for dp in [true, false] {

@@ -313,3 +313,16 @@ fn scrub_keeps_urls_but_masks_jwts() {
         "token ••• abgelehnt"
     );
 }
+
+#[test]
+fn short_logins_are_removed_as_whole_words_only() {
+    assert_eq!(
+        scrub("Anmeldung für jay fehlgeschlagen", "jay"),
+        "Anmeldung für ••• fehlgeschlagen"
+    );
+    assert_eq!(scrub("Login jay, jay", "jay"), "Login •••, •••");
+    // inside other words it stays: no mangled messages
+    assert_eq!(scrub("Jayson und jaybird", "jay"), "Jayson und jaybird");
+    // one character is too short to hide without ruining every message
+    assert_eq!(scrub("a b", "a"), "a b");
+}

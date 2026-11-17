@@ -325,11 +325,20 @@ impl Vault {
     }
 
     /// Stores what is shared. The token stays as stored (`token_sha256` of
-    /// `scope` is ignored), so saving a toggle never revokes or restores access.
+    /// `scope` is ignored), so saving a toggle never restores access; but
+    /// switching external access **off** revokes the token. Otherwise an old key
+    /// (long forgotten, or passed on) would work again the moment the switch is
+    /// turned back on. Turning it on again needs a new key.
     pub fn set_local_api_scope(&self, scope: ShareScope) -> Result<(), CoreError> {
         self.update_local_api_scope(|stored| {
+            let switched_off = stored.enabled && !scope.enabled;
+            let token = if switched_off {
+                String::new()
+            } else {
+                std::mem::take(&mut stored.token_sha256)
+            };
             *stored = ShareScope {
-                token_sha256: std::mem::take(&mut stored.token_sha256),
+                token_sha256: token,
                 ..scope
             }
         })

@@ -143,7 +143,8 @@ fn the_adapter_speaks_the_cores_protocol() {
         ..scope.clone()
     };
     app.vault.set_local_api_scope(off).unwrap();
-    assert!(text(&call(&mut mcp, "get_info", json!({}))).contains("turned off"));
+    // switching off revokes the key, so the old key is simply not accepted any more
+    assert!(text(&call(&mut mcp, "get_info", json!({}))).contains("did not accept"));
     app.vault.set_local_api_scope(scope).unwrap();
     let server = app.server.clone();
     drop(app); // the app lets go of the vault: the server answers `locked`
@@ -240,7 +241,8 @@ fn check_tells_each_case_apart() {
             ..scope
         })
         .unwrap();
-    assert_eq!(check(&app.socket, Some(&app.token)).0, 6);
+    // switching off revoked the key (code 5: not accepted)
+    assert_eq!(check(&app.socket, Some(&app.token)).0, 5);
     app.server.stop();
     assert_eq!(check(&app.socket, Some(&app.token)).0, 3);
 }

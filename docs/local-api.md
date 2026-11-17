@@ -18,7 +18,7 @@ Einstellungen › Analyse:
    dann werden IBANs und Ziffernfolgen ab sechs Stellen auch in Texten und Kontonamen unkenntlich
    gemacht.
 4. „Zugangsschlüssel erzeugen“ und den Schlüssel im Programm eintragen. Er wird nur einmal angezeigt;
-   gespeichert wird nur sein Hash. „Zugriff widerrufen“ oder ein neuer Schlüssel sperren den alten sofort.
+   gespeichert wird nur sein Hash. „Zugriff widerrufen“, ein neuer Schlüssel oder das Ausschalten des Zugriffs sperren den alten sofort; zum erneuten Einschalten braucht es einen neuen Schlüssel.
 
 Programme wie KI-Assistenten können geteilte Daten an einen Cloud-Dienst übertragen. Teilen Sie nur,
 was dort verarbeitet werden darf.

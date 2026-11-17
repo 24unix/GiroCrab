@@ -76,11 +76,19 @@ pub fn escape(s: &str) -> String {
     out
 }
 
-/// UTF-8 -> ISO 8859-1 (unmappable characters become '?').
+/// UTF-8 -> ISO 8859-1. The input is already escaped, so a bare `?` would be read
+/// as the escape character of the next byte and corrupt the segment framing:
+/// unmappable characters become the escaped literal `??`.
 pub fn to_latin1(s: &str) -> Vec<u8> {
-    s.chars()
-        .map(|c| if (c as u32) < 256 { c as u8 } else { b'?' })
-        .collect()
+    let mut out = Vec::with_capacity(s.len());
+    for c in s.chars() {
+        if (c as u32) < 256 {
+            out.push(c as u8);
+        } else {
+            out.extend_from_slice(b"??");
+        }
+    }
+    out
 }
 
 /// ISO 8859-1 -> UTF-8.
@@ -234,6 +242,15 @@ pub fn parse_response(data: &[u8]) -> CoreResult<Vec<Segment>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unmappable_characters_keep_the_framing() {
+        // "€" is not in ISO 8859-1: it must not become a bare escape character
+        assert_eq!(to_latin1("a€b"), b"a??b".to_vec());
+        let seg = to_latin1(&escape("Preis 5€ + Porto"));
+        // the '+' is escaped, the '€' is a literal '?'
+        assert_eq!(seg, b"Preis 5?? ?+ Porto".to_vec());
+    }
+
     use super::*;
 
     #[test]

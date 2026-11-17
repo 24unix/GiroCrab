@@ -266,11 +266,16 @@ fn value_text(v: &Value) -> Option<String> {
     }
 }
 
+/// Largest amount accepted from portal JSON: 10 trillion euro in cents.
+const MAX_PORTAL_CENTS: f64 = 1e15;
+
 fn value_cents(v: &Value) -> Option<i64> {
     match v {
         Value::Number(n) => {
-            let f = n.as_f64()?;
-            Some((f * 100.0).round() as i64)
+            let cents = (n.as_f64()? * 100.0).round();
+            // no real account holds more than this; beyond it `as i64` would saturate
+            // and the sign handling (`abs`, `-`) downstream would overflow
+            (cents.is_finite() && cents.abs() <= MAX_PORTAL_CENTS).then_some(cents as i64)
         }
         Value::String(s) => parse_amount(s),
         // a single-currency list such as Open Bank's `amounts: [{…}]`
@@ -1646,6 +1651,15 @@ fn value_hints(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn extreme_json_amounts_are_rejected_not_saturated() {
+        use serde_json::json;
+        assert_eq!(super::value_cents(&json!(12.5)), Some(1250));
+        assert_eq!(super::value_cents(&json!(1e30)), None);
+        assert_eq!(super::value_cents(&json!(-1e30)), None);
+        assert_eq!(super::value_cents(&json!(9.3e16)), None);
+    }
+
     #[test]
     fn candidate_keys_are_names_only() {
         // the debug log may name fields, never their amounts

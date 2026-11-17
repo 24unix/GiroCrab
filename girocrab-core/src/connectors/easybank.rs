@@ -347,6 +347,7 @@ impl EasybankConnector {
             .cookie_provider(self.jar.clone())
             .user_agent(super::BROWSER_UA)
             .timeout(std::time::Duration::from_secs(60))
+            .redirect(super::same_host_redirects())
             .build()?;
         self.client = Some(c.clone());
         Ok(c)

@@ -850,3 +850,37 @@ fn rule_tag_counts_count_matching_bookings_with_all_tags() {
     assert_eq!(rule_tag_count(&v, one), None);
     assert_eq!(rule_tag_count(&v, both), Some(2));
 }
+
+#[test]
+fn a_peers_tag_gets_the_local_name_and_colour_rules() {
+    let dir = TempDir::new("tags-peer-rules");
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    seed(&a, 1);
+    seed(&b, 1);
+    // rows a peer could write straight into its database, bypassing create_tag
+    {
+        let db = b.db().unwrap();
+        let long = "x".repeat(500);
+        for (u, name, color) in [
+            ("p1", long.as_str(), "javascript:1"),
+            ("p2", "   ", "#112233"),
+            ("p3", "Mit   Lücken", "#abcdef"),
+        ] {
+            db.execute(
+                "INSERT INTO tags(uuid, name, color_hex, sort_order, updated_ms) VALUES (?1, ?2, ?3, 0, 1)",
+                rusqlite::params![u, name, color],
+            )
+            .unwrap();
+        }
+    }
+    merge(&a, &b);
+    let tags = a.list_tags().unwrap();
+    let get = |name: &str| tags.iter().find(|t| t.name == name);
+    assert!(tags.iter().all(|t| t.name.chars().count() <= 64));
+    assert!(tags.iter().all(|t| !t.name.trim().is_empty()));
+    let cut = tags.iter().find(|t| t.name.starts_with("xxx")).unwrap();
+    assert_eq!(cut.name.chars().count(), 64);
+    assert_eq!(cut.color_hex, "", "an invalid colour is reset");
+    assert_eq!(get("Mit Lücken").unwrap().color_hex, "#ABCDEF");
+}

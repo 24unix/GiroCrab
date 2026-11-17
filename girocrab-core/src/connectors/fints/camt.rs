@@ -214,11 +214,21 @@ pub fn parse_notbooked(xml: &str, account_ref: &str) -> Vec<RemoteTransaction> {
     parse_doc(xml, account_ref, true).1.pending
 }
 
+/// Largest camt document and deepest element nesting that is parsed. A real
+/// camt.052 has a nesting depth below 20; the bounds keep a hostile or broken
+/// server answer from costing quadratic time (every text node rescans the
+/// element stack) or unbounded memory. Over a bound the document counts as empty.
+const MAX_CAMT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_CAMT_DEPTH: usize = 64;
+
 fn parse_doc(
     xml: &str,
     account_ref: &str,
     all_pending: bool,
 ) -> (Vec<RemoteTransaction>, CamtReport) {
+    if xml.len() > MAX_CAMT_BYTES {
+        return (Vec::new(), CamtReport::default());
+    }
     let mut stack: Vec<String> = Vec::new();
     let mut entries: Vec<Entry> = Vec::new();
     let mut cur: Option<Entry> = None;
@@ -249,6 +259,9 @@ fn parse_doc(
                     .find(|(k, _)| k == "Ccy")
                     .map(|(_, v)| v.clone())
                     .unwrap_or_default();
+                if stack.len() >= MAX_CAMT_DEPTH {
+                    return (Vec::new(), CamtReport::default());
+                }
                 stack.push(name);
             }
             Tok::End(name) => {
@@ -634,6 +647,15 @@ mod tests {
 
 #[cfg(test)]
 mod tokenizer_robustness_tests {
+    #[test]
+    fn absurd_nesting_and_size_are_refused_quickly() {
+        let deep = format!("{}x{}", "<a>".repeat(100_000), "</a>".repeat(100_000));
+        let (txs, report) = super::parse(&deep, "acc");
+        assert!(txs.is_empty() && report.pending.is_empty());
+        let big = "<a>".to_string() + &" ".repeat(super::MAX_CAMT_BYTES) + "</a>";
+        assert!(super::parse(&big, "acc").0.is_empty());
+    }
+
     #[test]
     fn broken_attributes_do_not_panic() {
         for xml in [

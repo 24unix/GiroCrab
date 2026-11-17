@@ -185,3 +185,65 @@ fn pre_fints_reg_backup_is_made_once_and_never_overwritten() {
     let copy = Vault::open(bak, key).unwrap();
     assert_eq!(bookings(&copy), before, "backup was not overwritten");
 }
+
+#[test]
+fn short_password_is_refused() {
+    let (src, _) = filled(1);
+    let err = src
+        .write_backup(path(&temp_path("bak")), "1234567".into())
+        .unwrap_err();
+    assert!(matches!(err, CoreError::InvalidInput { .. }), "{err:?}");
+}
+
+#[test]
+fn restore_keeps_this_devices_endpoints_pins_and_fetch_interval() {
+    let (src, _) = filled(1);
+    for (k, v) in [
+        ("fints.url.12345678", "https://evil.example/fints"),
+        ("pin.conn.1", "backup-pin"),
+        ("sync.psd2_auto_hours", "1"),
+        ("fints.tan_medium.1", "Evil"),
+        ("ui.note", "from backup"),
+    ] {
+        src.set_setting(k.into(), v.into()).unwrap();
+    }
+    let backup = temp_path("bak");
+    src.write_backup(path(&backup), PASSWORD.into()).unwrap();
+
+    let (dst, _) = filled(2);
+    dst.set_setting(
+        "fints.url.12345678".into(),
+        "https://bank.example/fints".into(),
+    )
+    .unwrap();
+    dst.set_setting("sync.psd2_auto_hours".into(), "6".into())
+        .unwrap();
+    dst.restore_backup(path(&backup), PASSWORD.into()).unwrap();
+
+    let get = |k: &str| dst.get_setting(k.into()).unwrap();
+    assert_eq!(
+        get("fints.url.12345678").as_deref(),
+        Some("https://bank.example/fints")
+    );
+    assert_eq!(get("sync.psd2_auto_hours").as_deref(), Some("6"));
+    assert_eq!(get("pin.conn.1"), None);
+    assert_eq!(get("fints.tan_medium.1"), None);
+    assert_eq!(get("ui.note").as_deref(), Some("from backup"));
+}
+
+#[test]
+fn checkpoint_succeeds_on_an_idle_vault() {
+    let (src, _) = filled(1);
+    src.checkpoint().unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn backup_file_is_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let (src, _) = filled(1);
+    let backup = temp_path("bak");
+    src.write_backup(path(&backup), PASSWORD.into()).unwrap();
+    let mode = std::fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+}

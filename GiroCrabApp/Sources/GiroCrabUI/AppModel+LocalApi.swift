@@ -325,15 +325,25 @@ extension AppModel {
     /// `localApiScope` to what is stored.
     @discardableResult
     func saveLocalApiScope(_ scope: ShareScope) async -> Bool {
-        if localApiTarget != nil { localApiScope = scope }
+        if localApiTarget != nil { localApiScope = shownScope(scope) }
         return await localApiWrite { try $0.setLocalApiScope(scope: scope) } != nil
     }
 
     /// A switch in the settings pane: shown at once, saved in the queue.
     func updateLocalApiScope(_ scope: ShareScope) {
         guard localApiTarget != nil else { return }
-        localApiScope = scope
+        localApiScope = shownScope(scope)
         Task { await saveLocalApiScope(scope) }
+    }
+
+    /// What the pane shows for `scope` before the core answers: switching external
+    /// access off revokes the key in the core, so the pane no longer offers one.
+    private func shownScope(_ scope: ShareScope) -> ShareScope {
+        guard localApiScope?.enabled == true, !scope.enabled else { return scope }
+        var shown = scope
+        shown.tokenSha256 = ""
+        localApiNewToken = nil
+        return shown
     }
 
     /// A new access token, shown once (`localApiNewToken`); the previous one stops working.

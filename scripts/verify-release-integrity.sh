@@ -25,7 +25,10 @@ if [ "${1:-}" = "--report-issue" ]; then
   exit 0
 fi
 
-BIN="${TMPDIR:-/tmp}/girocrab-release-integrity-$(id -u)"
+# Inside the repo (git-ignored build/), 0700: a predictable file in the shared /tmp
+# could be planted by another user and would then be executed.
+mkdir -p "$ROOT/build/tools" && chmod 700 "$ROOT/build/tools"
+BIN="$ROOT/build/tools/girocrab-release-integrity"
 SRC=scripts/release-integrity/main.swift
 if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
   swiftc -O -o "$BIN" "$SRC"

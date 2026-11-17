@@ -71,7 +71,7 @@ struct BackupImportView: View {
             Button("Ersetzen", role: .destructive) { restore() }
             Button("Abbrechen", role: .cancel) {}
         } message: {
-            Text("Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt.")
+            Text("Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt. Bank-Adressen, gespeicherte PINs und das Abrufintervall dieses Geräts bleiben erhalten.")
         }
     }
 
