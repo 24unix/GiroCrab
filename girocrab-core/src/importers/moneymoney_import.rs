@@ -120,12 +120,13 @@ impl MmRow {
     }
 }
 
-/// Splits `Haushalt\Lebensmittel`, `Steuern / Büro`, `A > B` into path parts.
+/// Splits `Haushalt\Lebensmittel`, `Haushalt/Lebensmittel`, `Steuern › Büro`,
+/// `A : B`, `A -> B`, `A > B` into path parts (parent first).
+/// `find_or_create_category` resolves the parts recursively via `parent_id`.
 pub fn split_category(raw: &str) -> Vec<String> {
-    raw.replace(" / ", "\\")
+    raw.replace("->", "\\")
         .replace(" > ", "\\")
-        .replace(" › ", "\\")
-        .split('\\')
+        .split(['\\', '/', '›', ':'])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
@@ -1614,6 +1615,65 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         assert_eq!((r[0].amount_cents, r[0].note.as_str()), (-123_456, "hi"));
         let tab = "Buchungstag\tBetrag\tName\n03.02.2023\t-5,00\tX\n";
         assert_eq!(parse_export(tab.as_bytes()).unwrap()[0].amount_cents, -500);
+    }
+
+    #[test]
+    fn split_category_handles_all_separators() {
+        for raw in [
+            "Haushalt\\Lebensmittel",
+            "Haushalt/Lebensmittel",
+            "Haushalt › Lebensmittel",
+            "Haushalt : Lebensmittel",
+            "Haushalt -> Lebensmittel",
+        ] {
+            assert_eq!(
+                split_category(raw),
+                vec!["Haushalt", "Lebensmittel"],
+                "{raw}"
+            );
+        }
+        assert_eq!(
+            split_category("Finanzen\\Investments\\Kauf"),
+            vec!["Finanzen", "Investments", "Kauf"]
+        );
+    }
+
+    #[test]
+    fn subcategories_get_parent_ids() {
+        let (_dir, v) = vault();
+        let conn = v.db().unwrap();
+        let (mut cache, mut created) = (HashMap::new(), 0u32);
+        let leaf = find_or_create_category(
+            &conn,
+            &split_category("Finanzen\\Investments\\Kauf"),
+            &mut cache,
+            &mut created,
+        )
+        .unwrap();
+        let again = find_or_create_category(
+            &conn,
+            &split_category("Haushalt\\Lebensmittel"),
+            &mut cache,
+            &mut created,
+        )
+        .unwrap();
+        let parent_name = |id: i64| -> (String, Option<i64>) {
+            conn.query_row(
+                "SELECT name, parent_id FROM categories WHERE id=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        };
+        let (n, p) = parent_name(leaf);
+        assert_eq!(n, "Kauf");
+        let (n, p) = parent_name(p.unwrap());
+        assert_eq!(n, "Investments");
+        let (n, p) = parent_name(p.unwrap());
+        assert_eq!((n.as_str(), p), ("Finanzen", None));
+        let (n, p) = parent_name(again);
+        assert_eq!(n, "Lebensmittel");
+        assert_eq!(parent_name(p.unwrap()).0, "Haushalt");
     }
 
     #[test]
