@@ -167,7 +167,6 @@ impl HttpPortal {
         {
             self.token = Some(token.to_string());
         }
-        let raw = resp.text().await?;
         if status.as_u16() == 401 || status.as_u16() == 403 {
             return Err(CoreError::Authentication {
                 message: trf(
@@ -184,6 +183,7 @@ impl HttpPortal {
                 ),
             });
         }
+        let raw = super::read_text_limited(resp).await?;
         let value: Value = serde_json::from_str(&raw).map_err(|_| bad_response())?;
         Ok((value, headers))
     }

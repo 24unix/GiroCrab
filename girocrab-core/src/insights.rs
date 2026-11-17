@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use chrono::{Datelike, Local, NaiveDate};
 use rusqlite::{params, OptionalExtension};
 
+use crate::connectors::read_body_limited;
 use crate::error::CoreError;
 use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
@@ -839,13 +840,15 @@ impl Vault {
                 format!("https://www.google.com/s2/favicons?domain={domain}&sz=128"),
             )
         }];
+        // Favicons are a few KB; a larger body counts as no logo.
+        const MAX_LOGO_BYTES: usize = 1024 * 1024;
         let mut found: Option<(Vec<u8>, &str)> = None;
         for (name, url) in sources.iter() {
             if let Ok(resp) = client.get(url).send().await {
                 if resp.status().is_success() {
-                    if let Ok(bytes) = resp.bytes().await {
+                    if let Ok(bytes) = read_body_limited(resp, MAX_LOGO_BYTES).await {
                         if good_logo(&bytes) {
-                            found = Some((bytes.to_vec(), name));
+                            found = Some((bytes, name));
                             break;
                         }
                     }

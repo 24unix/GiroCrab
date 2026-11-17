@@ -109,6 +109,7 @@ fn too_large(limit: usize) -> CoreError {
 
 /// Reads a response body, but never more than `limit` bytes (no OOM on a
 /// huge or endless body): larger bodies are an error.
+#[allow(clippy::disallowed_methods)]
 pub(crate) async fn read_body_limited(
     mut resp: reqwest::Response,
     limit: usize,

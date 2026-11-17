@@ -1335,6 +1335,7 @@ mod account_selection;
 mod bank_name;
 mod banking_gate;
 mod batch_transfer;
+mod body_limit;
 mod content_id;
 mod direct_debit;
 mod payment_method;

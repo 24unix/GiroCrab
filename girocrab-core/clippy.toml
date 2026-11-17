@@ -1,0 +1,6 @@
+disallowed-methods = [
+    { path = "reqwest::Response::bytes", reason = "unbounded body: use connectors::read_body_limited" },
+    { path = "reqwest::Response::text", reason = "unbounded body: use connectors::read_text_limited" },
+    { path = "reqwest::Response::json", reason = "unbounded body: use connectors::read_json_or_null or read_body_limited + serde_json" },
+    { path = "reqwest::Response::chunk", reason = "only connectors::read_body_limited streams a body, so every read has a cap" },
+]

@@ -91,7 +91,7 @@ async fn login(client: &reqwest::Client, username: &str, password: &str) -> Core
         .send()
         .await?;
     let status = resp.status();
-    let v: Value = resp.json().await.unwrap_or(Value::Null);
+    let v = super::read_json_or_null(resp).await;
     if !status.is_success() {
         login_error_kind(status.as_u16(), &v)?;
         if matches!(status.as_u16(), 400 | 401) {
@@ -170,7 +170,7 @@ impl Fin4uConnector {
             .send()
             .await?;
         let status = resp.status();
-        let body = resp.bytes().await?;
+        let body = super::read_body_limited(resp, super::MAX_TEXT_BYTES).await?;
         let parsed = serde_json::from_slice::<Value>(&body);
         if status.is_success() {
             // An HTML page (maintenance, moved app) or garbage instead of JSON.
@@ -213,13 +213,13 @@ impl Fin4uConnector {
             .send()
             .await?;
         let status = resp.status();
-        let body = resp.bytes().await?.to_vec();
         if !status.is_success() {
             return Err(CoreError::Bank {
                 code: status.as_u16().to_string(),
                 message: "fin4u document download failed".into(),
             });
         }
+        let body = super::read_body_limited(resp, super::MAX_DOC_BYTES).await?;
         Ok(pdf_from_body(&body))
     }
 

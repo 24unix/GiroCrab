@@ -1491,7 +1491,7 @@ impl Vault {
                 .send()
                 .await;
             let body = match resp {
-                Ok(r) if r.status().is_success() => r.text().await.map_err(CoreError::from),
+                Ok(r) if r.status().is_success() => crate::connectors::read_text_limited(r).await,
                 Ok(r) => Err(CoreError::Network {
                     message: trf("Kurs-API antwortet mit HTTP {0}", &[&r.status().as_u16()]),
                 }),
