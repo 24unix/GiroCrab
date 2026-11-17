@@ -300,6 +300,25 @@ fn logo_of(st: &State, r: &Row, privacy: bool) -> Option<slint::Image> {
     st.logos.get(&logos::key(&r.logo_domains)).cloned()
 }
 
+/// Detail line of the selected row (#224): full purpose, IBAN / mandate, value date.
+fn expand_detail(b: &Row) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let purpose = b.purpose.split_whitespace().collect::<Vec<_>>().join(" ");
+    if !purpose.is_empty() {
+        parts.push(purpose);
+    }
+    if !b.counterparty_iban.is_empty() {
+        parts.push(format!("IBAN {}", b.counterparty_iban));
+    }
+    if let Some(m) = b.reference.lines().find(|l| l.contains("Mandat")) {
+        parts.push(m.trim().to_string());
+    }
+    if !b.value_date.is_empty() {
+        parts.push(format!("Valuta {}", b.value_date));
+    }
+    parts.join(" · ")
+}
+
 fn booking_row(st: &State, b: &Row, privacy: bool) -> BookingRow {
     let logo = logo_of(st, b, privacy);
     let detail = if b.booking_text.is_empty() {
@@ -333,6 +352,11 @@ fn booking_row(st: &State, b: &Row, privacy: bool) -> BookingRow {
                 .into()
         },
         has_note: !b.note.is_empty() && !privacy,
+        expand_detail: if privacy {
+            "".into()
+        } else {
+            expand_detail(b).into()
+        },
         monogram: if privacy {
             "•".into()
         } else if b.monogram.is_empty() {

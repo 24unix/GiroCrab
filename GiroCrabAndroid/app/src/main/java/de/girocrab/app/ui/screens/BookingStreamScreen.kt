@@ -39,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
@@ -135,6 +136,8 @@ fun BookingStreamScreen(
     var flow by rememberSaveable { mutableStateOf(FlowFilter.All) }
     var docsOnly by rememberSaveable { mutableStateOf(false) }
     var analytics by rememberSaveable { mutableStateOf(false) }
+    var compact by rememberSaveable { mutableStateOf(false) }
+    var expandedId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val shown = bookings
         .filter { b ->
@@ -161,6 +164,8 @@ fun BookingStreamScreen(
         }
         item {
             FilterBar(
+                compact = compact,
+                onCompact = { compact = it },
                 search = state.search,
                 onSearch = onSearch,
                 range = range,
@@ -217,8 +222,11 @@ fun BookingStreamScreen(
                     unchecked = !b.checked,
                     hasDocument = b.documentCount > 0,
                     masked = masked,
+                    compact = compact,
+                    expanded = expandedId == b.id,
                     onToggleChecked = { onToggleChecked(b.id) },
-                    onClick = { onOpenBooking(b) },
+                    onClick = { expandedId = if (expandedId == b.id) null else b.id },
+                    onOpen = { onOpenBooking(b) },
                 )
             }
         }
@@ -286,6 +294,8 @@ private fun maskIban(iban: String, masked: Boolean): String =
 
 @Composable
 private fun FilterBar(
+    compact: Boolean,
+    onCompact: (Boolean) -> Unit,
     search: String,
     onSearch: (String) -> Unit,
     range: TimeRange,
@@ -355,6 +365,12 @@ private fun FilterBar(
                 onClick = { onAnalytics(!analytics) },
                 label = { Text("Analysen") },
                 leadingIcon = { Icon(Icons.Filled.Insights, null, Modifier.size(16.dp)) },
+            )
+            Spacer(Modifier.width(8.dp))
+            FilterChip(
+                selected = compact,
+                onClick = { onCompact(!compact) },
+                label = { Text("Kompakt") },
             )
             Spacer(Modifier.width(10.dp))
             Text(
@@ -452,18 +468,22 @@ private fun BookingRow(
     unchecked: Boolean,
     hasDocument: Boolean,
     masked: Boolean,
+    compact: Boolean,
+    expanded: Boolean,
     onToggleChecked: () -> Unit,
     onClick: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = if (compact) 2.dp else 6.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Box(Modifier.size(20.dp).clickable(onClick = onToggleChecked), contentAlignment = Alignment.Center) {
             if (unchecked) Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF1E88E5)))
         }
         Surface(
-            modifier = Modifier.padding(end = 12.dp).size(38.dp),
+            modifier = Modifier.padding(end = 12.dp).size(if (compact) 28.dp else 38.dp),
             shape = CircleShape,
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
@@ -486,10 +506,28 @@ private fun BookingRow(
                     if (masked) "••••••••••" else booking.purpose,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    maxLines = if (expanded) Int.MAX_VALUE else if (compact) 1 else 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Row(
+            if (expanded) {
+                Column(Modifier.padding(top = 2.dp)) {
+                    Text(
+                        "Valuta ${booking.valueDate.format(dayFmt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (booking.counterpartyIban.isNotBlank()) {
+                        Text(
+                            if (masked) "IBAN ••••" else "IBAN ${booking.counterpartyIban}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onOpen) { Text("Details öffnen") }
+                }
+            }
+            if (!compact || expanded) Row(
                 Modifier.padding(top = 4.dp).horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,

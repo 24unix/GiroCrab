@@ -14,7 +14,7 @@ export { RecLine }
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
-export struct BookingRow { id: int, checked: bool, counterparty: string, account: string, category: string, category-color: color, detail: string, amount: string, negative: bool, monogram: string, tint: color, logo: image, has-logo: bool, marked: bool, tags-text: string, has-note: bool }
+export struct BookingRow { id: int, checked: bool, counterparty: string, account: string, category: string, category-color: color, detail: string, amount: string, negative: bool, monogram: string, tint: color, logo: image, has-logo: bool, marked: bool, tags-text: string, has-note: bool, expand-detail: string }
 export struct DayGroup { title: string, sum: string, negative: bool, rows: [BookingRow], show-month: bool, month: string, month-income: string, month-expense: string }
 export struct BarGroup { label: string, income: float, expense: float }
 export struct BudgetLine { name: string, amount: string, progress: float, color: color, over: bool }
@@ -360,15 +360,24 @@ component BookingLine inherits Rectangle {
     in property <BookingRow> b;
     in property <bool> active;
     in property <bool> multi-select-active;
+    in property <bool> compact: false;
     callback clicked();
     callback toggle-checked();
     callback toggle-mark();
-    height: 56px;
+    // Compact density (#235): shorter rows; the selected row grows by a detail line (#224).
+    property <bool> show-detail: active && b.expand-detail != "";
+    height: (compact ? 36px : 56px) + (show-detail ? 20px : 0px);
     background: active ? #1d3557.with-alpha(Theme.dark ? 1.0 : 0.16) : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
     border-radius: 8px;
     if active: Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: #2563eb; }
     ta := TouchArea { clicked => { root.clicked(); } }
+    if show-detail: Text {
+        x: 62px; y: parent.height - 20px; width: parent.width - 74px; height: 16px;
+        text: b.expand-detail; color: Theme.muted; font-size: 11px; overflow: elide; wrap: no-wrap;
+    }
     HorizontalLayout {
+        y: 0px;
+        height: root.compact ? 36px : 56px;
         padding-left: 8px;
         padding-right: 12px;
         spacing: 10px;
@@ -405,13 +414,13 @@ component BookingLine inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 3px;
+            spacing: root.compact ? 0px : 3px;
             HorizontalLayout {
                 spacing: 6px;
                 Text { text: b.counterparty; color: Theme.text; font-size: 13px; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
                 if b.has-note: Text { text: "📎"; font-size: 11px; color: Theme.muted; }
             }
-            HorizontalLayout {
+            if !root.compact || root.active: HorizontalLayout {
                 spacing: 5px;
                 alignment: start;
                 Text { text: b.account; color: Theme.muted; font-size: 11px; overflow: elide; horizontal-stretch: 1; min-width: 0px; }
@@ -455,6 +464,7 @@ component DayCard inherits Rectangle {
     in property <DayGroup> day;
     in property <int> selected-booking;
     in property <bool> multi-select-active;
+    in property <bool> compact: false;
     callback select(int);
     callback toggle-checked(int);
     callback toggle-mark(int);
@@ -478,6 +488,7 @@ component DayCard inherits Rectangle {
             b: b;
             active: root.selected-booking == b.id;
             multi-select-active: root.multi-select-active;
+            compact: root.compact;
             clicked => { root.select(b.id); }
             toggle-checked => { root.toggle-checked(b.id); }
             toggle-mark => { root.toggle-mark(b.id); }
@@ -714,6 +725,7 @@ export component MainWindow inherits Window {
     in-out property <bool> privacy: false;
     in-out property <bool> uncategorized-only: false;
     in-out property <bool> documents-only: false;
+    in-out property <bool> compact-rows: false;
     in-out property <int> status-index: 0;
     in-out property <int> range-index: 0;
     in-out property <int> tag-index: 0;
@@ -1295,6 +1307,10 @@ export component MainWindow inherits Window {
                     checked <=> root.documents-only;
                     toggled => { root.search-changed(); }
                 }
+                PillToggle {
+                    text: "Kompakt";
+                    checked <=> root.compact-rows;
+                }
                 Text { text: root.booking-count; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
             }
             // batch action bar (multi-select)
@@ -1403,6 +1419,7 @@ export component MainWindow inherits Window {
                                 day: d;
                                 selected-booking: root.selected-booking;
                                 multi-select-active: root.marked-count > 0;
+                                compact: root.compact-rows;
                                 select(id) => { root.select-booking(id); }
                                 toggle-checked(id) => { root.toggle-booking-checked(id); }
                                 toggle-mark(id) => { root.toggle-booking-mark(id); }
