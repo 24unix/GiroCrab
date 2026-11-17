@@ -29,22 +29,31 @@ export struct InspectorData { counterparty: string, iban: string, purpose: strin
 
 global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
-    out property <color> window: dark ? #202020 : #f2f2f7;
-    out property <color> surface: dark ? #2b2b2b : #ffffff;
-    out property <color> sidebar: dark ? #202020 : #f2f2f7;
-    out property <color> selected: dark ? #373737 : #eaeaea;
-    out property <color> bar: dark ? #2b2b2b : #f9f9f9;
-    out property <color> warning-bg: dark ? #3a2f12 : #fff4d6;
-    out property <color> warning-text: dark ? #f5d27a : #7a5a00;
-    out property <color> border: dark ? #3d3d3d : #e5e5e5;
-    out property <color> control-border: dark ? #3d3d3d : #e5e5e5;
-    out property <color> text: dark ? #f0f4f8 : #1d1d1f;
-    out property <color> amount: dark ? #e6edf3 : #1d1d1f;
-    out property <color> muted: dark ? #8b949e : #6e6e73;
-    out property <color> accent: dark ? #60cdff : #007aff;
-    out property <color> primary: dark ? #60cdff : #007aff;
-    out property <color> positive: dark ? #34d399 : #15803d;
+    // 1:1 with Swift `Theme` (GiroCrabApp/Sources/GiroCrabUI/Formatting.swift + AccentColor asset).
+    out property <color> window: dark ? #0f172a : #f8fafc;
+    out property <color> surface: dark ? #1e293b : #ffffff;
+    out property <color> sidebar: dark ? #0b1220 : #f3f4f6;
+    out property <color> selected: accent.with-alpha(dark ? 0.28 : 0.13);
+    out property <color> bar: dark ? #1e293b : #ffffff;
+    // Demo banner: Theme.selection fill + accent 0.18 border (no yellow in the Swift app).
+    out property <color> warning-bg: accent.with-alpha(0.15);
+    out property <color> warning-text: dark ? #f1f5f9 : #0f172a;
+    out property <color> border: dark ? #334155 : #e2e8f0;
+    out property <color> control-border: dark ? #334155 : #e2e8f0;
+    out property <color> text: dark ? #f1f5f9 : #0f172a;
+    out property <color> amount: dark ? #f1f5f9 : #0f172a;
+    out property <color> muted: dark ? #a3b1c4 : #4b5a70;
+    out property <color> tertiary: dark ? #8494aa : #64748b;
+    out property <color> accent: dark ? #3b82f6 : Theme.accent;
+    out property <color> primary: dark ? #3b82f6 : Theme.accent;
+    out property <color> positive: dark ? #34d399 : #047857;
     out property <color> negative: dark ? #f87171 : #b91c1c;
+    out property <color> outflow: dark ? #f1f5f9 : #0f172a;
+    out property <color> inflow-badge: dark ? #064e3b : #ecfdf5;
+    out property <color> outflow-badge: dark ? #5b1b1b : #fef2f2;
+    // Chart bars: Theme.inflow / Theme.outflow at .opacity(0.85), radius 1.5.
+    out property <color> bar-income: positive.with-alpha(0.85);
+    out property <color> bar-expense: outflow.with-alpha(0.85);
 }
 
 // Vector icons (16x16 viewbox, 1.5px strokes). Unknown names draw nothing.
@@ -143,7 +152,7 @@ component SideLine inherits Rectangle {
     border-color: Theme.border;
     background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && !ta.pressed && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
     ta := TouchArea { clicked => { root.clicked(); } }
-    if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: #007aff; }
+    if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: Theme.accent; }
     HorizontalLayout {
         padding-left: all-card ? 10px : 6px + max(r.depth - 1, 0) * 22px;
         padding-right: all-card ? 10px : 8px;
@@ -393,7 +402,7 @@ component BookingLine inherits Rectangle {
     height: (compact ? 36px : 56px) + (show-detail ? 20px : 0px);
     background: active ? #1d3557.with-alpha(Theme.dark ? 1.0 : 0.16) : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
     border-radius: 8px;
-    if active: Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: #2563eb; }
+    if active: Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: Theme.accent; }
     ta := TouchArea { clicked => { root.clicked(); } }
     if show-detail: Text {
         x: 62px; y: parent.height - 20px; width: parent.width - 74px; height: 16px;
@@ -411,8 +420,8 @@ component BookingLine inherits Rectangle {
             Rectangle {
                 width: 14px; height: 14px; y: (parent.height - self.height) / 2;
                 border-radius: 3px; border-width: 1.5px;
-                border-color: b.marked ? #2563eb : Theme.muted.with-alpha(0.6);
-                background: b.marked ? #2563eb : transparent;
+                border-color: b.marked ? Theme.accent : Theme.muted.with-alpha(0.6);
+                background: b.marked ? Theme.accent : transparent;
                 Text { text: b.marked ? "✓" : ""; color: #ffffff; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             }
             TouchArea { clicked => { root.toggle-mark(); } }
@@ -423,8 +432,8 @@ component BookingLine inherits Rectangle {
             Rectangle {
                 width: 9px; height: 9px; y: (parent.height - self.height) / 2; x: 3px;
                 border-radius: 4.5px; border-width: 1px;
-                border-color: #2563eb;
-                background: b.checked ? transparent : #2563eb;
+                border-color: Theme.accent;
+                background: b.checked ? transparent : Theme.accent;
             }
             TouchArea { clicked => { root.toggle-checked(); } }
         }
@@ -539,7 +548,7 @@ component BudgetBar inherits Rectangle {
     }
 }
 
-// Cashflow card: period switch, legend and a dual-bar chart (income blue, expenses orange).
+// Cashflow card: period switch, legend and a dual-bar chart (income = Theme.inflow, expenses = Theme.outflow, 0.85 opacity).
 component CashflowCard inherits Rectangle {
     in property <[BarGroup]> bars;
     in property <[string]> ticks;
@@ -556,9 +565,9 @@ component CashflowCard inherits Rectangle {
             spacing: 10px;
             Text { text: "Cashflow"; color: Theme.text; font-size: 14px; font-weight: 700; vertical-alignment: center; }
             Rectangle { horizontal-stretch: 1; }
-            Text { text: "●"; color: #388bfd; font-size: 9px; vertical-alignment: center; }
+            Text { text: "●"; color: Theme.bar-income; font-size: 9px; vertical-alignment: center; }
             Text { text: "Einnahmen"; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
-            Text { text: "●"; color: #d97706; font-size: 9px; vertical-alignment: center; }
+            Text { text: "●"; color: Theme.bar-expense; font-size: 9px; vertical-alignment: center; }
             Text { text: "Ausgaben"; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
             for label[i] in ["Monat", "Quartal", "Jahr"]: SegButton {
                 text: label;
@@ -598,11 +607,11 @@ component CashflowCard inherits Rectangle {
                             spacing: 4px;
                             Rectangle {
                                 width: 18px;
-                                Rectangle { y: plot - plot * g.income; height: plot * g.income; border-top-left-radius: 4px; border-top-right-radius: 4px; background: #388bfd; }
+                                Rectangle { y: plot - plot * g.income; height: plot * g.income; border-top-left-radius: 1.5px; border-top-right-radius: 1.5px; background: Theme.bar-income; }
                             }
                             Rectangle {
                                 width: 18px;
-                                Rectangle { y: plot - plot * g.expense; height: plot * g.expense; border-top-left-radius: 4px; border-top-right-radius: 4px; background: #d97706; }
+                                Rectangle { y: plot - plot * g.expense; height: plot * g.expense; border-top-left-radius: 1.5px; border-top-right-radius: 1.5px; background: Theme.bar-expense; }
                             }
                         }
                         Text { y: parent.height - 12px; width: parent.width; text: g.label; color: Theme.muted; font-size: 10px; horizontal-alignment: center; }
@@ -1383,10 +1392,10 @@ export component MainWindow inherits Window {
             // batch action bar (multi-select)
             if root.view-mode == 0 && root.marked-count > 0: Rectangle {
                 height: 44px;
-                background: #2563eb.with-alpha(Theme.dark ? 0.25 : 0.10);
+                background: Theme.accent.with-alpha(0.15);
                 border-radius: 10px;
                 border-width: 1px;
-                border-color: #2563eb.with-alpha(0.5);
+                border-color: Theme.accent.with-alpha(0.18);
                 HorizontalLayout {
                     padding-left: 12px; padding-right: 10px; padding-top: 6px; padding-bottom: 6px;
                     spacing: 8px;

@@ -40,6 +40,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.fillMaxSize
+import de.girocrab.app.ui.theme.GiroColors
+import de.girocrab.app.ui.theme.LocalGiroColors
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import de.girocrab.app.model.AppUiState
 import de.girocrab.app.model.AppViewModel
 import de.girocrab.app.model.Booking
@@ -51,11 +59,10 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.abs
 
-private val IncomeColor = Color(0xFF15803D)
-private val ExpenseColor = Color(0xFFB91C1C)
-private val IncomeBar = Color(0xFF22C55E).copy(alpha = 0.85f)
-private val ExpenseBar = Color(0xFFF87171).copy(alpha = 0.82f)
-private val NetColor = Color(0xFF007AFF)
+// 1:1 with Swift Theme (Formatting.swift): inflow / outflow / accent, see de.girocrab.app.ui.theme.GiroColors.
+private val IncomeColor: Color @Composable get() = LocalGiroColors.current.positive
+private val ExpenseColor: Color @Composable get() = LocalGiroColors.current.outflow
+private val NetColor: Color @Composable get() = LocalGiroColors.current.accent
 
 private data class MonthFlow(val month: YearMonth, val incomeCents: Long, val expenseCents: Long) {
     val netCents get() = incomeCents - expenseCents
@@ -96,6 +103,7 @@ private val IosPalette = listOf(0xFF007AFF, 0xFF5856D6, 0xFF34C759, 0xFFFF9500, 
 private fun parseColor(hex: Long) = Color(hex)
 private fun paletteColor(i: Int) = IosPalette[i % IosPalette.size]
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnalyticsScreen(
     state: AppUiState,
@@ -160,16 +168,35 @@ fun AnalyticsScreen(
         verticalArrangement = spacedBy(16.dp),
     ) {
         item {
-            Row(horizontalArrangement = spacedBy(8.dp)) {
-                listOf(3, 6, 12).forEach { m ->
-                    FilterChip(selected = months == m, onClick = { months = m }, label = { Text("$m Monate") })
+            val opts = listOf(3, 6, 12)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                opts.forEachIndexed { i, m ->
+                    SegmentedButton(
+                        selected = months == m,
+                        onClick = { months = m },
+                        shape = SegmentedButtonDefaults.itemShape(i, opts.size, RoundedCornerShape(8.dp)),
+                        colors = SegmentedButtonDefaults.colors(
+                            activeContainerColor = MaterialTheme.colorScheme.surface,
+                            activeContentColor = MaterialTheme.colorScheme.onSurface,
+                            activeBorderColor = MaterialTheme.colorScheme.outline,
+                            inactiveContainerColor = MaterialTheme.colorScheme.background,
+                            inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            inactiveBorderColor = MaterialTheme.colorScheme.outline,
+                        ),
+                        icon = {},
+                    ) { Text("$m Monate", style = MaterialTheme.typography.labelLarge) }
                 }
             }
         }
         item {
             val inc = monthly.sumOf { it.incomeCents }
             val exp = monthly.sumOf { it.expenseCents }
-            Card(Modifier.fillMaxWidth()) {
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = spacedBy(12.dp)) {
                     Text("Einnahmen & Ausgaben", style = MaterialTheme.typography.titleMedium)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -187,7 +214,12 @@ fun AnalyticsScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = spacedBy(10.dp)) {
                     Text("Ausgaben nach Kategorie", style = MaterialTheme.typography.titleMedium)
                     val total = categories.sumOf { it.cents }
@@ -217,7 +249,12 @@ fun AnalyticsScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = spacedBy(10.dp)) {
                     Text("Auswertung nach Tags", style = MaterialTheme.typography.titleMedium)
                     if (tags.isEmpty()) {
@@ -314,6 +351,11 @@ private fun ShareRow(name: String, color: Color, fraction: Float, amount: String
 private fun CashflowChart(data: List<MonthFlow>, hide: Boolean) {
     val axis = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val incomeBar = IncomeColor.copy(alpha = GiroColors.BarAlpha)
+    val expenseBar = ExpenseColor.copy(alpha = GiroColors.BarAlpha)
+    val netColor = NetColor.copy(alpha = 0.8f)
+    val gridColor = LocalGiroColors.current.tertiary.copy(alpha = 0.45f)
+    val pointFill = MaterialTheme.colorScheme.surface
     val maxVal = (data.maxOfOrNull { maxOf(it.incomeCents, it.expenseCents) } ?: 0L).coerceAtLeast(1L)
     val minNet = (data.minOfOrNull { it.netCents } ?: 0L).coerceAtMost(0L)
 
@@ -331,16 +373,16 @@ private fun CashflowChart(data: List<MonthFlow>, hide: Boolean) {
 
             for (g in 1..3) {
                 val gy = size.height * g / 4f
-                drawLine(Color(0xFFE5E7EB), Offset(0f, gy), Offset(size.width, gy), strokeWidth = 1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
+                drawLine(gridColor, Offset(0f, gy), Offset(size.width, gy), strokeWidth = 1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
             }
             drawLine(axis, Offset(0f, zeroY), Offset(size.width, zeroY), strokeWidth = 2f)
 
             data.forEachIndexed { i, m ->
                 val cx = slot * i + slot / 2
                 val incTop = y(m.incomeCents)
-                drawRoundRect(IncomeBar, Offset(cx - barW - 4.dp.toPx() / 2, incTop), Size(barW, (zeroY - incTop).coerceAtLeast(0f)), CornerRadius(6.dp.toPx()))
+                drawRoundRect(incomeBar, Offset(cx - barW - 4.dp.toPx() / 2, incTop), Size(barW, (zeroY - incTop).coerceAtLeast(0f)), CornerRadius(1.5.dp.toPx()))
                 val expTop = y(m.expenseCents)
-                drawRoundRect(ExpenseBar, Offset(cx + 4.dp.toPx() / 2, expTop), Size(barW, (zeroY - expTop).coerceAtLeast(0f)), CornerRadius(6.dp.toPx()))
+                drawRoundRect(expenseBar, Offset(cx + 4.dp.toPx() / 2, expTop), Size(barW, (zeroY - expTop).coerceAtLeast(0f)), CornerRadius(1.5.dp.toPx()))
             }
 
             val path = Path()
@@ -348,10 +390,10 @@ private fun CashflowChart(data: List<MonthFlow>, hide: Boolean) {
                 val p = Offset(slot * i + slot / 2, y(m.netCents))
                 if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
             }
-            drawPath(path, NetColor, style = Stroke(width = 5f, cap = StrokeCap.Round))
+            drawPath(path, netColor, style = Stroke(width = 5f, cap = StrokeCap.Round))
             data.forEachIndexed { i, m ->
-                drawCircle(Color.White, 10f, Offset(slot * i + slot / 2, y(m.netCents)))
-                drawCircle(NetColor, 7f, Offset(slot * i + slot / 2, y(m.netCents)))
+                drawCircle(pointFill, 10f, Offset(slot * i + slot / 2, y(m.netCents)))
+                drawCircle(netColor, 7f, Offset(slot * i + slot / 2, y(m.netCents)))
             }
         }
         Row(Modifier.fillMaxWidth()) {

@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.compositeOver
+import de.girocrab.app.ui.theme.GiroColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CloudDownload
@@ -177,26 +179,30 @@ fun DemoBanner(
     onTestLockScreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Swift DemoBanner: Theme.selection fill (accent 0.15), 1 px accent 0.18 border, accent icon, Theme.text title.
+    val accent = MaterialTheme.colorScheme.primary
     Surface(
         modifier.fillMaxWidth().height(34.dp),
-        color = androidx.compose.ui.graphics.Color(0xFFFFF4CE),
-        contentColor = androidx.compose.ui.graphics.Color(0xFF5C4300),
+        color = accent.copy(alpha = GiroColors.SelectionAlpha).compositeOver(MaterialTheme.colorScheme.surface),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = GiroColors.DemoBorderAlpha)),
     ) {
         Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Science, null, Modifier.size(16.dp))
+            Icon(Icons.Default.Science, null, Modifier.size(16.dp), tint = accent)
             Spacer(Modifier.width(6.dp))
             Text("Demo-Daten", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             val compactPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
             if (!vaultMayHoldRealData) {
-                TextButton(onClick = onCreateOwnAccount, contentPadding = compactPadding) {
+                TextButton(onClick = onCreateOwnAccount, contentPadding = compactPadding, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = accent)) {
                     Text("Konto anlegen", style = MaterialTheme.typography.labelMedium)
                 }
             } else {
-                TextButton(onClick = onBackToOwnVault, contentPadding = compactPadding) {
+                TextButton(onClick = onBackToOwnVault, contentPadding = compactPadding, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = accent)) {
                     Text("Eigener Tresor", style = MaterialTheme.typography.labelMedium)
                 }
             }
-            TextButton(onClick = onTestLockScreen, contentPadding = compactPadding) {
+            TextButton(onClick = onTestLockScreen, contentPadding = compactPadding, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = accent)) {
                 Text("Sperren", style = MaterialTheme.typography.labelMedium)
             }
         }

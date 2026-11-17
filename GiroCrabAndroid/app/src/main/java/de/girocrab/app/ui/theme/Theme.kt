@@ -14,19 +14,46 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** Brand: crab accent (coral red), emerald for positive amounts. */
+/** 1:1 port of `Theme` in GiroCrabApp/Sources/GiroCrabUI/Formatting.swift (+ AccentColor asset). */
 object GiroColors {
-    val Crab = Color(0xFF007AFF)
-    val CrabDark = Color(0xFF0A84FF)
-    val Emerald = Color(0xFF15803D)
-    val EmeraldDark = Color(0xFF34D399)
-    val Negative = Color(0xFFB91C1C)
+    val Accent = Color(0xFF2563EB)          // AccentColor light
+    val AccentDark = Color(0xFF3B82F6)      // AccentColor dark
+    val Inflow = Color(0xFF047857)          // Theme.inflowSpec light
+    val InflowDark = Color(0xFF34D399)
+    val Negative = Color(0xFFB91C1C)        // Theme.negativeSpec / chargeSpec
     val NegativeDark = Color(0xFFF87171)
+    val Outflow = Color(0xFF0F172A)         // Theme.outflowSpec (expense bars)
+    val OutflowDark = Color(0xFFF1F5F9)
+    val Canvas = Color(0xFFF8FAFC)
+    val CanvasDark = Color(0xFF0F172A)
+    val Sidebar = Color(0xFFF3F4F6)
+    val SidebarDark = Color(0xFF0B1220)
+    val Card = Color(0xFFFFFFFF)
+    val CardDark = Color(0xFF1E293B)
+    val Border = Color(0xFFE2E8F0)
+    val BorderDark = Color(0xFF334155)
+    val Text = Color(0xFF0F172A)
+    val TextDark = Color(0xFFF1F5F9)
+    val Secondary = Color(0xFF4B5A70)
+    val SecondaryDark = Color(0xFFA3B1C4)
+    val Tertiary = Color(0xFF64748B)
+    val TertiaryDark = Color(0xFF8494AA)
+    val InflowBadge = Color(0xFFECFDF5)
+    val InflowBadgeDark = Color(0xFF064E3B)
+    val OutflowBadge = Color(0xFFFEF2F2)
+    val OutflowBadgeDark = Color(0xFF5B1B1B)
+    /** Chart bar opacity (CategorySumChart / BalanceHeaderView: `.opacity(0.85)`, corner radius 1.5). */
+    const val BarAlpha = 0.85f
+    /** `Theme.selection` on iOS: accent.opacity(0.15); demo-banner stroke accent.opacity(0.18). */
+    const val SelectionAlpha = 0.15f
+    const val DemoBorderAlpha = 0.18f
+    const val BadgeAlpha = 0.12f
 }
 
 /** Semantic colours Material 3 has no slot for. */
@@ -36,60 +63,65 @@ data class GiroExtraColors(
     val negative: Color,
     val cardSurface: Color,
     val cardBorder: Color,
+    val outflow: Color = GiroColors.Outflow,
+    val tertiary: Color = GiroColors.Tertiary,
+    val accent: Color = GiroColors.Accent,
 )
 
 val LocalGiroColors = staticCompositionLocalOf {
-    GiroExtraColors(GiroColors.Emerald, GiroColors.Negative, Color.White, Color(0xFFE5E7EB))
+    GiroExtraColors(GiroColors.Inflow, GiroColors.Negative, GiroColors.Card, GiroColors.Border)
 }
 
-val GiroBorderLight = Color(0xFFE5E7EB)
-val GiroBorderDark = Color(0xFF2C2C2E)
+val GiroBorderLight = GiroColors.Border
+val GiroBorderDark = GiroColors.BorderDark
 
 private val LightScheme = lightColorScheme(
-    primary = GiroColors.Crab,
+    primary = GiroColors.Accent,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD6E6FF),
-    onPrimaryContainer = Color(0xFF004E8C),
-    secondary = GiroColors.Emerald,
+    primaryContainer = GiroColors.Accent.copy(alpha = GiroColors.SelectionAlpha).compositeOver(Color.White),
+    onPrimaryContainer = GiroColors.Text,
+    secondary = GiroColors.Inflow,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD6E6FF),
-    onSecondaryContainer = Color(0xFF004E8C),
-    background = Color(0xFFF2F2F7),
-    onBackground = Color(0xFF111418),
-    surface = Color.White,
-    onSurface = Color(0xFF111418),
-    surfaceVariant = Color(0xFFF2F2F7),
+    secondaryContainer = GiroColors.InflowBadge,
+    onSecondaryContainer = GiroColors.Inflow,
+    background = GiroColors.Canvas,
+    onBackground = GiroColors.Text,
+    surface = GiroColors.Card,
+    onSurface = GiroColors.Text,
+    surfaceVariant = GiroColors.Canvas,
     surfaceTint = Color.Transparent,
-    surfaceContainer = Color.White,
-    surfaceContainerLow = Color.White,
-    surfaceContainerHigh = Color.White,
-    surfaceContainerHighest = Color.White,
-    onSurfaceVariant = Color(0xFF5B6470),
-    outline = Color(0xFFE5E7EB),
+    surfaceContainer = GiroColors.Card,
+    surfaceContainerLow = GiroColors.Card,
+    surfaceContainerHigh = GiroColors.Card,
+    surfaceContainerHighest = GiroColors.Card,
+    onSurfaceVariant = GiroColors.Secondary,
+    outline = GiroColors.Border,
+    outlineVariant = GiroColors.Border,
     error = GiroColors.Negative,
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = GiroColors.CrabDark,
+    primary = GiroColors.AccentDark,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF1F3A60),
-    onPrimaryContainer = Color(0xFFD6E6FF),
-    secondary = GiroColors.EmeraldDark,
-    onSecondary = Color(0xFF00382A),
-    secondaryContainer = Color(0xFF1F3A60),
-    onSecondaryContainer = Color(0xFFD6E6FF),
-    background = Color(0xFF000000),
-    onBackground = Color(0xFFE6E8EC),
-    surface = Color(0xFF1C1C1E),
-    onSurface = Color(0xFFE6E8EC),
-    surfaceVariant = Color(0xFF2C2C2E),
+    primaryContainer = GiroColors.AccentDark.copy(alpha = GiroColors.SelectionAlpha).compositeOver(GiroColors.CardDark),
+    onPrimaryContainer = GiroColors.TextDark,
+    secondary = GiroColors.InflowDark,
+    onSecondary = Color(0xFF064E3B),
+    secondaryContainer = GiroColors.InflowBadgeDark,
+    onSecondaryContainer = GiroColors.InflowDark,
+    background = GiroColors.CanvasDark,
+    onBackground = GiroColors.TextDark,
+    surface = GiroColors.CardDark,
+    onSurface = GiroColors.TextDark,
+    surfaceVariant = GiroColors.CanvasDark,
     surfaceTint = Color.Transparent,
-    surfaceContainer = Color(0xFF1C1C1E),
-    surfaceContainerLow = Color(0xFF1C1C1E),
-    surfaceContainerHigh = Color(0xFF1C1C1E),
-    surfaceContainerHighest = Color(0xFF1C1C1E),
-    onSurfaceVariant = Color(0xFFA3ABB7),
-    outline = Color(0xFF2C2C2E),
+    surfaceContainer = GiroColors.CardDark,
+    surfaceContainerLow = GiroColors.CardDark,
+    surfaceContainerHigh = GiroColors.CardDark,
+    surfaceContainerHighest = GiroColors.CardDark,
+    onSurfaceVariant = GiroColors.SecondaryDark,
+    outline = GiroColors.BorderDark,
+    outlineVariant = GiroColors.BorderDark,
     error = GiroColors.NegativeDark,
 )
 
@@ -133,9 +165,9 @@ fun GiroCrabTheme(
         else -> LightScheme
     }
     val extra = if (darkTheme) {
-        GiroExtraColors(GiroColors.EmeraldDark, GiroColors.NegativeDark, scheme.surface, scheme.outline)
+        GiroExtraColors(GiroColors.InflowDark, GiroColors.NegativeDark, scheme.surface, scheme.outline, GiroColors.OutflowDark, GiroColors.TertiaryDark, GiroColors.AccentDark)
     } else {
-        GiroExtraColors(GiroColors.Emerald, GiroColors.Negative, scheme.surface, scheme.outline)
+        GiroExtraColors(GiroColors.Inflow, GiroColors.Negative, scheme.surface, scheme.outline)
     }
     CompositionLocalProvider(LocalGiroColors provides extra) {
         MaterialTheme(colorScheme = scheme, typography = GiroTypography, content = content)

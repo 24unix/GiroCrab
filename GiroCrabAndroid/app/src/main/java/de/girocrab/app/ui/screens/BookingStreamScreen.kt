@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import de.girocrab.app.ui.theme.GiroColors
+import de.girocrab.app.ui.theme.LocalGiroColors
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -278,7 +280,7 @@ fun BalanceHeaderCard(
                 Surface(
                     onClick = { liquid = !liquid },
                     shape = RoundedCornerShape(50),
-                    color = Color(0xFF0067C0).copy(alpha = if (showLiquid) 0.22f else 0.10f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = if (showLiquid) 0.28f else GiroColors.SelectionAlpha),
                 ) {
                     Text(
                         (if (showLiquid) "Verfügbar" else "Gesamtvermögen") + " ▾",
@@ -315,8 +317,8 @@ private fun HeaderPill(label: String, icon: androidx.compose.ui.graphics.vector.
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        color = if (filled) Color(0xFF0067C0) else Color(0xFFE8F1FB),
-        contentColor = if (filled) Color.White else Color(0xFF004E8C),
+        color = if (filled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = GiroColors.SelectionAlpha),
+        contentColor = if (filled) Color.White else MaterialTheme.colorScheme.primary,
     ) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(14.dp))
@@ -455,7 +457,12 @@ private fun AnalyticsPanel(bookings: List<Booking>, categories: List<Category>, 
         .groupBy { it.categoryId }
         .mapValues { -it.value.sumOf { b -> b.amountCents } }
         .entries.sortedByDescending { it.value }.take(5)
-    Card(Modifier.fillMaxWidth().padding(12.dp)) {
+    Card(
+        Modifier.fillMaxWidth().padding(12.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SumRow("Einnahmen", income, masked)
             SumRow("Ausgaben", expense, masked)
@@ -499,7 +506,7 @@ private fun MonthHeader(g: MonthGroup, masked: Boolean) {
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
         )
-        Text(formatMoney(g.income, masked = masked), fontFamily = tabular, style = tnum, fontSize = 12.sp, color = Color(0xFF15803D))
+        Text(formatMoney(g.income, masked = masked), fontFamily = tabular, style = tnum, fontSize = 12.sp, color = LocalGiroColors.current.positive)
         Spacer(Modifier.width(10.dp))
         Text(formatMoney(g.expense, masked = masked), fontFamily = tabular, style = tnum, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -539,7 +546,7 @@ private fun BookingRow(
                     )
                 }
             }
-            if (unchecked) Box(Modifier.align(Alignment.TopEnd).size(9.dp).clip(CircleShape).background(Color(0xFF1E88E5)))
+            if (unchecked) Box(Modifier.align(Alignment.TopEnd).size(9.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
         }
         Column(Modifier.weight(1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
@@ -623,7 +630,7 @@ private fun BookingRow(
             formatMoney(booking.amountCents, booking.currency, masked),
             fontFamily = tabular, style = tnum,
             fontWeight = FontWeight.Medium,
-            color = if (booking.amountCents > 0) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurface,
+            color = if (booking.amountCents > 0) LocalGiroColors.current.positive else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             softWrap = false,
         )
