@@ -222,6 +222,16 @@ Card {
                     }
                 }
             }
+            // TagFilterUI.swift › TagFilterButton (#228, part 3): the popover anchors on the button
+            MenuLabel {
+                id: tagFilterButton
+                visible: TagFilter.available
+                symbol: TagFilter.isActive ? "tag.fill" : "tag"; text: TagFilter.title; chevron: false
+                tint: TagFilter.isActive ? Theme.accent : Theme.text
+                onClicked: TagFilter.shown = !TagFilter.shown
+                ToolTip.visible: hovered && !TagFilter.shown; ToolTip.delay: 600; ToolTip.text: qsTr("Nach Tags filtern")
+                TagFilterPopover { wanted: TagFilter.shown && tagFilterButton.visible }
+            }
             // Category views: only the bookings of the chosen accounts (GitHub #406).
             MenuLabel {
                 visible: AppModel.showsCategoryAccountFilter && AppModel.allAccounts.length > 1
@@ -282,6 +292,7 @@ Card {
         property string symbol
         property string text
         property bool chevron: true
+        property color tint: Theme.text
         readonly property bool hovered: mlArea.containsMouse
         signal clicked()
         implicitWidth: r.implicitWidth; implicitHeight: 22
@@ -289,9 +300,9 @@ Card {
             id: r
             anchors.verticalCenter: parent.verticalCenter
             spacing: 5
-            SFIcon { symbol: ml.symbol; size: 14; color: Theme.text }
-            Text { text: ml.text; font.pixelSize: Theme.body; color: Theme.text }
-            SFIcon { visible: ml.chevron; symbol: "chevron.down"; size: 9; color: Theme.text }
+            SFIcon { symbol: ml.symbol; size: 14; color: ml.tint }
+            Text { text: ml.text; font.pixelSize: Theme.body; color: ml.tint }
+            SFIcon { visible: ml.chevron; symbol: "chevron.down"; size: 9; color: ml.tint }
         }
         MouseArea { id: mlArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ml.clicked() }
     }

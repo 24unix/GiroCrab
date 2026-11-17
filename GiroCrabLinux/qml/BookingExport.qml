@@ -214,7 +214,7 @@ QtObject {
     // MARK: - AppModel+Printing (export queries)
 
     /// Vault filter for an export: the list's filter with the sheet's accounts and period.
-    /// `ignoreListFilters` (CAMT.053) drops search, category, direction, merchant and
+    /// `ignoreListFilters` (CAMT.053) drops search, category, direction, tags, merchant and
     /// review status, so the closing balance matches the bank's.
     function exportFilter(accountIDs, preset, o, ignoreListFilters) {
         const filter = AppModel.currentFilter()
@@ -230,6 +230,8 @@ QtObject {
             filter.merchant_key = null
             filter.direction = "All"
             filter.checked = null
+            filter.tag_ids = []
+            filter.untagged_only = false
         }
         const salary = AppModel.salaryCycle ? AppModel.salaryCycle.last_date : null
         const range = presetRange(preset, o ? o.customFrom : "", o ? o.customTo : "", salary)
@@ -269,6 +271,8 @@ QtObject {
         // The list's own income/expense filter is named in the printout header.
         const notes = AppModel.directionFilter === "Income" ? [PrintReport.directionTitle("income")]
                     : AppModel.directionFilter === "Expense" ? [PrintReport.directionTitle("expenses")] : []
+        // and the tag filter (#228)
+        if (TagFilter.note() !== "") notes.push(TagFilter.note())
         return { title: title, period_label: exportPeriodLabel(preset, bookingIDs, o),
                  rows: bookings.map(b => PrintReport.rowFromBooking(b)), accounts: accounts, daily_balances: ({}),
                  generated_at: new Date(), filter_notes: notes }

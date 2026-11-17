@@ -1595,6 +1595,8 @@ vault_methods! {
     add_tag_to_bookings(booking_ids, tag_id) remove_tag_from_bookings(booking_ids, tag_id)
     rename_tag(id, name) set_tag_color(id, color_hex) reorder_tags(ids) delete_tag(id)
     merge_tag_into(source, target) set_booking_tags(booking_id, tag_ids)
+    // --- Tag-Filter und Auswertung (AppModel+Tags, TagFilterUI, TagManagerView, #778) ---
+    tag_totals(filter) tag_account_counts(tag_id)
     // --- Anlageklassen (AssetClassificationUI, DepotMetrics) ---
     classified_assets(account_id)
     set_asset_class_override(security_key, value) set_instrument_override(security_key, value)
@@ -3037,6 +3039,79 @@ mod tests {
         assert_eq!(row(&a["id"]).unwrap()["booking_count"], json!(2));
         call("delete_tag", json!({ "id": a["id"] }));
         assert!(row(&a["id"]).is_none());
+        drop(v);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Tag-Filter und Auswertung (#778, TagFilter.qml / TagManagerSheet.qml): the list filter's
+    /// `tag_ids` (AND) and `untagged_only`, `tag_totals` per tag plus „Ohne Tag“, and
+    /// `tag_account_counts`, whose own rows add up to the tag's booking count.
+    #[test]
+    fn tag_filter_calls() {
+        let path = std::env::temp_dir().join(format!(
+            "girocrab-tagfilter-{}.girocrab",
+            std::process::id()
+        ));
+        let v = Vault::open(path.display().to_string(), vec![6; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let filter = |tag_ids: Value, untagged: bool| {
+            json!({
+            "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": null, "date_from": null, "date_to": null,
+            "limit": 0, "offset": 0, "scope": "All", "merchant_key": null, "direction": "All",
+            "checked": null, "whole_days": false, "tag_ids": tag_ids, "untagged_only": untagged })
+        };
+        let count = |f: Value| {
+            call("list_transactions", json!({ "filter": f }))["transactions"]
+                .as_array()
+                .unwrap()
+                .len() as u64
+        };
+        let tags = call("list_tags", json!({}));
+        let used: Vec<Value> = tags
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|t| t["booking_count"].as_u64().unwrap() > 0)
+            .cloned()
+            .collect();
+        assert!(used.len() >= 2, "demo has tagged bookings");
+        let first = &used[0];
+        let all = count(filter(json!([]), false));
+        let tagged = count(filter(json!([first["id"]]), false));
+        assert_eq!(json!(tagged), first["booking_count"]);
+        let untagged = count(filter(json!([]), true));
+        assert!(untagged > 0 && untagged < all);
+        // several tags: only bookings carrying all of them
+        let both = count(filter(json!([used[0]["id"], used[1]["id"]]), false));
+        assert!(both <= tagged);
+        // totals ignore the filter's own tag choice
+        let totals = call(
+            "tag_totals",
+            json!({ "filter": filter(json!([first["id"]]), true) }),
+        );
+        let rows = totals.as_array().unwrap();
+        let of = |id: &Value| rows.iter().find(|r| r["tag_id"] == *id).cloned();
+        let row = of(&first["id"]).unwrap();
+        assert_eq!(row["booking_count"], first["booking_count"]);
+        assert!(row["sum_cents"].is_i64());
+        assert_eq!(of(&Value::Null).unwrap()["booking_count"], json!(untagged));
+        // per account: own rows add up to the tag's count, linked loans come extra
+        let accounts = call("tag_account_counts", json!({ "tag_id": first["id"] }));
+        let own: u64 = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["linked"] == json!(false))
+            .map(|r| r["booking_count"].as_u64().unwrap())
+            .sum();
+        assert_eq!(json!(own), first["booking_count"]);
+        assert!(accounts[0]["account_id"].is_i64());
         drop(v);
         let _ = std::fs::remove_file(&path);
     }

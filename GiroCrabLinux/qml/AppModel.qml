@@ -692,7 +692,7 @@ QtObject {
     /// The list page carries the selection's sums when no list-only filter narrows it.
     function listHasFlow(f) {
         return f.search === null && f.checked === null && f.direction === "All" && f.scope === "All"
-            && f.category_id === null && !f.uncategorized_only
+            && f.category_id === null && !f.uncategorized_only && !(f.tag_ids || []).length && !f.untagged_only
     }
     function selectionFlowCall(f) {
         const r = periodRange()
@@ -1194,7 +1194,7 @@ QtObject {
             return { account_ids: [], category_id: null, include_subcategories: true, uncategorized_only: false,
                      search: null, date_from: null, date_to: null, limit: listLimit, offset: 0, scope: "All",
                      merchant_key: null, direction: "All", checked: false, whole_days: true }
-        return {
+        return TagFilter.applyTo({   // + the tag filter (#228)
             // AppModel+Loading.swift › currentFilter: the category views follow the account menu (#406)
             account_ids: showsCategoryAccountFilter ? categoryAccountIDs : selectionAccountIDs(),
             category_id: sel.startsWith("category:") ? Number(sel.slice(9)) : null,
@@ -1208,7 +1208,7 @@ QtObject {
             direction: directionFilter,
             checked: statusFilter === "all" ? null : statusFilter === "checked",
             whole_days: true
-        }
+        })
     }
 
     // MARK: user groups (AccountGroupsModel.swift)
@@ -3029,6 +3029,8 @@ QtObject {
             // The list's own income/expense filter is named in the printout header.
             const notes = directionFilter === "Income" ? [PrintReport.directionTitle("income")]
                         : directionFilter === "Expense" ? [PrintReport.directionTitle("expenses")] : []
+            // and the tag filter (#228)
+            if (TagFilter.note() !== "") notes.push(TagFilter.note())
             return { title: title, period_label: periodTitle, rows: rows, accounts: accounts, daily_balances: ({}),
                      generated_at: new Date(), filter_notes: notes }
         } catch (e) {
@@ -3786,7 +3788,7 @@ QtObject {
     /// Selects a booking in the list, widening the filters if it is not loaded.
     function revealBooking(id) {
         if (!bookings.some(b => b.id === id)) {
-            sidebarSelection = "all"; period = "all"; directionFilter = "All"; statusFilter = "all"; searchText = ""
+            sidebarSelection = "all"; period = "all"; directionFilter = "All"; statusFilter = "all"; TagFilter.clear(); searchText = ""
         }
         revealTimer.bookingID = id
         revealTimer.restart()
@@ -3926,7 +3928,13 @@ QtObject {
         }
         case "category": if (top) newCategoryRequest = { parent: top.id }; break
         // Konten › Tags verwalten … (#228)
-        case "tags": TagManager.open(); break
+        // `tags-accounts`: the first tag's bookings per account (TagManagerSheet.qml)
+        case "tags": case "tags-accounts": TagManager.open(); break
+        // the header's tag filter (#228, part 3) with the first tag ticked
+        case "tag-filter":
+            if (TagsModel.tags.length) TagFilter.set([TagsModel.tags[0].id], false)
+            TagFilter.shown = true
+            break
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
             period = previousMonthPeriod()
