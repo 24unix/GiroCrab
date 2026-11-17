@@ -539,6 +539,28 @@ pub fn category_fold_id(key: &str) -> Option<String> {
     }
 }
 
+/// Moves `target_id` one place up (before its predecessor) or down (after its
+/// successor) in `ids`. Returns `false` when nothing changed (id missing or
+/// already at the edge).
+pub fn move_category_in_order(ids: &mut Vec<i64>, target_id: i64, move_up: bool) -> bool {
+    let Some(pos) = ids.iter().position(|&id| id == target_id) else {
+        return false;
+    };
+    let other = if move_up {
+        match pos.checked_sub(1) {
+            Some(p) => p,
+            None => return false,
+        }
+    } else {
+        pos + 1
+    };
+    if other >= ids.len() {
+        return false;
+    }
+    ids.swap(pos, other);
+    true
+}
+
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
@@ -875,5 +897,21 @@ mod tests {
         assert_eq!(toggle_id("toggle:payments"), Some("payments"));
         assert_eq!(toggle_id("acct:1"), None);
         assert_eq!(category_fold_id("acct:1"), None);
+    }
+
+    #[test]
+    fn test_move_category_in_order() {
+        let mut ids = vec![1, 2, 3];
+        assert!(move_category_in_order(&mut ids, 2, true));
+        assert_eq!(ids, [2, 1, 3]);
+        assert!(move_category_in_order(&mut ids, 2, false));
+        assert_eq!(ids, [1, 2, 3]);
+        // Edges and unknown ids leave the order untouched.
+        assert!(!move_category_in_order(&mut ids, 1, true));
+        assert!(!move_category_in_order(&mut ids, 3, false));
+        assert!(!move_category_in_order(&mut ids, 9, true));
+        assert_eq!(ids, [1, 2, 3]);
+        let mut empty: Vec<i64> = Vec::new();
+        assert!(!move_category_in_order(&mut empty, 1, false));
     }
 }
