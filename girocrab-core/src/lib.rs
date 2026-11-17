@@ -73,6 +73,7 @@ pub mod text;
 pub mod user_groups;
 pub mod vault;
 pub mod vault_manager;
+pub mod wealth_optimizer;
 
 #[cfg(test)]
 pub(crate) mod test_support;
