@@ -1168,7 +1168,7 @@ impl Vault {
         // No PIN typed: use the one stored in the vault ("PIN im Tresor speichern").
         let secret = if secret.is_empty() {
             let db = self.db()?;
-            Vault::setting_inner(&db, &crate::connections::pin_key(connection_id))?
+            Vault::setting_inner(&db, &crate::vault::connections::pin_key(connection_id))?
                 .unwrap_or_default()
         } else {
             secret

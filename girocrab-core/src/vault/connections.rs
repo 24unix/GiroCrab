@@ -27,7 +27,7 @@ pub struct ConnectionStatus {
 }
 
 /// Login names are compared normalised (phone numbers in E.164).
-pub fn normalize_login(kind: ConnectorKind, login: &str) -> String {
+pub(crate) fn normalize_login(kind: ConnectorKind, login: &str) -> String {
     match kind {
         ConnectorKind::TradeRepublic => normalize_phone(login),
         _ => login.trim().to_string(),

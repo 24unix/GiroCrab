@@ -19,8 +19,8 @@ use std::collections::HashMap;
 
 use rusqlite::{params, params_from_iter, Connection};
 
+use super::PENDING_SQL;
 use crate::error::CoreError;
-use crate::export::PENDING_SQL;
 use crate::models::{Booking, BookingBalance, DailyBalance};
 use crate::opening_balance::DERIVED_SQL;
 use crate::vault::accounts::IN_TOTAL_SQL;

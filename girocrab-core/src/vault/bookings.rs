@@ -773,6 +773,9 @@ fn keeps(filter: &BookingFilter, flow: FlowKind, merchant: &str) -> bool {
 /// Bookings that are neither deleted nor on a deleted account (`t`, `a`).
 pub(crate) const LIVE_BOOKINGS_SQL: &str = "t.deleted_ms IS NULL AND a.deleted_ms IS NULL";
 
+/// Entries the bank reported as not booked yet (`pending-…` external id).
+pub(crate) const PENDING_SQL: &str = "t.external_id LIKE 'pending-%'";
+
 /// `values` as an inlined SQL list ("1,2,3"): integers can't inject, and one
 /// statement keeps its ORDER BY without chunking around the parameter limit.
 pub(crate) fn sql_int_list(values: &[i64]) -> String {
@@ -1341,21 +1344,20 @@ impl Vault {
         attach_split_categories(&db, &mut bookings)?;
         for b in &bookings {
             let row = [
-                csv_field(&b.booking_date, false),
-                csv_field(&b.account_name, true),
-                csv_field(&b.counterparty, true),
-                csv_field(&b.counterparty_iban, true),
-                csv_field(&b.purpose, true),
-                csv_field(&b.category_path, true),
+                csv_field(&b.booking_date),
+                csv_text(&b.account_name),
+                csv_text(&b.counterparty),
+                csv_text(&b.counterparty_iban),
+                csv_text(&b.purpose),
+                csv_text(&b.category_path),
                 csv_amount(b.amount_cents),
-                csv_field(&b.currency, true),
-                csv_field(
+                csv_text(&b.currency),
+                csv_text(
                     &b.tags
                         .iter()
                         .map(|t| t.name.as_str())
                         .collect::<Vec<_>>()
                         .join(", "),
-                    true,
                 ),
             ];
             out.push_str(&row.join(";"));
@@ -1365,7 +1367,7 @@ impl Vault {
     }
 }
 
-use crate::export::{csv_amount, csv_field};
+use crate::export::{csv_amount, csv_field, csv_text};
 
 #[cfg(test)]
 mod paging_tests {

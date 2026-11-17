@@ -525,6 +525,20 @@ fn moneymoney_classification(value: Option<i64>) -> ClassificationValues {
     result
 }
 
+/// Categories as paths of names, outermost group first.
+#[derive(Default)]
+struct SrcCategories {
+    /// category rowid -> path (uncategorised / invalid entries are absent)
+    by_id: HashMap<i64, Vec<String>>,
+    /// all category paths in MoneyMoney order
+    order: Vec<Vec<String>>,
+    /// (category or category-group path, `#RRGGBB`) – groups first
+    colors: Vec<(Vec<String>, String)>,
+    /// (category path, rule expression, restricted to certain accounts), in
+    /// MoneyMoney order; only categories with a non-blank rule
+    rules: Vec<(Vec<String>, String, bool)>,
+}
+
 #[derive(Default)]
 struct Source {
     docs: Vec<SrcDoc>,
@@ -532,15 +546,7 @@ struct Source {
     banks: Vec<SrcBank>,
     /// rowid -> (name, parent group rowid or 0, sort)
     account_groups: HashMap<i64, (String, i64, i64)>,
-    /// category rowid -> path (uncategorised / invalid entries are absent)
-    categories: HashMap<i64, Vec<String>>,
-    /// all category paths in MoneyMoney order
-    category_order: Vec<Vec<String>>,
-    /// (category or category-group path, `#RRGGBB`) – groups first
-    category_colors: Vec<(Vec<String>, String)>,
-    /// (category path, rule expression, restricted to certain accounts), in
-    /// MoneyMoney order; only categories with a non-blank rule
-    category_rules: Vec<(Vec<String>, String, bool)>,
+    categories: SrcCategories,
     txs: Vec<SrcTx>,
     /// newest `balances` row per (account, currency): (timestamp, initial balance)
     balances: HashMap<(i64, String), (i64, f64)>,
@@ -648,7 +654,7 @@ fn apply_category_colors(
     // the colour is a field edit: stamp it, so a sync merge keeps it
     // ("newest edit wins") instead of reverting it to another device's grey
     let now = now_ms();
-    for (path, color) in &src.category_colors {
+    for (path, color) in &src.categories.colors {
         let key: String = path
             .iter()
             .map(|p| format!("\u{1}{}", p.to_lowercase()))
@@ -1168,122 +1174,13 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
     {
         return Err(wrong_password());
     }
-    let mut src = Source::default();
-
-    // accounts – never cred / userdata / transientdata / web_ops
-    {
-        let sql = select(
-            &conn,
-            "accounts",
-            &[
-                "rowid",
-                "bank_key",
-                "account",
-                "bankcode",
-                "portfolio",
-                "iban",
-                "currency",
-                "name",
-                "owner",
-                "initial_balance",
-                "group_key",
-                "balances",
-                "balance_tsp",
-                "bic",
-                "cancel_tsp",
-            ],
-            "ORDER BY sort, rowid",
-        )?;
-        let mut st = conn.prepare(&sql)?;
-        let rows = st.query_map([], |r| {
-            Ok(SrcAccount {
-                id: vint(get(r, 0)?).unwrap_or_default(),
-                bank_key: vint(get(r, 1)?).filter(|k| *k > 0),
-                account: vtext(get(r, 2)?),
-                bankcode: vtext(get(r, 3)?),
-                portfolio: vint(get(r, 4)?).unwrap_or(0) != 0,
-                iban: normalize_iban(&vtext(get(r, 5)?)),
-                currency: {
-                    let c = vtext(get(r, 6)?).to_uppercase();
-                    if c.is_empty() {
-                        "EUR".into()
-                    } else {
-                        c
-                    }
-                },
-                name: vtext(get(r, 7)?),
-                owner: vtext(get(r, 8)?),
-                initial_balance: vreal(get(r, 9)?),
-                group_key: vint(get(r, 10)?).filter(|k| *k > 0),
-                shown_balance: parse_balances_blob(get(r, 11)?),
-                balance_ts: vint(get(r, 12)?).filter(|t| *t > 0),
-                bic: vtext(get(r, 13)?),
-                cancelled_ts: vint(get(r, 14)?).filter(|t| *t > 0),
-            })
-        })?;
-        src.accounts = rows.collect::<Result<_, _>>()?;
-    }
-
-    // securities positions of depots (no secrets in this table)
+    let mut src = Source {
+        accounts: read_accounts(&conn)?,
+        ..Default::default()
+    };
     if have.contains("securities") {
-        let sql = select(
-            &conn,
-            "securities",
-            &[
-                "account_key",
-                "ident",
-                "isin",
-                "wpn",
-                "quantity",
-                "amount",
-                "purchase",
-                "price",
-                "deleted",
-                "asset_class",
-            ],
-            "ORDER BY amount DESC, rowid",
-        )?;
-        let mut st = conn.prepare(&sql)?;
-        let rows = st.query_map([], |r| {
-            Ok((
-                vint(get(r, 0)?),
-                vtext(get(r, 1)?),
-                vtext(get(r, 2)?),
-                vtext(get(r, 3)?),
-                vreal(get(r, 4)?),
-                vreal(get(r, 5)?),
-                vreal(get(r, 6)?),
-                vreal(get(r, 7)?),
-                vint(get(r, 8)?).unwrap_or(0) != 0,
-                vint(get(r, 9)?),
-            ))
-        })?;
-        for row in rows {
-            let (acc, ident, isin, wpn, quantity, amount, purchase, price, deleted, asset_class) =
-                row?;
-            let (Some(acc), false) = (acc, deleted) else {
-                continue;
-            };
-            let name = crate::text::clean_bank_text(ident.trim());
-            if name.is_empty() && isin.trim().is_empty() {
-                continue;
-            }
-            src.holdings.entry(acc).or_default().push(SrcHolding {
-                holding: Holding {
-                    isin: isin.trim().to_uppercase(),
-                    wkn: wpn.trim().to_uppercase(),
-                    name,
-                    quantity: quantity.unwrap_or(0.0),
-                    current_price_cents: price.and_then(real_to_cents).unwrap_or(0),
-                    purchase_price_cents: purchase.and_then(real_to_cents).unwrap_or(0),
-                    value_cents: amount.and_then(real_to_cents).unwrap_or(0),
-                    ..Default::default()
-                },
-                classification: moneymoney_classification(asset_class),
-            });
-        }
+        src.holdings = read_holdings(&conn)?;
     }
-
     if have.contains("portfolio_chart") && have.contains("securities") {
         let currencies = src
             .accounts
@@ -1292,33 +1189,189 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
             .collect();
         src.value_history = read_value_history(&conn, &currencies)?;
     }
-
-    // banks – never credential / keys / systemid / bpd / upd / local_storage / userdata
     if have.contains("banks") {
-        let sql = select(
-            &conn,
-            "banks",
-            &["rowid", "bankcode", "username", "customer", "name"],
-            "ORDER BY rowid",
-        )?;
-        let mut st = conn.prepare(&sql)?;
-        let rows = st.query_map([], |r| {
-            Ok(SrcBank {
-                id: vint(get(r, 0)?).unwrap_or_default(),
-                bankcode: vtext(get(r, 1)?),
-                username: vtext(get(r, 2)?),
-                customer: vtext(get(r, 3)?),
-                name: vtext(get(r, 4)?),
-            })
-        })?;
-        src.banks = rows.collect::<Result<_, _>>()?;
+        src.banks = read_banks(&conn)?;
     }
-
     if have.contains("account_groups") {
+        src.account_groups = read_account_groups(&conn)?;
+    }
+    src.categories = read_categories(&conn, &have)?;
+    src.txs = read_transactions(&conn)?;
+    if have.contains("balances") {
+        src.balances = read_balances(&conn)?;
+    }
+    src.docs = read_documents(&conn, &have)?;
+    src.templates = templates::read_templates(&conn, &have)?;
+    Ok(src)
+}
+
+/// Accounts – never cred / userdata / transientdata / web_ops.
+fn read_accounts(conn: &Connection) -> CoreResult<Vec<SrcAccount>> {
+    let sql = select(
+        conn,
+        "accounts",
+        &[
+            "rowid",
+            "bank_key",
+            "account",
+            "bankcode",
+            "portfolio",
+            "iban",
+            "currency",
+            "name",
+            "owner",
+            "initial_balance",
+            "group_key",
+            "balances",
+            "balance_tsp",
+            "bic",
+            "cancel_tsp",
+        ],
+        "ORDER BY sort, rowid",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok(SrcAccount {
+            id: vint(get(r, 0)?).unwrap_or_default(),
+            bank_key: vint(get(r, 1)?).filter(|k| *k > 0),
+            account: vtext(get(r, 2)?),
+            bankcode: vtext(get(r, 3)?),
+            portfolio: vint(get(r, 4)?).unwrap_or(0) != 0,
+            iban: normalize_iban(&vtext(get(r, 5)?)),
+            currency: {
+                let c = vtext(get(r, 6)?).to_uppercase();
+                if c.is_empty() {
+                    "EUR".into()
+                } else {
+                    c
+                }
+            },
+            name: vtext(get(r, 7)?),
+            owner: vtext(get(r, 8)?),
+            initial_balance: vreal(get(r, 9)?),
+            group_key: vint(get(r, 10)?).filter(|k| *k > 0),
+            shown_balance: parse_balances_blob(get(r, 11)?),
+            balance_ts: vint(get(r, 12)?).filter(|t| *t > 0),
+            bic: vtext(get(r, 13)?),
+            cancelled_ts: vint(get(r, 14)?).filter(|t| *t > 0),
+        })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Securities positions of depots per account (no secrets in this table).
+fn read_holdings(conn: &Connection) -> CoreResult<HashMap<i64, Vec<SrcHolding>>> {
+    let sql = select(
+        conn,
+        "securities",
+        &[
+            "account_key",
+            "ident",
+            "isin",
+            "wpn",
+            "quantity",
+            "amount",
+            "purchase",
+            "price",
+            "deleted",
+            "asset_class",
+        ],
+        "ORDER BY amount DESC, rowid",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok((
+            vint(get(r, 0)?),
+            vtext(get(r, 1)?),
+            vtext(get(r, 2)?),
+            vtext(get(r, 3)?),
+            vreal(get(r, 4)?),
+            vreal(get(r, 5)?),
+            vreal(get(r, 6)?),
+            vreal(get(r, 7)?),
+            vint(get(r, 8)?).unwrap_or(0) != 0,
+            vint(get(r, 9)?),
+        ))
+    })?;
+    let mut holdings: HashMap<i64, Vec<SrcHolding>> = HashMap::new();
+    for row in rows {
+        let (acc, ident, isin, wpn, quantity, amount, purchase, price, deleted, asset_class) = row?;
+        let (Some(acc), false) = (acc, deleted) else {
+            continue;
+        };
+        let name = crate::text::clean_bank_text(ident.trim());
+        if name.is_empty() && isin.trim().is_empty() {
+            continue;
+        }
+        holdings.entry(acc).or_default().push(SrcHolding {
+            holding: Holding {
+                isin: isin.trim().to_uppercase(),
+                wkn: wpn.trim().to_uppercase(),
+                name,
+                quantity: quantity.unwrap_or(0.0),
+                current_price_cents: price.and_then(real_to_cents).unwrap_or(0),
+                purchase_price_cents: purchase.and_then(real_to_cents).unwrap_or(0),
+                value_cents: amount.and_then(real_to_cents).unwrap_or(0),
+                ..Default::default()
+            },
+            classification: moneymoney_classification(asset_class),
+        });
+    }
+    Ok(holdings)
+}
+
+/// Banks – never credential / keys / systemid / bpd / upd / local_storage / userdata.
+fn read_banks(conn: &Connection) -> CoreResult<Vec<SrcBank>> {
+    let sql = select(
+        conn,
+        "banks",
+        &["rowid", "bankcode", "username", "customer", "name"],
+        "ORDER BY rowid",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok(SrcBank {
+            id: vint(get(r, 0)?).unwrap_or_default(),
+            bankcode: vtext(get(r, 1)?),
+            username: vtext(get(r, 2)?),
+            customer: vtext(get(r, 3)?),
+            name: vtext(get(r, 4)?),
+        })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+fn read_account_groups(conn: &Connection) -> CoreResult<HashMap<i64, (String, i64, i64)>> {
+    let sql = select(
+        conn,
+        "account_groups",
+        &["rowid", "name", "group_key", "sort"],
+        "",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok((
+            vint(get(r, 0)?).unwrap_or_default(),
+            (
+                vtext(get(r, 1)?).trim().to_string(),
+                vint(get(r, 2)?).unwrap_or(0),
+                vint(get(r, 3)?).unwrap_or(0),
+            ),
+        ))
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Categories with their nested groups.
+fn read_categories(conn: &Connection, have: &HashSet<String>) -> CoreResult<SrcCategories> {
+    let mut cats = SrcCategories::default();
+    // rowid -> (name, parent group rowid or 0, colour)
+    let mut groups: HashMap<i64, (String, i64, Option<String>)> = HashMap::new();
+    if have.contains("category_groups") {
         let sql = select(
-            &conn,
-            "account_groups",
-            &["rowid", "name", "group_key", "sort"],
+            conn,
+            "category_groups",
+            &["rowid", "name", "group_key", "color"],
             "",
         )?;
         let mut st = conn.prepare(&sql)?;
@@ -1326,195 +1379,168 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
             Ok((
                 vint(get(r, 0)?).unwrap_or_default(),
                 (
-                    vtext(get(r, 1)?).trim().to_string(),
+                    vtext(get(r, 1)?),
                     vint(get(r, 2)?).unwrap_or(0),
-                    vint(get(r, 3)?).unwrap_or(0),
+                    mm_color(&vtext(get(r, 3)?)),
                 ),
             ))
         })?;
-        src.account_groups = rows.collect::<Result<_, _>>()?;
+        groups = rows.collect::<Result<_, _>>()?;
     }
-
-    // categories (+ nested groups)
-    {
-        // rowid -> (name, parent group rowid or 0, colour)
-        let mut groups: HashMap<i64, (String, i64, Option<String>)> = HashMap::new();
-        if have.contains("category_groups") {
-            let sql = select(
-                &conn,
-                "category_groups",
-                &["rowid", "name", "group_key", "color"],
-                "",
-            )?;
-            let mut st = conn.prepare(&sql)?;
-            let rows = st.query_map([], |r| {
-                Ok((
-                    vint(get(r, 0)?).unwrap_or_default(),
-                    (
-                        vtext(get(r, 1)?),
-                        vint(get(r, 2)?).unwrap_or(0),
-                        mm_color(&vtext(get(r, 3)?)),
-                    ),
-                ))
-            })?;
-            groups = rows.collect::<Result<_, _>>()?;
+    // names of a group and its parents, outermost first
+    let group_path = |mut g: i64| -> Vec<String> {
+        let mut path = Vec::new();
+        let mut guard = 0;
+        while g > 0 && guard < 32 {
+            guard += 1;
+            let Some((gname, parent, _)) = groups.get(&g) else {
+                break;
+            };
+            if !gname.is_empty() {
+                path.push(gname.clone());
+            }
+            g = *parent;
         }
-        // names of a group and its parents, outermost first
-        let group_path = |mut g: i64| -> Vec<String> {
-            let mut path = Vec::new();
-            let mut guard = 0;
-            while g > 0 && guard < 32 {
-                guard += 1;
-                let Some((gname, parent, _)) = groups.get(&g) else {
-                    break;
-                };
-                if !gname.is_empty() {
-                    path.push(gname.clone());
-                }
-                g = *parent;
-            }
-            path.reverse();
-            path
-        };
-        let mut group_ids: Vec<&i64> = groups.keys().collect();
-        group_ids.sort();
-        for g in group_ids {
-            if let (Some(color), path) = (&groups[g].2, group_path(*g)) {
-                if !path.is_empty() {
-                    src.category_colors.push((path, color.clone()));
-                }
-            }
-        }
-        let sql = select(
-            &conn,
-            "categories",
-            &[
-                "rowid",
-                "name",
-                "type",
-                "group_key",
-                "rules",
-                "apply_to_account",
-                "color",
-            ],
-            "ORDER BY group_key, sort, rowid",
-        )?;
-        let mut st = conn.prepare(&sql)?;
-        let rows = st.query_map([], |r| {
-            Ok((
-                vint(get(r, 0)?).unwrap_or_default(),
-                vtext(get(r, 1)?),
-                vint(get(r, 2)?),
-                vint(get(r, 3)?).unwrap_or(0),
-                vtext(get(r, 4)?),
-                vtext(get(r, 5)?),
-                mm_color(&vtext(get(r, 6)?)),
-            ))
-        })?;
-        for row in rows {
-            let (id, name, typ, group, rules, apply_to_account, color) = row?;
-            // rowid 1 / type 0 / empty name = "Ohne Kategorie"
-            if name.is_empty() || typ == Some(0) {
-                continue;
-            }
-            let mut path = group_path(group);
-            path.push(name);
-            let rules = rules.trim();
-            if !rules.is_empty() {
-                let restricted = !apply_to_account.trim().is_empty();
-                src.category_rules
-                    .push((path.clone(), rules.to_string(), restricted));
-            }
-            if let Some(color) = color {
-                src.category_colors.push((path.clone(), color));
-            }
-            src.category_order.push(path.clone());
-            src.categories.insert(id, path);
-        }
-    }
-
-    // transactions – counterparty, texts, references; `pn` unused
-    {
-        let sql = select(
-            &conn,
-            "transactions",
-            &[
-                "rowid",
-                "local_account_key",
-                "account",
-                "bankcode",
-                "amount",
-                "currency",
-                "timestamp",
-                "value_timestamp",
-                "eref",
-                "mref",
-                "cred",
-                "comment",
-                "booked",
-                "unformatted_type",
-                "unformatted_purpose",
-                "name",
-                "checkmark",
-                "split_key",
-                "category_key",
-            ],
-            "ORDER BY timestamp, rowid",
-        )?;
-        let mut st = conn.prepare(&sql)?;
-        let rows = st.query_map([], |r| {
-            Ok(SrcTx {
-                id: vint(get(r, 0)?).unwrap_or_default(),
-                account_key: vint(get(r, 1)?).unwrap_or_default(),
-                cp_account: vtext(get(r, 2)?),
-                cp_bankcode: vtext(get(r, 3)?),
-                amount: vreal(get(r, 4)?),
-                currency: vtext(get(r, 5)?).to_uppercase(),
-                ts: vint(get(r, 6)?),
-                value_ts: vint(get(r, 7)?).filter(|t| *t > 0),
-                eref: vtext(get(r, 8)?),
-                mref: vtext(get(r, 9)?),
-                cred: vtext(get(r, 10)?),
-                comment: vtext(get(r, 11)?),
-                booked: vint(get(r, 12)?).unwrap_or(1) != 0,
-                booking_text: vtext(get(r, 13)?),
-                purpose: vtext(get(r, 14)?),
-                name: vtext(get(r, 15)?),
-                checkmark: vint(get(r, 16)?).unwrap_or(0) != 0,
-                split_key: vint(get(r, 17)?).filter(|k| *k > 0),
-                category_key: vint(get(r, 18)?),
-            })
-        })?;
-        src.txs = rows.collect::<Result<_, _>>()?;
-    }
-
-    if have.contains("balances") {
-        let sql = select(
-            &conn,
-            "balances",
-            &["account_key", "currency", "timestamp", "initial_balance"],
-            "ORDER BY timestamp",
-        )?;
-        let mut st = conn.prepare(&sql)?;
-        let rows = st.query_map([], |r| {
-            Ok((
-                vint(get(r, 0)?),
-                vtext(get(r, 1)?).to_uppercase(),
-                vint(get(r, 2)?).unwrap_or(0),
-                vreal(get(r, 3)?),
-            ))
-        })?;
-        for row in rows {
-            if let (Some(acc), cur, ts, Some(v)) = row? {
-                // ordered by timestamp: the newest row wins
-                src.balances.insert((acc, cur), (ts, v));
+        path.reverse();
+        path
+    };
+    let mut group_ids: Vec<&i64> = groups.keys().collect();
+    group_ids.sort();
+    for g in group_ids {
+        if let (Some(color), path) = (&groups[g].2, group_path(*g)) {
+            if !path.is_empty() {
+                cats.colors.push((path, color.clone()));
             }
         }
     }
+    let sql = select(
+        conn,
+        "categories",
+        &[
+            "rowid",
+            "name",
+            "type",
+            "group_key",
+            "rules",
+            "apply_to_account",
+            "color",
+        ],
+        "ORDER BY group_key, sort, rowid",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok((
+            vint(get(r, 0)?).unwrap_or_default(),
+            vtext(get(r, 1)?),
+            vint(get(r, 2)?),
+            vint(get(r, 3)?).unwrap_or(0),
+            vtext(get(r, 4)?),
+            vtext(get(r, 5)?),
+            mm_color(&vtext(get(r, 6)?)),
+        ))
+    })?;
+    for row in rows {
+        let (id, name, typ, group, rules, apply_to_account, color) = row?;
+        // rowid 1 / type 0 / empty name = "Ohne Kategorie"
+        if name.is_empty() || typ == Some(0) {
+            continue;
+        }
+        let mut path = group_path(group);
+        path.push(name);
+        let rules = rules.trim();
+        if !rules.is_empty() {
+            let restricted = !apply_to_account.trim().is_empty();
+            cats.rules
+                .push((path.clone(), rules.to_string(), restricted));
+        }
+        if let Some(color) = color {
+            cats.colors.push((path.clone(), color));
+        }
+        cats.order.push(path.clone());
+        cats.by_id.insert(id, path);
+    }
+    Ok(cats)
+}
 
-    src.docs = read_documents(&conn, &have)?;
-    src.templates = templates::read_templates(&conn, &have)?;
-    Ok(src)
+/// Transactions – counterparty, texts, references; `pn` unused.
+fn read_transactions(conn: &Connection) -> CoreResult<Vec<SrcTx>> {
+    let sql = select(
+        conn,
+        "transactions",
+        &[
+            "rowid",
+            "local_account_key",
+            "account",
+            "bankcode",
+            "amount",
+            "currency",
+            "timestamp",
+            "value_timestamp",
+            "eref",
+            "mref",
+            "cred",
+            "comment",
+            "booked",
+            "unformatted_type",
+            "unformatted_purpose",
+            "name",
+            "checkmark",
+            "split_key",
+            "category_key",
+        ],
+        "ORDER BY timestamp, rowid",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok(SrcTx {
+            id: vint(get(r, 0)?).unwrap_or_default(),
+            account_key: vint(get(r, 1)?).unwrap_or_default(),
+            cp_account: vtext(get(r, 2)?),
+            cp_bankcode: vtext(get(r, 3)?),
+            amount: vreal(get(r, 4)?),
+            currency: vtext(get(r, 5)?).to_uppercase(),
+            ts: vint(get(r, 6)?),
+            value_ts: vint(get(r, 7)?).filter(|t| *t > 0),
+            eref: vtext(get(r, 8)?),
+            mref: vtext(get(r, 9)?),
+            cred: vtext(get(r, 10)?),
+            comment: vtext(get(r, 11)?),
+            booked: vint(get(r, 12)?).unwrap_or(1) != 0,
+            booking_text: vtext(get(r, 13)?),
+            purpose: vtext(get(r, 14)?),
+            name: vtext(get(r, 15)?),
+            checkmark: vint(get(r, 16)?).unwrap_or(0) != 0,
+            split_key: vint(get(r, 17)?).filter(|k| *k > 0),
+            category_key: vint(get(r, 18)?),
+        })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+fn read_balances(conn: &Connection) -> CoreResult<HashMap<(i64, String), (i64, f64)>> {
+    let sql = select(
+        conn,
+        "balances",
+        &["account_key", "currency", "timestamp", "initial_balance"],
+        "ORDER BY timestamp",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok((
+            vint(get(r, 0)?),
+            vtext(get(r, 1)?).to_uppercase(),
+            vint(get(r, 2)?).unwrap_or(0),
+            vreal(get(r, 3)?),
+        ))
+    })?;
+    let mut balances = HashMap::new();
+    for row in rows {
+        if let (Some(acc), cur, ts, Some(v)) = row? {
+            // ordered by timestamp: the newest row wins
+            balances.insert((acc, cur), (ts, v));
+        }
+    }
+    Ok(balances)
 }
 
 /// PDFs above this size are skipped (never loaded into memory).
@@ -1962,7 +1988,7 @@ impl Source {
             let own = self.own_counter_account(a, &t.cp_account, &t.cp_bankcode);
             let mut path = t
                 .category_key
-                .and_then(|k| self.categories.get(&k))
+                .and_then(|k| self.categories.by_id.get(&k))
                 .cloned()
                 .unwrap_or_default();
             // Issue #94: a booking to / from another own account is a transfer,
@@ -2135,7 +2161,7 @@ fn find_connection(
     key: &str,
     login: &str,
 ) -> CoreResult<Option<i64>> {
-    let login = crate::connections::normalize_login(kind, login);
+    let login = crate::vault::connections::normalize_login(kind, login);
     let mut st = conn
         .prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1 AND deleted_ms IS NULL ORDER BY id")?;
     let rows: Vec<(i64, String)> = st
@@ -2143,7 +2169,9 @@ fn find_connection(
         .collect::<Result<_, _>>()?;
     Ok(rows
         .into_iter()
-        .find(|(_, l)| crate::connections::normalize_login(kind, l).eq_ignore_ascii_case(&login))
+        .find(|(_, l)| {
+            crate::vault::connections::normalize_login(kind, l).eq_ignore_ascii_case(&login)
+        })
         .map(|(id, _)| id))
 }
 
@@ -2165,7 +2193,7 @@ pub(crate) fn adopt_account(
     let switched: Option<i64> = conn
         .query_row(
             "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND deleted_ms IS NULL",
-            params![connection_id, format!("{}{external_ref}", crate::connections::SWITCH_MARK)],
+            params![connection_id, format!("{}{external_ref}", crate::vault::connections::SWITCH_MARK)],
             |r| r.get(0),
         )
         .optional()?;
@@ -2224,7 +2252,7 @@ pub(crate) fn adopt_account(
 /// MoneyMoney's tree replaces the starter categories only in a vault without
 /// bookings: nothing can be assigned to them yet, so nothing is lost.
 fn replaces_starter_categories(conn: &Connection, src: &Source) -> CoreResult<bool> {
-    if src.category_order.is_empty() {
+    if src.categories.order.is_empty() {
         return Ok(false);
     }
     let bookings: i64 = conn.query_row(
@@ -2379,7 +2407,7 @@ fn preview(
         statements_bytes: bytes,
         accounts,
         banks,
-        category_paths: src.category_order.iter().map(|p| p.join(" › ")).collect(),
+        category_paths: src.categories.order.iter().map(|p| p.join(" › ")).collect(),
         total_bookings: total,
         pending_bookings: pending,
         notes_count: notes,
@@ -2471,7 +2499,7 @@ fn import_category_rules(
     cat_cache: &mut HashMap<String, i64>,
     res: &mut MoneyMoneyDbImportResult,
 ) -> CoreResult<()> {
-    for (i, (path, expr, restricted)) in src.category_rules.iter().enumerate() {
+    for (i, (path, expr, restricted)) in src.categories.rules.iter().enumerate() {
         let category_id =
             find_or_create_category(conn, path, cat_cache, &mut res.categories_created)?;
         let exists: bool = conn.query_row(
@@ -2594,10 +2622,9 @@ fn import(
     conn: &Connection,
     src: &Source,
     options: &MoneyMoneyDbImportOptions,
-    mut files: Option<StatementFiles>,
+    files: Option<StatementFiles>,
     observer: Option<&dyn MoneyMoneyImportObserver>,
 ) -> CoreResult<MoneyMoneyDbImportResult> {
-    let mut res = MoneyMoneyDbImportResult::default();
     // what there is to do, for the progress bar
     let mut plan = Vec::new();
     for choice in options.accounts.iter().filter(|c| c.import) {
@@ -2628,95 +2655,97 @@ fn import(
         },
     };
     report.emit()?;
-    let mut cat_cache = HashMap::new();
-    if options.import_categories && replaces_starter_categories(conn, src)? {
-        // soft: rules and assignments go with them
-        let roots: Vec<i64> = conn
-            .prepare("SELECT id FROM categories WHERE parent_id IS NULL AND deleted_ms IS NULL")?
-            .query_map([], |r| r.get(0))?
-            .collect::<Result<_, _>>()?;
-        for id in roots {
-            crate::sync_merge::soft_delete_categories(conn, id)?;
-        }
-    }
+    let mut cx = ImportCtx {
+        conn,
+        src,
+        options,
+        report,
+        files,
+        cat_cache: HashMap::new(),
+        res: MoneyMoneyDbImportResult::default(),
+        to_link: Vec::new(),
+        created_groups: Vec::new(),
+    };
     if options.import_categories {
-        // the whole tree, also categories without bookings
-        for path in &src.category_order {
-            find_or_create_category(conn, path, &mut cat_cache, &mut res.categories_created)?;
-        }
-        apply_category_colors(conn, src, &cat_cache)?;
-        import_category_rules(conn, src, &mut cat_cache, &mut res)?;
+        cx.import_categories()?;
     }
-    let mut to_link: Vec<(i64, i64)> = Vec::new();
-    // (MoneyMoney group rowid, uuid) of the groups this import creates
-    let mut created_groups: Vec<(i64, String)> = Vec::new();
     for (choice, a, r) in plan {
-        report.state.account_index += 1;
-        report.state.account_name = src.account_name(a);
-        report.emit()?;
-        let ext = ext_ref(a);
-        let kind = choice.kind;
-        let a_groups = src.group_chain(a.group_key);
-        let target = match choice.target_account_id {
-            Some(id) => Some(id),
-            None => conn
-                .query_row(
-                    // includes soft-deleted rows: revived below
-                    "SELECT id FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
-                    [&ext],
-                    |r| r.get::<_, i64>(0),
-                )
-                .optional()?
-                .map(|id| {
-                    crate::sync_merge::twins::folded_into(conn, id).map(|bank| bank.unwrap_or(id))
-                })
-                .transpose()?,
-        };
-        let (account_id, currency) = match target {
-            Some(id) => {
-                crate::sync_merge::revive_account_if_deleted(conn, id)?;
-                let cur: String = conn
-                    .query_row("SELECT currency FROM accounts WHERE id = ?1", [id], |r| {
-                        r.get(0)
-                    })
-                    .optional()?
-                    .ok_or_else(|| CoreError::NotFound {
-                        what: format!("account {id}"),
-                    })?;
-                res.accounts_merged += 1;
-                (id, cur)
+        cx.report.state.account_index += 1;
+        cx.report.state.account_name = src.account_name(a);
+        cx.report.emit()?;
+        cx.import_account(choice, a, &r)?;
+    }
+    cx.order_created_groups()?;
+
+    cx.report.state.account_index += 1;
+    cx.report.state.account_name.clear();
+    cx.report.emit()?;
+    if let (true, Some(files)) = (options.import_statements, cx.files.as_mut()) {
+        cx.res.documents_unlisted = files.unlisted();
+    }
+
+    cx.connect_banks()?;
+    if options.import_transfer_templates {
+        let (created, existing, skipped) = templates::import_templates(conn, &src.templates)?;
+        cx.res.transfer_templates_created = created;
+        cx.res.transfer_templates_existing = existing;
+        cx.res.transfer_templates_skipped = skipped;
+    }
+    Vault::apply_rules_inner(conn, true)?;
+    Ok(cx.res)
+}
+
+struct ImportCtx<'a> {
+    conn: &'a Connection,
+    src: &'a Source,
+    options: &'a MoneyMoneyDbImportOptions,
+    report: Reporter<'a>,
+    files: Option<StatementFiles>,
+    cat_cache: HashMap<String, i64>,
+    res: MoneyMoneyDbImportResult,
+    /// (account id, MoneyMoney bank rowid) of the importer's own accounts,
+    /// linked to the bank's login once the connections exist
+    to_link: Vec<(i64, i64)>,
+    /// (MoneyMoney group rowid, uuid) of the groups this import creates
+    created_groups: Vec<(i64, String)>,
+}
+
+impl ImportCtx<'_> {
+    fn import_categories(&mut self) -> CoreResult<()> {
+        let conn = self.conn;
+        if replaces_starter_categories(conn, self.src)? {
+            // soft: rules and assignments go with them
+            let roots: Vec<i64> = conn
+                .prepare(
+                    "SELECT id FROM categories WHERE parent_id IS NULL AND deleted_ms IS NULL",
+                )?
+                .query_map([], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            for id in roots {
+                crate::sync_merge::soft_delete_categories(conn, id)?;
             }
-            None => {
-                let (group, sym, order) = group_for(kind);
-                let gid = Vault::ensure_group(conn, group, sym, order)?;
-                let bank_name = src
-                    .bank(a.bank_key)
-                    .map(|b| b.name.clone())
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| "Datenimport".into());
-                conn.execute(
-                    "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number,
-                                          currency, kind, balance_cents, balance_date, sf_symbol, sort_order, created_ms)
-                     VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, '', ?10,
-                             (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?11)",
-                    params![
-                        gid,
-                        ext,
-                        src.account_name(a),
-                        bank_name,
-                        a.owner,
-                        a.iban,
-                        a.account,
-                        a.currency,
-                        kind.as_str(),
-                        kind.sf_symbol(),
-                        now_ms()
-                    ],
-                )?;
-                res.accounts_created += 1;
-                (conn.last_insert_rowid(), a.currency.clone())
-            }
-        };
+        }
+        // the whole tree, also categories without bookings
+        for path in &self.src.categories.order {
+            find_or_create_category(
+                conn,
+                path,
+                &mut self.cat_cache,
+                &mut self.res.categories_created,
+            )?;
+        }
+        apply_category_colors(conn, self.src, &self.cat_cache)?;
+        import_category_rules(conn, self.src, &mut self.cat_cache, &mut self.res)
+    }
+
+    fn import_account(
+        &mut self,
+        choice: &MoneyMoneyDbAccountChoice,
+        a: &SrcAccount,
+        r: &AccountRows,
+    ) -> CoreResult<()> {
+        let (conn, src, options) = (self.conn, self.src, self.options);
+        let (account_id, currency) = self.target_account(choice, a)?;
         // Accounts owned by the importer (not synced with a bank) follow MoneyMoney:
         // chosen kind and MoneyMoney's balance. Bank-synced accounts keep theirs.
         let owned: bool = conn.query_row(
@@ -2735,121 +2764,227 @@ fn import(
             &currency,
             options.import_categories,
             options.import_notes,
-            &mut cat_cache,
+            &mut self.cat_cache,
             &mut st,
         )?;
-        report.state.bookings_done += r.rows.len() as u32;
-        report.emit()?;
+        self.report.state.bookings_done += r.rows.len() as u32;
+        self.report.emit()?;
         if owned {
-            let (group, sym, order) = group_for(kind);
-            let gid = Vault::ensure_group(conn, group, sym, order)?;
-            conn.execute(
-                "UPDATE accounts SET kind = ?1, sf_symbol = CASE WHEN symbol_ms > 0 THEN sf_symbol ELSE ?2 END, group_id = ?3, balance_cents = ?4, balance_date = ?5 WHERE id = ?6",
-                params![kind.as_str(), kind.sf_symbol(), gid, r.balance_cents, r.balance_date, account_id],
-            )?;
-            if kind == AccountKind::Loan {
-                Vault::derive_initial_balance(conn, account_id)?;
-            }
-            // Deactivated in MoneyMoney: archived here too (offline account that
-            // stays readable). Never un-archives what the user archived.
-            if let Some(ts) = a.cancelled_ts {
-                conn.execute(
-                    "UPDATE accounts SET archived_unix = ?1, archived_ms = ?2 WHERE id = ?3 AND archived_unix IS NULL",
-                    params![ts, now_ms(), account_id],
-                )?;
-            }
-            // #212: MoneyMoney's opening balance becomes the account's. MoneyMoney
-            // has no cut-off date: the Startsaldo applies before the first
-            // booking. A balance-history row is dated, though (its value is the
-            // balance at that point, a date that may lie after every booking),
-            // so the undated amount is calibrated to the balance MoneyMoney
-            // shows or the one computed above: after an import the balance is
-            // MoneyMoney's, as the account check expects.
-            if r.opening && !matches!(kind, AccountKind::Brokerage | AccountKind::Loan) {
-                crate::opening_balance::store(conn, account_id, Some(0), "")?;
-                crate::opening_balance::calibrate_in(conn, account_id, r.balance_cents)?;
-            }
-            // Positions are a snapshot: always replace, so a depot whose positions
-            // were all sold in MoneyMoney ends up empty here too.
-            conn.execute("DELETE FROM holdings WHERE account_id = ?1", [account_id])?;
-            if let Some(list) = src.holdings.get(&a.id) {
-                for source in list {
-                    let h = &source.holding;
-                    conn.execute(
-                        "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                        params![account_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
-                    )?;
-                    conn.execute(
-                        "INSERT INTO holding_classifications(holding_id,asset_class,instrument) VALUES (?1,?2,?3)",
-                        params![conn.last_insert_rowid(),source.classification.asset_class.map(AssetClass::as_str),source.classification.instrument.map(InstrumentKind::as_str)],
-                    )?;
-                }
-                res.holdings_imported += list.len() as u32;
-            }
+            self.follow_moneymoney(account_id, choice.kind, a, r)?;
         }
         if let Some(rows) = src.value_history.get(&a.id) {
-            res.value_history_imported += observations::record_import(conn, account_id, rows)?;
+            self.res.value_history_imported += observations::record_import(conn, account_id, rows)?;
             crate::depot_values::rebuild(conn, account_id, None)?;
         }
-        if options.import_groups && !a_groups.is_empty() {
-            // never placed by the user (an explicit "Ohne Gruppe" is kept, too)
-            let ungrouped: bool = conn.query_row(
-                "SELECT user_group_uuid IS NULL AND placement_ms = 0 FROM accounts WHERE id = ?1",
-                [account_id],
-                |r| r.get(0),
-            )?;
-            if ungrouped {
-                let now = now_ms();
-                // the MoneyMoney groups from the top level down to the account's own
-                let mut parent: Option<String> = None;
-                for (key, name) in &a_groups {
-                    let (uuid, created) = crate::user_groups::find_or_create(conn, name, "folder")?;
-                    if created {
-                        res.groups_created += 1;
-                        created_groups.push((*key, uuid.clone()));
-                        // only new groups are nested: one the user already has stays where it is
-                        if let Some(p) = parent.as_deref().filter(|p| *p != uuid) {
-                            crate::user_groups::set_parent(conn, &uuid, Some(p), now)?;
-                        }
-                    }
-                    parent = Some(uuid);
-                }
-                crate::user_groups::assign(conn, account_id, parent.as_deref(), now)?;
-            }
+        if options.import_groups {
+            self.place_in_groups(account_id, a)?;
         }
-        res.bookings_new += st.new;
-        res.bookings_duplicates += st.duplicates;
-        res.bookings_enriched += st.enriched;
-        res.notes_imported += st.notes;
-        res.categories_created += st.categories_created;
-        res.pending_skipped += r.pending;
+        self.res.bookings_new += st.new;
+        self.res.bookings_duplicates += st.duplicates;
+        self.res.bookings_enriched += st.enriched;
+        self.res.notes_imported += st.notes;
+        self.res.categories_created += st.categories_created;
+        self.res.pending_skipped += r.pending;
         if options.import_statements {
             for d in src.docs.iter().filter(|d| d.account_key == a.id) {
-                import_document(conn, a.id, account_id, d, files.as_mut(), &mut res)?;
-                report.state.documents_done += 1;
-                report.emit()?;
+                import_document(
+                    conn,
+                    a.id,
+                    account_id,
+                    d,
+                    self.files.as_mut(),
+                    &mut self.res,
+                )?;
+                self.report.state.documents_done += 1;
+                self.report.emit()?;
             }
         }
-        res.account_checks.push(check_account(
+        self.res.account_checks.push(check_account(
             conn,
             a,
             &src.account_name(a),
             account_id,
-            &r,
+            r,
             !owned,
         )?);
         if let (true, Some(bank)) = (owned, a.bank_key) {
-            to_link.push((account_id, bank));
+            self.to_link.push((account_id, bank));
         }
+        Ok(())
     }
 
-    // The new groups take MoneyMoney's order among themselves: they share
-    // out the list positions they got (existing groups keep theirs).
-    if created_groups.len() > 1 {
-        let rank = src.group_ranks();
-        let mut slots: Vec<i64> = Vec::with_capacity(created_groups.len());
-        for (_, uuid) in &created_groups {
+    /// The account the MoneyMoney account goes into: the chosen one, the one an
+    /// earlier import created (revived if deleted), else a new one.
+    /// Returns (account id, currency).
+    fn target_account(
+        &mut self,
+        choice: &MoneyMoneyDbAccountChoice,
+        a: &SrcAccount,
+    ) -> CoreResult<(i64, String)> {
+        let (conn, src) = (self.conn, self.src);
+        let ext = ext_ref(a);
+        let kind = choice.kind;
+        let target = match choice.target_account_id {
+            Some(id) => Some(id),
+            None => conn
+                .query_row(
+                    // includes soft-deleted rows: revived below
+                    "SELECT id FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
+                    [&ext],
+                    |r| r.get::<_, i64>(0),
+                )
+                .optional()?
+                .map(|id| {
+                    crate::sync_merge::twins::folded_into(conn, id).map(|bank| bank.unwrap_or(id))
+                })
+                .transpose()?,
+        };
+        if let Some(id) = target {
+            crate::sync_merge::revive_account_if_deleted(conn, id)?;
+            let cur: String = conn
+                .query_row("SELECT currency FROM accounts WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .optional()?
+                .ok_or_else(|| CoreError::NotFound {
+                    what: format!("account {id}"),
+                })?;
+            self.res.accounts_merged += 1;
+            return Ok((id, cur));
+        }
+        let (group, sym, order) = group_for(kind);
+        let gid = Vault::ensure_group(conn, group, sym, order)?;
+        let bank_name = src
+            .bank(a.bank_key)
+            .map(|b| b.name.clone())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "Datenimport".into());
+        conn.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number,
+                                  currency, kind, balance_cents, balance_date, sf_symbol, sort_order, created_ms)
+             VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, '', ?10,
+                     (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?11)",
+            params![
+                gid,
+                ext,
+                src.account_name(a),
+                bank_name,
+                a.owner,
+                a.iban,
+                a.account,
+                a.currency,
+                kind.as_str(),
+                kind.sf_symbol(),
+                now_ms()
+            ],
+        )?;
+        self.res.accounts_created += 1;
+        Ok((conn.last_insert_rowid(), a.currency.clone()))
+    }
+
+    /// An account the importer owns takes MoneyMoney's kind, balance, archive
+    /// state, opening balance and positions.
+    fn follow_moneymoney(
+        &mut self,
+        account_id: i64,
+        kind: AccountKind,
+        a: &SrcAccount,
+        r: &AccountRows,
+    ) -> CoreResult<()> {
+        let conn = self.conn;
+        let (group, sym, order) = group_for(kind);
+        let gid = Vault::ensure_group(conn, group, sym, order)?;
+        conn.execute(
+            "UPDATE accounts SET kind = ?1, sf_symbol = CASE WHEN symbol_ms > 0 THEN sf_symbol ELSE ?2 END, group_id = ?3, balance_cents = ?4, balance_date = ?5 WHERE id = ?6",
+            params![kind.as_str(), kind.sf_symbol(), gid, r.balance_cents, r.balance_date, account_id],
+        )?;
+        if kind == AccountKind::Loan {
+            Vault::derive_initial_balance(conn, account_id)?;
+        }
+        // Deactivated in MoneyMoney: archived here too (offline account that
+        // stays readable). Never un-archives what the user archived.
+        if let Some(ts) = a.cancelled_ts {
+            conn.execute(
+                "UPDATE accounts SET archived_unix = ?1, archived_ms = ?2 WHERE id = ?3 AND archived_unix IS NULL",
+                params![ts, now_ms(), account_id],
+            )?;
+        }
+        // #212: MoneyMoney's opening balance becomes the account's. MoneyMoney
+        // has no cut-off date: the Startsaldo applies before the first
+        // booking. A balance-history row is dated, though (its value is the
+        // balance at that point, a date that may lie after every booking),
+        // so the undated amount is calibrated to the balance MoneyMoney
+        // shows or the one computed above: after an import the balance is
+        // MoneyMoney's, as the account check expects.
+        if r.opening && !matches!(kind, AccountKind::Brokerage | AccountKind::Loan) {
+            crate::opening_balance::store(conn, account_id, Some(0), "")?;
+            crate::opening_balance::calibrate_in(conn, account_id, r.balance_cents)?;
+        }
+        // Positions are a snapshot: always replace, so a depot whose positions
+        // were all sold in MoneyMoney ends up empty here too.
+        conn.execute("DELETE FROM holdings WHERE account_id = ?1", [account_id])?;
+        if let Some(list) = self.src.holdings.get(&a.id) {
+            for source in list {
+                let h = &source.holding;
+                conn.execute(
+                    "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![account_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
+                )?;
+                conn.execute(
+                    "INSERT INTO holding_classifications(holding_id,asset_class,instrument) VALUES (?1,?2,?3)",
+                    params![conn.last_insert_rowid(),source.classification.asset_class.map(AssetClass::as_str),source.classification.instrument.map(InstrumentKind::as_str)],
+                )?;
+            }
+            self.res.holdings_imported += list.len() as u32;
+        }
+        Ok(())
+    }
+
+    /// Puts an account the user never placed (an explicit "Ohne Gruppe" is
+    /// kept, too) into the MoneyMoney groups it is in, created as needed.
+    fn place_in_groups(&mut self, account_id: i64, a: &SrcAccount) -> CoreResult<()> {
+        let conn = self.conn;
+        let a_groups = self.src.group_chain(a.group_key);
+        if a_groups.is_empty() {
+            return Ok(());
+        }
+        let ungrouped: bool = conn.query_row(
+            "SELECT user_group_uuid IS NULL AND placement_ms = 0 FROM accounts WHERE id = ?1",
+            [account_id],
+            |r| r.get(0),
+        )?;
+        if !ungrouped {
+            return Ok(());
+        }
+        let now = now_ms();
+        // the MoneyMoney groups from the top level down to the account's own
+        let mut parent: Option<String> = None;
+        for (key, name) in &a_groups {
+            let (uuid, created) = crate::user_groups::find_or_create(conn, name, "folder")?;
+            if created {
+                self.res.groups_created += 1;
+                self.created_groups.push((*key, uuid.clone()));
+                // only new groups are nested: one the user already has stays where it is
+                if let Some(p) = parent.as_deref().filter(|p| *p != uuid) {
+                    crate::user_groups::set_parent(conn, &uuid, Some(p), now)?;
+                }
+            }
+            parent = Some(uuid);
+        }
+        crate::user_groups::assign(conn, account_id, parent.as_deref(), now)
+    }
+
+    /// The new groups take MoneyMoney's order among themselves: they share
+    /// out the list positions they got (existing groups keep theirs).
+    fn order_created_groups(&mut self) -> CoreResult<()> {
+        if self.created_groups.len() < 2 {
+            return Ok(());
+        }
+        let conn = self.conn;
+        let rank = self.src.group_ranks();
+        let mut slots: Vec<i64> = Vec::with_capacity(self.created_groups.len());
+        for (_, uuid) in &self.created_groups {
             slots.push(conn.query_row(
                 "SELECT sort_order FROM user_groups WHERE uuid = ?1",
                 [uuid],
@@ -2857,67 +2992,85 @@ fn import(
             )?);
         }
         slots.sort_unstable();
-        created_groups.sort_by_key(|(key, _)| rank.get(key).copied().unwrap_or(usize::MAX));
+        self.created_groups
+            .sort_by_key(|(key, _)| rank.get(key).copied().unwrap_or(usize::MAX));
         let now = now_ms();
-        for ((_, uuid), slot) in created_groups.iter().zip(slots) {
+        for ((_, uuid), slot) in self.created_groups.iter().zip(slots) {
             conn.execute(
                 "UPDATE user_groups SET sort_order = ?2, order_ms = ?3, updated_ms = max(updated_ms, ?3)
                  WHERE uuid = ?1 AND sort_order != ?2",
                 params![uuid, slot, now],
             )?;
         }
+        Ok(())
     }
 
-    report.state.account_index += 1;
-    report.state.account_name.clear();
-    report.emit()?;
-    if let (true, Some(files)) = (options.import_statements, files.as_mut()) {
-        res.documents_unlisted = files.unlisted();
-    }
-
-    let mut bank_connection: HashMap<i64, i64> = HashMap::new();
-    // Enable Banking connections set up here: (connection id, MoneyMoney bank)
-    let mut psd2_created: Vec<(i64, &SrcBank, bool)> = Vec::new();
-    for b in &src.banks {
-        let default = src
-            .connector_key(b)
-            .map(|(kind, key)| MoneyMoneyDbConnectionOption::direct(kind, key));
-        if default.is_none() {
-            // counted unless the user connects it through Enable Banking below
-            res.banks_skipped_unsupported += 1;
-            res.banks_skipped_names.push(b.name.clone());
-        }
-        if !options.create_connections {
-            continue;
-        }
-        let chosen = match options.bank_choices.iter().find(|c| c.mm_bank_id == b.id) {
-            Some(c) => c.connection.clone(),
-            None => default,
-        };
-        let Some(chosen) = chosen else { continue };
-        if chosen.via == MoneyMoneyDbConnectionVia::EnableBanking {
-            let Some(bank) = chosen.psd2_bank.as_ref() else {
-                continue;
-            };
-            if let Some((id, created)) = psd2_connection(conn, b, &bank.aspsp, &bank.country)? {
-                if created {
-                    res.connections_created += 1;
-                } else {
-                    res.connections_existing += 1;
-                }
-                if src.connector_key(b).is_none() {
-                    res.banks_skipped_unsupported -= 1;
-                    res.banks_skipped_names.pop();
-                }
-                bank_connection.insert(b.id, id);
-                psd2_created.push((id, b, created));
+    /// Finds or creates the bank logins the user chose, then links the
+    /// imported accounts and lists the Enable Banking connections.
+    fn connect_banks(&mut self) -> CoreResult<()> {
+        let (conn, src, options) = (self.conn, self.src, self.options);
+        // MoneyMoney bank rowid -> connection id
+        let mut bank_connection: HashMap<i64, i64> = HashMap::new();
+        // Enable Banking connections set up here: (connection id, bank name, created)
+        let mut psd2 = Vec::new();
+        for b in &src.banks {
+            let default = src
+                .connector_key(b)
+                .map(|(kind, key)| MoneyMoneyDbConnectionOption::direct(kind, key));
+            if default.is_none() {
+                // counted unless the user connects it through Enable Banking below
+                self.res.banks_skipped_unsupported += 1;
+                self.res.banks_skipped_names.push(b.name.clone());
             }
-            continue;
+            if !options.create_connections {
+                continue;
+            }
+            let chosen = match options.bank_choices.iter().find(|c| c.mm_bank_id == b.id) {
+                Some(c) => c.connection.clone(),
+                None => default,
+            };
+            let Some(chosen) = chosen else { continue };
+            if chosen.via == MoneyMoneyDbConnectionVia::EnableBanking {
+                let Some(bank) = chosen.psd2_bank.as_ref() else {
+                    continue;
+                };
+                if let Some((id, created)) = psd2_connection(conn, b, &bank.aspsp, &bank.country)? {
+                    self.count_connection(created);
+                    if src.connector_key(b).is_none() {
+                        self.res.banks_skipped_unsupported -= 1;
+                        self.res.banks_skipped_names.pop();
+                    }
+                    bank_connection.insert(b.id, id);
+                    psd2.push((id, b.name.clone(), created));
+                }
+                continue;
+            }
+            let id = self.direct_connection(b, chosen.connector, &chosen.key)?;
+            bank_connection.insert(b.id, id);
         }
-        let (kind, key) = (chosen.connector, chosen.key.clone());
+        self.link_accounts(&bank_connection)?;
+        self.list_psd2_connections(psd2)
+    }
+
+    fn count_connection(&mut self, created: bool) {
+        if created {
+            self.res.connections_created += 1;
+        } else {
+            self.res.connections_existing += 1;
+        }
+    }
+
+    /// The login of a bank with its own connector: an existing one, else a new one.
+    fn direct_connection(
+        &mut self,
+        b: &SrcBank,
+        kind: ConnectorKind,
+        key: &str,
+    ) -> CoreResult<i64> {
+        let conn = self.conn;
         // comdirect per FinTS: its address is not in the generated table,
         // store it so the login's settings show it (an existing one stays)
-        if let Some(blz) = ConnectorKind::fints_blz(&key) {
+        if let Some(blz) = ConnectorKind::fints_blz(key) {
             if crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&blz) {
                 conn.execute(
                     "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
@@ -2929,69 +3082,65 @@ fn import(
                 )?;
             }
         }
-        let id = match find_connection(conn, kind, &key, &b.username)? {
-            Some(id) => {
-                res.connections_existing += 1;
-                id
-            }
-            None => {
-                let (id, created) = Vault::add_bank_connection_keyed(
-                    conn,
-                    kind,
-                    &key,
-                    ConnectorKind::fints_blz(&key),
-                    b.name.clone(),
-                    b.username.clone(),
-                )?;
-                if created {
-                    res.connections_created += 1;
-                } else {
-                    res.connections_existing += 1;
-                }
-                id
-            }
-        };
-        bank_connection.insert(b.id, id);
-    }
-    // Show imported accounts under their bank login right away; the first
-    // sync then takes them over (adopt_account) instead of adding new ones.
-    for (account_id, bank) in to_link {
-        if let Some(cid) = bank_connection.get(&bank) {
-            conn.execute(
-                "UPDATE accounts SET connection_id = ?1 WHERE id = ?2 AND connection_id IS NULL",
-                params![cid, account_id],
-            )?;
+        if let Some(id) = find_connection(conn, kind, key, &b.username)? {
+            self.count_connection(false);
+            return Ok(id);
         }
+        let (id, created) = Vault::add_bank_connection_keyed(
+            conn,
+            kind,
+            key,
+            ConnectorKind::fints_blz(key),
+            b.name.clone(),
+            b.username.clone(),
+        )?;
+        self.count_connection(created);
+        Ok(id)
     }
-    for (id, b, created) in psd2_created {
-        let mut st = conn.prepare(
+
+    /// Shows imported accounts under their bank login right away; the first
+    /// sync then takes them over (adopt_account) instead of adding new ones.
+    fn link_accounts(&self, bank_connection: &HashMap<i64, i64>) -> CoreResult<()> {
+        for (account_id, bank) in &self.to_link {
+            if let Some(cid) = bank_connection.get(bank) {
+                self.conn.execute(
+                    "UPDATE accounts SET connection_id = ?1 WHERE id = ?2 AND connection_id IS NULL",
+                    params![cid, account_id],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Lists the Enable Banking connections with their accounts, for the
+    /// prompt to authorise them.
+    fn list_psd2_connections(&mut self, psd2: Vec<(i64, String, bool)>) -> CoreResult<()> {
+        if psd2.is_empty() {
+            return Ok(());
+        }
+        let mut st = self.conn.prepare(
             "SELECT name, iban, account_number FROM accounts
              WHERE connection_id = ?1 AND deleted_ms IS NULL ORDER BY sort_order, id",
         )?;
-        let accounts = st
-            .query_map([id], |r| {
-                Ok(MoneyMoneyDbPsd2Account {
-                    name: r.get(0)?,
-                    iban: r.get(1)?,
-                    account_number: r.get(2)?,
-                })
-            })?
-            .collect::<Result<_, _>>()?;
-        res.psd2_connections.push(MoneyMoneyDbPsd2Connection {
-            connection_id: id,
-            bank_name: b.name.clone(),
-            created,
-            accounts,
-        });
+        for (connection_id, bank_name, created) in psd2 {
+            let accounts = st
+                .query_map([connection_id], |r| {
+                    Ok(MoneyMoneyDbPsd2Account {
+                        name: r.get(0)?,
+                        iban: r.get(1)?,
+                        account_number: r.get(2)?,
+                    })
+                })?
+                .collect::<Result<_, _>>()?;
+            self.res.psd2_connections.push(MoneyMoneyDbPsd2Connection {
+                connection_id,
+                bank_name,
+                created,
+                accounts,
+            });
+        }
+        Ok(())
     }
-    if options.import_transfer_templates {
-        let (created, existing, skipped) = templates::import_templates(conn, &src.templates)?;
-        res.transfer_templates_created = created;
-        res.transfer_templates_existing = existing;
-        res.transfer_templates_skipped = skipped;
-    }
-    Vault::apply_rules_inner(conn, true)?;
-    Ok(res)
 }
 
 /// Enable Banking connection for a MoneyMoney bank without own connector:

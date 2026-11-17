@@ -27,13 +27,15 @@ mod backup;
 mod balances;
 pub(crate) mod bookings;
 mod categories;
+pub(crate) mod connections;
 mod merge;
 mod rah10;
 mod rules;
 mod settings;
 mod transfer_pairs;
 
-pub(crate) use bookings::{enrich, sql_int_list, LIVE_BOOKINGS_SQL};
+pub(crate) use bookings::{enrich, sql_int_list, LIVE_BOOKINGS_SQL, PENDING_SQL};
+pub use connections::ConnectionStatus;
 pub use merge::MergeStats;
 pub use settings::KNOWN_SETTINGS;
 
@@ -338,7 +340,7 @@ impl Vault {
         // paths); used to happen as part of the per-open schema probes
         let _ = crate::sync_merge::fill_missing_uuids(conn);
         // merge duplicate bank logins left by older versions (keeps bookings)
-        let _ = crate::connections::deduplicate(conn);
+        let _ = connections::deduplicate(conn);
         // fold MoneyMoney accounts a merge added next to the bank account
         // that took them over (keeps bookings)
         let _ = crate::sync_merge::twins::fold_twins(conn);

@@ -6,7 +6,7 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
 - `girocrab-core/src/lib.rs` – crate root, UniFFI exports
 - `girocrab-core/src/models.rs` – domain types
 - `girocrab-core/src/vault.rs` – encrypted storage: open/key/migrate/snapshot only
-- `girocrab-core/src/vault/` – `impl Vault` per feature: `accounts.rs`, `bookings.rs` (list_transactions/paging), `categories.rs`, `rules.rs`, `settings.rs`, `merge.rs`
+- `girocrab-core/src/vault/` – `impl Vault` per feature: `accounts.rs`, `bookings.rs` (list_transactions/paging), `categories.rs`, `connections.rs` (bank logins, stored PIN), `rules.rs`, `settings.rs`, `merge.rs`
 - `girocrab-core/src/schema.rs` – versioned schema migrations (see `docs/ARCHITECTURE.md`)
 - `girocrab-core/src/connectors/` – `mod.rs` (submodule decls + shared HTTP helpers), `types.rs` (`BankConnector`
   trait + DTOs), `catalog.rs` (`descriptor`, `make_connector*`), `sync_session.rs` / `transfer_session.rs` (FFI state

@@ -170,7 +170,7 @@ fehlende Angabe mit ⚠️.
 - [ ] **Redaction:** every new or changed SwiftUI view in the main window marks personal or financial data with `.sensitive()` (amounts, IBANs, names, purposes, notes, documents) or `.sensitive(.labels)` (category, group, budget, security names). Verify with `swift run GiroCrabMac --demo-seed --redact --screenshot /tmp/r.png` (`--redact=labels` for labels). / Neue oder geänderte Ansichten im Hauptfenster markieren personenbezogene und finanzielle Daten mit `.sensitive()`.
 - [ ] **Logs and errors:** text that reaches a log, diagnostics or a public issue goes through `sanitize_report_text` (`report_sanitizer.rs`); new fields get a test. Never paste raw log or bank text.
 - [ ] **File imports:** paths from users or archives are checked against traversal and symlinks (`std::fs::symlink_metadata`, see `importers/moneymoney_db.rs`).
-- [ ] **Exports:** CSV cells that are not numeric are escaped against formula injection (a leading `=`, `+`, `-` or `@` is neutralised, see `csv_field` in `export.rs`).
+- [ ] **Exports:** CSV cells that are not numeric are escaped against formula injection (a leading `=`, `+`, `-` or `@` is neutralised, see `csv_text` in `export/csv.rs`).
 - [ ] **Dependencies and licences:** `scripts/check-third-party-notices.sh` passes, and `THIRD_PARTY_NOTICES.md` is updated in the same PR when `Cargo.toml`, `Cargo.lock` or `Package.swift` changed.
 - [ ] **Brand neutrality:** `scripts/lint-brand-names.sh` passes.
 - [ ] **New access:** new network, process or file access is named in the PR description.

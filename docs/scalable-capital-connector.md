@@ -297,7 +297,7 @@ Each step ends with `cargo check -q -p girocrab-core` (Rust) or `swift build -q`
 ### Phase 5 – Wiring (~80 lines Rust, ~40 lines Swift)
 
 15. `models.rs`: enum variant, `as_str`, `all`. `connectors/catalog.rs`: descriptor,
-    `make_connector_for`. `connections.rs`: no login normalisation needed.
+    `make_connector_for`. `vault/connections.rs`: no login normalisation needed.
 16. `demo.rs` demo accounts; `make_connector_for(.., demo = true)` stub.
 17. Rebuild xcframework; Swift: `Formatting.swift`, `ConnectionsUI.swift`,
     `AppModel.swift`, `BankPicker.swift`, `TwoFactorSheet.swift` (redirect button in

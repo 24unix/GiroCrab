@@ -4246,7 +4246,7 @@ fn category_role_merge_converges_in_every_order() {
     ];
     let merge = |a: Option<&str>, b: Option<&str>| {
         let mut role = a.map(str::to_owned);
-        super::merge_category_role(&mut role, b.map(str::to_owned));
+        super::categories::merge_category_role(&mut role, b.map(str::to_owned));
         role
     };
     for a in roles {

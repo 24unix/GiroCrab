@@ -100,7 +100,7 @@ impl Vault {
         login_name: String,
     ) -> CoreResult<(i64, bool)> {
         let info = crate::connectors::descriptor(connector);
-        let login_name = crate::connections::normalize_login(connector, &login_name);
+        let login_name = super::connections::normalize_login(connector, &login_name);
         // Same provider + same login: update instead of creating a duplicate.
         // A live match wins over a deleted one; a deleted one is revived.
         let existing: Vec<(i64, String, bool)> = {
@@ -116,7 +116,7 @@ impl Vault {
         };
         if let Some((id, _, deleted)) = existing.iter().find(|(_, l, _)| {
             !login_name.is_empty()
-                && crate::connections::normalize_login(connector, l)
+                && super::connections::normalize_login(connector, l)
                     .eq_ignore_ascii_case(&login_name)
         }) {
             if !display_name.trim().is_empty() {
@@ -174,7 +174,7 @@ impl Vault {
         // stored secrets of this connection (PIN); the soft delete blanked the session (state_json)
         db.execute(
             "DELETE FROM settings WHERE key = ?1",
-            [crate::connections::pin_key(connection_id)],
+            [super::connections::pin_key(connection_id)],
         )?;
         // the account choice of this login (#346): a re-added login starts fresh
         db.execute(
