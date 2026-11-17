@@ -4963,6 +4963,17 @@
         }
       }
     },
+    "Ausgeführt, aber nicht gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Executed, but not saved"
+          }
+        }
+      }
+    },
     "Ausgeklappt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9291,6 +9302,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The bank declined (%1$@): %2$@"
+          }
+        }
+      }
+    },
+    "Die Bank hat den Auftrag ausgeführt, GiroCrab konnte ihn aber nicht speichern. Er erscheint mit dem nächsten Abruf. Senden Sie ihn nicht erneut." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank executed the order, but GiroCrab could not save it. It will appear with the next update. Do not send it again."
+          }
+        }
+      }
+    },
+    "Die Bank hat die Lastschriften ausgeführt, GiroCrab konnte sie aber nicht speichern. Die Mandate sind nicht als eingezogen markiert: Prüfen Sie sie vor dem nächsten Einzug, sonst wird doppelt eingezogen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank executed the direct debits, but GiroCrab could not save them. The mandates are not marked as collected: check them before the next collection, or the debtors will be charged twice."
           }
         }
       }

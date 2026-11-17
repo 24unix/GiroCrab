@@ -885,6 +885,7 @@ fn english(de: &str) -> Option<&'static str> {
         "bunq zeigt die Überweisung noch als offen." => "bunq still shows the transfer as open.",
         "bunq hat die Stornierung angenommen, der Status ist noch nicht bestätigt." => "bunq accepted the cancellation, but the status is not confirmed yet.",
         "Die Überweisung wurde bereits ausgeführt." => "The transfer has already been executed.",
+        "Ob die Überweisung ausgeführt wurde, ist unklar." => "It is unclear whether the transfer was executed.",
         "bunq meldet den Status „{0}“." => "bunq reports the status \"{0}\".",
         "Das Quellkonto wurde bei bunq nicht gefunden." => "The source account was not found at bunq.",
         "{0} an {1}: Bitte öffnen Sie die bunq-App und bestätigen Sie die Zahlung." => "{0} to {1}: please open the bunq app and confirm the payment.",

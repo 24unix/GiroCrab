@@ -87,7 +87,8 @@ pub enum TransferStep {
     NeedsPayeeConfirmation {
         check: PayeeCheck,
     },
-    /// Bank accepted the transfer; an optimistic booking was stored.
+    /// Bank accepted the transfer and an optimistic booking was stored (see
+    /// `TransferOutcome::record_error`).
     Finished {
         outcome: TransferOutcome,
     },
@@ -100,8 +101,9 @@ pub enum TransferStep {
     },
     /// The order reached the bank but its result is unclear (ambiguous reply
     /// after the approval, connection lost). It MAY have been executed. A
-    /// booking marked "Status unklar" was stored; the user has to check the
-    /// account before trying again. Never resend automatically.
+    /// booking marked "Status unklar" was stored (unless the write failed);
+    /// the user has to check the account before trying again. Never resend
+    /// automatically, and `cancel()` reports `CancellationUnknown`.
     OutcomeUnknown {
         reason: String,
         end_to_end_id: String,
@@ -145,6 +147,10 @@ pub struct TransferOutcome {
     pub instant: bool,
     /// EndToEndId of the order (shows up in the bank statement).
     pub end_to_end_id: String,
+    /// Set when the order was executed but storing it failed: no optimistic
+    /// booking, planned transfer or standing order, and for a collection the
+    /// mandates are not marked as collected. Never send the order again.
+    pub record_error: Option<String>,
 }
 
 /// Result of `TransferSession::cancel()`. Closing the session in GiroCrab is

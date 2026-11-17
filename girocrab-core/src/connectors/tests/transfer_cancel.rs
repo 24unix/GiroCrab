@@ -13,8 +13,16 @@ struct Scripted {
     outcomes: Vec<CancelOutcome>,
     calls: Arc<AtomicUsize>,
     open: bool,
-    /// The bank refuses the order when it is sent.
-    refuse: bool,
+    bank: Bank,
+}
+
+/// How the bank answers the order.
+#[derive(Clone, Copy, PartialEq)]
+enum Bank {
+    Executes,
+    Refuses,
+    /// Accepts it, but the reply leaves the result open.
+    Unclear,
 }
 
 #[async_trait]
@@ -29,7 +37,7 @@ impl BankConnector for Scripted {
         Ok(FetchResult::default())
     }
     async fn send_transfer(&mut self, _: &ConnectContext, _: &TransferJob) -> CoreResult<Phase> {
-        if self.refuse {
+        if self.bank == Bank::Refuses {
             return Err(CoreError::InvalidInput {
                 message: "refused".into(),
             });
@@ -45,9 +53,15 @@ impl BankConnector for Scripted {
     fn has_open_order(&self) -> bool {
         self.open
     }
+    fn transfer_result(&self) -> TransferResult {
+        match self.bank {
+            Bank::Unclear => TransferResult::Unknown { reason: "r".into() },
+            _ => TransferResult::default(),
+        }
+    }
 }
 
-fn session(outcomes: Vec<CancelOutcome>, refuse: bool) -> (TransferSession, Arc<AtomicUsize>) {
+fn session(outcomes: Vec<CancelOutcome>, bank: Bank) -> (TransferSession, Arc<AtomicUsize>) {
     let dir = std::env::temp_dir().join(format!(
         "gc-cancel-{}-{}",
         std::process::id(),
@@ -81,7 +95,7 @@ fn session(outcomes: Vec<CancelOutcome>, refuse: bool) -> (TransferSession, Arc<
         outcomes,
         calls: calls.clone(),
         open: false,
-        refuse,
+        bank,
     };
     (
         TransferSession::new(vault, Box::new(connector), ctx, OrderKind::Single, job, 1),
@@ -101,7 +115,7 @@ async fn cancel_retries_until_confirmed_then_stops() {
             CancelOutcome::CancellationUnknown { reason: "r".into() },
             CancelOutcome::Cancelled,
         ],
-        false,
+        Bank::Executes,
     );
     assert_eq!(s.cancel().await, pending());
     // The session is closed for further steps, but cancel stays retryable.
@@ -118,7 +132,7 @@ async fn cancel_retries_until_confirmed_then_stops() {
 
 #[tokio::test]
 async fn confirmed_cancel_is_reported_once_per_bank_call() {
-    let (s, calls) = session(vec![CancelOutcome::Cancelled], false);
+    let (s, calls) = session(vec![CancelOutcome::Cancelled], Bank::Executes);
     assert_eq!(s.cancel().await, CancelOutcome::Cancelled);
     assert_eq!(s.cancel().await, CancelOutcome::Cancelled);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -126,10 +140,14 @@ async fn confirmed_cancel_is_reported_once_per_bank_call() {
 
 #[tokio::test]
 async fn executed_transfer_cannot_be_cancelled() {
-    let (s, calls) = session(vec![CancelOutcome::Cancelled], false);
+    let (s, calls) = session(vec![CancelOutcome::Cancelled], Bank::Executes);
     // The bank executes the order. Recording it fails (the test vault has no
-    // account 1), which must not make the order cancellable again.
-    let _ = s.start().await;
+    // account 1): the order still went through, so the caller must hear
+    // `Finished` with the write error, and it must not become cancellable.
+    let Ok(TransferStep::Finished { outcome }) = s.start().await else {
+        panic!("an executed order must finish");
+    };
+    assert!(outcome.record_error.is_some());
     assert!(matches!(s.start().await, Err(CoreError::SessionClosed)));
     assert!(matches!(
         s.cancel().await,
@@ -140,12 +158,28 @@ async fn executed_transfer_cannot_be_cancelled() {
 
 #[tokio::test]
 async fn refused_transfer_needs_no_cancellation() {
-    let (s, calls) = session(vec![pending()], true);
+    let (s, calls) = session(vec![pending()], Bank::Refuses);
     assert!(matches!(
         s.start().await,
         Err(CoreError::InvalidInput { .. })
     ));
     assert!(matches!(s.poll().await, Err(CoreError::SessionClosed)));
     assert_eq!(s.cancel().await, CancelOutcome::Cancelled);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn unclear_outcome_is_reported_and_never_cancelled_blindly() {
+    let (s, calls) = session(vec![CancelOutcome::Cancelled], Bank::Unclear);
+    // Recording the "Status unklar" booking fails (no account 1), which must
+    // not turn a possibly executed order into an error the app would retry.
+    assert!(matches!(
+        s.start().await,
+        Ok(TransferStep::OutcomeUnknown { .. })
+    ));
+    assert!(matches!(
+        s.cancel().await,
+        CancelOutcome::CancellationUnknown { .. }
+    ));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }

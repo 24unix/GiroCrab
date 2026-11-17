@@ -167,6 +167,9 @@ extension AppModel {
             }
             schedulePoll(connection: connection, interval: c.pollIntervalSeconds)
         case .finished(let outcome):
+            // Executed but not stored: still finish as sent (no resend), then warn.
+            let isDebit = activeTransferIsDebit
+            defer { if let error = outcome.recordError { reportUnrecordedOrder(error, debit: isDebit) } }
             if activeTransferIsDebit {
                 finishDebitGroup(connection: connection)
                 return
@@ -285,6 +288,13 @@ extension AppModel {
             settleTransferCancel(notice.session, outcome,
                                  confirmedMessage: String(localized: "Überweisung bei bunq storniert (bestätigt)."))
         }
+    }
+
+    private func reportUnrecordedOrder(_ error: String, debit: Bool) {
+        let message = debit
+            ? String(localized: "Die Bank hat die Lastschriften ausgeführt, GiroCrab konnte sie aber nicht speichern. Die Mandate sind nicht als eingezogen markiert: Prüfen Sie sie vor dem nächsten Einzug, sonst wird doppelt eingezogen.")
+            : String(localized: "Die Bank hat den Auftrag ausgeführt, GiroCrab konnte ihn aber nicht speichern. Er erscheint mit dem nächsten Abruf. Senden Sie ihn nicht erneut.")
+        showError(String(localized: "Ausgeführt, aber nicht gespeichert"), "\(message)\n\n\(error)")
     }
 
     func finishTransfer(error: Error) {

@@ -62,11 +62,17 @@ pub fn drive_transfer<S: TransferStepper, U: TransferUi>(
         }
         step = match step {
             TransferStep::Finished { outcome } => {
-                return Ok(format!(
+                let mut msg = format!(
                     "Überweisung gesendet ({}). Referenz: {}",
                     if outcome.instant { "Echtzeit" } else { "SEPA" },
                     outcome.end_to_end_id
-                ))
+                );
+                if let Some(e) = outcome.record_error {
+                    msg += &format!(
+                        "\nSie wurde nicht gespeichert ({e}) und erscheint mit dem nächsten Abruf. NICHT erneut senden."
+                    );
+                }
+                return Ok(msg);
             }
             TransferStep::InstantDeclined { reason } => {
                 return Err(format!("Nicht ausgeführt: {reason}"))
@@ -218,6 +224,7 @@ mod tests {
             outcome: TransferOutcome {
                 instant: false,
                 end_to_end_id: "GC123".into(),
+                record_error: None,
             },
         }
     }
