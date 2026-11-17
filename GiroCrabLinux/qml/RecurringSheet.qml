@@ -21,6 +21,27 @@ Sheet {
         AppMenuItem { visible: actions.bookingID !== null; height: visible ? implicitHeight : 0
                    text: actions.booked ? qsTr("Buchung anzeigen") : qsTr("Letzte Buchung anzeigen"); onTriggered: sheet.show(actions.bookingID) }
         AppMenuSeparator { visible: actions.bookingID !== null; height: visible ? implicitHeight : 0 }
+        // seriesActions › „Wiederkehrend“ (#581): the interval of the whole series; the series'
+        // latest booking carries the manual mark (AppModel+Recurring.swift › setRecurringInterval)
+        AppMenu {
+            title: qsTr("Wiederkehrend")
+            Repeater {
+                model: ["Monthly", "Quarterly", "HalfYearly", "Yearly"]
+                AppMenuItem {
+                    id: intervalItem
+                    required property string modelData
+                    readonly property bool current: actions.series !== null && actions.series.interval === modelData
+                    text: AppModel.intervalLabels[modelData]
+                    checkable: true
+                    checked: current
+                    onTriggered: {
+                        checked = Qt.binding(() => intervalItem.current)   // the click flipped it
+                        if (actions.series !== null && !current)
+                            AppModel.markRecurring({ id: actions.series.last_booking_id }, modelData)
+                    }
+                }
+            }
+        }
         AppMenuItem { visible: actions.series !== null && actions.series.source === "Manual"; height: visible ? implicitHeight : 0
                    text: qsTr("Automatisch erkennen"); onTriggered: AppModel.resetRecurring(actions.series.series_key) }
         AppMenuItem { text: qsTr("Nicht wiederkehrend"); onTriggered: AppModel.ignoreRecurring(actions.series) }

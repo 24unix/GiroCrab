@@ -52,7 +52,7 @@ ApplicationWindow {
         }
         AppMenu {
             title: qsTr("&Ablage")
-            Action { text: qsTr("Neue Überweisung …"); shortcut: "Ctrl+N"; enabled: AppModel.canTransfer; onTriggered: AppModel.openTransfer() }
+            Action { text: qsTr("Neue Überweisung …"); shortcut: "Ctrl+N"; enabled: AppModel.canTransfer && !TagManager.shown; onTriggered: AppModel.openTransfer() }
             Action { text: qsTr("Neue Kontogruppe …"); shortcut: "Ctrl+Shift+N"; enabled: AppModel.isUnlocked
                      onTriggered: AppModel.groupDialog = { kind: "create", movingAccount: null, parent: null } }
             Action { text: qsTr("Bank hinzufügen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.showAddBank = true }
@@ -73,7 +73,14 @@ ApplicationWindow {
         }
         AppMenu {
             title: qsTr("&Bearbeiten")
-            Action { id: findAction; text: qsTr("Suchen …"); shortcut: StandardKey.Find; enabled: AppModel.isUnlocked; onTriggered: Qt.callLater(window.focusSearch) }
+            // The window's undo manager (ManualLoansUI.swift › windowUndoManager): tags, loans
+            // and the Startsaldo register on it; text fields keep their own Strg+Z
+            Action { text: UndoManager.undoName ? qsTr("Rückgängig: %1").arg(UndoManager.undoName) : qsTr("Rückgängig")
+                     shortcut: StandardKey.Undo; enabled: UndoManager.canUndo; onTriggered: UndoManager.undo() }
+            Action { text: UndoManager.redoName ? qsTr("Wiederholen: %1").arg(UndoManager.redoName) : qsTr("Wiederholen")
+                     shortcut: StandardKey.Redo; enabled: UndoManager.canRedo; onTriggered: UndoManager.redo() }
+            AppMenuSeparator {}
+            Action { id: findAction; text: qsTr("Suchen …"); shortcut: StandardKey.Find; enabled: AppModel.isUnlocked && !TagManager.shown; onTriggered: Qt.callLater(window.focusSearch) }
             Action { text: qsTr("Alles auswählen"); shortcut: StandardKey.SelectAll
                      enabled: AppModel.isUnlocked && AppModel.sidebarSelection !== "documents"; onTriggered: AppModel.selectAllBookings() }
         }
@@ -83,6 +90,8 @@ ApplicationWindow {
                      shortcut: "Ctrl+Alt+I"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showInspector = !AppModel.showInspector }
             Action { text: qsTr("Auswertungen anzeigen"); checkable: true; checked: AppModel.showStatistics; onToggled: AppModel.showStatistics = checked }
             Action { text: qsTr("Budgets anzeigen"); checkable: true; checked: AppModel.showBudgets; enabled: AppModel.isUnlocked; onToggled: AppModel.showBudgets = checked }
+            // RootView.swift › Toggle("Kopfbereich minimieren") (#358)
+            Action { text: qsTr("Kopfbereich minimieren"); checkable: true; checked: AppModel.compactHeader; enabled: AppModel.isUnlocked; onToggled: AppModel.compactHeader = checked }
             AppMenuSeparator {}
             // Like Mail/Notes: text size of the whole app (#343).
             Action { text: qsTr("Größer"); shortcut: "Ctrl++"; enabled: Theme.steppedTextSize(1) !== ""
@@ -114,6 +123,8 @@ ApplicationWindow {
                      onTriggered: AppModel.requestSyncAll() }
             AppMenuSeparator {}
             Action { text: qsTr("Regeln …"); shortcut: "Ctrl+Alt+K"; enabled: AppModel.isUnlocked; onTriggered: AppModel.openRuleEditor(null) }
+            // TagManagerView.swift (#228): while the sheet is up it takes Strg+N („Neuer Tag …“)
+            Action { text: qsTr("Tags verwalten …"); shortcut: "Ctrl+Shift+T"; enabled: AppModel.isUnlocked; onTriggered: TagManager.open() }
             Action { text: qsTr("Wiederkehrende Buchungen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.showRecurringSheet = true }
         }
         AppMenu {
@@ -130,6 +141,7 @@ ApplicationWindow {
             Action { text: qsTr("Alle Buchungen als gelesen markieren"); shortcut: "Ctrl+Shift+Alt+U"; enabled: AppModel.canMarkAllChecked
                      onTriggered: AppModel.markAllChecked() }
             Action { text: qsTr("Notiz bearbeiten"); enabled: AppModel.selectedBooking !== null; onTriggered: AppModel.editNote(AppModel.selectedBooking) }
+            Action { text: qsTr("Tags bearbeiten"); enabled: AppModel.selectedBooking !== null; onTriggered: TagsModel.editTags(AppModel.selectedBooking) }
             // like the Finder (Strg+Y); Space in the list does the same
             Action { text: qsTr("Beleg in Quick Look anzeigen"); shortcut: "Ctrl+Y"
                      enabled: AppModel.selectedBooking !== null && AppModel.documents(AppModel.selectedBooking).length > 0
@@ -179,6 +191,9 @@ ApplicationWindow {
         AppMenu {
             title: qsTr("&Hilfe")
             Action { text: qsTr("GiroCrab-Hilfe"); shortcut: "Ctrl+?"; onTriggered: AppModel.showHelp = true }
+            AppMenuSeparator {}
+            // Hilfe › Mitteilungen …: ellipsis because a window opens (AnnouncementsWindow.qml)
+            Action { text: qsTr("Mitteilungen …"); onTriggered: Announcements.showWindow = true }
             AppMenuSeparator {}
             // #301: redacted screenshot + scrubbed diagnostics, then a prefilled issue.
             Action { text: qsTr("Problem melden …"); shortcut: "Ctrl+Alt+B"; onTriggered: AppModel.showBugReport = true }
@@ -248,15 +263,17 @@ ApplicationWindow {
                 SplitView.minimumWidth: 240 * Theme.textScale; SplitView.preferredWidth: 260 * Theme.textScale; SplitView.maximumWidth: 480 * Theme.textScale
                 onWidthChanged: window.sidebarWidth = width
             }
-            // bookingColumn: Belege or Vermögen replace the booking list
+            // bookingColumn: Belege, Vermögen, Geplant or Lastschriften replace the booking list
             StackLayout {
                 SplitView.minimumWidth: Math.max(360, Math.min(560, window.width - sidebarPane.width - (AppModel.showInspector ? 280 : 0) - 2))
                 SplitView.fillWidth: true
-                currentIndex: AppModel.sidebarSelection === "documents" ? 1 : AppModel.sidebarSelection === "wealth" ? 2 : 0
+                currentIndex: ({ documents: 1, wealth: 2, planned: 3, directDebits: 4 })[AppModel.sidebarSelection] ?? 0
                 BookingStreamView {}
                 DocumentsView {}
                 // built only while shown (it loads the depot positions and the cash history)
                 Loader { active: AppModel.sidebarSelection === "wealth"; sourceComponent: Component { WealthView {} } }
+                Loader { active: AppModel.sidebarSelection === "planned"; sourceComponent: Component { PlannedPaymentsView {} } }
+                Loader { active: AppModel.sidebarSelection === "directDebits"; sourceComponent: Component { DirectDebitsView {} } }
             }
             InspectorView {
                 visible: AppModel.showInspector
@@ -285,11 +302,20 @@ ApplicationWindow {
                 current: AppModel.wealthScope
                 onActivated: id => AppModel.wealthScope = id
             }
+            // DocumentsScopePicker (DocumentsUI.swift, #526) in „Belege & PostBox“
             Segmented {
-                visible: AppModel.sidebarSelection !== "wealth"
+                visible: AppModel.sidebarSelection === "documents"
+                options: DocumentsScope.options
+                current: DocumentsScope.current
+                onActivated: id => DocumentsScope.current = id
+                HoverHandler { id: docScopeHover }
+                ToolTip.text: qsTr("Alle Dokumente, eigene Belege oder Bankdokumente anzeigen"); ToolTip.visible: docScopeHover.hovered; ToolTip.delay: 600
+            }
+            Segmented {
+                visible: AppModel.sidebarSelection !== "wealth" && AppModel.sidebarSelection !== "documents"
                 options: AppModel.scopes
                 current: AppModel.scope
-                enabled: AppModel.sidebarSelection !== "documents" && AppModel.sidebarSelection !== "newBookings"
+                enabled: AppModel.sidebarSelection !== "newBookings"
                 onActivated: id => AppModel.scope = id
                 ToolTip.text: qsTr("Ansicht wählen (Strg+1, Strg+2, Strg+3)")
             }
@@ -364,6 +390,7 @@ ApplicationWindow {
              onLoaded: { item.reload(); item.requestActivate(); item.raise() } }
     Loader { active: AppModel.showHelp; sourceComponent: Component { HelpWindow {} }
              onLoaded: { item.requestActivate(); item.raise(); item.focusSearch() } }
+    Loader { active: Announcements.showWindow; sourceComponent: Component { AnnouncementsWindow {} } }
     // BugReportView: its own window, so the main window stays free to be captured.
     Loader { active: AppModel.showBugReport
              sourceComponent: Component { BugReportWindow { mainWindow: window; captureItem: rootLayout } }
@@ -499,16 +526,21 @@ ApplicationWindow {
 
     TransferSheet {}
     PayeeCheckSheet {}
+    // Sammelüberweisung, Dauerauftrag (RootView: showBatchSheet, showStandingSheet, standingUnknown)
+    BatchTransferSheet {}
+    StandingOrderSheet {}
     // MARK: manual loans / Startsaldo: .manualLoanSheets(model), .openingBalanceSheet(model)
     LoanEditorSheet {}
     // Sachwerte (TangibleAssetsUI.swift › tangibleAssetSheets)
     AssetEditorSheet {}
     AssetActionSheet {}
+    AssetClassificationSheet {}
     OpeningBalanceSheet {}
 
     // MARK: account groups & command palette (AccountGroupsUI.swift, CommandPalette.swift)
     AccountGroupDialogs {}
     Loader { active: AppModel.showGroupManager; sourceComponent: Component { GroupManagerSheet {} } }
+    Loader { active: TagManager.shown; sourceComponent: Component { TagManagerSheet {} } }
     Loader { active: AppModel.accountSelectionConnection !== null; sourceComponent: Component { AccountSelectionSheet {} } }
     Loader { active: AppModel.showCommandPalette; sourceComponent: Component { CommandPaletteSheet {} } }
 

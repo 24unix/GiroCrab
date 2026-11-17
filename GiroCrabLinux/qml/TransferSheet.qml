@@ -3,17 +3,32 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // TransferSheetView.swift: "Neue Überweisung" – SEPA credit transfer via FinTS
-// (HKCCS) or bunq. After the confirmation card the model starts the session;
-// the bank's TAN request is shown by the existing TwoFactorSheet. Accounts
-// GiroCrab cannot send from end with a GiroCode instead.
+// (HKCCS) or bunq. A grouped form (HIG): „Von Konto“ first, then recipient (or an own
+// account for an „Umbuchung“), payment and „Ausführung“ as one choice. After the
+// read-only review the model starts the session; the bank's TAN request is shown by
+// TwoFactorSheet. Accounts GiroCrab cannot send from end with a GiroCode instead.
+// „Einzeln | Sammelüberweisung“ under the title switches to BatchTransferSheet.
 Sheet {
     id: sheet
+    // .formStyle(.grouped) on macOS: bold section headers, hairlines between the rows,
+    // borderless right-aligned fields (FormTextField), footers at the trailing edge.
+    component GroupedSection: FormSection {
+        separators: true
+        headerFont.pixelSize: Theme.body; headerFont.weight: Font.Bold; headerColor: Theme.text
+        footerAlignment: Text.AlignRight; footerFontSize: Theme.body; footerTrailingInset: 10
+    }
     readonly property var draft: AppModel.transferDraft
     property bool confirming: false
     property var suggestions: []
     property string importNote: ""
+    /// Linux only: a dropped invoice is being read (large PDFs take seconds) – the sheet shows a spinner.
+    property bool readingInvoice: false
     property var templates: []
     readonly property int maxPurpose: 140
+    /// "Umbuchung": the recipient is one of the user's own accounts.
+    property bool ownTransfer: false
+    property var ownTargetID: null
+    property bool demoReviewShown: false
 
     readonly property var account: AppModel.transferFormAccounts.find(a => a.id === draft.account_id) || null
     /// The account can send from GiroCrab (FinTS / bunq); otherwise the form ends with a GiroCode.
@@ -27,6 +42,8 @@ Sheet {
     readonly property bool isBunq: account !== null && account.connector === "Bunq"
     readonly property bool offersInstant: account !== null && AppModel.offersInstantChoice(account.connector)
     readonly property bool sendsInstant: draft.instant && offersInstant
+    /// TransferDraft.executionMode: "regular" | "scheduled" | "instant".
+    readonly property string executionMode: draft.instant ? "instant" : (draft.scheduled ? "scheduled" : "regular")
     readonly property bool isMagicDemoAccount: {
         if (!account) return false
         const c = AppModel.connections.find(x => x.id === account.connection_id)
@@ -42,12 +59,19 @@ Sheet {
     readonly property bool canReview: account !== null && draft.name.trim() !== "" && ibanValid && bicValid && cents !== null
                                       && draft.purpose.length <= maxPurpose
     readonly property string accountLabel: account ? account.name + " · " + Fmt.iban(account.iban) : "–"
+    /// Own accounts that can receive a transfer: any kind, but with an IBAN, not archived, not the sender.
+    readonly property var ownTargets: AppModel.allAccounts.filter(a => a.iban !== "" && a.archived_unix === null && a.id !== draft.account_id)
 
     visible: AppModel.showTransferSheet
-    sheetWidth: 520
+    sheetWidth: 560
+    padding: 0
     closePolicy: AppModel.transferBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
     onAboutToShow: {
-        confirming = false
+        // a new presentation starts like a new SwiftUI view: form, no Umbuchung
+        confirming = AppModel.demoSheet === "transfer-confirm" && !demoReviewShown // screenshots
+        demoReviewShown = true
+        ownTransfer = false
+        ownTargetID = null
         importNote = ""
         suggestions = []
         templates = AppModel.transferTemplates()
@@ -60,7 +84,11 @@ Sheet {
         importNote = qsTr("Lese Rechnung …")
         const path = decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
         // read off the GUI thread (large PDFs); a closed sheet drops the late answer
-        PaymentParser.parseFile(path, p => { if (sheet.visible && !sheet.confirming) sheet.report(p || {}) })
+        readingInvoice = true
+        PaymentParser.parseFile(path, p => {
+            readingInvoice = false
+            if (sheet.visible && !sheet.confirming) sheet.report(p || {})
+        })
     }
     function report(p) {
         if (PaymentParser.isEmpty(p)) { importNote = qsTr("Nichts Erkennbares gefunden"); return }
@@ -69,348 +97,489 @@ Sheet {
     }
     function refreshSuggestions() { suggestions = nameField.activeFocus ? AppModel.suggestRecipients(draft.name) : [] }
 
+    /// Fills name and IBAN from the chosen own account (owner, else account name).
+    function applyOwnTarget(id) {
+        const t = ownTargets.find(a => a.id === id)
+        if (!t) return
+        AppModel.setDraft({ name: t.owner === "" ? t.name : t.owner, iban: AppModel.groupedIBAN(t.iban), bic: "" })
+        suggestions = []
+    }
+    function setOwnTransfer(on) {
+        ownTransfer = on
+        if (on) {
+            if (!ownTargets.some(a => a.id === ownTargetID)) ownTargetID = ownTargets.length ? ownTargets[0].id : null
+            applyOwnTarget(ownTargetID)
+        } else {
+            AppModel.setDraft({ name: "", iban: "", bic: "" })
+        }
+    }
+    /// .onChange(of: transferDraft.accountID): the own target can no longer be the sender.
+    function senderChanged() {
+        if (!ownTransfer) return
+        if (!ownTargets.some(a => a.id === ownTargetID)) ownTargetID = ownTargets.length ? ownTargets[0].id : null
+        applyOwnTarget(ownTargetID)
+    }
+    function setExecutionMode(mode) { AppModel.setDraft({ instant: mode === "instant", scheduled: mode === "scheduled" }) }
+    function goToReview() { AppModel.transferError = ""; confirming = true }
+
     // ⇧Strg+V; Strg+V outside a text field (inside one, normal paste keeps working).
     Shortcut { sequences: ["Ctrl+Shift+V", StandardKey.Paste]; enabled: sheet.visible && !sheet.confirming; onActivated: sheet.pasteFromClipboard() }
 
     ColumnLayout {
         width: sheet.availableWidth
-        spacing: 16
+        spacing: 0
+
+        // MARK: header – title left, the two helpers (templates, paste) as small actions right
         RowLayout {
-            spacing: 10
-            SFIcon { symbol: "paperplane.circle.fill"; size: 26; color: Theme.accent }
+            id: head
+            Layout.fillWidth: true
+            Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.topMargin: 14; Layout.bottomMargin: 14
+            spacing: 12
             Text {
                 text: sheet.confirming ? (sheet.canSend ? qsTr("Überweisung prüfen") : qsTr("GiroCode scannen")) : qsTr("Neue Überweisung")
-                font.pixelSize: Theme.title2 + 2; font.weight: Font.Bold; color: Theme.text
+                font.pixelSize: Theme.title2; font.weight: Font.DemiBold; color: Theme.text
+                Accessible.role: Accessible.Heading
             }
             Item { Layout.fillWidth: true }
-        }
-
-        // MARK: form
-        ColumnLayout {
-            visible: !sheet.confirming
-            Layout.fillWidth: true
-            spacing: 12
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                spacing: 10
-                Button {
-                    icon.name: SF.icon("doc.on.clipboard"); text: qsTr("Aus Zwischenablage einfügen")
-                    onClicked: sheet.pasteFromClipboard()
-                    ToolTip.text: qsTr("Erkennt IBAN, Betrag, Empfänger und Zweck (⇧Strg+V; Strg+V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD) hierher ziehen.")
-                    ToolTip.visible: hovered; ToolTip.delay: 600
-                }
-                Text { text: sheet.importNote || qsTr("Oder Rechnung hierher ziehen"); font.pixelSize: Theme.caption; color: Theme.tertiary; elide: Text.ElideRight }
-            }
             // TransferTemplatesMenu (PlanningUI.swift)
             Button {
                 id: templatesButton
-                Layout.alignment: Qt.AlignRight
+                visible: !sheet.confirming
                 flat: true; icon.name: SF.icon("doc.on.doc"); text: qsTr("Vorlagen")
                 onClicked: templatesMenu.popup(templatesButton, 0, templatesButton.height)
             }
-            Field {
-                label: qsTr("Von Konto")
-                AppComboBox {
-                    Layout.fillWidth: true
-                    model: AppModel.transferFormAccounts.map(a => a.name + " · " + Fmt.iban(a.iban))
-                    currentIndex: AppModel.transferFormAccounts.findIndex(a => a.id === sheet.draft.account_id)
-                    onActivated: i => AppModel.setDraft({ account_id: AppModel.transferFormAccounts[i].id })
-                }
-            }
-            Hint {
-                visible: sheet.account !== null && !sheet.canSend && sheet.gated
-                symbol: "exclamationmark.shield"
-                // Security lock: no direct transfer, the GiroCode needs no bank contact.
-                text: qsTr("Die Sicherheitssperre verhindert direkte Überweisungen von diesem Konto. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.")
-            }
-            Hint {
-                visible: sheet.account !== null && !sheet.canSend && !sheet.gated && sheet.account.connector === "Comdirect"
-                symbol: "qrcode"
-                // The comdirect REST API has no payment endpoint; FinTS has.
-                text: qsTr("Die comdirect-Schnittstelle (REST) kann keine Überweisungen ausführen. Verbinden Sie das Konto zusätzlich per FinTS, um direkt zu überweisen. Sonst erhalten Sie am Ende einen GiroCode zum Scannen in der comdirect-App.")
-            }
-            Hint {
-                visible: sheet.account !== null && !sheet.canSend && !sheet.gated && sheet.account.connector !== "Comdirect"
-                symbol: "qrcode"
-                text: qsTr("Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.")
-            }
-            Field {
-                label: qsTr("Empfänger")
-                TextField {
-                    id: nameField
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("Name des Empfängers")
-                    text: sheet.draft.name
-                    onTextEdited: { AppModel.setDraft({ name: text }); sheet.refreshSuggestions() }
-                    onActiveFocusChanged: sheet.refreshSuggestions()
-                }
-                Flickable {
-                    visible: sheet.suggestions.length > 0
-                    Layout.fillWidth: true
-                    implicitHeight: chips.implicitHeight
-                    contentWidth: chips.implicitWidth
-                    clip: true
-                    flickableDirection: Flickable.HorizontalFlick
-                    Row {
-                        id: chips
-                        spacing: 6
-                        Repeater {
-                            model: sheet.suggestions
-                            delegate: Rectangle {
-                                required property var modelData
-                                width: chip.implicitWidth + 16; height: chip.implicitHeight + 8
-                                radius: 7; color: Theme.selection
-                                Column {
-                                    id: chip
-                                    x: 8; y: 4
-                                    Text { text: modelData.name; font.pixelSize: Theme.callout; color: Theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, 180) }
-                                    Text { text: Fmt.iban(modelData.iban); font.pixelSize: Theme.caption2; font.family: "monospace"; color: Theme.secondary }
-                                }
-                                MouseArea {
-                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: { AppModel.setDraft({ name: modelData.name, iban: AppModel.groupedIBAN(modelData.iban) }); sheet.suggestions = [] }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Field {
-                label: qsTr("IBAN")
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
-                    TextField {
-                        Layout.fillWidth: true
-                        placeholderText: "DE00 0000 0000 0000 0000 00"
-                        font.family: "monospace"
-                        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhPreferUppercase
-                        text: sheet.draft.iban
-                        onTextEdited: AppModel.setDraft({ iban: AppModel.groupedIBAN(text) })
-                    }
-                    ValidMark { visible: sheet.draft.iban !== ""; ok: sheet.ibanValid
-                                ToolTip.text: sheet.ibanValid ? qsTr("Prüfsumme korrekt") : qsTr("IBAN ungültig (Prüfsumme/Länge)") }
-                }
-            }
-            Field {
-                label: qsTr("BIC (optional)")
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
-                    TextField {
-                        Layout.fillWidth: true
-                        placeholderText: qsTr("z. B. GENODEF1KS2")
-                        font.family: "monospace"
-                        inputMethodHints: Qt.ImhNoPredictiveText
-                        text: sheet.draft.bic
-                        onTextEdited: AppModel.setDraft({ bic: text })
-                    }
-                    ValidMark { visible: sheet.bicText !== ""; ok: sheet.bicValid }
-                }
-            }
-            Field {
-                label: qsTr("Betrag")
-                RowLayout {
-                    spacing: 6
-                    TextField {
-                        Layout.preferredWidth: 160
-                        placeholderText: Fmt.plain(0)
-                        horizontalAlignment: TextInput.AlignRight
-                        text: sheet.draft.amountText
-                        onTextEdited: AppModel.setDraft({ amountText: text })
-                    }
-                    Text { text: "€"; color: Theme.secondary; font.pixelSize: Theme.body }
-                    Text { visible: sheet.draft.amountText !== "" && sheet.cents === null; text: qsTr("Betrag > 0 eingeben"); font.pixelSize: Theme.caption; color: Theme.negative }
-                }
-            }
-            Field {
-                label: qsTr("Verwendungszweck")
-                TextArea {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Math.max(implicitHeight, 52)
-                    placeholderText: qsTr("Verwendungszweck")
-                    wrapMode: TextEdit.Wrap
-                    text: sheet.draft.purpose
-                    onTextChanged: if (text !== sheet.draft.purpose) AppModel.setDraft({ purpose: text.slice(0, sheet.maxPurpose) })
-                }
-                Text {
-                    Layout.alignment: Qt.AlignRight
-                    text: sheet.draft.purpose.length + "/" + sheet.maxPurpose
-                    font.pixelSize: Theme.caption
-                    color: sheet.draft.purpose.length >= sheet.maxPurpose ? Theme.negative : Theme.tertiary
-                }
-            }
-            Field {
-                visible: sheet.canSend && sheet.offersInstant
-                label: qsTr("Ausführung")
-                CheckBox {
-                    text: qsTr("Echtzeitüberweisung (SEPA Instant)")
-                    checked: sheet.draft.instant
-                    onToggled: AppModel.setDraft(checked ? { instant: true, scheduled: false } : { instant: false })
-                }
-                Text {
-                    Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
-                    text: qsTr("Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; Sie können sie dann als normale Überweisung senden.")
-                }
-                RowLayout {
-                    visible: sheet.draft.instant && sheet.cents !== null && sheet.cents >= 10000000
-                    Layout.fillWidth: true; spacing: 6
-                    SFIcon { symbol: "exclamationmark.triangle"; size: 12; color: Theme.warning; Layout.alignment: Qt.AlignTop }
-                    Text {
-                        Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.warning
-                        text: qsTr("Viele Banken begrenzen Echtzeitüberweisungen (oft auf 100.000 € oder ein eigenes Limit). Die Bank kann den Auftrag dann ablehnen.")
-                    }
-                }
-                CheckBox {
-                    text: qsTr("Terminüberweisung")
-                    enabled: !sheet.draft.instant
-                    checked: sheet.draft.scheduled
-                    onToggled: AppModel.setDraft({ scheduled: checked })
-                }
-                RowLayout {
-                    visible: sheet.draft.scheduled && !sheet.draft.instant
-                    spacing: 8
-                    Text { text: qsTr("Ausführungsdatum"); color: Theme.text; font.pixelSize: Theme.body }
-                    // DatePicker(in: tomorrow...): dd.MM.yyyy, earlier dates fall back to tomorrow.
-                    TextField {
-                        id: dateField
-                        Layout.preferredWidth: 120
-                        text: Fmt.medium(sheet.draft.executionDate)
-                        validator: RegularExpressionValidator { regularExpression: /\d{1,2}\.\d{1,2}\.\d{4}/ }
-                        // A date that does not exist (31.04.) keeps the previous one;
-                        // leaving the field always shows the date in use again.
-                        function commit() {
-                            const p = text.split(".").map(Number)
-                            const d = new Date(p[2], p[1] - 1, p[0])
-                            const exists = p.length === 3 && !isNaN(d) && d.getFullYear() === p[2] && d.getMonth() === p[1] - 1 && d.getDate() === p[0]
-                            if (exists) {
-                                const t = new Date(); t.setHours(0, 0, 0, 0); t.setDate(t.getDate() + 1)
-                                AppModel.setDraft({ executionDate: Fmt.iso(d < t ? t : d) })
-                            }
-                            text = Qt.binding(() => Fmt.medium(sheet.draft.executionDate))
-                        }
-                        onEditingFinished: commit()
-                        onActiveFocusChanged: if (!activeFocus) commit()
-                    }
-                }
-            }
-            DemoHintBanner {
-                visible: sheet.canSend && (AppModel.isDemo || sheet.isMagicDemoAccount)
-                Layout.fillWidth: true
-                credentials: false
-                buttonTitle: qsTr("PIN 12345 einfügen")
-                onFill: AppModel.setDraft({ pin: "12345" })
-            }
-            Field {
-                visible: sheet.canSend && !sheet.pinStored
-                label: sheet.isBunq ? qsTr("bunq-API-Schlüssel") : qsTr("Banking-PIN")
-                TextField {
-                    Layout.fillWidth: true
-                    echoMode: TextInput.Password
-                    placeholderText: sheet.isBunq ? qsTr("API-Schlüssel (wird nicht gespeichert)") : qsTr("PIN (wird nicht gespeichert)")
-                    text: sheet.draft.pin
-                    onTextEdited: AppModel.setDraft({ pin: text })
-                }
+            Button {
+                visible: !sheet.confirming
+                flat: true; icon.name: SF.icon("doc.on.clipboard"); text: qsTr("Einfügen")
+                onClicked: sheet.pasteFromClipboard()
+                ToolTip.text: qsTr("Erkennt IBAN, Betrag, Empfänger und Zweck (⇧Strg+V; Strg+V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD, GiroCode) hierher ziehen.")
+                ToolTip.visible: hovered; ToolTip.delay: 600
             }
         }
+        // TransferKindPicker(batch: false)
+        Segmented {
+            id: kindPicker
+            visible: !sheet.confirming && Payments.canBatchTransfer
+            Layout.alignment: Qt.AlignHCenter
+            Layout.bottomMargin: 10
+            options: [{ id: "single", title: qsTr("Einzeln") }, { id: "batch", title: qsTr("Sammelüberweisung") }]
+            current: "single"
+            onActivated: id => { if (id === "batch") Payments.switchToBatchTransfer() }
+        }
+        Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
 
-        // MARK: confirmation (send)
-        ColumnLayout {
-            visible: sheet.confirming && sheet.canSend
+        ScrollView {
+            id: scroll
+            ScrollBar.vertical: ScrollViewBar {}
             Layout.fillWidth: true
-            spacing: 14
-            Card {
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 10
-                    BigAmount {}
-                    SummaryRow { key: qsTr("An"); value: sheet.draft.name }
-                    SummaryRow { key: qsTr("IBAN"); value: sheet.draft.iban }
-                    SummaryRow { visible: sheet.bicText !== ""; key: qsTr("BIC"); value: sheet.bicText.toUpperCase() }
-                    SummaryRow { key: qsTr("Zweck"); value: sheet.draft.purpose === "" ? "–" : sheet.draft.purpose }
-                    Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
-                    SummaryRow { key: qsTr("Von"); value: sheet.accountLabel }
-                    SummaryRow {
-                        key: qsTr("Ausführung")
-                        value: {
-                            if (sheet.sendsInstant) return qsTr("Sofort (Echtzeitüberweisung)")
-                            const iso = AppModel.executionDateISO(sheet.draft)
-                            return iso ? qsTr("Am %1 (Terminüberweisung)").arg(iso) : qsTr("Heute (SEPA-Überweisung)")
-                        }
-                    }
-                }
-            }
-            Hint {
-                indent: false; symbol: "exclamationmark.shield"; size: Theme.callout + 1
-                text: qsTr("Bitte Empfänger und IBAN genau prüfen. Eine freigegebene Überweisung lässt sich meist nicht mehr zurückholen.")
-            }
-        }
+            readonly property real chrome: head.implicitHeight + 28 + (kindPicker.visible ? kindPicker.implicitHeight + 10 : 0)
+                                           + messages.implicitHeight + buttonRow.implicitHeight + 30
+            readonly property real body: sheet.confirming ? (sheet.canSend ? review.implicitHeight : giroCode.implicitHeight) : form.implicitHeight
+            Layout.preferredHeight: Math.min(body + 40, Math.min(700, sheet.maxBodyHeight) - chrome)
+            contentWidth: availableWidth
+            // several children (form / review): the ScrollView cannot guess the height itself
+            contentHeight: body + 40
+            clip: true
 
-        // MARK: confirmation (GiroCode) – read-only account (e.g. C24)
-        ColumnLayout {
-            visible: sheet.confirming && !sheet.canSend
-            Layout.fillWidth: true
-            spacing: 14
-            Card {
-                Layout.fillWidth: true
-                RowLayout {
-                    width: parent.width
-                    spacing: 16
-                    GiroCodeImage {
-                        Layout.preferredWidth: 200; Layout.preferredHeight: 200; Layout.alignment: Qt.AlignTop
-                        payload: sheet.confirming ? sheet.giroCodePayload : ""
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
-                        spacing: 8
-                        BigAmount {}
-                        SummaryRow { key: qsTr("An"); value: sheet.draft.name }
-                        SummaryRow { key: qsTr("IBAN"); value: sheet.draft.iban }
-                        SummaryRow { visible: sheet.bicText !== ""; key: qsTr("BIC"); value: sheet.bicText.toUpperCase() }
-                        SummaryRow { key: qsTr("Zweck"); value: sheet.draft.purpose === "" ? "–" : sheet.draft.purpose }
-                        SummaryRow { key: qsTr("Von"); value: sheet.accountLabel }
-                    }
-                }
-            }
-            Hint {
-                indent: false; symbol: "camera.viewfinder"; size: Theme.callout + 1
-                text: qsTr("In der App Ihrer Bank „Fotoüberweisung“ bzw. „QR-Code scannen“ wählen, den Code scannen und dort mit TAN freigeben. GiroCrab sendet nichts.")
-            }
-        }
-
-        RowLayout {
-            visible: AppModel.transferError !== ""
-            Layout.fillWidth: true; spacing: 6
-            SFIcon { symbol: "exclamationmark.triangle.fill"; size: 14; color: Theme.negative; Layout.alignment: Qt.AlignTop }
-            TextEdit { Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: Text.WordWrap
-                       text: AppModel.transferError; color: Theme.negative; font.pixelSize: Theme.callout + 1 }
-        }
-
-        // Instant was not possible and nothing was sent: offer a regular
-        // transfer, which needs its own approval.
-        Rectangle {
-            visible: AppModel.transferInstantDeclined !== null
-            Layout.fillWidth: true
-            implicitHeight: declined.implicitHeight + 24
-            radius: 8
-            color: Theme.withAlpha(Theme.warning, 0.1)
+            // MARK: form
             ColumnLayout {
-                id: declined
-                x: 12; y: 12; width: parent.width - 24
-                spacing: 8
-                RowLayout { spacing: 6
-                    SFIcon { symbol: "bolt.slash.fill"; size: 14; color: Theme.text }
-                    Text { text: qsTr("Echtzeitüberweisung nicht ausgeführt"); font.pixelSize: Theme.callout + 1; font.weight: Font.Bold; color: Theme.text } }
-                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.callout + 1; color: Theme.text
-                       text: qsTr("Es wurde kein Geld gesendet. Grund der Bank: %1").arg(AppModel.transferInstantDeclined || "") }
-                Button { text: qsTr("Als normale Überweisung senden"); enabled: !AppModel.transferBusy; onClicked: AppModel.sendAsRegularTransfer() }
-                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
-                       text: qsTr("Kommt in der Regel am nächsten Bankarbeitstag an. Sie geben sie erneut frei.") }
+                id: form
+                visible: !sheet.confirming
+                x: 20; y: 20; width: scroll.availableWidth - 40
+                spacing: 18
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    GroupedSection {
+                        FormRow {
+                            label: qsTr("Von Konto")
+                            AppComboBox {
+                                Layout.preferredWidth: 300
+                                model: AppModel.transferFormAccounts.map(a => a.name + " · " + Fmt.iban(a.iban))
+                                currentIndex: AppModel.transferFormAccounts.findIndex(a => a.id === sheet.draft.account_id)
+                                onActivated: i => { AppModel.setDraft({ account_id: AppModel.transferFormAccounts[i].id }); sheet.senderChanged() }
+                                Sensitive {}
+                            }
+                        }
+                    }
+                    // footer: why this account ends in a GiroCode instead of a direct transfer
+                    Hint {
+                        visible: sheet.account !== null && !sheet.canSend
+                        symbol: sheet.gated ? "exclamationmark.shield" : "qrcode"
+                        text: sheet.gated
+                              // Security lock: no direct transfer, the GiroCode needs no bank contact.
+                              ? qsTr("Die Sicherheitssperre verhindert direkte Überweisungen von diesem Konto. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.")
+                              : sheet.account && sheet.account.connector === "Comdirect"
+                              // The comdirect REST API has no payment endpoint; FinTS has.
+                              ? qsTr("Die comdirect-Schnittstelle (REST) kann keine Überweisungen ausführen. Verbinden Sie das Konto zusätzlich per FinTS, um direkt zu überweisen. Sonst erhalten Sie am Ende einen GiroCode zum Scannen in der comdirect-App.")
+                              : qsTr("Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.")
+                    }
+                }
+
+                // Picker("Art der Zahlung").pickerStyle(.segmented).labelsHidden()
+                GroupedSection {
+                    visible: sheet.ownTargets.length > 0 || sheet.ownTransfer
+                    Segmented {
+                        Layout.fillWidth: true
+                        options: [{ id: "transfer", title: qsTr("Überweisung") }, { id: "own", title: qsTr("Umbuchung") }]
+                        current: sheet.ownTransfer ? "own" : "transfer"
+                        onActivated: id => sheet.setOwnTransfer(id === "own")
+                        Accessible.name: qsTr("Art der Zahlung")
+                    }
+                }
+
+                GroupedSection {
+                    visible: sheet.ownTransfer
+                    title: qsTr("Eigenes Zielkonto")
+                    footer: qsTr("Name und IBAN werden aus dem gewählten Konto übernommen.")
+                    FormRow {
+                        label: qsTr("Zielkonto")
+                        AppComboBox {
+                            Layout.preferredWidth: 300
+                            model: sheet.ownTargets.map(a => a.name + " · " + Fmt.iban(a.iban))
+                            currentIndex: sheet.ownTargets.findIndex(a => a.id === sheet.ownTargetID)
+                            onActivated: i => { sheet.ownTargetID = sheet.ownTargets[i].id; sheet.applyOwnTarget(sheet.ownTargetID) }
+                            Sensitive {}
+                        }
+                    }
+                    FormRow {
+                        label: qsTr("Name")
+                        Text { text: sheet.draft.name; font.pixelSize: Theme.body; color: Theme.text; Sensitive {} }
+                    }
+                    FormRow {
+                        label: qsTr("IBAN")
+                        Text { text: Fmt.iban(sheet.draft.iban); font.pixelSize: Theme.body; font.family: "monospace"; color: Theme.text; Sensitive {} }
+                    }
+                }
+
+                GroupedSection {
+                    visible: !sheet.ownTransfer
+                    title: qsTr("Empfänger")
+                    footer: sheet.importNote || qsTr("Oder Rechnung hierher ziehen")
+                    FormRow {
+                        label: qsTr("Name")
+                        fillValue: true
+                        FormTextField {
+                            id: nameField
+                            placeholderText: qsTr("Name des Empfängers")
+                            text: sheet.draft.name
+                            onTextEdited: { AppModel.setDraft({ name: text }); sheet.refreshSuggestions() }
+                            onActiveFocusChanged: sheet.refreshSuggestions()
+                            Sensitive {}
+                        }
+                    }
+                    Flickable {
+                        visible: sheet.suggestions.length > 0
+                        Layout.fillWidth: true
+                        implicitHeight: chips.implicitHeight
+                        contentWidth: chips.implicitWidth
+                        clip: true
+                        flickableDirection: Flickable.HorizontalFlick
+                        Row {
+                            id: chips
+                            spacing: 6
+                            Repeater {
+                                model: sheet.suggestions
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: chip.implicitWidth + 16; height: chip.implicitHeight + 8
+                                    radius: 7; color: Theme.selection
+                                    Column {
+                                        id: chip
+                                        x: 8; y: 4
+                                        Text { text: modelData.name; font.pixelSize: Theme.callout; color: Theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, 180); Sensitive {} }
+                                        Text { text: Fmt.iban(modelData.iban); font.pixelSize: Theme.caption2; font.family: "monospace"; color: Theme.secondary; Sensitive {} }
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                        onClicked: { AppModel.setDraft({ name: modelData.name, iban: AppModel.groupedIBAN(modelData.iban) }); sheet.suggestions = [] }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    FormRow {
+                        label: qsTr("IBAN")
+                        fillValue: true
+                        FormTextField {
+                            placeholderText: "DE00 0000 0000 0000 0000 00"
+                            font.family: "monospace"
+                            inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhPreferUppercase
+                            text: sheet.draft.iban
+                            onTextEdited: AppModel.setDraft({ iban: AppModel.groupedIBAN(text) })
+                            Sensitive {}
+                        }
+                        ValidMark { visible: sheet.draft.iban !== ""; ok: sheet.ibanValid
+                                    ToolTip.text: sheet.ibanValid ? qsTr("Prüfsumme korrekt") : qsTr("IBAN ungültig (Prüfsumme/Länge)") }
+                    }
+                    FormRow {
+                        label: qsTr("BIC (optional)")
+                        fillValue: true
+                        FormTextField {
+                            placeholderText: qsTr("z. B. GENODEF1KS2")
+                            font.family: "monospace"
+                            inputMethodHints: Qt.ImhNoPredictiveText
+                            text: sheet.draft.bic
+                            onTextEdited: AppModel.setDraft({ bic: text })
+                            Sensitive {}
+                        }
+                        ValidMark { visible: sheet.bicText !== ""; ok: sheet.bicValid }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 5
+                    GroupedSection {
+                        title: qsTr("Zahlung")
+                        FormRow {
+                            label: qsTr("Betrag")
+                            fillValue: true
+                            FormTextField {
+                                placeholderText: Fmt.plain(0)
+                                font.features: { "tnum": 1 }
+                                text: sheet.draft.amountText
+                                onTextEdited: AppModel.setDraft({ amountText: text })
+                                Sensitive {}
+                            }
+                            Text { text: "€"; color: Theme.secondary; font.pixelSize: Theme.body }
+                        }
+                        // TextField("Verwendungszweck", axis: .vertical).lineLimit(1...3): label left,
+                        // the text right-aligned, growing to three lines
+                        FormRow {
+                            label: qsTr("Verwendungszweck")
+                            fillValue: true
+                            TextArea {
+                                Layout.fillWidth: true
+                                Layout.maximumHeight: 3 * contentHeight / Math.max(1, lineCount) + topPadding + bottomPadding
+                                horizontalAlignment: TextEdit.AlignRight
+                                leftPadding: 0; rightPadding: 0; topPadding: 4; bottomPadding: 4
+                                font.pixelSize: Theme.body; color: Theme.text
+                                placeholderText: qsTr("Verwendungszweck"); placeholderTextColor: Theme.tertiary
+                                background: Item {}
+                                wrapMode: TextEdit.Wrap
+                                text: sheet.draft.purpose
+                                onTextChanged: if (text !== sheet.draft.purpose) AppModel.setDraft({ purpose: text.slice(0, sheet.maxPurpose) })
+                                Keys.onReturnPressed: e => e.accepted = true
+                                Keys.onEnterPressed: e => e.accepted = true
+                                Accessible.name: qsTr("Verwendungszweck")
+                                Sensitive {}
+                            }
+                        }
+                    }
+                    // footer: amount hint left, purpose counter right
+                    RowLayout {
+                        Layout.fillWidth: true; Layout.leftMargin: 10; Layout.rightMargin: 10
+                        Text { visible: sheet.draft.amountText !== "" && sheet.cents === null; text: qsTr("Betrag > 0 eingeben"); font.pixelSize: Theme.body; color: Theme.negative }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: sheet.draft.purpose.length + "/" + sheet.maxPurpose
+                            font.pixelSize: Theme.body; font.features: { "tnum": 1 }
+                            color: sheet.draft.purpose.length >= sheet.maxPurpose ? Theme.negative : Theme.tertiary
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: sheet.canSend && sheet.offersInstant
+                    Layout.fillWidth: true
+                    spacing: 5
+                    GroupedSection {
+                        title: qsTr("Ausführung")
+                        // Mutually exclusive choices: one radio group (HIG), not
+                        // two checkboxes where one disables the other.
+                        ButtonGroup { id: modeGroup }
+                        Repeater {
+                            model: [{ id: "regular", title: qsTr("Normale Überweisung") },
+                                    { id: "scheduled", title: qsTr("Terminüberweisung") },
+                                    { id: "instant", title: qsTr("Echtzeitüberweisung (SEPA Instant)") }]
+                            // .pickerStyle(.radioGroup).labelsHidden() in a grouped form: the
+                            // choice's title on the left, its radio button at the trailing edge
+                            RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Text { Layout.fillWidth: true; text: modelData.title; font.pixelSize: Theme.body; color: Theme.text
+                                       MouseArea { anchors.fill: parent; onClicked: sheet.setExecutionMode(modelData.id) } }
+                                RadioButton {
+                                    ButtonGroup.group: modeGroup
+                                    padding: 0
+                                    checked: sheet.executionMode === modelData.id
+                                    onToggled: if (checked) sheet.setExecutionMode(modelData.id)
+                                    Accessible.name: modelData.title
+                                }
+                            }
+                        }
+                        FormRow {
+                            visible: sheet.executionMode === "scheduled"
+                            label: qsTr("Ausführungsdatum")
+                            // DatePicker(in: tomorrow...)
+                            DateField {
+                                date: Fmt.date(sheet.draft.executionDate) || new Date()
+                                minimum: { const t = new Date(); t.setHours(0, 0, 0, 0); t.setDate(t.getDate() + 1); return t }
+                                onPicked: d => AppModel.setDraft({ executionDate: Fmt.iso(d) })
+                            }
+                        }
+                    }
+                    // footer (instantNote)
+                    ColumnLayout {
+                        visible: sheet.executionMode === "instant"
+                        Layout.fillWidth: true; Layout.leftMargin: 10
+                        spacing: 6
+                        Text {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                            text: qsTr("Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; Sie können sie dann als normale Überweisung senden.")
+                        }
+                        Hint {
+                            visible: sheet.cents !== null && sheet.cents >= 10000000
+                            indent: false; symbol: "exclamationmark.triangle"; tint: Theme.warning
+                            text: qsTr("Viele Banken begrenzen Echtzeitüberweisungen (oft auf 100.000 € oder ein eigenes Limit). Die Bank kann den Auftrag dann ablehnen.")
+                        }
+                    }
+                }
+
+                DemoHintBanner {
+                    visible: sheet.canSend && (AppModel.isDemo || sheet.isMagicDemoAccount)
+                    Layout.fillWidth: true
+                    credentials: false
+                    buttonTitle: qsTr("PIN 12345 einfügen")
+                    onFill: AppModel.setDraft({ pin: "12345" })
+                }
+                GroupedSection {
+                    visible: sheet.canSend && !sheet.pinStored
+                    footer: sheet.isBunq ? qsTr("Der API-Schlüssel wird nicht gespeichert.") : qsTr("Die PIN wird nicht gespeichert.")
+                    FormRow {
+                        label: sheet.isBunq ? qsTr("bunq-API-Schlüssel") : qsTr("Banking-PIN")
+                        TextField {
+                            Layout.preferredWidth: 260
+                            echoMode: TextInput.Password
+                            horizontalAlignment: TextInput.AlignRight
+                            placeholderText: qsTr("wird nicht gespeichert")
+                            text: sheet.draft.pin
+                            onTextEdited: AppModel.setDraft({ pin: text })
+                        }
+                    }
+                }
+            }
+
+            // MARK: confirmation (send) – read-only review in the same grouped style as the form:
+            // the amount first, then recipient, payment and execution, each as label + value.
+            ColumnLayout {
+                id: review
+                visible: sheet.confirming && sheet.canSend
+                x: 20; y: 20; width: scroll.availableWidth - 40
+                spacing: 18
+                GroupedSection {
+                    BigAmount { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; Layout.bottomMargin: 6 }
+                }
+                GroupedSection {
+                    title: qsTr("Empfänger")
+                    ReviewRow { key: qsTr("Name"); value: sheet.draft.name }
+                    ReviewRow { key: qsTr("IBAN"); value: sheet.draft.iban; mono: true }
+                    ReviewRow { visible: sheet.bicText !== ""; key: qsTr("BIC"); value: sheet.bicText.toUpperCase(); mono: true }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    GroupedSection {
+                        title: qsTr("Zahlung")
+                        ReviewRow { key: qsTr("Verwendungszweck"); value: sheet.draft.purpose === "" ? "–" : sheet.draft.purpose }
+                        ReviewRow { key: qsTr("Von Konto"); value: sheet.accountLabel }
+                        ReviewRow {
+                            key: qsTr("Ausführung"); personal: false
+                            value: {
+                                if (sheet.sendsInstant) return qsTr("Sofort (Echtzeitüberweisung)")
+                                const iso = AppModel.executionDateISO(sheet.draft)
+                                return iso ? qsTr("Am %1 (Terminüberweisung)").arg(iso) : qsTr("Heute (SEPA-Überweisung)")
+                            }
+                        }
+                    }
+                    Hint {
+                        indent: false; symbol: "exclamationmark.shield"
+                        text: qsTr("Bitte Empfänger und IBAN genau prüfen. Eine freigegebene Überweisung lässt sich meist nicht mehr zurückholen.")
+                    }
+                }
+            }
+
+            // MARK: confirmation (GiroCode) – read-only account (e.g. C24)
+            ColumnLayout {
+                id: giroCode
+                visible: sheet.confirming && !sheet.canSend
+                x: 20; y: 20; width: scroll.availableWidth - 40
+                spacing: 14
+                Card {
+                    Layout.fillWidth: true
+                    RowLayout {
+                        width: parent.width
+                        spacing: 16
+                        GiroCodeImage {
+                            Layout.preferredWidth: 200; Layout.preferredHeight: 200; Layout.alignment: Qt.AlignTop
+                            payload: sheet.confirming && !sheet.canSend ? sheet.giroCodePayload : ""
+                            Sensitive {} // the code carries name, IBAN, amount and purpose
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
+                            spacing: 8
+                            BigAmount {}
+                            SummaryRow { key: qsTr("An"); value: sheet.draft.name }
+                            SummaryRow { key: qsTr("IBAN"); value: sheet.draft.iban }
+                            SummaryRow { visible: sheet.bicText !== ""; key: qsTr("BIC"); value: sheet.bicText.toUpperCase() }
+                            SummaryRow { key: qsTr("Zweck"); value: sheet.draft.purpose === "" ? "–" : sheet.draft.purpose }
+                            SummaryRow { key: qsTr("Von"); value: sheet.accountLabel }
+                        }
+                    }
+                }
+                Hint {
+                    indent: false; symbol: "camera.viewfinder"; size: Theme.callout
+                    text: qsTr("In der App Ihrer Bank „Fotoüberweisung“ bzw. „QR-Code scannen“ wählen, den Code scannen und dort mit TAN freigeben. GiroCrab sendet nichts.")
+                }
             }
         }
+
+        ColumnLayout {
+            id: messages
+            visible: AppModel.transferError !== "" || AppModel.transferInstantDeclined !== null
+            Layout.fillWidth: true
+            Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.bottomMargin: 12; Layout.topMargin: 4
+            spacing: 8
+            RowLayout {
+                visible: AppModel.transferError !== ""
+                Layout.fillWidth: true; spacing: 6
+                SFIcon { symbol: "exclamationmark.triangle.fill"; size: 14; color: Theme.negative; Layout.alignment: Qt.AlignTop }
+                TextEdit { Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: Text.WordWrap
+                           text: AppModel.transferError; color: Theme.negative; font.pixelSize: Theme.callout }
+            }
+            // Instant was not possible and nothing was sent: offer a regular
+            // transfer, which needs its own approval.
+            Rectangle {
+                visible: AppModel.transferInstantDeclined !== null
+                Layout.fillWidth: true
+                implicitHeight: declined.implicitHeight + 24
+                radius: 8
+                color: Theme.withAlpha(Theme.warning, 0.1)
+                ColumnLayout {
+                    id: declined
+                    x: 12; y: 12; width: parent.width - 24
+                    spacing: 8
+                    RowLayout { spacing: 6
+                        SFIcon { symbol: "bolt.slash.fill"; size: 14; color: Theme.text }
+                        Text { text: qsTr("Echtzeitüberweisung nicht ausgeführt"); font.pixelSize: Theme.callout; font.weight: Font.Bold; color: Theme.text } }
+                    Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.callout; color: Theme.text
+                           text: qsTr("Es wurde kein Geld gesendet. Grund der Bank: %1").arg(AppModel.transferInstantDeclined || "") }
+                    Button { text: qsTr("Als normale Überweisung senden"); enabled: !AppModel.transferBusy; onClicked: AppModel.sendAsRegularTransfer() }
+                    Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                           text: qsTr("Kommt in der Regel am nächsten Bankarbeitstag an. Sie geben sie erneut frei.") }
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
 
         // MARK: buttons
         RowLayout {
+            id: buttonRow
             Layout.fillWidth: true
+            Layout.margins: 14
             spacing: 8
             Button { visible: !(sheet.confirming && !sheet.canSend); text: qsTr("Abbrechen"); onClicked: sheet.close_() }
             Button { visible: sheet.confirming && !sheet.canSend; text: qsTr("Zurück"); onClicked: sheet.confirming = false }
@@ -435,7 +604,7 @@ Sheet {
                 highlighted: true
                 enabled: sheet.canReview && !(sheet.canSend && !sheet.pinStored && sheet.draft.pin === "")
                          && !(!sheet.canSend && sheet.giroCodePayload === "")
-                onClicked: { AppModel.transferError = ""; sheet.confirming = true }
+                onClicked: sheet.goToReview()
             }
         }
     }
@@ -451,17 +620,36 @@ Sheet {
         }
     }
 
-    // Rechnung (PDF, ZUGFeRD-XML) hierher ziehen.
+    // TransferSheetView.swift › .onDrop: Rechnung (PDF, ZUGFeRD-XML, Bild oder PDF mit GiroCode) hierher ziehen.
     DropArea {
         parent: sheet.contentItem
         anchors.fill: parent
-        enabled: !sheet.confirming
+        enabled: !sheet.confirming && !sheet.readingInvoice
         onDropped: drop => { if (drop.hasUrls) sheet.importInvoice(drop.urls[0]) }
         Rectangle {
-            anchors.fill: parent; anchors.margins: -8
+            anchors.fill: parent; anchors.margins: 4
             visible: parent.containsDrag
             radius: 12; color: Theme.withAlpha(Theme.accent, 0.06)
             border.color: Theme.accent; border.width: 2
+        }
+    }
+
+    // Linux only: while a dropped invoice is read, a spinner over the form says so (the Mac
+    // only changes the footer text, which can be scrolled out of view here).
+    Rectangle {
+        parent: sheet.contentItem
+        anchors.fill: parent
+        visible: sheet.readingInvoice
+        z: 10
+        radius: 12; color: Theme.withAlpha(Theme.card, 0.8)
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; hoverEnabled: true; onWheel: w => w.accepted = true }
+        Column {
+            anchors.centerIn: parent
+            spacing: 10
+            BusyIndicator { anchors.horizontalCenter: parent.horizontalCenter; running: parent.parent.visible
+                            implicitWidth: 40; implicitHeight: 40 }
+            Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Lese Rechnung …")
+                   font.pixelSize: Theme.body; color: Theme.text }
         }
     }
 
@@ -483,7 +671,7 @@ Sheet {
             delegate: AppMenuItem {
                 required property var modelData
                 text: modelData.name + " · " + modelData.recipient_name
-                onTriggered: AppModel.applyTransferTemplate(modelData)
+                onTriggered: { sheet.ownTransfer = false; AppModel.applyTransferTemplate(modelData) }
             }
             onObjectAdded: (i, o) => templatesMenu.insertItem(i, o)
             onObjectRemoved: (i, o) => templatesMenu.removeItem(o)
@@ -555,39 +743,50 @@ Sheet {
         }
     }
 
-    // field(_:content:): right-aligned label column of 140 pt.
-    component Field: RowLayout {
-        property string label
-        default property alias content: holder.data
-        Layout.fillWidth: true
-        spacing: 12
-        Text { Layout.preferredWidth: 140 * Theme.textScale; Layout.alignment: Qt.AlignTop; Layout.topMargin: 6; horizontalAlignment: Text.AlignRight
-               text: parent.label; color: Theme.secondary; font.pixelSize: Theme.body; wrapMode: Text.WordWrap }
-        ColumnLayout { id: holder; Layout.fillWidth: true; spacing: 6 }
-    }
     component Hint: RowLayout {
         property alias text: hintText.text
         property alias symbol: hintIcon.symbol
         property bool indent: true
         property int size: Theme.caption
+        property color tint: Theme.secondary
         Layout.fillWidth: true
-        Layout.leftMargin: indent ? 152 : 0
+        Layout.leftMargin: indent ? 10 : 0
         spacing: 6
-        SFIcon { id: hintIcon; size: 14; Layout.alignment: Qt.AlignTop; color: Theme.secondary }
-        Text { id: hintText; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: parent.size; color: Theme.secondary }
+        SFIcon { id: hintIcon; size: 13; Layout.alignment: Qt.AlignTop; color: parent.tint }
+        Text { id: hintText; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: parent.size; color: parent.tint }
     }
+    /// reviewRow: LabeledContent with the value right-aligned, selectable, never truncated.
+    component ReviewRow: RowLayout {
+        property string key
+        property string value
+        property bool mono: false
+        property bool personal: true
+        Layout.fillWidth: true
+        spacing: 12
+        Text { text: parent.key; color: Theme.text; font.pixelSize: Theme.body; Layout.alignment: Qt.AlignTop }
+        TextEdit {
+            Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignRight
+            text: parent.value; color: Theme.text; font.pixelSize: Theme.body
+            font.family: parent.mono ? "monospace" : Qt.application.font.family
+            Sensitive { when: parent.parent.personal }
+        }
+    }
+    /// summaryRow of the GiroCode review: all of them are personal.
     component SummaryRow: RowLayout {
         property string key
         property string value
         Layout.fillWidth: true
         spacing: 8
         Text { Layout.preferredWidth: 90 * Theme.textScale; Layout.alignment: Qt.AlignTop; text: parent.key; color: Theme.secondary; font.pixelSize: Theme.body }
-        TextEdit { Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: Text.WordWrap; text: parent.value; color: Theme.text; font.pixelSize: Theme.body }
+        TextEdit { Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: Text.WordWrap; text: parent.value; color: Theme.text; font.pixelSize: Theme.body
+                   Sensitive {} }
     }
     component BigAmount: Text {
         text: Fmt.money(sheet.cents === null ? 0 : sheet.cents).replace("−", "")
-        font.pixelSize: Theme.largeTitle + 4; font.weight: Font.DemiBold; color: Theme.text
+        font.pixelSize: Theme.largeTitle; font.weight: Font.DemiBold; color: Theme.text
         font.features: { "tnum": 1 }
+        Sensitive {}
     }
     component ValidMark: SFIcon {
         property bool ok

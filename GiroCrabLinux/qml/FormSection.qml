@@ -24,7 +24,11 @@ ColumnLayout {
     property real boxRadius: 8
     /// Padding inside the box.
     property real inset: 10
-    property real rowSpacing: 8
+    property real rowSpacing: separators ? 14 : 8
+    /// macOS grouped form: a hairline between the rows (from the leading inset to the trailing edge).
+    property bool separators: false
+    property int footerAlignment: Text.AlignLeft
+    property real footerFontSize: Theme.caption
 
     Layout.fillWidth: true
     spacing: 5
@@ -47,6 +51,17 @@ ColumnLayout {
             anchors.margins: s.inset
             spacing: s.rowSpacing
         }
+        Repeater {
+            model: s.separators ? box.visibleChildren.length : 0
+            Rectangle {
+                required property int index
+                readonly property Item row: box.visibleChildren[index] || null
+                visible: index > 0 && row !== null
+                x: s.inset; width: parent.width - 2 * s.inset; height: 1
+                y: row ? box.y + row.y - Math.round(s.rowSpacing / 2) : 0
+                color: Theme.border
+            }
+        }
     }
     Repeater {
         model: s.footers.concat([s.footer]).filter(x => !!x)
@@ -55,7 +70,8 @@ ColumnLayout {
             text: modelData
             Layout.fillWidth: true; Layout.leftMargin: s.headerInset; Layout.rightMargin: s.footerTrailingInset
             wrapMode: Text.WordWrap
-            font.pixelSize: Theme.caption; color: Theme.secondary
+            horizontalAlignment: s.footerAlignment
+            font.pixelSize: s.footerFontSize; color: Theme.secondary
         }
     }
 }

@@ -3,7 +3,7 @@
 #   GiroCrabLinux/target/debian/girocrab_<version>_<arch>.deb
 # Install with `sudo apt install ./girocrab_<version>_<arch>.deb`, which also pulls in Qt 6,
 # the QML modules and Kirigami from the distribution (Depends). Recommended extras:
-# QtWebEngine (bank consent / web logins, printing), Qt's PDF image plugin (printing), QtPdf
+# QtWebEngine (bank consent / web logins, printing), Qt's PDF image plugin (printing, GiroCode in PDFs), QtPdf
 # (PDF preview), tesseract (receipt OCR),
 # a Secret Service provider (GNOME Keyring, KWallet or KeePassXC) for the vault key.
 #

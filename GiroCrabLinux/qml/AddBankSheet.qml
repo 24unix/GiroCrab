@@ -16,6 +16,9 @@ Sheet {
     readonly property var ebKeys: ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
     property var popular: []
     readonly property var manualFinTs: ({ id: "fints:custom", name: "", mode: "FinTs", country: "DE", blz: "", url: "", connector: null, aspsp: "", tested: "" })
+    /// AddBankSheet.rah10Bank (#460): Commerzbank with an existing HBCI key file (Rah10AddForm)
+    readonly property var rah10Bank: ({ id: "fints:commerzbank-rah10", name: "Commerzbank · Schlüsseldatei", mode: "FinTs", country: "DE", blz: "", url: "", connector: null, aspsp: "", tested: "" })
+    readonly property bool isRah10: selected !== null && selected.id === rah10Bank.id
     readonly property var popularNames: ["ING", "DKB", "comdirect", "Postbank", "Consorsbank", "N26", "C24", "Revolut", "bunq", "Trade Republic", "Scalable Capital", "PayPal"]
     readonly property var modeOrder: ["FinTs", "OwnApi", "Psd2"]
 
@@ -64,24 +67,26 @@ Sheet {
         if (!d) return []
         return d.required_settings.filter(k => { const e = AppModel.settingEntry(k); return !(e && e.has_value) && !(k === "fints.product_id" && AppModel.fintsProductIDSource !== "") })
     }
-    readonly property bool isLastStep: step === "setup" || (step === "access" && missingSettings.length === 0)
+    // RAH-10: the settings (FinTS product registration) come first, then the key file
+    readonly property bool isLastStep: (step === "setup" && !isRah10) || (step === "access" && missingSettings.length === 0)
     readonly property bool canContinue: step === "bank" ? selected !== null
         : step === "access" ? (formLoader.item ? formLoader.item.canAdd : false)
         : missingSettings.every(k => (setupValues[k] || "").trim() !== "")
     function next() {
         if (!canContinue) return
         if (step === "bank") {
-            ways = selected.id === manualFinTs.id ? [selected] : waysTo(selected)
-            step = "access"
+            ways = selected.id === manualFinTs.id || isRah10 ? [selected] : waysTo(selected)
+            step = isRah10 && missingSettings.length > 0 ? "setup" : "access"
         } else if (step === "access") {
             if (missingSettings.length === 0) commit(); else step = "setup"
         } else {
             for (const k in setupValues) if ((setupValues[k] || "").trim() !== "") AppModel.saveSetting(k, setupValues[k])
-            commit()
+            if (isRah10) step = "access"; else commit()
         }
     }
-    function commit() { formLoader.item.commit(); close() }
-    function back() { step = step === "setup" ? "access" : "bank" }
+    /// The RAH-10 form imports off the GUI thread and closes the sheet itself when done.
+    function commit() { const f = formLoader.item; f.commit(); if (!f.commitsAsync) close() }
+    function back() { step = step === "setup" ? (isRah10 ? "bank" : "access") : "bank" }
 
     onAboutToShow: { step = "bank"; query = ""; searchField.text = ""; selected = null; setupValues = ({}); loadPopular(); searchField.forceActiveFocus() }
 
@@ -141,6 +146,7 @@ Sheet {
                             }
                         }
                         rows.push({ header: qsTr("Nicht gefunden?") })
+                        rows.push({ bank: sheet.rah10Bank, rah10: true })
                         rows.push({ bank: sheet.manualFinTs, manual: true })
                         return rows
                     }
@@ -164,11 +170,12 @@ Sheet {
                             color: sheet.selected && modelData.bank && sheet.selected.id === modelData.bank.id ? Theme.selection : "transparent"
                             RowLayout {
                                 anchors.fill: parent; anchors.leftMargin: 10; spacing: 10
-                                SFIcon { symbol: modelData.manual ? "square.and.pencil" : (modelData.bank ? sheet.symbolOf(modelData.bank) : ""); size: 18; Layout.preferredWidth: 22 }
+                                SFIcon { symbol: modelData.rah10 ? "key" : modelData.manual ? "square.and.pencil" : (modelData.bank ? sheet.symbolOf(modelData.bank) : ""); size: 18; Layout.preferredWidth: 22 }
                                 ColumnLayout { spacing: 1; Layout.fillWidth: true
                                     Text { text: modelData.manual ? qsTr("Andere FinTS-Bank") : (modelData.bank ? modelData.bank.name : ""); font.pixelSize: Theme.body + 1; color: Theme.text
                                            Layout.fillWidth: true; elide: Text.ElideRight }
-                                    Text { text: modelData.manual ? qsTr("Bankleitzahl und FinTS-Adresse selbst eingeben") : (modelData.bank ? sheet.detailLine(modelData.bank) : "")
+                                    Text { text: modelData.rah10 ? qsTr("Bestehende HBCI-Datei mit Profil 10 importieren")
+                                               : modelData.manual ? qsTr("Bankleitzahl und FinTS-Adresse selbst eingeben") : (modelData.bank ? sheet.detailLine(modelData.bank) : "")
                                            visible: text !== ""; font.pixelSize: Theme.caption; color: Theme.secondary
                                            Layout.fillWidth: true; elide: Text.ElideRight } }
                             }
@@ -218,6 +225,7 @@ Sheet {
                         Layout.fillWidth: true
                         active: sheet.step !== "bank" && sheet.selected !== null
                         sourceComponent: !sheet.selected ? null
+                            : sheet.isRah10 ? rah10Form
                             : sheet.selected.mode === "FinTs" ? finTsForm
                             : sheet.selected.connector ? kindForm : psd2Form
                     }
@@ -257,6 +265,9 @@ Sheet {
             Button { text: sheet.isLastStep ? qsTr("Hinzufügen") : qsTr("Fortfahren"); highlighted: true; enabled: sheet.canContinue; onClicked: sheet.next() }
         }
     }
+
+    // Rah10AddForm.swift
+    Component { id: rah10Form; Rah10AddForm { host: sheet } }
 
     // FinTsAddForm.swift
     Component {

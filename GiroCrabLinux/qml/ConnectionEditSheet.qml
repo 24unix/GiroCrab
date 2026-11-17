@@ -26,7 +26,9 @@ Sheet {
     /// comdirect logins can switch between FinTS and comdirect's own API.
     readonly property bool isComdirect: kind === "Comdirect"
         || (kind === "FinTsGeneric" && ["20041111", "20041133", "20041144", "20041155"].indexOf(connection.bank_code) >= 0)
-    readonly property bool usesPin: ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Comdirect", "TradeRepublic", "Bunq", "Ibkr"].indexOf(kind) >= 0
+    readonly property bool usesPin: ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Comdirect", "TradeRepublic", "Bunq", "Ibkr", "Easybank", "AlteLeipziger", "VolkswagenBank"].indexOf(kind) >= 0
+    /// ConnectionsUI.swift › ConnectionEditSheet: these portals take a password, not a PIN
+    readonly property bool usesPassword: ["Easybank", "AlteLeipziger"].indexOf(kind) >= 0
     /// Global setting keys relevant for this connector.
     readonly property var allKeys: {
         switch (kind) {
@@ -197,7 +199,7 @@ Sheet {
                     }
                     CheckBox {
                         visible: sheet.usesPin
-                        text: sheet.kind === "Bunq" ? qsTr("API-Schlüssel im Tresor speichern") : sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID im Tresor speichern") : qsTr("PIN im Tresor speichern")
+                        text: sheet.kind === "Bunq" ? qsTr("API-Schlüssel im Tresor speichern") : sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID im Tresor speichern") : sheet.usesPassword ? qsTr("Passwort im Tresor speichern") : qsTr("PIN im Tresor speichern")
                         checked: sheet.storePin
                         onToggled: sheet.storePin = checked
                     }
@@ -206,7 +208,7 @@ Sheet {
                         Layout.fillWidth: true
                         echoMode: TextInput.Password
                         text: sheet.pin; onTextEdited: sheet.pin = text
-                        placeholderText: sheet.status && sheet.status.has_pin ? qsTr("Gespeicherte PIN (leer = unverändert)") : (sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID") : qsTr("PIN"))
+                        placeholderText: sheet.status && sheet.status.has_pin ? qsTr("Gespeicherte PIN (leer = unverändert)") : (sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID") : sheet.usesPassword ? qsTr("Passwort") : qsTr("PIN"))
                     }
                 }
                 SettingsFormSection {

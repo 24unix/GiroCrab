@@ -29,6 +29,9 @@ Card {
         return [a.owner ? "Name: " + a.owner : "", "IBAN: " + Fmt.iban(a.iban), bank].filter(s => s).join("\n")
     }
     readonly property int openFixed: AppModel.recurringMonth ? AppModel.recurringMonth.items.filter(i => !i.booked && i.amount_cents < 0).length : 0
+    /// `@AppStorage(ViewLayout.compactHeaderKey)`: title, balance and the filter row only (#358).
+    readonly property bool compact: AppModel.compactHeader
+    readonly property string compactHeaderTitle: compact ? qsTr("Kopfbereich einblenden") : qsTr("Kopfbereich minimieren")
 
     ColumnLayout {
         width: parent.width
@@ -38,13 +41,26 @@ Card {
             ColumnLayout {
                 spacing: 3
                 Layout.fillWidth: true
+                Layout.maximumWidth: implicitWidth   // the chevron sits right after the title
                 Layout.alignment: Qt.AlignTop
-                Text { text: card.headerTitle; font.pixelSize: Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                // minimised: .headline (body size, semibold) instead of .title2
+                Text { text: card.headerTitle; font.pixelSize: card.compact ? Theme.body + 2 : Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
                        Sensitive { labels: card.account === null } }   // an account name, or a group / category
                 Text {
+                    visible: !card.compact
                     text: card.account ? [card.account.bank_name, Fmt.iban(card.account.iban)].filter(s => s).join(" · ") : AppModel.lastSyncText
                     font.pixelSize: Theme.caption; color: Theme.secondary
                     Sensitive { when: card.account !== null }   // IBAN
+                }
+                // BalanceHeaderView.swift: the account note (AccountEditSheet, #605)
+                Text {
+                    readonly property string note: card.account ? SidebarModel.accountNote(card.account.id) : ""
+                    visible: note !== "" && !card.compact
+                    text: note; font.pixelSize: Theme.caption; color: Theme.secondary
+                    wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true
+                    HoverHandler { id: noteHover }
+                    ToolTip.visible: noteHover.hovered && truncated; ToolTip.delay: 600; ToolTip.text: note
+                    Sensitive {}
                 }
                 // AccountCopyMenu on the title
                 TapHandler {
@@ -65,6 +81,18 @@ Card {
                     AppMenuItem { text: qsTr("Kontostand"); onTriggered: AppModel.copyToClipboard(Fmt.clipboard(card.account.balance_cents)) }
                 }
             }
+            // Minimise the header: more room for the booking list (GitHub #358).
+            Item {
+                Layout.alignment: Qt.AlignTop
+                implicitWidth: compactIcon.width + 8; implicitHeight: compactIcon.height + 8
+                SFIcon { id: compactIcon; anchors.centerIn: parent; symbol: "chevron.down"; size: 10; color: Theme.secondary
+                         rotation: card.compact ? 0 : 180 }   // chevron.down / chevron.up
+                MouseArea { id: compactArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: AppModel.compactHeader = !AppModel.compactHeader }
+                ToolTip.visible: compactArea.containsMouse; ToolTip.delay: 600; ToolTip.text: card.compactHeaderTitle
+                Accessible.role: Accessible.Button; Accessible.name: card.compactHeaderTitle
+            }
+            Item { Layout.fillWidth: true; Layout.preferredWidth: 0 }
             ColumnLayout {
                 visible: card.balance !== null
                 spacing: 2
@@ -82,16 +110,16 @@ Card {
                 Text {
                     Layout.alignment: Qt.AlignRight
                     text: card.balance ? Fmt.money(card.balance.cents) : ""
-                    font.pixelSize: Theme.largeTitle + 4; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                    font.pixelSize: card.compact ? Theme.title3 + 3 : Theme.largeTitle + 4; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                     color: card.account && card.account.kind === "Loan" ? Theme.loan : Theme.text
                     Sensitive {}
                 }
-                Text { Layout.alignment: Qt.AlignRight; text: card.balance ? card.balance.label : ""; font.pixelSize: Theme.caption; color: Theme.secondary }
+                Text { visible: !card.compact; Layout.alignment: Qt.AlignRight; text: card.balance ? card.balance.label : ""; font.pixelSize: Theme.caption; color: Theme.secondary }
             }
         }
 
         LoanProgressCard {
-            visible: card.account !== null && card.account.kind === "Loan"
+            visible: !card.compact && card.account !== null && card.account.kind === "Loan"
             Layout.fillWidth: true
             account: card.account
             compact: true
@@ -103,23 +131,33 @@ Card {
         }
 
         BalanceChart {
-            visible: (!card.isDepot || card.isTangible) && AppModel.showStatistics && AppModel.scope !== "Investments"
+            visible: !card.compact && (!card.isDepot || card.isTangible) && AppModel.showStatistics && AppModel.scope !== "Investments"
+                     && !AppModel.sidebarSelection.startsWith("category:")
             Layout.fillWidth: true
             Layout.preferredHeight: 72
             points: card.chartPoints
             onSelectDay: day => AppModel.jumpToDay(day)
         }
 
+        // A category: its monthly sums instead of the balance (CategorySumChart.swift, #502).
+        CategorySumChart {
+            visible: !card.compact && !card.isDepot && AppModel.showStatistics && AppModel.scope !== "Investments"
+                     && AppModel.sidebarSelection.startsWith("category:")
+            Layout.fillWidth: true
+            Layout.preferredHeight: 72
+            sums: AppModel.categoryHistory
+        }
+
         RowLayout {
-            visible: !card.isDepot
+            visible: !card.isDepot && !card.compact
             Layout.fillWidth: true
             spacing: 10
             KPI { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
-                  title: qsTr("Konsumausgaben"); subtitle: AppModel.periodSubtitle; value: Fmt.money(-AppModel.consumptionThisMonth); tint: Theme.outflow }
+                  title: qsTr("Konsumausgaben"); subtitle: AppModel.periodSubtitle; value: AppModel.isLoadingSelection ? "–" : Fmt.money(-AppModel.consumptionThisMonth); tint: Theme.outflow }
             KPI { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
-                  title: qsTr("Investiert"); subtitle: qsTr("Sparpläne & Perks"); value: Fmt.money(AppModel.investedThisMonth); tint: Theme.invest }
+                  title: qsTr("Investiert"); subtitle: qsTr("Sparpläne & Perks"); value: AppModel.isLoadingSelection ? "–" : Fmt.money(AppModel.investedThisMonth); tint: Theme.invest }
             KPI { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
-                  title: qsTr("Einnahmen"); subtitle: AppModel.periodSubtitle; value: Fmt.money(AppModel.incomeThisMonth); tint: Theme.inflow }
+                  title: qsTr("Einnahmen"); subtitle: AppModel.periodSubtitle; value: AppModel.isLoadingSelection ? "–" : Fmt.money(AppModel.incomeThisMonth); tint: Theme.inflow }
             KPI { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
                   title: qsTr("Fixkosten offen"); subtitle: qsTr("Diesen Monat · %1 offen").arg(card.openFixed)
                   value: Fmt.money(-(AppModel.recurringMonth ? AppModel.recurringMonth.open_expense_cents : 0)); tint: Theme.outflow
@@ -141,7 +179,7 @@ Card {
                 // because the named months, quarters and years count back from today.
                 Component { id: periodEntry
                     AppMenuItem { property string periodID; text: AppModel.periodTitleOf(periodID); checkable: true
-                                  checked: AppModel.period === periodID; onTriggered: AppModel.period = periodID } }
+                                  checked: AppModel.period === periodID; onTriggered: AppModel.choosePeriod(periodID) } }
                 Component { id: periodDivider; AppMenuSeparator {} }
                 AppMenu {
                     id: periodMenu
@@ -184,6 +222,32 @@ Card {
                     }
                 }
             }
+            // Category views: only the bookings of the chosen accounts (GitHub #406).
+            MenuLabel {
+                visible: AppModel.showsCategoryAccountFilter && AppModel.allAccounts.length > 1
+                symbol: AppModel.categoryAccountIDs.length ? "building.columns.fill" : "building.columns"
+                text: AppModel.categoryAccountFilterTitle
+                onClicked: accountMenu.popup()
+                ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: qsTr("Nur Buchungen ausgewählter Konten anzeigen")
+                AppMenu {
+                    id: accountMenu
+                    AppMenuItem { text: qsTr("Alle Konten"); checkable: true
+                                  checked: AppModel.categoryAccountIDs.length === 0
+                                  onTriggered: { checked = Qt.binding(() => AppModel.categoryAccountIDs.length === 0); AppModel.setCategoryAccountFilter([]) } }
+                    AppMenuSeparator {}
+                    Repeater {
+                        model: AppModel.allAccounts
+                        AppMenuItem {
+                            required property var modelData
+                            text: !modelData.bank_name || modelData.name.toLowerCase().indexOf(modelData.bank_name.toLowerCase()) >= 0
+                                  ? modelData.name : modelData.name + " · " + modelData.bank_name
+                            checkable: true
+                            checked: AppModel.categoryAccountIDs.indexOf(modelData.id) >= 0
+                            onTriggered: { checked = Qt.binding(() => AppModel.categoryAccountIDs.indexOf(modelData.id) >= 0); AppModel.toggleCategoryAccount(modelData.id) }
+                        }
+                    }
+                }
+            }
             MenuLabel { visible: card.account !== null; symbol: "doc.text"; text: qsTr("Dokumente"); chevron: false
                         onClicked: AppModel.openAccountDocuments(card.account) }
             Item { Layout.fillWidth: true }
@@ -218,6 +282,7 @@ Card {
         property string symbol
         property string text
         property bool chevron: true
+        readonly property bool hovered: mlArea.containsMouse
         signal clicked()
         implicitWidth: r.implicitWidth; implicitHeight: 22
         RowLayout {
@@ -228,6 +293,6 @@ Card {
             Text { text: ml.text; font.pixelSize: Theme.body; color: Theme.text }
             SFIcon { visible: ml.chevron; symbol: "chevron.down"; size: 9; color: Theme.text }
         }
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ml.clicked() }
+        MouseArea { id: mlArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ml.clicked() }
     }
 }

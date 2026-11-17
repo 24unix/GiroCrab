@@ -1,8 +1,9 @@
 import QtQuick
 import QtQuick.Shapes
 
-// MerchantSignet.swift › MerchantSignet: person initials, brand SVG (simple-icons),
-// category symbol for unknown merchants, else the brand monogram.
+// MerchantSignet.swift › MerchantSignet: person initials, downloaded favicon (Tier 2, only
+// with online logos on, MerchantLogos.qml), brand SVG (simple-icons), category symbol for
+// unknown merchants, else the brand monogram.
 Item {
     id: root
     property var merchant
@@ -15,20 +16,51 @@ Item {
 
     readonly property bool person: merchant && merchant.is_person
     readonly property bool hasSvg: merchant && merchant.svg_path !== ""
-    readonly property bool useCategory: merchant && !merchant.known && categorySymbol !== "" && !hasSvg && !person
     readonly property color brand: merchant && merchant.color_hex ? merchant.color_hex : Theme.tertiary
+
+    /// model.cachedLogo(for:): `{ url, pixels }` or null; vanishes at once with "Aus" (#422).
+    readonly property var logo: {
+        MerchantLogos.version
+        return person ? null : MerchantLogos.cachedLogo(merchant)
+    }
+    /// `pixels >= 48`: a real brand logo, shown before the bundled SVG
+    readonly property bool sharpLogo: logo !== null && logo.pixels >= 48
+    /// small favicons only for known brands – a guessed domain must deliver a sharp logo
+    readonly property bool smallLogo: logo !== null && !sharpLogo && !hasSvg && merchant
+                                      && (merchant.domain_source === "dictionary" || merchant.domain_source === "override")
+    readonly property bool showsLogo: sharpLogo || smallLogo
+    readonly property bool useCategory: merchant && !merchant.known && categorySymbol !== "" && !hasSvg && !person && !showsLogo
+
+    /// `.task(id:)`: candidates + domain + provider + logoVersion – a reused row or a new
+    /// provider asks again; a cached logo is drawn above without a request.
+    readonly property string logoTaskID: person || !merchant ? ""
+        : MerchantLogos.key(merchant) + "|" + merchant.domain + "|" + MerchantLogos.provider + "|" + MerchantLogos.epoch
+    onLogoTaskIDChanged: if (logoTaskID !== "" && MerchantLogos.onlineLogos) MerchantLogos.request(merchant)
+    Component.onCompleted: if (logoTaskID !== "" && MerchantLogos.onlineLogos) MerchantLogos.request(merchant)
 
     Rectangle {
         anchors.fill: parent
         radius: root.person ? width / 2 : root.px * 0.28
         color: root.person ? Theme.personFill
+             : root.showsLogo ? "white"
              : root.useCategory ? Theme.neutralTile
              : Theme.withAlpha(root.brand, root.hasSvg ? 0.09 : 0.10)
         border.width: root.person ? 0 : 1
-        border.color: Theme.withAlpha(root.brand, 0.16)
+        border.color: root.sharpLogo ? Theme.border : Theme.withAlpha(root.brand, 0.16)
+    }
+    Image {
+        visible: root.showsLogo
+        anchors.fill: parent
+        anchors.margins: root.px * (root.sharpLogo ? 0.14 : 0.2)
+        source: root.showsLogo ? root.logo.url : ""
+        // decodeLogo: a thumbnail of at most 128 px, decoded off the GUI thread
+        sourceSize: Qt.size(128, 128)
+        asynchronous: true
+        fillMode: Image.PreserveAspectFit
+        smooth: true; mipmap: true
     }
     Text {
-        visible: root.person || (!root.hasSvg && !root.useCategory)
+        visible: root.person || (!root.hasSvg && !root.useCategory && !root.showsLogo)
         anchors.centerIn: parent
         text: root.merchant ? root.merchant.monogram : ""
         font.pixelSize: root.px * (root.person ? 0.36 : (text.length > 2 ? 0.30 : 0.40))
@@ -45,7 +77,7 @@ Item {
         color: Theme.secondary
     }
     Shape {
-        visible: root.hasSvg && !root.person
+        visible: root.hasSvg && !root.person && !root.sharpLogo
         anchors.fill: parent
         anchors.margins: root.px * 0.2
         preferredRendererType: Shape.CurveRenderer

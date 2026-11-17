@@ -11,6 +11,8 @@ Sheet {
     property string actionTitle
     /// role: .destructive (red); false = a plain action such as "Archivieren"
     property bool destructive: true
+    /// Title of the cancel button (role: .cancel), e.g. "Weiter suchen".
+    property string cancelTitle: qsTr("Abbrechen")
     signal confirmed()
     sheetWidth: 400
     ColumnLayout {
@@ -21,7 +23,7 @@ Sheet {
         RowLayout {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
-            Button { text: qsTr("Abbrechen"); onClicked: dlg.close(); focus: true }
+            Button { text: dlg.cancelTitle; onClicked: dlg.close(); focus: true }
             Button {
                 text: AppModel.menuText(dlg.actionTitle)   // may carry names with "&"
                 palette.buttonText: dlg.destructive ? Theme.negative : Theme.text

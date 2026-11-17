@@ -58,12 +58,17 @@ fn main() {
         .qt_module("PrintSupport")
         // web logins: QNetworkCookie of the QtWebEngine cookie store (cpp/webcookies.cpp)
         .qt_module("Network")
+        // „Im Dateimanager anzeigen“: org.freedesktop.FileManager1 (cpp/filemanager.cpp)
+        .qt_module("DBus")
         .qrc(manifest.join("assets.qrc"))
         .cpp_file(manifest.join("cpp/prepare.cpp"))
         .cpp_file(manifest.join("cpp/printing.cpp"))
         .cpp_file(manifest.join("cpp/webcookies.h"))
         .cpp_file(manifest.join("cpp/webcookies.cpp"))
         .cpp_file(manifest.join("cpp/translator.cpp"))
+        .cpp_file(manifest.join("cpp/filemanager.cpp"))
+        // GiroCode in dropped invoices: pages as grey images (QImageReader, QtPdf plugin)
+        .cpp_file(manifest.join("cpp/qrscan.cpp"))
         .file(manifest.join("src/bridge.rs"))
         .build();
     // Our C++ (printing.cpp, prepare.cpp, …) sits in the static library cxx-qt links after its
@@ -78,6 +83,7 @@ fn main() {
             "Quick",
             "Qml",
             "Network",
+            "DBus",
             "Gui",
             "Core",
         ] {

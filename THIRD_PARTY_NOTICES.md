@@ -62,6 +62,7 @@ The Linux interface (Qt 6 / QML) uses these crates in addition to the core. Crat
 | **`keyring`** (Secret Service) | `3.6.3` | `MIT OR Apache-2.0` | [https://github.com/hwchen/keyring-rs](https://github.com/hwchen/keyring-rs) |
 | **`ed25519-dalek`** | `2.2.0` | `BSD-3-Clause` | [https://github.com/dalek-cryptography/curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek) |
 | **`qrcode`** | `0.14.1` | `MIT OR Apache-2.0` | [https://github.com/kennytm/qrcode-rust](https://github.com/kennytm/qrcode-rust) |
+| **`rqrr`** (GiroCode in dropped invoices) | `0.11.0` | `(MIT OR Apache-2.0) AND ISC` | [https://github.com/WanzenBug/rqrr](https://github.com/WanzenBug/rqrr) |
 
 ### Linux System Libraries and Programs (dynamically linked or called, not bundled)
 

@@ -75,6 +75,8 @@ Item {
                 // Mac app at its own pace (Community-Maintained Port, #389), so it may offer less
                 SettingsFormRow { label: qsTr("Kern-Version"); value: pane.versionText; selectable: true }
             }
+            // `if model.hasOwnVault { VaultBackupSection() }`
+            VaultBackupSection { visible: AppModel.hasOwnVault }
             SettingsFormSection {
                 title: qsTr("Tresor-Schlüssel")
                 footer: qsTr("Der Schlüssel liegt im Schlüsselbund Ihrer Sitzung, nie neben der Tresordatei. Sichern Sie ihn, bevor Sie das System neu aufsetzen, und fügen Sie ihn auf einem anderen Rechner ein, um denselben Tresor zu öffnen.")

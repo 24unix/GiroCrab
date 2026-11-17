@@ -13,12 +13,16 @@ Card {
         girocrab: { income: ["#38BDF8", "#0284C7"], expense: ["#F97316", "#EA580C"] },
         profi: { income: ["#3B82F6", "#2563EB"], expense: ["#64748B", "#475569"] },
         emerald: { income: ["#10B981", "#059669"], expense: ["#F43F5E", "#E11D48"] } })[paletteName]
+    /// Off the GUI thread: every published booking list asks again (a load still running
+    /// would otherwise hold the GUI thread at the vault mutex).
     function load() {
-        if (!AppModel.isUnlocked) return
-        const r = AppModel.run(() => AppModel.core("cashflow_by_period", { granularity: granularity, count: granularity === "Year" ? 5 : 6 }))
-        if (r) rows = r
+        // hidden (Auswertungen off, budgets alone above the list, #544): nothing to load
+        if (!AppModel.isUnlocked || !visible) return
+        AppModel.loadOffMain("cashflow", () => [["cashflow_by_period", { granularity: card.granularity, count: card.granularity === "Year" ? 5 : 6 }]],
+                             r => { card.rows = r[0] })
     }
     onGranularityChanged: load()
+    onVisibleChanged: if (visible) load()
     Connections { target: AppModel; function onBookingsChanged() { card.load() } }
     Component.onCompleted: load()
     function label(key) {

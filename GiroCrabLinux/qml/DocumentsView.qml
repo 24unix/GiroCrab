@@ -2,8 +2,11 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtCore
 
 // DocumentsUI.swift › DocumentsView: "Belege & PostBox" – list left, preview right.
+// The scope (Alle Dokumente / Belege / PostBox, #526) sits in the toolbar like on the Mac
+// (Main.qml › DocumentsScope). Linux keeps its search field above the list.
 Rectangle {
     id: view
     color: Theme.canvas
@@ -14,14 +17,37 @@ Rectangle {
     property var selectedID: null
     readonly property var selected: selectedID === null ? null : (docs.find(d => d.id === selectedID) || null)
     property var docToDelete: null
-    readonly property var docs: AppModel.sidebarSelection !== "documents" ? [] : AppModel.allDocuments(search, unlinkedOnly, AppModel.documentsAccountFilter)
-    readonly property var filterAccount: AppModel.documentsAccountFilter === null ? null : AppModel.accountsByID[AppModel.documentsAccountFilter]
+    /// model.allDocuments(search:unlinkedOnly:accountId:scope:)
+    readonly property var docs: {
+        void DocumentsScope.current
+        return AppModel.sidebarSelection !== "documents" ? []
+            : AppModel.allDocuments(search, unlinkedOnly, AppModel.documentsAccountFilter).filter(d => DocumentsScope.includes(d))
+    }
+    /// Nothing filtered: the general empty state instead of „Keine passenden Dokumente“.
+    readonly property bool unfiltered: DocumentsScope.current === "all" && AppModel.documentsAccountFilter === null && !unlinkedOnly && search === ""
+
+    function showAll() {
+        DocumentsScope.current = "all"
+        AppModel.documentsAccountFilter = null
+        unlinkedOnly = false
+        searchField.text = ""
+    }
+    // The account filter is only set on purpose ("Belege anzeigen" on an account); opening
+    // the section later starts at "Alle Konten" again (#670, `.onDisappear`).
+    Connections {
+        target: AppModel
+        function onSidebarSelectionChanged() { if (AppModel.sidebarSelection !== "documents") AppModel.documentsAccountFilter = null }
+    }
 
     // One context menu for all documents (built once, not per row).
     property var menuDoc: null
     AppMenu { id: docMenu
         AppMenuItem { text: qsTr("Vorschau"); onTriggered: AppModel.quickLook(view.menuDoc) }
-        AppMenuItem { text: qsTr("Verknüpfung lösen"); onTriggered: AppModel.linkDocument(view.menuDoc, null) }
+        // „Im Finder anzeigen“ (#622)
+        AppMenuItem { text: qsTr("Im Dateimanager anzeigen"); onTriggered: AppModel.showInFileManager(view.menuDoc) }
+        AppMenuItem { text: qsTr("Zuordnung aufheben")
+                      enabled: !!view.menuDoc && view.menuDoc.booking_id !== null && view.menuDoc.booking_id !== undefined
+                      onTriggered: AppModel.linkDocument(view.menuDoc, null) }
         AppMenuSeparator {}
         AppMenuItem { text: qsTr("Beleg löschen …"); onTriggered: view.docToDelete = view.menuDoc } }
 
@@ -35,29 +61,48 @@ Rectangle {
             Layout.margins: 18
             spacing: 12
             ColumnLayout { spacing: 4; Layout.fillWidth: true
-                Text { text: qsTr("Belege & PostBox"); font.pixelSize: Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text }
+                Text { text: DocumentsScope.heading; font.pixelSize: Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text }
                 Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
-                       text: qsTr("Wertpapierabrechnungen, Kontoauszüge, Kassenbons – verschlüsselt im Tresor. PDF oder Foto hierher ziehen: GiroCrab ordnet es dem passenden Umsatz zu.") } }
-            RowLayout {
-                spacing: 12; Layout.fillWidth: true
-                // same order and groups as the sidebar (#412)
-                AppComboBox {
-                    readonly property var options: AppModel.accountMenuOptions(a => a.name)
-                    Layout.minimumWidth: 120; Layout.maximumWidth: 240; Layout.fillWidth: true
-                    model: options
-                    textRole: "title"
-                    currentIndex: Math.max(0, options.findIndex(o => o.id === AppModel.documentsAccountFilter && !o.header))
-                    onActivated: i => { if (!options[i].header) AppModel.documentsAccountFilter = options[i].id }
-                    ToolTip.text: qsTr("Belege eines Kontos anzeigen"); ToolTip.visible: hovered
-                    Sensitive { when: AppModel.documentsAccountFilter !== null }   // the selected account's name
+                       text: DocumentsScope.description } }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                // ViewThatFits: account picker and switch in one row, else stacked
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: view.width < 980 ? 1 : 3
+                    columnSpacing: 12; rowSpacing: 8
+                    // same order and groups as the sidebar (#412)
+                    AppComboBox {
+                        readonly property var options: AppModel.accountMenuOptions(a => a.name)
+                        Layout.minimumWidth: 150; Layout.maximumWidth: 270; Layout.fillWidth: true
+                        model: options
+                        textRole: "title"
+                        currentIndex: Math.max(0, options.findIndex(o => o.id === AppModel.documentsAccountFilter && !o.header))
+                        onActivated: i => { if (!options[i].header) AppModel.documentsAccountFilter = options[i].id }
+                        ToolTip.text: qsTr("Dokumente eines Kontos anzeigen"); ToolTip.visible: hovered; ToolTip.delay: 600
+                        Sensitive { when: AppModel.documentsAccountFilter !== null }   // the selected account's name
+                    }
+                    Item { visible: view.width >= 980; Layout.fillWidth: true }
+                    Switch { text: qsTr("Nur ohne zugeordneten Umsatz"); checked: view.unlinkedOnly; onToggled: view.unlinkedOnly = checked }
                 }
-                Switch { text: qsTr("Nur ohne Buchung"); checked: view.unlinkedOnly; onToggled: view.unlinkedOnly = checked }
-                Item { Layout.fillWidth: true }
-                Button { text: qsTr("Alle exportieren …"); icon.name: SF.icon("square.and.arrow.up"); onClicked: folderDialog.open()
-                         display: view.width < 900 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                         ToolTip.text: text; ToolTip.visible: hovered && display === AbstractButton.IconOnly }
+                Text { text: qsTr("%1 Dokumente").arg(view.docs.length); font.pixelSize: Theme.caption; color: Theme.secondary }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Button {
+                        text: qsTr("Beleg hinzufügen …"); icon.name: SF.icon("plus.circle")
+                        onClicked: importDialog.open()
+                        ToolTip.text: qsTr("PDFs oder Fotos auswählen und einem passenden Umsatz zuordnen"); ToolTip.visible: hovered; ToolTip.delay: 600
+                    }
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        text: qsTr("Alle exportieren …"); icon.name: SF.icon("square.and.arrow.up"); onClicked: folderDialog.open()
+                        ToolTip.text: qsTr("Die gesamte Dokumentensammlung exportieren, unabhängig von den Filtern"); ToolTip.visible: hovered; ToolTip.delay: 600
+                    }
+                }
             }
-            TextField { Layout.fillWidth: true; placeholderText: qsTr("Belege durchsuchen"); onTextChanged: view.search = text
+            TextField { id: searchField; Layout.fillWidth: true; placeholderText: qsTr("Belege durchsuchen"); onTextChanged: view.search = text
                         Sensitive { when: parent.text !== "" } }
             ListView {
                 id: list
@@ -66,17 +111,23 @@ Rectangle {
                 model: view.docs
                 ScrollBar.vertical: AppScrollBar {}
                 delegate: Rectangle {
+                    id: docRow
                     required property var modelData
-                    width: ListView.view.width; height: 52
+                    readonly property bool bank: DocumentsScope.isBankDocument(modelData)
+                    width: ListView.view.width; height: rowCol.implicitHeight + 14
                     radius: 6
                     color: view.selectedID === modelData.id ? Theme.selection : "transparent"
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 10
                         SFIcon { symbol: AppModel.docSymbol(modelData); size: 18; color: Theme.accent; Layout.preferredWidth: 22 }
-                        ColumnLayout { spacing: 2; Layout.fillWidth: true
-                            Text { text: modelData.title; font.pixelSize: Theme.body + 1; font.weight: Font.Medium; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
-                            Text { text: modelData.booking_label || qsTr("PostBox · %1").arg(modelData.account_name); font.pixelSize: Theme.caption
-                                   color: modelData.booking_label ? Theme.secondary : Theme.warning; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} } }
+                        ColumnLayout { id: rowCol; spacing: 2; Layout.fillWidth: true
+                            Text { text: modelData.title; font.pixelSize: Theme.body + 1; font.weight: Font.Medium; color: Theme.text
+                                   wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+                            Text { text: DocumentsScope.originTitle(modelData) + " · " + (modelData.account_name || qsTr("Ohne Konto"))
+                                   font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+                            Text { text: modelData.booking_label || qsTr("Ohne zugeordneten Umsatz"); font.pixelSize: Theme.caption
+                                   color: !modelData.booking_label && !docRow.bank ? Theme.warning : Theme.secondary
+                                   elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} } }
                         Text { text: Fmt.medium(modelData.doc_date); font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary }
                     }
                     MouseArea {
@@ -90,11 +141,11 @@ Rectangle {
                     anchors.centerIn: parent; visible: view.docs.length === 0; spacing: 8; width: parent.width - 40
                     SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: "doc.on.doc"; size: 30 }
                     Text { Layout.alignment: Qt.AlignHCenter; font.pixelSize: Theme.title3 + 1; font.weight: Font.Bold; color: Theme.text
-                           text: view.filterAccount ? qsTr("Keine Belege für „%1“").arg(view.filterAccount.name) : qsTr("Keine Belege")
-                           Sensitive { when: view.filterAccount !== null } }
-                    Text { visible: !view.filterAccount; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.secondary
-                           text: qsTr("Belege kommen beim Abruf (Trade Republic, comdirect-PostBox, FinTS-Kontoauszug) oder per Drag & Drop.") }
-                    Button { visible: view.filterAccount !== null; Layout.alignment: Qt.AlignHCenter; text: qsTr("Alle Konten anzeigen"); onClicked: AppModel.documentsAccountFilter = null }
+                           text: view.unfiltered ? qsTr("Keine Belege") : qsTr("Keine passenden Dokumente") }
+                    Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.secondary
+                           text: view.unfiltered ? qsTr("Belege kommen beim Abruf (Trade Republic, comdirect-PostBox, FinTS-Kontoauszug) oder per Drag & Drop.")
+                                                 : qsTr("Für diese Auswahl wurden keine Dokumente gefunden.") }
+                    Button { visible: !view.unfiltered; Layout.alignment: Qt.AlignHCenter; text: qsTr("Alle Dokumente anzeigen"); onClicked: view.showAll() }
                 }
             }
         }
@@ -103,10 +154,11 @@ Rectangle {
             Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 520
             DocumentPreview { anchors.fill: parent; visible: view.selected !== null; doc: view.selected }
             ColumnLayout {
-                anchors.centerIn: parent; visible: view.selected === null; spacing: 8
+                anchors.centerIn: parent; visible: view.selected === null; spacing: 8; width: Math.min(parent.width - 40, 360)
                 SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: "doc.richtext"; size: 30 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Beleg auswählen"); font.pixelSize: Theme.title3 + 1; font.weight: Font.Bold; color: Theme.text }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Vorschau mit QtPdf"); color: Theme.secondary }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Dokument auswählen"); font.pixelSize: Theme.title3 + 1; font.weight: Font.Bold; color: Theme.text }
+                Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.secondary
+                       text: qsTr("Ein Dokument aus der Liste auswählen, um die Vorschau zu öffnen.") }
             }
         }
     }
@@ -118,6 +170,24 @@ Rectangle {
     }
     Rectangle { anchors.fill: parent; anchors.margins: 8; visible: drop.containsDrag; color: "transparent"; radius: 14; border.color: Theme.accent; border.width: 2 }
 
+    // importButton › .fileImporter([.pdf, .png, .jpeg, .heic], allowsMultipleSelection: true)
+    FileDialog {
+        id: importDialog
+        title: qsTr("Beleg hinzufügen …")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [qsTr("PDFs und Fotos (*.pdf *.png *.jpg *.jpeg *.heic)")]
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DownloadLocation)
+        onAccepted: {
+            if (!selectedFiles.length) return
+            // An unmatched upload has no account. Make it visible even when the dialog
+            // was opened from PostBox or a filtered account.
+            DocumentsScope.current = "receipts"
+            AppModel.documentsAccountFilter = null
+            searchField.text = ""
+            view.unlinkedOnly = false
+            AppModel.dropAnywhere(selectedFiles)
+        }
+    }
     FolderDialog { id: folderDialog; title: qsTr("Ordner für die exportierten Belege wählen"); acceptLabel: qsTr("Exportieren")
                    onAccepted: AppModel.exportAllDocuments(AppModel.localPath(selectedFolder)) }
     Sheet {
@@ -126,7 +196,8 @@ Rectangle {
         sheetWidth: 380
         ColumnLayout { width: parent.width; spacing: 12
             Text { text: qsTr("Beleg löschen?"); font.pixelSize: Theme.body + 2; font.weight: Font.Bold; color: Theme.text }
-            Text { text: view.docToDelete ? qsTr("„%1“ wird unwiderruflich gelöscht.").arg(view.docToDelete.title) : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: Theme.text }
+            Text { text: view.docToDelete ? qsTr("„%1“ wird unwiderruflich gelöscht.").arg(view.docToDelete.title) : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: Theme.text
+                   Sensitive {} }
             RowLayout { Item { Layout.fillWidth: true }
                 Button { text: qsTr("Abbrechen"); onClicked: view.docToDelete = null }
                 Button { text: qsTr("Löschen"); onClicked: { AppModel.deleteDocument(view.docToDelete); view.docToDelete = null } } } }

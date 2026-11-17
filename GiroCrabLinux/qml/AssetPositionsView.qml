@@ -16,6 +16,22 @@ Item {
     /// @AppStorage("showSoldAssets")
     Settings { id: prefs; property bool showSoldAssets: false }
     property var deleting: null
+    /// DepotPositionsView.swift (#351): the classification of each item (`classified_assets`),
+    /// reloaded with the account and after an own assignment.
+    property var classified: []
+    property int classifiedGeneration: 0
+    function reloadClassified() {
+        const gen = ++classifiedGeneration
+        if (!account) { classified = []; return }
+        AppModel.coreAsync("classified_assets", { account_id: account.id }, r => { if (gen === view.classifiedGeneration) view.classified = r }, () => {})
+    }
+    onAccountChanged: reloadClassified()
+    onItemsChanged: reloadClassified()
+    Connections { target: AssetClassification; function onVersionChanged() { view.reloadClassified() } }
+    function classificationOf(item) {
+        const c = classified.find(a => a.asset_item_id === item.id)
+        return c ? c.classification : null
+    }
     implicitHeight: Math.max(420, column.implicitHeight)
 
     // a click on the empty space around the cards ends the item selection (a background
@@ -129,6 +145,7 @@ Item {
     component AssetRow: Rectangle {
         id: row
         property var item
+        readonly property var classification: view.classificationOf(item)
         readonly property bool selected: AppModel.selectedAssetItemID === item.id
         implicitHeight: Math.max(44, rowLayout.implicitHeight) + 10
         color: selected ? Theme.selection : "transparent"
@@ -147,7 +164,8 @@ Item {
                     Layout.fillWidth: true
                     spacing: 3
                     SFIcon { visible: !!row.item.missing_price_date; symbol: "exclamationmark.triangle.fill"; size: 11; color: Theme.warning }
-                    Text { text: view.detail(row.item); font.pixelSize: Theme.callout; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+                    // PositionRow: the classification in front of the detail
+                    Text { text: (row.classification ? AssetClassification.compactTitle(row.classification) + " · " : "") + view.detail(row.item); font.pixelSize: Theme.callout; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                 }
             }
             Text {
@@ -175,6 +193,8 @@ Item {
         Accessible.name: row.item.setup.name
         AppMenu {
             id: menu
+            AppMenuItem { text: qsTr("Klassifizierung bearbeiten"); visible: row.classification !== null; height: visible ? implicitHeight : 0
+                          onTriggered: AssetClassification.edit(row.item.setup.name, row.classification) }
             AppMenuItem { text: qsTr("Sachwert bearbeiten …"); onTriggered: AppModel.openAssetEditor(view.account.id, row.item.id) }
             // gold follows the price API; only manual items carry own values
             AppMenuItem { text: qsTr("Bewertungen bearbeiten …"); visible: row.item.setup.price_source === "manual"; height: visible ? implicitHeight : 0

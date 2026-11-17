@@ -4,7 +4,8 @@ import QtQuick
 // PaymentParser.swift: payment data from clipboard text (Sm@rtPaste), EPC QR
 // payloads, ZUGFeRD / Factur-X XML and PDF text. A ParsedPayment is a plain
 // object with the found fields only (name, iban, bic, amountText, purpose).
-// QR codes inside dropped images/PDFs are not decoded (no Vision on Linux).
+// QR codes inside dropped images/PDFs: Qt renders the page, rqrr decodes the
+// code (read_invoice › src/qr_scan.rs, instead of Vision).
 QtObject {
     /// CharacterSet.newlines (U+000A–U+000D, U+0085, U+2028, U+2029).
     readonly property var newlines: /\r\n|[\n\v\f\r\u0085\u2028\u2029]/
@@ -198,15 +199,16 @@ QtObject {
         return isEmpty(p) || (seller === null && iban === null) ? null : p
     }
 
-    // MARK: files (PDF / XML)
+    // MARK: files (PDF / XML / image)
 
-    /// Order: (embedded) XML → PDF text layer. `path` is a local file path; the
+    /// Order: embedded XML → EPC QR → text layer. `path` is a local file path; the
     /// file is read off the GUI thread and `done(p)` gets the result (null = nothing).
     function parseFile(path, done) {
         AppModel.coreAsync("read_invoice", { path: path }, r => done(parseInvoiceResult(r)), () => done(null))
     }
     function parseInvoiceResult(r) {
         if (r.xml) { const p = parseInvoiceXML(r.xml); if (p) return p }
+        if (r.epc) { const p = parseEPC(r.epc); if (p) return p }
         if (r.text) { const p = parseText(r.text); return isEmpty(p) ? null : p }
         return null
     }

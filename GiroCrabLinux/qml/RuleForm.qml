@@ -34,8 +34,6 @@ Item {
         { id: "CounterpartyIban", title: qsTr("IBAN") }
     ]
     readonly property var categoryOptions: AppModel.categories.map(c => ({ id: c.id, title: "    ".repeat(c.depth) + c.name }))
-    /// same order and groups as the sidebar (#412)
-    readonly property var accountOptions: AppModel.accountMenuOptions(a => a.bank_name + " – " + a.name)
 
     ColumnLayout {
         anchors.fill: parent
@@ -72,15 +70,6 @@ Item {
                         label: qsTr("Aktiv")
                         Item { Layout.fillWidth: true }
                         Switch { checked: form.rule ? form.rule.enabled : false; onToggled: form.set("enabled", checked) }
-                    }
-                    FormRow {
-                        label: qsTr("Priorität %1").arg(form.rule ? form.rule.priority : 0)
-                        Item { Layout.fillWidth: true }
-                        SpinBox {
-                            from: 0; to: 10000; stepSize: 10; editable: true
-                            value: form.rule ? form.rule.priority : 0
-                            onValueModified: form.set("priority", value)
-                        }
                     }
                 }
 
@@ -174,25 +163,11 @@ Item {
                                                           : { min_amount_cents: null, max_amount_cents: null })
                         }
                     }
-                    FormRow {
-                        label: qsTr("Konto")
-                        // a rule limited to several accounts (made on the Mac, #562): the single-account
-                        // picker would replace the list, so it only says so until Linux has the multi-picker
-                        Text {
-                            readonly property int count: form.rule && form.rule.account_ids ? form.rule.account_ids.length : 0
-                            visible: count > 1
-                            Layout.fillWidth: true; wrapMode: Text.WordWrap
-                            text: qsTr("Auf %1 Konten eingeschränkt (in der Mac-App festgelegt)").arg(count)
-                            font.pixelSize: Theme.body; color: Theme.secondary
-                        }
-                        AppComboBox {
-                            visible: !(form.rule && form.rule.account_ids && form.rule.account_ids.length > 1)
-                            Layout.fillWidth: true
-                            model: form.accountOptions
-                            textRole: "title"
-                            currentIndex: form.rule ? Math.max(0, form.accountOptions.findIndex(o => !o.header && o.id === (form.rule.account_ids && form.rule.account_ids.length ? form.rule.account_ids[0] : null))) : 0
-                            onActivated: i => { const o = form.accountOptions[i]; if (!o.header) form.set("account_ids", o.id === null || o.id === undefined ? [] : [o.id]) }
-                        }
+                    // RuleAccountPicker (#562): several accounts, empty = all
+                    RuleAccountPicker {
+                        Layout.fillWidth: true
+                        accountIds: form.rule && form.rule.account_ids ? form.rule.account_ids : []
+                        onPicked: ids => form.set("account_ids", ids)
                     }
                 }
 

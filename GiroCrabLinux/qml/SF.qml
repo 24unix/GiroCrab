@@ -12,13 +12,14 @@ QtObject {
         "chart.line.uptrend.xyaxis": "view-financial-account-investment", "eurosign": "view-financial-account-cash",
         "house": "go-home", "bitcoinsign": "view-financial-account-investment", "p": "view-financial-account",
         "square.grid.2x2": "view-grid", "doc.on.doc": "edit-copy", "doc.text": "document-multiple",
-        "doc": "document-new", "doc.text.magnifyingglass": "document-preview", "questionmark.folder": "folder-question",
+        "doc": "document-new", "doc.text.magnifyingglass": "document-preview", "questionmark.folder": "folder",
         "questionmark": "dialog-question", "plus": "list-add", "minus": "list-remove", "folder.badge.plus": "folder-new",
         "folder": "folder", "lock": "object-locked", "lock.open": "object-unlocked", "lock.slash": "object-unlocked",
         "theatermasks": "view-media-artist", "chevron.right": "go-next", "chevron.down": "go-down",
         "calendar": "view-calendar", "line.3.horizontal.decrease": "view-filter", "magnifyingglass": "edit-find",
         "paperplane": "mail-send", "arrow.triangle.2.circlepath": "view-refresh", "sidebar.trailing": "sidebar-collapse-right",
-        "checkmark": "checkmark", "checkmark.circle": "dialog-ok-apply", "repeat": "media-playlist-repeat",
+        "checkmark": "dialog-ok",   // light Breeze has "checkmark" only as an emblem (a filled badge)
+        "checkmark.circle": "dialog-ok-apply", "repeat": "media-playlist-repeat",
         "clock": "clock", "tag": "tag", "note.text": "note", "pencil": "document-edit", "trash": "edit-delete",
         "paintpalette": "color-picker", "wand.and.stars": "tools-wizard", "arrow.triangle.branch": "split",
         "archivebox": "archive-insert", "gearshape": "settings-configure", "printer": "document-print",
@@ -27,9 +28,9 @@ QtObject {
         "exclamationmark.triangle": "dialog-warning", "exclamationmark.shield": "security-low", "globe": "globe-symbolic",
         "person": "im-user", "tray": "mail-folder-inbox", "chart.bar.xaxis": "office-chart-bar", "chart.bar": "office-chart-bar",
         "chart.pie": "office-chart-pie", "arrow.down": "view-financial-category-income",
-        "arrow.left.arrow.right": "view-financial-transfer", "cart": "view-financial-category-expense",
+        "arrow.left.arrow.right": "exchange-positions", "cart": "view-financial-category-expense",
         "car": "car", "tram": "car", "fuelpump": "car", "fork.knife": "fork", "takeoutbag.and.cup.and.straw": "fork",
-        "bag": "view-financial-category-expense", "shippingbox": "package", "gift": "gift", "sofa": "go-home",
+        "bag": "view-financial-category-expense", "shippingbox": "package", "gift": "favorite", "sofa": "go-home",
         "bolt": "battery", "leaf": "games-hint", "cross.case": "security-high", "cross.vial": "security-high",
         "shield": "security-high", "shield.lefthalf.filled": "security-medium", "figure.run": "games-highscores",
         "gamecontroller": "applications-games", "play.tv": "media-playback-start", "briefcase": "view-financial-account",
@@ -73,7 +74,14 @@ QtObject {
         "list.bullet.clipboard": "view-list-text", "checkmark.shield": "security-high", "circle": "draw-circle",
         "minus.circle": "list-remove", "arrow.clockwise": "view-refresh", "diamond": "view-financial-account-asset", "creditcard.fill": "view-financial-account-credit-card",
         // filled variants (SyncLog outcome, RecurringSheet): Breeze has no filled circles, same icon as the outline
-        "checkmark.circle.fill": "dialog-ok-apply", "exclamationmark.triangle.fill": "dialog-warning", "minus.circle.fill": "list-remove"
+        "checkmark.circle.fill": "dialog-ok-apply", "exclamationmark.triangle.fill": "dialog-warning", "minus.circle.fill": "list-remove",
+        // Tresor sichern (VaultBackupUI), RAH-10 key file (Rah10AddForm)
+        "externaldrive.badge.plus": "document-save-all", "doc.badge.key": "document-encrypt",
+        // booking list and inspector (tags #228, merchant list #495, category menu #366)
+        "number": "tag-assigned", "storefront": "view-financial-category-expense", "tag.slash": "tag-delete",
+        "xmark.circle.fill": "window-close", "plus.circle.fill": "list-add",
+        // MerchantLogoTip (#33)
+        "photo.on.rectangle": "insert-image"
     })
     function icon(name) {
         if (!name) return "tag"

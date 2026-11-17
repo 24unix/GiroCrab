@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// AccountGroupsUI.swift › AccountsSectionHeader: "Konten" + archive toggle, group actions,
+// AccountGroupsUI.swift › AccountsSectionHeader: chevron + "Konten" (folds the account tree,
+// SidebarModel.accountsCollapsed) + archive toggle, group actions,
 // Gruppen/Banken/Kontoart picker, account search. The ListView header (not a row): the
 // search field keeps its focus while the rows below are rebuilt on every keystroke.
 Item {
@@ -14,11 +15,22 @@ Item {
     ColumnLayout {
         id: col
         anchors.left: parent.left; anchors.right: parent.right
-        anchors.leftMargin: 18; anchors.rightMargin: 14; anchors.top: parent.top; anchors.topMargin: 14
+        anchors.leftMargin: 8 + SidebarModel.rowLeading; anchors.rightMargin: 14; anchors.top: parent.top; anchors.topMargin: 12
         spacing: 6
         RowLayout {
             spacing: 2
-            Text { text: qsTr("Konten"); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.secondary; Layout.fillWidth: true }
+            // same height in every view (#596): the buttons only exist under „Gruppen“
+            Layout.minimumHeight: 20
+            SidebarChevron {
+                open: !SidebarModel.accountsCollapsed
+                Layout.rightMargin: SidebarModel.gap - 2
+                accessibleName: open ? qsTr("Konten einklappen") : qsTr("Konten ausklappen")
+                onToggled: SidebarModel.accountsCollapsed = !SidebarModel.accountsCollapsed
+            }
+            Text { text: qsTr("Konten"); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.secondary
+                   Accessible.role: Accessible.Heading
+                   TapHandler { onTapped: SidebarModel.accountsCollapsed = !SidebarModel.accountsCollapsed } }
+            Item { Layout.fillWidth: true }
             IconButton {
                 readonly property string label: AppModel.showArchivedAccounts ? qsTr("Archivierte Konten ausblenden") : qsTr("Archivierte Konten einblenden")
                 visible: AppModel.hasArchivedAccounts
@@ -59,7 +71,7 @@ Item {
                     Layout.fillWidth: true
                     padding: 0; leftPadding: 0; rightPadding: 0
                     background: null
-                    placeholderText: qsTr("Name, Kontoinhaber, IBAN …")
+                    placeholderText: qsTr("Suchen…")
                     font.pixelSize: Theme.caption
                     color: Theme.text
                     text: AppModel.sidebarAccountSearch

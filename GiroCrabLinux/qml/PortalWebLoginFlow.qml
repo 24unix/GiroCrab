@@ -20,6 +20,14 @@ WebLoginFlow {
         if (browser.blockedHost !== "")
             return qsTr("Unsichere Seite blockiert (%1) – nur HTTPS-Seiten werden geöffnet.").arg(browser.blockedHost)
         if (browser.onLoginPage) return qsTr("Melden Sie sich wie gewohnt an (Benutzername, Passwort, 2FA) und öffnen Sie die Umsatzübersicht.")
+        if (openHolds.length > 0 && importedCount > 0)
+            return qsTr("%1 Umsätze übernommen. %2 vorgemerkte Umsätze sind nicht mehr offen, ihre Buchung wurde aber noch nicht gefunden. Öffnen Sie im Portal den vorherigen Abrechnungszeitraum.").arg(importedCount).arg(openHolds.length)
+        if (openHolds.length > 0)
+            return qsTr("%1 vorgemerkte Umsätze sind nicht mehr offen, ihre Buchung wurde aber noch nicht gefunden. Öffnen Sie im Portal den vorherigen Abrechnungszeitraum.").arg(openHolds.length)
+        if (holdsToCheck > 0)
+            return qsTr("%1 vorgemerkte Umsätze sind nicht mehr offen. „Umsätze übernehmen“ gleicht sie mit den Buchungen ab – liegt eine Buchung in einem früheren Abrechnungszeitraum, öffnen Sie diesen vorher im Portal.").arg(holdsToCheck)
+        if (browsingHistory)
+            return qsTr("Öffnen Sie im Portal frühere Abrechnungszeiträume. „Umsätze übernehmen“ übernimmt alle erkannten Umsätze und schließt das Fenster.")
         if (importedCount > 0 && olderOffered)
             return qsTr("%1 Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter.").arg(importedCount)
         if (importedCount > 0) return qsTr("%1 Umsätze übernommen – weitere werden geladen …").arg(importedCount)
@@ -44,6 +52,19 @@ WebLoginFlow {
     property bool importing: false
     property bool ticking: false
     property bool finished: false
+    /// ConnectorKind.portalHasBillingPeriods (#629): the portal shows one billing period at a
+    /// time; older ones are picked in the portal itself while the sheet stays open.
+    readonly property bool hasBillingPeriods: kind === "AmericanExpress"
+    /// The user browses older billing periods: no automatic import, the blue button imports
+    /// everything recognised and closes. Bookings are only stored on closing.
+    property bool browsingHistory: false
+    /// Pending charges no longer open whose posting is not among the captured pages ([PortalHold]).
+    property var openHolds: []
+    /// Stored pending charges the portal no longer lists, found before importing: they are
+    /// matched on the blue button, so the automatic import (which closes) stays off.
+    property int holdsToCheck: 0
+    // Billing-period portals: the first sync of a connection offers the older periods.
+    Component.onCompleted: if (hasBillingPeriods && !portalDefaults.value(historyOfferedKey, false)) browsingHistory = true
 
     /// The older history (SMS code) is offered once per connection; later syncs close on their own.
     Settings { id: portalDefaults; category: "portal" }
@@ -150,27 +171,86 @@ WebLoginFlow {
                 console.info("portal pager: older=" + p.older + " buttons=" + p.labels.join(" | "))
             }
         }
-        if (n > importedCount && !away && !p.more && Date.now() - lastChange > 4000) {
-            // First sync with older history on offer: store what is there, but keep the
-            // sheet open so the user can unlock the rest (SMS code).
-            const keepOpen = p.older && importedCount === 0 && !portalDefaults.value(historyOfferedKey, false)
-            attempt(!keepOpen, ok => {
-                if (ok && keepOpen) importedCount = n
-                ticking = false
+        // Never while browsing older periods: the automatic import closes the sheet.
+        if (!browsingHistory && n > importedCount && !away && !p.more && Date.now() - lastChange > 4000) {
+            // The automatic import closes the sheet, so it never runs while stored pending
+            // charges are no longer listed: they are matched (or discarded) via the button.
+            openHoldsNow(unlisted => {
+                if (finished) return
+                if (unlisted.length) {
+                    holdsToCheck = unlisted.length
+                    browsingHistory = true
+                    ticking = false
+                    return
+                }
+                // First sync with older history on offer: store what is there, but keep the
+                // sheet open so the user can unlock the rest (SMS code).
+                const firstSync = importedCount === 0 && !portalDefaults.value(historyOfferedKey, false)
+                const keepOpen = p.older && firstSync
+                attempt(!keepOpen, false, ok => {
+                    if (ok && (keepOpen || openHolds.length)) importedCount = n
+                    ticking = false
+                })
             })
             return
         }
         ticking = false
     }
 
-    function attempt(closing, done) {
+    /// AppModel.portalOpenHolds: off the GUI thread; [] on failure.
+    function openHoldsNow(done) {
+        AppModel.coreAsync("portal_open_holds", { connection_id: connection.id, json_bodies: bodies },
+                           h => done(h || []), () => done([]))
+    }
+
+    /// Imports what is recognised and closes. Unresolved pending charges (#629) keep the
+    /// sheet open in history mode: from the button with the discard warning right away,
+    /// from the automatic import with the hint only.
+    function attempt(closing, fromButton, done) {
         importing = true
         domRows(rows => {
             const ok = AppModel.importPortalCapture(connection, bodies, rows)
-            importing = false
-            if (ok && closing) close(true)
-            if (done) done(ok)
+            if (!ok) { importing = false; if (done) done(false); return }
+            importedCount = Math.max(importedCount, recognized)
+            holdsToCheck = 0
+            openHoldsNow(holds => {
+                importing = false
+                if (finished) return
+                openHolds = holds
+                if (holds.length) {
+                    // its posting may be in an older billing period
+                    browsingHistory = true
+                    if (fromButton) confirmDiscard.open()
+                } else if (closing) close(true)
+                if (done) done(true)
+            })
         })
+    }
+
+    /// Closing with unresolved pending charges asks first: they would be discarded.
+    function requestClose() {
+        if (openHolds.length === 0) close(false); else confirmDiscard.open()
+    }
+    /// discardMessage (an alert on the Mac, never part of a bug report picture)
+    readonly property string discardMessage: qsTr("Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden. Sie werden verworfen:")
+        + "\n\n" + openHolds.map(h => Fmt.medium(h.booking_date) + " · " + h.counterparty + " · " + Fmt.money(h.amount_cents)).join("\n")
+    ConfirmDialog {
+        id: confirmDiscard
+        heading: qsTr("Vorgemerkte Umsätze nicht gefunden")
+        message: flow.discardMessage
+        actionTitle: qsTr("Verwerfen und schließen")
+        // "Weiter suchen" is the cancel button of the Mac's alert
+        cancelTitle: qsTr("Weiter suchen")
+        onConfirmed: {
+            AppModel.coreAsync("discard_portal_holds", { connection_id: flow.connection.id, ids: flow.openHolds.map(h => h.id) }, () => {
+                AppModel.reloadAll()
+                flow.close(true)
+            }, err => {
+                AppModel.errorTitle = qsTr("Vormerkungen konnten nicht verworfen werden")
+                AppModel.errorMessage = AppModel.parseCoreError(err).message
+                flow.close(true)
+            })
+        }
     }
 
     function close(success) {
@@ -181,7 +261,7 @@ WebLoginFlow {
         if (success || importedCount > 0) AppModel.closeWebLogin()
         else AppModel.cancelWebLogin()
     }
-    function cancel() { close(false) }
+    function cancel() { requestClose() }
 
     FileDialog {
         id: statementDialog
@@ -191,13 +271,19 @@ WebLoginFlow {
         onAccepted: { AppModel.importStatement(flow.connection, selectedFile); flow.close(true) }
     }
 
-    Button { text: flow.importedCount > 0 ? qsTr("Fertig") : qsTr("Abbrechen"); onClicked: flow.close(false) }
+    Button { text: flow.importedCount > 0 ? qsTr("Fertig") : qsTr("Abbrechen"); onClicked: flow.requestClose() }
+    IconButton {
+        visible: flow.hasBillingPeriods && !flow.browsingHistory
+        symbol: "clock.arrow.circlepath"; text: qsTr("Ältere Abrechnungen laden"); tint: Theme.accent
+        onClicked: flow.browsingHistory = true
+        ToolTip.text: qsTr("Lässt dieses Fenster offen, damit Sie im Portal frühere Abrechnungszeiträume öffnen können.")
+    }
     IconButton { symbol: "doc.badge.plus"; text: qsTr("CSV- oder PDF-Kontoauszug importieren …"); tint: Theme.accent; onClicked: statementDialog.open() }
     Item { Layout.fillWidth: true }
     Button {
         text: qsTr("Umsätze übernehmen (%1 erkannt)").arg(flow.recognized)
         highlighted: true
         enabled: !flow.importing && flow.recognized > 0
-        onClicked: flow.attempt(true)
+        onClicked: flow.attempt(true, true)
     }
 }

@@ -9,7 +9,7 @@ import QtQuick.Layouts
 Item {
     id: root
     readonly property string kind: AppModel.groupDialog ? AppModel.groupDialog.kind : ""
-    readonly property bool needsText: ["create", "rename", "renameAccount", "editOwner"].indexOf(kind) >= 0
+    readonly property bool needsText: ["create", "rename", "renameAccount", "editOwner", "renameUncategorized"].indexOf(kind) >= 0
 
     /// GroupDialog.title
     function titleOf(d) {
@@ -18,6 +18,7 @@ Item {
         case "rename": return qsTr("Gruppe umbenennen")
         case "renameAccount": return qsTr("Konto umbenennen")
         case "editOwner": return qsTr("Kontoinhaber")
+        case "renameUncategorized": return qsTr("Bezeichnung ändern")
         case "delete": return qsTr("Gruppe „%1“ löschen?").arg(d.group.name)
         case "merge": return qsTr("Mit „%1“ zusammenführen?").arg(d.into.name)
         }
@@ -45,6 +46,8 @@ Item {
             const name = field.text.trim()
             // "Kontoinhaber …" (#280): empty text clears the owner
             if (d.kind === "editOwner") { close(); AppModel.setAccountOwner(d.account.id, name); return }
+            // „Ohne Kategorie“ (#597): empty text restores the default
+            if (d.kind === "renameUncategorized") { close(); SidebarModel.setUncategorizedName(name); return }
             if (name === "") return
             close()
             switch (d.kind) {
@@ -77,8 +80,8 @@ Item {
                 Button { text: qsTr("Abbrechen"); Layout.fillWidth: true; onClicked: textAlert.close() }
                 Button {
                     readonly property string k: textAlert.current ? textAlert.current.kind : ""
-                    text: k === "editOwner" ? qsTr("Sichern") : k !== "create" ? qsTr("Umbenennen") : qsTr("Anlegen")
-                    highlighted: true; Layout.fillWidth: true; enabled: k === "editOwner" || field.text.trim() !== ""; onClicked: textAlert.submit()
+                    text: k === "editOwner" ? qsTr("Sichern") : k === "renameUncategorized" ? qsTr("Umbenennen") : k !== "create" ? qsTr("Umbenennen") : qsTr("Anlegen")
+                    highlighted: true; Layout.fillWidth: true; enabled: k === "editOwner" || k === "renameUncategorized" || field.text.trim() !== ""; onClicked: textAlert.submit()
                 }
             }
         }
@@ -113,16 +116,17 @@ Item {
         z: 10
         onAboutToShow: current = AppModel.sidebarDialog
         onClosed: if (AppModel.sidebarDialog === current) AppModel.sidebarDialog = null
-        heading: !current ? "" : current.kind === "archiveAccount" ? qsTr("Konto archivieren?")
-                 : current.kind === "deleteAccount" ? qsTr("Archiviertes Konto endgültig löschen?") : qsTr("Bankzugang entfernen?")
+        // one form for every delete / archive dialog (#669): the name in the title, „Löschen“ as action
+        heading: !current ? "" : current.kind === "archiveAccount" ? qsTr("Konto „%1“ archivieren?").arg(current.account.name)
+                 : current.kind === "deleteAccount" ? qsTr("Konto „%1“ löschen?").arg(current.account.name) : qsTr("Bankzugang entfernen?")
         message: !current ? ""
             : current.kind === "archiveAccount"
-              ? qsTr("„%1“ wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Das Konto lässt sich jederzeit reaktivieren.").arg(current.account.name)
+              ? qsTr("Das Konto wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Es lässt sich jederzeit reaktivieren.")
             : current.kind === "deleteAccount"
-              ? qsTr("„%1“ wird samt %2 Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.").arg(current.account.name).arg(current.account.transaction_count)
+              ? qsTr("Das Konto wird samt %1 Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.").arg(current.account.transaction_count)
               : qsTr("Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen.")
         actionTitle: !current ? "" : current.kind === "archiveAccount" ? qsTr("Archivieren")
-                     : current.kind === "deleteAccount" ? qsTr("Endgültig löschen") : qsTr("Entfernen")
+                     : current.kind === "deleteAccount" ? qsTr("Löschen") : qsTr("Entfernen")
         destructive: current !== null && current.kind !== "archiveAccount"
         onConfirmed: {
             const d = current

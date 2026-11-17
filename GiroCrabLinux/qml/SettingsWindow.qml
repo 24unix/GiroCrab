@@ -72,7 +72,18 @@ ApplicationWindow {
             currentIndex: win.tabIndex
             GeneralSettings {}
             BankConnectionsSettings { enabled: AppModel.isUnlocked }
-            SecuritySettings {}
+            SecuritySettings { id: security }
+        }
+        // AppVersion.swift › AppVersionFooter: a subtle line under every pane. Linux shows the
+        // core version it was built on (the same number as „Kern-Version“ in Sicherheit), plus
+        // the app version only when it differs – no build number, no TestFlight pin.
+        TextEdit {
+            Layout.fillWidth: true
+            Layout.topMargin: 6; Layout.bottomMargin: 6
+            horizontalAlignment: TextEdit.AlignHCenter
+            readOnly: true; selectByMouse: true
+            text: "GiroCrab " + security.versionText
+            font.pixelSize: Theme.caption2; color: Theme.tertiary
         }
     }
 }

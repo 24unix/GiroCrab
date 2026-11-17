@@ -8,6 +8,10 @@ Sheet {
     property var connection: AppModel.pendingLogin
     readonly property var d: connection ? AppModel.descriptor(connection.connector) : null
     readonly property bool isTR: connection && connection.connector === "TradeRepublic"
+    /// AppModel+Rah.swift › usesRah10 (#460): the secret is the key file's password, the login is fixed.
+    readonly property bool isRah10: !!connection && connection.connector === "FinTsGeneric"
+        && (AppModel.run(() => AppModel.core("connection_key", { connection_id: connection.id })) || "").endsWith(":rah10")
+    readonly property string secretLabel: isRah10 ? qsTr("Passwort der Schlüsseldatei") : (d ? d.secret_label : qsTr("PIN"))
     visible: connection !== null
     sheetWidth: 440
     onAboutToShow: {
@@ -48,19 +52,21 @@ Sheet {
         }
         ColumnLayout { spacing: 4; Layout.fillWidth: true
             Text { text: sheet.d ? sheet.d.login_label : qsTr("Anmeldung"); font.pixelSize: Theme.caption; color: Theme.secondary }
-            TextField { id: login; Layout.fillWidth: true; placeholderText: sheet.d ? sheet.d.login_label : "" }
+            TextField { id: login; Layout.fillWidth: true; placeholderText: sheet.d ? sheet.d.login_label : ""; enabled: !sheet.isRah10 }
             Text { visible: sheet.isTR && login.text !== ""; font.pixelSize: Theme.caption2; color: Theme.secondary
                    text: { const n = sheet.isTR ? AppModel.core("normalize_phone_number", { input: login.text }) : ""; return n === login.text ? qsTr("Format korrekt (E.164)") : qsTr("Wird gesendet als %1").arg(n) } }
         }
         ColumnLayout { spacing: 4; Layout.fillWidth: true
-            Text { text: sheet.d ? sheet.d.secret_label : qsTr("PIN"); font.pixelSize: Theme.caption; color: Theme.secondary }
+            Text { text: sheet.secretLabel; font.pixelSize: Theme.caption; color: Theme.secondary }
             TextField { id: secret; Layout.fillWidth: true; echoMode: TextInput.Password; onAccepted: sheet.start() }
-            CheckBox { id: savePin; text: qsTr("PIN im Tresor speichern"); font.pixelSize: Theme.caption
+            CheckBox { id: savePin; text: sheet.isRah10 ? qsTr("Passwort im Tresor speichern") : qsTr("PIN im Tresor speichern"); font.pixelSize: Theme.caption
                        ToolTip.text: qsTr("Verschlüsselt in der SQLCipher-Datenbank; beim nächsten Abruf wird nicht mehr gefragt."); ToolTip.visible: hovered }
         }
         Text {
             Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
-            text: savePin.checked ? qsTr("Die PIN wird verschlüsselt im Tresor gespeichert.") : qsTr("Die PIN wird nur für diesen Abruf verwendet und nie gespeichert.")
+            text: sheet.isRah10
+                  ? (savePin.checked ? qsTr("Das Passwort wird verschlüsselt im Tresor gespeichert.") : qsTr("Das Passwort wird nur für diesen Abruf verwendet."))
+                  : (savePin.checked ? qsTr("Die PIN wird verschlüsselt im Tresor gespeichert.") : qsTr("Die PIN wird nur für diesen Abruf verwendet und nie gespeichert."))
         }
         // Trade Republic: the AWS WAF may block the plain login – browser login instead.
         Rectangle { visible: sheet.isTR; Layout.fillWidth: true; height: 1; color: Theme.border }

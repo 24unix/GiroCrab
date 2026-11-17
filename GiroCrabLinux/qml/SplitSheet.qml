@@ -53,7 +53,7 @@ Sheet {
         if (error === "") close()
     }
 
-    readonly property var categoryOptions: [{ id: null, title: qsTr("Ohne Kategorie") }]
+    readonly property var categoryOptions: [{ id: null, title: SidebarModel.uncategorizedLabel }]
         .concat(AppModel.categories.map(c => ({ id: c.id, title: c.path })))
 
     ColumnLayout {

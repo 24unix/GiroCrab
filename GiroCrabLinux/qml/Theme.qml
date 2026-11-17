@@ -26,13 +26,15 @@ QtObject {
     readonly property color secondary: c("#4B5A70", "#A3B1C4")
     readonly property color tertiary: c("#64748B", "#8494AA")
     readonly property color outflow: c("#0F172A", "#F1F5F9")
-    readonly property color inflow: c("#059669", "#34D399")
+    /// Emerald; light #047857 (was #059669, only 3.8:1 on white – e33d9bc, #571).
+    readonly property color inflow: c("#047857", "#34D399")
     readonly property color inflowBadge: c("#ECFDF5", "#064E3B")
     /// Order-account charge colour: the red counterpart of `inflow`, paired
     /// with `outflowBadge` so badged charges and refunds read symmetrically.
-    readonly property color charge: c("#DC2626", "#F87171")
-    /// Red counterpart of `inflowBadge` (Amazon order rows: colour = direction, no sign).
-    readonly property color outflowBadge: c("#FEF2F2", "#7F1D1D")
+    readonly property color charge: c("#B91C1C", "#F87171")
+    /// Red counterpart of `inflowBadge`, so the order-account rows can badge
+    /// charges and refunds symmetrically (direction additionally via sign).
+    readonly property color outflowBadge: c("#FEF2F2", "#5B1B1B")
     // AccentColor of the asset catalog (GiroCrab blue).
     readonly property color accent: c("#2563EB", "#60A5FA")
     readonly property color selection: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.28 : 0.13)

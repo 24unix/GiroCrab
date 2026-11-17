@@ -29,7 +29,7 @@ const MAX_BYTES: usize = 64 * 1024;
 const FRESHNESS: Duration = Duration::from_secs(15 * 60);
 const BUNDLED_GRACE: Duration = Duration::from_secs(90 * 24 * 60 * 60);
 /// `BankingPolicy.publicKeys` (raw 32-byte Ed25519 keys, base64).
-const PUBLIC_KEYS: &[&str] = &["sy8puSCv1QXXl0hU5cYaPaaShIltXDIXiKLRXLuNW+A="];
+pub(crate) const PUBLIC_KEYS: &[&str] = &["sy8puSCv1QXXl0hU5cYaPaaShIltXDIXiKLRXLuNW+A="];
 const BUNDLED_JSON: &[u8] = include_bytes!("../../policy/banking-policy.json");
 const BUNDLED_SIG: &[u8] = include_bytes!("../../policy/banking-policy.json.sig");
 

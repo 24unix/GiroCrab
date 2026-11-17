@@ -29,6 +29,7 @@ extern "C" {
         out: *const std::os::raw::c_char,
     ) -> bool;
     fn girocrab_copy_image(path: *const std::os::raw::c_char) -> bool;
+    fn girocrab_show_in_file_manager(path: *const std::os::raw::c_char) -> bool;
 }
 
 /// The vault on screen (demo or personal) – `AppModel.vault`. `None` = locked.
@@ -196,6 +197,55 @@ fn restore_key(key: &[u8]) -> R {
     ok(())
 }
 
+/// Newest request per load channel (`AppModel.loadOffMain`): a background batch
+/// whose token is no longer the newest stops before its next call, so fast
+/// clicking does not queue one full load per click behind the vault mutex.
+static LOAD_TOKENS: Mutex<Option<std::collections::HashMap<String, i64>>> = Mutex::new(None);
+
+fn supersede(channel: String, token: i64) {
+    LOAD_TOKENS
+        .lock()
+        .unwrap()
+        .get_or_insert_with(Default::default)
+        .insert(channel, token);
+}
+
+fn is_current_load(channel: &str, token: i64) -> bool {
+    LOAD_TOKENS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|m| m.get(channel))
+        .is_none_or(|t| *t == token)
+}
+
+#[derive(serde::Deserialize)]
+struct BatchCall {
+    method: String,
+    #[serde(default)]
+    args: Value,
+}
+
+/// Several calls one after the other on one worker thread (`Core.callAsync("batch", …)`):
+/// `{ "results": [...] }` in call order, the first error ends the batch, and
+/// `{ "cancelled": true }` once a newer request of the same channel superseded it.
+fn batch(a: &Value) -> R {
+    let channel: Option<String> = arg(a, "channel")?;
+    let token: i64 = arg::<Option<i64>>(a, "token")?.unwrap_or(0);
+    let calls: Vec<BatchCall> = arg(a, "calls")?;
+    let mut results = Vec::with_capacity(calls.len());
+    for c in &calls {
+        if channel
+            .as_deref()
+            .is_some_and(|ch| !is_current_load(ch, token))
+        {
+            return ok(json!({ "cancelled": true }));
+        }
+        results.push(call(&c.method, &c.args)?);
+    }
+    ok(json!({ "results": results }))
+}
+
 /// AccountSelectionList.save (#346): takes `self: Arc<Vault>` (a held-back fetch is
 /// imported right away), so not part of `vault_methods!`.
 fn set_connection_account_choices(v: &Arc<Vault>, a: &Value) -> R {
@@ -203,6 +253,49 @@ fn set_connection_account_choices(v: &Arc<Vault>, a: &Value) -> R {
         .set_connection_account_choices(arg(a, "connection_id")?, arg(a, "enabled_refs")?)
         .map_err(|e| e.to_string())?;
     ok(())
+}
+
+/// Sammelüberweisung / Dauerauftrag / Lastschrift: `self: Arc<Self>`, each returns
+/// an `Arc<TransferSession>` that goes into the session registry like "begin_transfer".
+fn begin_payment_session(v: &Arc<Vault>, method: &str, a: &Value) -> R {
+    let secret: String = arg(a, "secret")?;
+    let demo: bool = arg(a, "demo")?;
+    let v = v.clone();
+    let t = match method {
+        "begin_batch_transfer" => v.begin_batch_transfer(arg(a, "request")?, secret, demo),
+        "begin_standing_order" => v.begin_standing_order(arg(a, "request")?, secret, demo),
+        _ => v.begin_direct_debit(arg(a, "request")?, secret, demo),
+    }
+    .map_err(|e| e.to_string())?;
+    ok(crate::sessions::register(
+        crate::sessions::Session::Transfer(t),
+    ))
+}
+
+/// The unlocked own vault (`AppModel.ownVault`), independent of the demo in front.
+fn own_vault() -> Result<Arc<Vault>, String> {
+    OWN.lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| crate::i18n::tr("Tresor ist gesperrt"))
+}
+
+/// A path from a QML file dialog (`file://…` URL or plain path).
+fn local_path(path: String) -> String {
+    path.strip_prefix("file://").unwrap_or(&path).to_string()
+}
+
+/// RAH-10 key file: `path` (file dialog) or `bytes`; at most 1 MB.
+fn keyfile_bytes(a: &Value) -> Result<Vec<u8>, String> {
+    let Some(path) = arg::<Option<String>>(a, "path")? else {
+        return arg(a, "bytes");
+    };
+    let path = local_path(path);
+    let size = file_size(std::path::Path::new(&path));
+    if !(0..=1_048_576).contains(&size) {
+        return Err(crate::i18n::tr("Die Datei ist zu groß oder nicht lesbar."));
+    }
+    std::fs::read(&path).map_err(|e| format!("{path}: {e}"))
 }
 
 /// Text file chosen in a file dialog (Enable Banking .pem key); at most 1 MB.
@@ -216,6 +309,61 @@ fn read_text_file(a: &Value) -> R {
     ok(std::fs::read_to_string(&path).map_err(|e| e.to_string())?)
 }
 
+/// Largest payment list the batch import reads (AppModel+Batch.swift › batchCsvMaxBytes).
+const BATCH_CSV_MAX_BYTES: i64 = 2_000_000;
+
+/// AppModel+Batch.swift › importBatchCSV (file part): the chosen or dropped CSV as UTF-8,
+/// else Windows-1252 (spreadsheet exports), parsed by the core. Refuses big files unread.
+fn read_batch_csv(a: &Value) -> R {
+    let path = local_path(arg(a, "path")?);
+    let size = file_size(std::path::Path::new(&path));
+    if size > BATCH_CSV_MAX_BYTES {
+        return Err(crate::i18n::tr("Die Datei ist zu groß (höchstens 2 MB)."));
+    }
+    let bytes = std::fs::read(&path)
+        .ok()
+        .filter(|b| b.len() as i64 <= BATCH_CSV_MAX_BYTES)
+        .ok_or_else(|| crate::i18n::tr("Die Datei konnte nicht gelesen werden."))?;
+    ok(girocrab_core::batch_csv::parse_batch_csv(decode_text(
+        bytes,
+    )))
+}
+
+/// AppModel+Mandates.swift › importMandateCSV (file part): the chosen or dropped member
+/// list as UTF-8, else Windows-1252, parsed by the core. Same size limit as the batch list.
+fn read_mandate_csv(a: &Value) -> R {
+    let path = local_path(arg(a, "path")?);
+    let size = file_size(std::path::Path::new(&path));
+    if size > BATCH_CSV_MAX_BYTES {
+        return Err(crate::i18n::tr("Die Datei ist zu groß (höchstens 2 MB)."));
+    }
+    let bytes = std::fs::read(&path)
+        .ok()
+        .filter(|b| b.len() as i64 <= BATCH_CSV_MAX_BYTES)
+        .ok_or_else(|| crate::i18n::tr("Die Datei konnte nicht gelesen werden."))?;
+    ok(girocrab_core::mandates::parse_mandate_csv(decode_text(
+        bytes,
+    )))
+}
+
+/// UTF-8, else Windows-1252 (`String(data:encoding: .utf8) ?? .windowsCP1252`).
+fn decode_text(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_else(|e| {
+        const HIGH: [char; 32] = [
+            '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž',
+            '\u{8f}', '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ',
+            '\u{9d}', 'ž', 'Ÿ',
+        ];
+        e.into_bytes()
+            .into_iter()
+            .map(|b| match b {
+                0x80..=0x9f => HIGH[(b - 0x80) as usize],
+                _ => char::from(b),
+            })
+            .collect()
+    })
+}
+
 /// CSV export of the Abruf-Protokoll (file dialog → path).
 fn write_text_file(a: &Value) -> R {
     let path: String = arg(a, "path")?;
@@ -223,6 +371,27 @@ fn write_text_file(a: &Value) -> R {
     let text: String = arg(a, "text")?;
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
     ok(())
+}
+
+/// VaultBackup.suggestedPassword (VaultBackupUI.swift): three groups of six from 32
+/// characters without look-alikes (l/1, o/0), e.g. "kawxe7-hupdyq-bomtiz" – about 90 bits
+/// from the kernel's CSPRNG. 256 is a multiple of 32, so `byte % 32` is unbiased.
+fn suggested_backup_password() -> Result<String, String> {
+    use std::io::Read;
+    const ALPHABET: &[u8; 32] = b"abcdefghijkmnpqrstuvwxyz23456789";
+    let mut bytes = zeroize::Zeroizing::new([0u8; 18]);
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut bytes[..]))
+        .map_err(|e| e.to_string())?;
+    Ok(bytes
+        .chunks(6)
+        .map(|g| {
+            g.iter()
+                .map(|b| ALPHABET[usize::from(b % 32)] as char)
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("-"))
 }
 
 pub fn call_json(method: &str, args: &str) -> String {
@@ -313,6 +482,17 @@ fn call(method: &str, a: &Value) -> R {
         )?)),
         "banking_policy_refresh" => ok(crate::banking_policy::refresh(
             arg::<Option<bool>>(a, "force")?.unwrap_or(false),
+        )),
+        // --- Mitteilungen (Announcements.swift → src/announcements.rs) ---
+        "announcements_load" => ok(crate::announcements::load(
+            &arg::<Option<String>>(a, "json")?.unwrap_or_default(),
+            &arg::<Option<String>>(a, "signature")?.unwrap_or_default(),
+        )),
+        // network (at most every 6 h, only when switched on): called with Core.callAsync
+        "announcements_refresh" => ok(crate::announcements::refresh(
+            arg::<Option<bool>>(a, "enabled")?.unwrap_or(false),
+            arg::<Option<bool>>(a, "force")?.unwrap_or(false),
+            arg(a, "last_check_ms")?,
         )),
         "grab_window" => {
             let path =
@@ -419,6 +599,12 @@ fn call(method: &str, a: &Value) -> R {
             ok(())
         }
         "is_unlocked" => ok(VAULT.lock().unwrap().is_some()),
+        // --- background loads (AppModel.loadOffMain) ---
+        "supersede" => {
+            supersede(arg(a, "channel")?, arg(a, "token")?);
+            ok(())
+        }
+        "batch" => batch(a),
         "reset_app" => reset_app(),
         "set_connection_account_choices" => set_connection_account_choices(&vault()?, a),
         // catalog / directory (free functions of the core)
@@ -465,6 +651,79 @@ fn call(method: &str, a: &Value) -> R {
                 crate::sessions::Session::Transfer(t),
             ))
         }
+        // Sammelüberweisung, Dauerauftrag, Lastschrift-Einreichung (AppModel+Batch,
+        // +StandingOrders, +DirectDebitSubmit): the same TransferSession as "begin_transfer",
+        // so the TAN/PIN flow of AppModel.qml drives them through session_start/…
+        "begin_batch_transfer" | "begin_standing_order" | "begin_direct_debit" => {
+            begin_payment_session(&vault()?, method, a)
+        }
+        // --- Sammelüberweisung / Lastschriften: CSV import (free functions) ---
+        "parse_batch_csv" => ok(girocrab_core::batch_csv::parse_batch_csv(arg(a, "text")?)),
+        "read_batch_csv" => read_batch_csv(a),
+        "read_mandate_csv" => read_mandate_csv(a),
+        "parse_mandate_csv" => ok(girocrab_core::mandates::parse_mandate_csv(arg(a, "text")?)),
+        // --- Portal: offene Vormerkungen (PortalUI); `self: Arc<Self>` ---
+        "portal_open_holds" => ok(vault()?
+            .portal_open_holds(arg(a, "connection_id")?, arg(a, "json_bodies")?)
+            .map_err(|e| e.to_string())?),
+        "discard_portal_holds" => ok(vault()?
+            .discard_portal_holds(arg(a, "connection_id")?, arg(a, "ids")?)
+            .map_err(|e| e.to_string())?),
+        "portal_schema_dump" => ok(girocrab_core::importers::portal_import::portal_schema_dump(
+            arg(a, "json_bodies")?,
+            arg(a, "dom_rows_json")?,
+        )),
+        // --- FinTS mit Schlüsseldatei (Rah10AddForm, AppModel+Rah) ---
+        // The key file comes as `path` (file dialog) or as `bytes` (JSON array).
+        "inspect_rah10_keyfile" => ok(
+            girocrab_core::connectors::fints::bank_keys::inspect_rah10_keyfile(
+                keyfile_bytes(a)?,
+                arg(a, "password")?,
+            )
+            .map_err(|e| e.to_string())?,
+        ),
+        "rah10_bank_key_candidates" => {
+            // anonymous first-key request over the network: called with Core.callAsync
+            let v = vault()?;
+            ok(crate::sessions::RUNTIME
+                .block_on(v.rah10_bank_key_candidates(arg(a, "blz")?))
+                .map_err(|e| e.to_string())?)
+        }
+        "add_rah10_connection" => ok(vault()?
+            .add_rah10_connection(
+                keyfile_bytes(a)?,
+                arg(a, "password")?,
+                arg(a, "display_name")?,
+            )
+            .map_err(|e| e.to_string())?),
+        "add_rah10_connection_with_bank_keys" => ok(vault()?
+            .add_rah10_connection_with_bank_keys(
+                keyfile_bytes(a)?,
+                arg(a, "password")?,
+                arg(a, "display_name")?,
+                arg::<Option<_>>(a, "bank_keys")?.unwrap_or_default(),
+                arg::<Option<_>>(a, "expected_fingerprints")?.unwrap_or_default(),
+            )
+            .map_err(|e| e.to_string())?),
+        // --- Tresor sichern / wiederherstellen (VaultBackupUI, AppModel+Backup) ---
+        // Always the own vault (`AppModel.ownVault`), also while the demo is shown.
+        "write_backup" => {
+            let own = own_vault()?;
+            own.write_backup(local_path(arg(a, "dest_path")?), arg(a, "password")?)
+                .map_err(|e| e.to_string())?;
+            ok(())
+        }
+        "restore_backup" => {
+            let Some(own) = OWN.lock().unwrap().clone() else {
+                return Err(crate::i18n::tr(
+                    "Bitte zuerst Ihren eigenen Tresor öffnen, dann die Sicherung wiederherstellen.",
+                ));
+            };
+            own.restore_backup(local_path(arg(a, "backup_path")?), arg(a, "password")?)
+                .map_err(|e| e.to_string())?;
+            ok(())
+        }
+        "suggested_backup_password" => ok(suggested_backup_password()?),
         // --- import / export ---
         "preview_moneymoney_file" => {
             let (data, file_name) = read_import_file(a)?;
@@ -538,6 +797,14 @@ fn call(method: &str, a: &Value) -> R {
                 .map_err(|e| e.to_string())?)
         }
         "document_temp_file" => document_temp_file(arg(a, "doc_id")?, arg(a, "mime_type")?),
+        // „Im Dateimanager anzeigen“ (AppModel.showInFinder): false = no file manager answered.
+        // May wait for the bus to start one: called with Core.callAsync.
+        "show_in_file_manager" => {
+            let path =
+                std::ffi::CString::new(arg::<String>(a, "path")?).map_err(|e| e.to_string())?;
+            // SAFETY: a blocking D-Bus call on its own connection; the string outlives it.
+            ok(unsafe { girocrab_show_in_file_manager(path.as_ptr()) })
+        }
         "session_start" | "session_submit" | "session_poll" | "session_confirm_payee" => {
             session_step(method, a)
         }
@@ -581,6 +848,8 @@ fn call(method: &str, a: &Value) -> R {
                 .block_on(v.refresh_asset_prices(force))
                 .map_err(|e| e.to_string())?)
         }
+        // --- Händler-Logos (AppModel+Logos.swift, #33) --- network: called with Core.callAsync
+        "merchant_logo" => merchant_logo(&*vault()?, a),
         // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion/Schwäbisch Hall imports)
         m if crate::web_login::handles(m) => crate::web_login::call(m, a, vault),
         _ => {
@@ -589,6 +858,98 @@ fn call(method: &str, a: &Value) -> R {
                 .unwrap_or_else(|| Err(format!("unknown core method `{method}`")))
         }
     }
+}
+
+/// Network favicon requests started by `merchant_logo` (tests: none while logos are off).
+static LOGO_FETCHES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// AppModel+Logos.swift › logo(for:): the logo cached in the vault for the first candidate
+/// domain that has one, else the favicon of the selected provider (network, worker thread).
+/// Nothing – not even a cached logo, and no request – while online logos are off (#422).
+/// Answer: `{ url: "data:…;base64,…", pixels }` (decodeLogo: `pixels` = largest width) or null.
+fn merchant_logo(v: &Vault, a: &Value) -> R {
+    let candidates: Vec<String> = arg(a, "candidates")?;
+    let e = |e: girocrab_core::CoreError| e.to_string();
+    if candidates.is_empty() || v.online_logo_provider().map_err(e)? == "off" {
+        return ok(Value::Null);
+    }
+    for d in &candidates {
+        if let Some(bytes) = v.get_merchant_logo_png(d.clone()).map_err(e)? {
+            return ok(logo_payload(&bytes));
+        }
+    }
+    LOGO_FETCHES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let found = crate::sessions::RUNTIME
+        .block_on(v.fetch_merchant_logo(candidates))
+        .map_err(e)?;
+    ok(found.map(|l| logo_payload(&l.bytes)).unwrap_or(Value::Null))
+}
+
+fn png_width(b: &[u8]) -> Option<u32> {
+    (b.len() >= 24 && b.starts_with(b"\x89PNG\r\n\x1a\n"))
+        .then(|| u32::from_be_bytes([b[16], b[17], b[18], b[19]]))
+}
+
+/// AppModel.decodeLogo: an ICO keeps only its largest image (Qt would draw the first one);
+/// `pixels` is that image's width, the "sharp logo" threshold of MerchantSignet.
+fn logo_payload(bytes: &[u8]) -> Value {
+    let (data, mime, pixels): (Vec<u8>, &str, u32) = if let Some(w) = png_width(bytes) {
+        (bytes.to_vec(), "image/png", w)
+    } else if let Some((dir, entry, w)) = largest_ico_entry(bytes) {
+        match png_width(entry) {
+            Some(pw) => (entry.to_vec(), "image/png", pw),
+            None => {
+                // a one-image ICO around the largest bitmap
+                let mut ico = vec![0, 0, 1, 0, 1, 0];
+                ico.extend_from_slice(&dir[..8]);
+                ico.extend_from_slice(&(entry.len() as u32).to_le_bytes());
+                ico.extend_from_slice(&22u32.to_le_bytes());
+                ico.extend_from_slice(entry);
+                (ico, "image/x-icon", w)
+            }
+        }
+    } else if bytes.starts_with(b"GIF8") && bytes.len() >= 10 {
+        let w = u16::from_le_bytes([bytes[6], bytes[7]]) as u32;
+        (bytes.to_vec(), "image/gif", w)
+    } else {
+        // JPEG, WebP, …: Qt reads them by content; size unknown = a small logo
+        (bytes.to_vec(), "application/octet-stream", 0)
+    };
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    json!({ "url": format!("data:{mime};base64,{b64}"), "pixels": pixels })
+}
+
+/// The largest image of an ICO file: its directory entry, its bytes and its width
+/// (0 in the directory = 256).
+fn largest_ico_entry(bytes: &[u8]) -> Option<(&[u8], &[u8], u32)> {
+    if bytes.len() < 6 || bytes[..4] != [0, 0, 1, 0] {
+        return None;
+    }
+    let count = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
+    let mut best: Option<(&[u8], &[u8], u32)> = None;
+    for i in 0..count {
+        let Some(dir) = bytes.get(6 + 16 * i..6 + 16 * (i + 1)) else {
+            break;
+        };
+        let size = u32::from_le_bytes([dir[8], dir[9], dir[10], dir[11]]) as usize;
+        let offset = u32::from_le_bytes([dir[12], dir[13], dir[14], dir[15]]) as usize;
+        let Some(data) = offset
+            .checked_add(size)
+            .and_then(|end| bytes.get(offset..end))
+        else {
+            continue;
+        };
+        let w = match png_width(data) {
+            Some(pw) => pw,
+            None if dir[0] == 0 => 256,
+            None => dir[0] as u32,
+        };
+        if best.is_none_or(|(_, _, bw)| w > bw) {
+            best = Some((dir, data, w));
+        }
+    }
+    best
 }
 
 /// A MoneyMoney export file (`path`) as bytes plus its file name, which the
@@ -996,9 +1357,10 @@ fn embedded_invoice_xml(pdf: &[u8]) -> Option<String> {
     None
 }
 
-/// PaymentParser.parseFile (file part): a dropped invoice as ZUGFeRD XML and,
-/// for a PDF, also its text layer (used when the XML is unusable); QML parses
-/// the fields. Other files are not read as text (Swift only OCRs images).
+/// PaymentParser.parseFile (file part): a dropped invoice as ZUGFeRD XML, the
+/// GiroCode payload of an image or PDF (`epc`, src/qr_scan.rs) and the text layer
+/// of a PDF or the OCR text of a photo (used when neither is usable); QML parses
+/// the fields.
 fn read_invoice(a: &Value) -> R {
     let path: String = arg(a, "path")?;
     let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
@@ -1014,7 +1376,17 @@ fn read_invoice(a: &Value) -> R {
     } else {
         None
     };
-    let text = if is_pdf {
+    // PaymentParser.parseFile: embedded XML → EPC QR → text layer. The XML is read in QML
+    // (parseInvoiceXML), so the GiroCode is looked for on every image or PDF.
+    let epc = if is_pdf || xml.is_none() {
+        crate::qr_scan::epc_payload(&data)
+    } else {
+        None
+    };
+    // a usable GiroCode (parseEPC: "BCD" and at least 7 lines) makes the text unnecessary
+    let text = if epc.as_ref().is_some_and(|p| p.lines().count() >= 7) {
+        String::new()
+    } else if is_pdf {
         girocrab_core::documents::extract_pdf_text(&data)
     } else if xml.is_none() {
         // a photo of an invoice: OCR text (ReceiptText.extract), when tesseract is there
@@ -1022,7 +1394,7 @@ fn read_invoice(a: &Value) -> R {
     } else {
         String::new()
     };
-    ok(json!({ "xml": xml, "text": text }))
+    ok(json!({ "xml": xml, "epc": epc, "text": text }))
 }
 
 /// Vault methods, plus the ones whose errors the sheet shows differently.
@@ -1150,6 +1522,33 @@ vault_methods! {
     // --- account selection per login (AccountSelectionView.swift, #346) ---
     connection_account_choices(connection_id) pending_account_selection_connections()
     seed_demo_account_selection()
+    // --- Seitenleiste: Zähler und gefilterte Kategorien (AppModel+Loading/Selection) ---
+    count_planned_payments() count_active_mandates()
+    list_categories_filtered(date_from, date_to, account_ids, checked, direction)
+    category_history_by_unit(category_id, account_ids, date_from, date_to, key_length)
+    // --- Geplante Zahlungen (AppModel+Planned, PlannedPaymentsView) ---
+    list_planned_payments(from, to, account_ids) planned_payment_totals(from, to, account_ids)
+    // --- Daueraufträge (AppModel+StandingOrders, StandingOrderSheet) ---
+    list_standing_orders(account_ids) standing_order_limits(account_id, action)
+    // --- Lastschriften / Mandate (AppModel+Mandates, DirectDebitsView, MandateInspector) ---
+    list_mandates(account_id) save_mandate(id, input) delete_mandate(id)
+    import_mandate_rows(account_id, rows) import_pain008(account_id, xml)
+    export_mandates_csv(account_id)
+    creditor_id(account_id) set_creditor_id(account_id, creditor_id) suggested_creditor_id()
+    build_collection_files(account_id, items, collection_date)
+    mark_collected(mandate_ids, due_date)
+    mandate_bookings(mandate_id) open_mandate_returns(account_id)
+    acknowledge_mandate_returns(mandate_id)
+    // --- Tags (AppModel+Tags, TagsUI) ---
+    list_tags() create_tag(name, color_hex)
+    add_tag_to_bookings(booking_ids, tag_id) remove_tag_from_bookings(booking_ids, tag_id)
+    rename_tag(id, name) set_tag_color(id, color_hex) reorder_tags(ids) delete_tag(id)
+    merge_tag_into(source, target) set_booking_tags(booking_id, tag_ids)
+    // --- Anlageklassen (AssetClassificationUI, DepotMetrics) ---
+    classified_assets(account_id)
+    set_asset_class_override(security_key, value) set_instrument_override(security_key, value)
+    // --- Händler-Logos (AppModel+Logos, MerchantLogoSettingsSection); logos: `merchant_logo` ---
+    online_logo_provider() clear_logo_cache() set_merchant_domain(merchant_key, domain)
 }
 
 #[cfg(test)]
@@ -1233,6 +1632,148 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Händler-Logos (#33): while the provider is "off" (the default) `merchant_logo` answers
+    /// null without any network request; the domain override and the cache calls round-trip.
+    #[test]
+    fn merchant_logos_stay_offline_while_off() {
+        use std::sync::atomic::Ordering;
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        call_ok("open_demo", json!({}));
+        call_ok(
+            "set_setting",
+            json!({ "key": "merchants.online_logos", "value": "off" }),
+        );
+        assert_eq!(call_ok("online_logo_provider", json!({})), json!("off"));
+        let before = LOGO_FETCHES.load(Ordering::SeqCst);
+        let logo = call_ok(
+            "merchant_logo",
+            json!({ "candidates": ["lidl.de", "lidl.com"] }),
+        );
+        assert_eq!(logo, Value::Null);
+        assert_eq!(
+            LOGO_FETCHES.load(Ordering::SeqCst),
+            before,
+            "no fetch while off"
+        );
+        assert!(call_ok("clear_logo_cache", json!({})).is_u64());
+        let key = "test-merchant-logo";
+        assert_eq!(
+            call_ok(
+                "set_merchant_domain",
+                json!({ "merchant_key": key, "domain": "https://www.EnBW.com/privat" })
+            ),
+            json!("enbw.com")
+        );
+        assert_eq!(
+            call_ok(
+                "set_merchant_domain",
+                json!({ "merchant_key": key, "domain": null })
+            ),
+            Value::Null
+        );
+        // switched on: a fetch starts (an invalid domain is refused before the network)
+        call_ok(
+            "set_setting",
+            json!({ "key": "merchants.online_logos", "value": "duckduckgo" }),
+        );
+        let logo = call_ok("merchant_logo", json!({ "candidates": ["not a domain!"] }));
+        assert_eq!(logo, Value::Null);
+        assert_eq!(LOGO_FETCHES.load(Ordering::SeqCst), before + 1);
+        assert_eq!(
+            call_ok("merchant_logo", json!({ "candidates": [] })),
+            Value::Null
+        );
+        call_ok(
+            "set_setting",
+            json!({ "key": "merchants.online_logos", "value": "off" }),
+        );
+    }
+
+    /// AppModel.decodeLogo: PNG width, the largest image of an ICO, unknown formats.
+    #[test]
+    fn logo_payload_picks_largest_image() {
+        let png = |w: u32| {
+            let mut b = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+            b.extend_from_slice(&w.to_be_bytes());
+            b.extend_from_slice(&w.to_be_bytes());
+            b.extend_from_slice(&[8, 6, 0, 0, 0]);
+            b
+        };
+        let p = logo_payload(&png(64));
+        assert_eq!(p["pixels"], json!(64));
+        assert!(p["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+        // ICO: a 16 px bitmap and an embedded 48 px PNG → the PNG alone
+        let bmp = vec![0u8; 40];
+        let big = png(48);
+        let mut ico = vec![0, 0, 1, 0, 2, 0];
+        let entry = |w: u8, len: usize, off: usize| {
+            let mut e = vec![w, w, 0, 0, 1, 0, 32, 0];
+            e.extend_from_slice(&(len as u32).to_le_bytes());
+            e.extend_from_slice(&(off as u32).to_le_bytes());
+            e
+        };
+        ico.extend(entry(16, bmp.len(), 38));
+        ico.extend(entry(48, big.len(), 38 + bmp.len()));
+        ico.extend(&bmp);
+        ico.extend(&big);
+        let p = logo_payload(&ico);
+        assert_eq!(p["pixels"], json!(48));
+        assert!(p["url"].as_str().unwrap().starts_with("data:image/png;"));
+        // bitmaps only: a one-image ICO of the largest
+        let mut ico = vec![0, 0, 1, 0, 2, 0];
+        ico.extend(entry(16, 40, 38));
+        ico.extend(entry(32, 40, 78));
+        ico.extend(vec![0u8; 80]);
+        let p = logo_payload(&ico);
+        assert_eq!(p["pixels"], json!(32));
+        assert!(p["url"].as_str().unwrap().starts_with("data:image/x-icon;"));
+        assert_eq!(logo_payload(b"\xff\xd8\xff")["pixels"], json!(0));
+    }
+
+    /// AppModel.loadOffMain: a batch answers in call order, stops at the first error and
+    /// does nothing more once a newer request of its channel superseded it.
+    #[test]
+    fn batch_in_order_until_superseded() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        call_ok("open_demo", json!({}));
+        let calls =
+            json!([{ "method": "account_count" }, { "method": "core_version", "args": {} }]);
+        let r = call_ok(
+            "batch",
+            json!({ "channel": "test", "token": 1, "calls": calls }),
+        );
+        assert!(r["results"][0].as_u64().unwrap() > 0);
+        assert_eq!(r["results"][1], json!(girocrab_core::core_version()));
+        call_ok("supersede", json!({ "channel": "test", "token": 2 }));
+        let stale = call_ok(
+            "batch",
+            json!({ "channel": "test", "token": 1, "calls": calls }),
+        );
+        assert_eq!(stale, json!({ "cancelled": true }));
+        let fresh = call_ok(
+            "batch",
+            json!({ "channel": "test", "token": 2, "calls": calls }),
+        );
+        assert_eq!(fresh["results"].as_array().unwrap().len(), 2);
+        // without a channel nothing can supersede it
+        let plain = call_ok("batch", json!({ "calls": calls }));
+        assert_eq!(plain["results"].as_array().unwrap().len(), 2);
+        let bad: Value = serde_json::from_str(&call_json(
+            "batch",
+            &json!({ "calls": [{ "method": "no_such_method" }, { "method": "account_count" }] })
+                .to_string(),
+        ))
+        .unwrap();
+        assert!(
+            bad.get("err").is_some(),
+            "the first error ends the batch: {bad}"
+        );
+        call_ok("lock", json!({}));
+    }
+
     /// „App zurücksetzen“ (#241) with the keychain bypass and temporary XDG dirs only:
     /// vault, side files and settings go, the banking policy stays, the next start is a
     /// first start (no vault file, a new one can be created).
@@ -1274,6 +1815,66 @@ mod tests {
         assert_eq!(r["account_count"], json!(0));
         call_ok("lock", json!({}));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Einstellungen › Sicherheit › „Tresor sichern …“ / „Tresor wiederherstellen …“ on the
+    /// own vault (keychain bypass, temporary XDG dir), plus the suggested password.
+    #[test]
+    fn backup_roundtrip_and_suggested_password() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("girocrab-backup-pw-{}", std::process::id()));
+        let saved: Vec<_> = ["XDG_DATA_HOME", "GIROCRAB_NO_KEYCHAIN"]
+            .iter()
+            .map(|k| (*k, std::env::var_os(k)))
+            .collect();
+        std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        let p = call_ok("suggested_backup_password", json!({}));
+        let p = p.as_str().unwrap();
+        assert_eq!(p.len(), 20);
+        assert!(p.split('-').all(|g| g.len() == 6
+            && g.bytes()
+                .all(|b| b"abcdefghijkmnpqrstuvwxyz23456789".contains(&b))));
+        assert_ne!(
+            p,
+            call_ok("suggested_backup_password", json!({}))
+                .as_str()
+                .unwrap()
+        );
+
+        call_ok("unlock_own", json!({ "allow_create": true }));
+        call_ok("use_own", json!({}));
+        let rules = call_ok("list_rules", json!({})).as_array().unwrap().len();
+        let file = dir.join("GiroCrab-Sicherung 2026-11-16.girocrab-backup");
+        call_ok(
+            "write_backup",
+            json!({ "dest_path": file.display().to_string(), "password": "geheim123" }),
+        );
+        assert!(file.exists());
+        let wrong: Value = serde_json::from_str(&call_json(
+            "restore_backup",
+            &json!({ "backup_path": file.display().to_string(), "password": "falsch123" })
+                .to_string(),
+        ))
+        .unwrap();
+        assert!(wrong.get("err").is_some(), "wrong password must be refused");
+        call_ok(
+            "restore_backup",
+            json!({ "backup_path": file.display().to_string(), "password": "geheim123" }),
+        );
+        call_ok("use_own", json!({}));
+        assert_eq!(
+            call_ok("list_rules", json!({})).as_array().unwrap().len(),
+            rules
+        );
+        call_ok("lock", json!({}));
+        let _ = std::fs::remove_dir_all(dir);
+        for (k, v) in saved {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
     }
 
     /// The categorizer / rules / split arms with the JSON the QML sends.
@@ -1501,6 +2102,33 @@ mod tests {
         let w = m["width"].as_u64().unwrap() as usize;
         assert!(w >= 21);
         assert_eq!(m["rows"].as_array().unwrap().len(), w);
+        // … and back: that GiroCode as a dropped image (PGM, 4 px per module, quiet zone)
+        // comes out of read_invoice as `epc`, without OCR text
+        let side = (w + 8) * 4;
+        let mut pgm = format!("P5\n{side} {side}\n255\n").into_bytes();
+        let rows: Vec<&str> = m["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r.as_str().unwrap())
+            .collect();
+        for y in 0..side {
+            for x in 0..side {
+                let (mx, my) = ((x / 4).wrapping_sub(4), (y / 4).wrapping_sub(4));
+                let dark = my < w && mx < w && rows[my].as_bytes()[mx] == b'1';
+                pgm.push(if dark { 0 } else { 255 });
+            }
+        }
+        let img = std::env::temp_dir().join(format!("girocrab-qr-{}.pgm", std::process::id()));
+        std::fs::write(&img, &pgm).unwrap();
+        let r = call_ok("read_invoice", json!({ "path": img.display().to_string() }));
+        let _ = std::fs::remove_file(&img);
+        assert_eq!(
+            r["epc"],
+            json!("BCD\n002\n1\nSCT\n\nTest\nDE89370400440532013000\nEUR1.00\n\n\nx"),
+            "{r}"
+        );
+        assert_eq!(r["text"], json!(""), "{r}");
         // ZUGFeRD XML in a Flate stream of a PDF
         let xml =
             b"<rsm:CrossIndustryInvoice><ram:IBANID>DE89</ram:IBANID></rsm:CrossIndustryInvoice>";
@@ -1982,6 +2610,326 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    /// Calls of the features since v0.7.0 (Geplant, Daueraufträge, Lastschriften, Tags,
+    /// Anlageklassen, Seitenleisten-Zähler) on the seeded demo vault.
+    #[test]
+    fn feature_calls_since_v070() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-feat-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![9; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        // Seitenleiste: counters and the filtered category tree
+        assert!(call("count_planned_payments", json!({})).is_u64());
+        assert!(call("count_active_mandates", json!({})).as_u64().unwrap() > 0);
+        let cats = call(
+            "list_categories_filtered",
+            json!({ "date_from": null, "date_to": null, "account_ids": [], "checked": null,
+                    "direction": "All" }),
+        );
+        let cat = cats.as_array().unwrap()[0]["id"].clone();
+        assert!(call(
+            "category_history_by_unit",
+            json!({ "category_id": cat, "account_ids": [], "date_from": null, "date_to": null,
+                    "key_length": 7 }),
+        )
+        .is_array());
+        // Geplant
+        let range = json!({ "from": null, "to": null, "account_ids": [] });
+        assert!(call("list_planned_payments", range.clone()).is_array());
+        assert!(call("planned_payment_totals", range)["count"].is_u64());
+        // Daueraufträge
+        let orders = call("list_standing_orders", json!({ "account_ids": [] }));
+        assert!(
+            !orders.as_array().unwrap().is_empty(),
+            "demo standing orders"
+        );
+        let acc = orders[0]["account_id"].clone();
+        let limits = call(
+            "standing_order_limits",
+            json!({ "account_id": acc, "action": "Create" }),
+        );
+        assert!(limits.is_null() || limits.is_object());
+        // Lastschriften / Mandate
+        let mandates = call("list_mandates", json!({ "account_id": null }));
+        let first = mandates[0].clone();
+        let giro = first["account_id"].clone();
+        assert_eq!(
+            call("creditor_id", json!({ "account_id": giro })),
+            json!("DE98ZZZ09999999999")
+        );
+        assert_eq!(
+            call("suggested_creditor_id", json!({})),
+            json!("DE98ZZZ09999999999")
+        );
+        assert!(call("mandate_bookings", json!({ "mandate_id": first["id"] })).is_array());
+        assert!(call("open_mandate_returns", json!({ "account_id": null })).is_array());
+        let csv = call("export_mandates_csv", json!({ "account_id": giro }));
+        assert!(csv.as_str().unwrap().contains("M-2024-001"));
+        let parsed = call_ok("parse_mandate_csv", json!({ "text": csv }));
+        assert_eq!(
+            parsed["rows"].as_array().unwrap().len(),
+            mandates.as_array().unwrap().len()
+        );
+        let saved = call(
+            "save_mandate",
+            json!({ "id": null, "input": { "account_id": giro, "debtor_name": "Testverein",
+                "debtor_iban": "DE02120300000000202051", "debtor_bic": "", "reference": "WP0-1",
+                "signed_date": "2025-01-02", "scheme": "Core", "one_off": false,
+                "default_amount_cents": 500, "default_purpose": "Beitrag", "note": "",
+                "active": true } }),
+        );
+        assert_eq!(saved["reference"], "WP0-1");
+        call("delete_mandate", json!({ "id": saved["id"] }));
+        // Tags: create, assign, list, clear, rename, delete
+        let booking = call(
+            "list_transactions",
+            json!({ "filter": {
+            "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": null, "date_from": null, "date_to": null,
+            "limit": 1, "offset": 0, "scope": "All", "merchant_key": null, "direction": "All",
+            "checked": null, "whole_days": false, "tag_ids": [], "untagged_only": false } }),
+        )["transactions"][0]["id"]
+            .clone();
+        let tag = call(
+            "create_tag",
+            json!({ "name": "Testlauf", "color_hex": "#FF9500" }),
+        );
+        let changed = call(
+            "add_tag_to_bookings",
+            json!({ "booking_ids": [booking], "tag_id": tag["id"] }),
+        );
+        assert_eq!(changed, json!([booking]));
+        let listed = call("list_tags", json!({}));
+        let row = listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == tag["id"])
+            .cloned()
+            .unwrap();
+        assert_eq!(
+            (row["name"].clone(), row["booking_count"].clone()),
+            (json!("Testlauf"), json!(1))
+        );
+        call(
+            "set_booking_tags",
+            json!({ "booking_id": booking, "tag_ids": [] }),
+        );
+        call("rename_tag", json!({ "id": tag["id"], "name": "Reise" }));
+        let listed = call("list_tags", json!({}));
+        let row = listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == tag["id"])
+            .unwrap();
+        assert_eq!(
+            (row["name"].clone(), row["booking_count"].clone()),
+            (json!("Reise"), json!(0))
+        );
+        call("delete_tag", json!({ "id": tag["id"] }));
+        // Anlageklassen
+        for a in call("list_accounts", json!({})).as_array().unwrap() {
+            assert!(call("classified_assets", json!({ "account_id": a["id"] })).is_array());
+        }
+        // Sammelüberweisung: CSV import (free function)
+        let batch = call_ok(
+            "parse_batch_csv",
+            json!({ "text": "Name;IBAN;Betrag;Verwendungszweck\nMia Beispiel;DE89370400440532013000;12,50;Test\n" }),
+        );
+        assert_eq!(batch["rows"].as_array().unwrap().len(), 1, "{batch}");
+        // … from a file in Windows-1252 (spreadsheet export): „ü“ survives
+        let csv = std::env::temp_dir().join(format!("girocrab-batch-{}.csv", std::process::id()));
+        std::fs::write(
+            &csv,
+            b"Name;IBAN;Betrag;Verwendungszweck\nJ\xfcrgen M\x80ller;DE89370400440532013000;12,50;Beitrag\n",
+        )
+        .unwrap();
+        let read = call_ok(
+            "read_batch_csv",
+            json!({ "path": format!("file://{}", csv.display()) }),
+        );
+        assert_eq!(read["rows"][0]["name"], json!("Jürgen M€ller"), "{read}");
+        let _ = std::fs::remove_file(&csv);
+        // Lastschriften: member list from a file in Windows-1252
+        let csv =
+            std::env::temp_dir().join(format!("girocrab-mandates-{}.csv", std::process::id()));
+        std::fs::write(
+            &csv,
+            b"Name;IBAN;Mandatsreferenz;Datum\nJ\xfcrgen Beispiel;DE89370400440532013000;M-1;01.02.2025\n",
+        )
+        .unwrap();
+        let read = call_ok(
+            "read_mandate_csv",
+            json!({ "path": format!("file://{}", csv.display()) }),
+        );
+        assert_eq!(
+            read["rows"][0]["debtor_name"],
+            json!("Jürgen Beispiel"),
+            "{read}"
+        );
+        let _ = std::fs::remove_file(&csv);
+        drop(v);
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Calls that use the vault slots: backup of the own vault (write, change, restore)
+    /// and a batch transfer session in the registry.
+    #[test]
+    fn backup_round_trip_and_payment_sessions() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("girocrab-backup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let v = Vault::open(dir.join("own.girocrab").display().to_string(), vec![7; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        *VAULT.lock().unwrap() = Some(v.clone());
+        *OWN.lock().unwrap() = Some(v.clone());
+        let backup = dir.join("sicherung.girocrab");
+        call_ok(
+            "write_backup",
+            json!({ "dest_path": format!("file://{}", backup.display()), "password": "geheim" }),
+        );
+        assert!(backup.exists());
+        let tag = call_ok(
+            "create_tag",
+            json!({ "name": "Nach Sicherung", "color_hex": "" }),
+        );
+        let wrong: Value = serde_json::from_str(&call_json(
+            "restore_backup",
+            &json!({ "backup_path": backup.display().to_string(), "password": "falsch" })
+                .to_string(),
+        ))
+        .unwrap();
+        assert!(wrong.get("err").is_some(), "wrong password must be refused");
+        call_ok(
+            "restore_backup",
+            json!({ "backup_path": backup.display().to_string(), "password": "geheim" }),
+        );
+        let tags = call_ok("list_tags", json!({}));
+        assert!(
+            !tags
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["id"] == tag["id"]),
+            "restored vault is the backed-up one"
+        );
+        // Sammelüberweisung on the demo FinTS account: a TransferSession in the registry
+        let mut session = None;
+        for a in call_ok("list_accounts", json!({})).as_array().unwrap() {
+            let r: Value = serde_json::from_str(&call_json(
+                "begin_batch_transfer",
+                &json!({ "request": { "account_id": a["id"], "batch_booking": true,
+                    "execution_date": null, "payments": [{ "name": "Mia Beispiel",
+                    "iban": "DE89370400440532013000", "bic": null, "amount_cents": 1250,
+                    "purpose": "Test" }] }, "secret": "", "demo": true })
+                .to_string(),
+            ))
+            .unwrap();
+            if let Some(id) = r["ok"].as_u64() {
+                session = Some(id);
+                break;
+            }
+        }
+        let id = session.expect("a demo account accepts a batch transfer");
+        assert!(crate::sessions::get(id).is_ok());
+        crate::sessions::remove(id);
+        *VAULT.lock().unwrap() = None;
+        *OWN.lock().unwrap() = None;
+        drop(v);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Tags verwalten (#228, TagManager.qml): colour, order, rename, merge, delete with the
+    /// argument names the QML sends.
+    #[test]
+    fn tag_management_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-tags-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![5; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let row = |id: &Value| {
+            call("list_tags", json!({}))
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == *id)
+                .cloned()
+        };
+        let bookings = call(
+            "list_transactions",
+            json!({ "filter": {
+            "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": null, "date_from": null, "date_to": null,
+            "limit": 2, "offset": 0, "scope": "All", "merchant_key": null, "direction": "All",
+            "checked": null, "whole_days": false, "tag_ids": [], "untagged_only": false } }),
+        )["transactions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["id"].clone())
+            .collect::<Vec<_>>();
+        let a = call(
+            "create_tag",
+            json!({ "name": "Verwaltet A", "color_hex": "" }),
+        );
+        let b = call(
+            "create_tag",
+            json!({ "name": "Verwaltet B", "color_hex": "" }),
+        );
+        call(
+            "add_tag_to_bookings",
+            json!({ "booking_ids": [bookings[0]], "tag_id": a["id"] }),
+        );
+        call(
+            "add_tag_to_bookings",
+            json!({ "booking_ids": [bookings[1]], "tag_id": b["id"] }),
+        );
+        call(
+            "set_tag_color",
+            json!({ "id": a["id"], "color_hex": "#16A085" }),
+        );
+        assert_eq!(row(&a["id"]).unwrap()["color_hex"], json!("#16A085"));
+        // reorder: B first
+        let mut ids: Vec<Value> = call("list_tags", json!({}))
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["id"].clone())
+            .filter(|id| *id != b["id"])
+            .collect();
+        ids.insert(0, b["id"].clone());
+        call("reorder_tags", json!({ "ids": ids }));
+        assert_eq!(call("list_tags", json!({}))[0]["id"], b["id"]);
+        // a case-only rename is allowed
+        call(
+            "rename_tag",
+            json!({ "id": a["id"], "name": "verwaltet a" }),
+        );
+        assert_eq!(row(&a["id"]).unwrap()["name"], json!("verwaltet a"));
+        // merge B into A: A carries both bookings, B is gone
+        call(
+            "merge_tag_into",
+            json!({ "source": b["id"], "target": a["id"] }),
+        );
+        assert!(row(&b["id"]).is_none());
+        assert_eq!(row(&a["id"]).unwrap()["booking_count"], json!(2));
+        call("delete_tag", json!({ "id": a["id"] }));
+        assert!(row(&a["id"]).is_none());
+        drop(v);
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn parse_key_accepts_base64_and_hex() {
         assert_eq!(
@@ -1989,6 +2937,37 @@ mod tests {
             32
         );
         assert!(crate::vault_key::parse_key("AAAA").is_err());
+    }
+
+    /// Mitteilungen: switched off (or checked recently) no request is made; a stored
+    /// file that does not verify is no document. No network in tests.
+    #[test]
+    fn announcements_calls() {
+        let off = call_ok(
+            "announcements_refresh",
+            json!({ "enabled": false, "force": true, "last_check_ms": null }),
+        );
+        assert_eq!(off, json!({ "fetched": false }));
+        let fresh = call_ok(
+            "announcements_refresh",
+            json!({ "enabled": true, "force": false, "last_check_ms": now_ms() }),
+        );
+        assert_eq!(fresh, json!({ "fetched": false }));
+        assert_eq!(
+            call_ok(
+                "announcements_load",
+                json!({ "json": "e30=", "signature": "" })
+            ),
+            Value::Null
+        );
+        assert_eq!(call_ok("announcements_load", json!({})), Value::Null);
+    }
+
+    fn now_ms() -> f64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as f64
     }
 }
 
