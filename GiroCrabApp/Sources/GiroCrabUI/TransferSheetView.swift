@@ -22,6 +22,9 @@ struct TransferSheetView: View {
     @State private var ownTargetID: Int64?
     /// Measured form and sheet heights: the sheet takes what the form needs (#879).
     @State private var formFit = FormFit()
+    /// Opt-in clipboard check (#663): what the banner offers.
+    @State private var clipboardOffer: ClipboardPaymentCheck.Offer?
+    @AppStorage(ClipboardPaymentCheck.enabledKey) private var clipboardCheck = ClipboardPaymentCheck.enabledDefault
 
     private let maxPurpose = 140
 
@@ -119,6 +122,10 @@ struct TransferSheetView: View {
             if step == .form && model.canBatchTransfer {
                 TransferKindPicker(batch: false).padding(.bottom, 10)
             }
+            if step == .form, let offer = clipboardOffer {
+                ClipboardPaymentBanner(offer: offer, apply: { acceptClipboard($0) }, ignore: { clipboardOffer = nil })
+                    .padding(.horizontal, 20).padding(.bottom, 10)
+            }
             Divider()
             switch step {
             case .form: form(draft: $model.transferDraft)
@@ -153,6 +160,16 @@ struct TransferSheetView: View {
             case "transfer-girocode": step = .giroCode
             default: break
             }
+        }
+        .task { // the demo offers fictional data and leaves the real clipboard untouched
+            if model.options.demoSheetName == "transfer-clipboard" {
+                clipboardOffer = ClipboardPaymentCheck.offer(for: .demo)
+                return
+            }
+            let offer = await ClipboardPaymentCheck.filtered(checkClipboard())
+            // the pattern detection is async: offer only on a still open, still empty form
+            guard step == .form, ClipboardPaymentCheck.isEmpty(model.transferDraft, ownTransfer: ownTransfer) else { return }
+            clipboardOffer = offer
         }
         .overlay {
             if dropTargeted {
@@ -215,11 +232,8 @@ struct TransferSheetView: View {
                     .keyboardShortcut("v", modifiers: [.command, .shift])
                     .help("Erkennt IBAN, Betrag, Empfänger und Zweck (⇧⌘V; ⌘V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD, GiroCode) hierher ziehen.")
                 #else
-                // the system's paste button reads the clipboard without the "Allow Paste" prompt
-                PasteButton(payloadType: String.self) { strings in
-                    Task { @MainActor in pasteText(strings.joined(separator: "\n")) }
-                }
-                .labelStyle(.iconOnly)
+                PaymentPasteButton { report(PaymentParser.parseText($0)) }
+                    .labelStyle(.iconOnly)
                 #endif
             }
         }
@@ -405,6 +419,7 @@ struct TransferSheetView: View {
                             Text(r.name).appFont(.callout).lineLimit(1)
                             Text(formatIBAN(r.iban)).appFont(.caption2, design: .monospaced).foregroundStyle(Theme.secondary)
                         }
+                        .sensitive() // known recipients: name and IBAN
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 7).fill(Theme.selection))
                     }
@@ -642,23 +657,32 @@ struct TransferSheetView: View {
 
     #if os(macOS)
     private func pasteFromClipboard() {
-        pasteText(NSPasteboard.general.string(forType: .string) ?? "")
+        report(PaymentParser.parseClipboard())
     }
     #endif
-
-    private func pasteText(_ text: String) {
-        report(PaymentParser.parseText(text))
-    }
 
     private func importInvoice(_ url: URL) async {
         importNote = String(localized: "Lese Rechnung …")
         report(await PaymentParser.parseFile(url) ?? ParsedPayment())
     }
 
-    private func report(_ p: ParsedPayment) {
+    private func report(_ p: ParsedPayment, onlyEmpty: Bool = false) {
         guard !p.isEmpty else { importNote = String(localized: "Nichts Erkennbares gefunden"); return }
-        p.apply(to: &model.transferDraft)
+        p.apply(to: &model.transferDraft, onlyEmpty: onlyEmpty)
         importNote = String(localized: "Felder ausgefüllt – bitte prüfen")
+    }
+
+    /// Opt-in (#663): offers the clipboard as a payment when the empty form opens.
+    private func checkClipboard() -> ClipboardPaymentCheck.Offer? {
+        guard clipboardCheck else { return nil }
+        return ClipboardPaymentCheck.check(
+            draftEmpty: ClipboardPaymentCheck.isEmpty(model.transferDraft, ownTransfer: ownTransfer),
+            lastHandled: &model.clipboardChangeCountHandled)
+    }
+
+    private func acceptClipboard(_ p: ParsedPayment) {
+        clipboardOffer = nil
+        report(p, onlyEmpty: true)
     }
 
     // MARK: helpers

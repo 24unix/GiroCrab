@@ -15263,6 +15263,17 @@
         }
       }
     },
+    "Ignorieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ignore"
+          }
+        }
+      }
+    },
     "Ihr Mac verwendet jetzt %@, GiroCrab ist auf %@ eingestellt. Zum Wechseln startet GiroCrab neu." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21906,6 +21917,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Only on some – click to add it to all"
+          }
+        }
+      }
+    },
+    "Nur bei leerem Formular. Der Inhalt wird nur auf diesem Gerät gelesen, nie gespeichert oder protokolliert. Felder werden erst nach Bestätigung im Hinweis ausgefüllt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only when the form is empty. The content is read on this device only and is never stored or logged. Fields are filled in only after you confirm in the notice."
           }
         }
       }
@@ -29978,6 +30000,17 @@
         }
       }
     },
+    "Zahlung in der Zwischenablage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payment on the clipboard"
+          }
+        }
+      }
+    },
     "Zahlungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -30667,6 +30700,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Between two values, the value changes linearly. Saved immediately."
+          }
+        }
+      }
+    },
+    "Zwischenablage beim Öffnen einer Überweisung prüfen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check the clipboard when opening a transfer"
+          }
+        }
+      }
+    },
+    "Zwischenablage enthält Text – als Zahlung übernehmen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The clipboard contains text – use it as a payment?"
           }
         }
       }
@@ -31989,6 +32044,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Send Transfer"
+          }
+        }
+      }
+    },
+    "Überweisungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfers"
           }
         }
       }

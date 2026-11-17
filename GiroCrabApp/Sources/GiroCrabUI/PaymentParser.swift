@@ -2,6 +2,9 @@ import Foundation
 import PDFKit
 import Vision
 import Compression
+#if os(macOS)
+import AppKit
+#endif
 import GiroCrabCore
 
 /// Payment data extracted from clipboard text, ZUGFeRD XML, EPC QR or PDF text.
@@ -14,13 +17,23 @@ struct ParsedPayment: Equatable {
 
     var isEmpty: Bool { name == nil && iban == nil && bic == nil && amountText == nil && purpose == nil }
 
-    /// Fills only the fields that were found.
-    func apply(to d: inout TransferDraft) {
-        if let name { d.name = name }
-        if let iban { d.iban = TransferSheetView.groupedIBAN(iban) }
-        if let bic { d.bic = bic }
-        if let amountText { d.amountText = amountText }
-        if let purpose { d.purpose = String(purpose.prefix(140)) }
+    /// Fills only the fields that were found; with `onlyEmpty` never one the user already filled.
+    func apply(to d: inout TransferDraft, onlyEmpty: Bool = false) {
+        func set(_ field: WritableKeyPath<TransferDraft, String>, _ value: String?) {
+            guard let value, !onlyEmpty || d.isBlank(field) else { return }
+            d[keyPath: field] = value
+        }
+        set(\.name, name)
+        set(\.iban, iban.map(TransferSheetView.groupedIBAN))
+        set(\.bic, bic)
+        set(\.amountText, amountText)
+        set(\.purpose, purpose.map { String($0.prefix(140)) })
+    }
+
+    /// Fictional payment of the transfer demos and screenshots.
+    static var demo: ParsedPayment {
+        ParsedPayment(name: "Stadtwerke München", iban: "DE89370400440532013000",
+                      amountText: Money.plain(8500), purpose: "Abschlag Strom Kd-Nr 482910")
     }
 }
 
@@ -36,6 +49,13 @@ enum PaymentParser {
     static func parseText(_ text: String) -> ParsedPayment {
         ParsedPayment(parsePaymentText(text: text))
     }
+
+    #if os(macOS)
+    /// Reads the clipboard: only on a user's paste or click (the system may ask first).
+    @MainActor static func parseClipboard() -> ParsedPayment {
+        parseText(NSPasteboard.general.string(forType: .string) ?? "")
+    }
+    #endif
 
     /// "1.234,56" / "1,234.56" / "1234.56" -> locale-independent "1234.56" text accepted by the core parser.
     static func normalizeAmount(_ raw: String) -> String? {

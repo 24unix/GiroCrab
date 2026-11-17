@@ -389,6 +389,13 @@ struct TransferDraft {
     var scheduled = false
     var executionDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
 
+    /// The fields a payment fills (paste, invoice, clipboard check #663).
+    static let paymentFields: [WritableKeyPath<TransferDraft, String>] = [\.name, \.iban, \.bic, \.amountText, \.purpose]
+
+    func isBlank(_ field: KeyPath<TransferDraft, String>) -> Bool {
+        self[keyPath: field].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var executionMode: ExecutionMode {
         get { instant ? .instant : (scheduled ? .scheduled : .regular) }
         set {

@@ -93,7 +93,8 @@ public struct LaunchOptions: Sendable {
     /// (demo) open the inspector in its edit mode (#448), for PR screenshots
     public var inspectorEdit = false
     /// (demo) "transfer", "moneymoney", "moneymoney-db" or "print": open that sheet with fictional data
-    /// ("transfer-confirm": its review step, "transfer-girocode": its GiroCode step)
+    /// ("transfer-confirm": its review step, "transfer-girocode": its GiroCode step,
+    /// "transfer-clipboard": the empty form with the clipboard banner)
     public var demoSheet: String?
     /// `demoSheet` without the `report:` prefix (#384): `--demo-sheet report:transfer`
     /// opens the same sheet as `--demo-sheet transfer`, with the bug report over it.

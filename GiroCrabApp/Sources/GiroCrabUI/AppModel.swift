@@ -586,6 +586,9 @@ public final class AppModel {
     /// Print dialog (GitHub #53).
     var showPrintSheet = false
     var transferDraft = TransferDraft()
+    /// Opt-in clipboard check (#663): pasteboard `changeCount` last looked at, so the same
+    /// content is offered once. Never the content itself; in memory only.
+    var clipboardChangeCountHandled: Int?
     var transferError: String?
     /// Instant was not possible and nothing was sent: why (shown in the
     /// transfer sheet with a "send as regular transfer" button).
@@ -876,13 +879,11 @@ public final class AppModel {
             standingDraft.purpose = "Abschlag Strom Kd-Nr 482910"
             standingDraft.execDay = 3
             standingDraft.syncDate(to: nil)
-        case "transfer", "transfer-confirm", "transfer-girocode":
+        case "transfer", "transfer-confirm", "transfer-girocode", "transfer-clipboard":
             if let a = transferAccounts.first { sidebarSelection = .account(a.id) }
             openTransfer()
-            transferDraft.name = "Stadtwerke München"
-            transferDraft.iban = TransferSheetView.groupedIBAN("DE89370400440532013000")
-            transferDraft.amountText = Money.plain(8500)
-            transferDraft.purpose = "Abschlag Strom Kd-Nr 482910"
+            // transfer-clipboard: empty form, the sheet offers the payment in its clipboard banner (#663)
+            if name != "transfer-clipboard" { ParsedPayment.demo.apply(to: &transferDraft) }
         case "moneymoney":
             demoImportPreview = MoneyMoneyImportPreview(
                 totalRows: 4820, newBookings: 4820, duplicatesSkippedOrEnriched: 0, notesCount: 312,

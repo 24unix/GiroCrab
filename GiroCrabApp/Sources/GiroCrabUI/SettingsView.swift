@@ -155,6 +155,7 @@ struct GeneralSettings: View {
                 Text("Wie weit GiroCrab beim ersten Abruf eines neuen Kontos zurückgeht. Viele Banken liefern nur 90 Tage oder verlangen für mehr eine TAN. Bereits abgerufene Konten betrifft das nicht.")
                     .appFont(.caption).foregroundStyle(.secondary)
             } header: { Text("Buchungen").appSectionHeader() }
+            TransferSettingsSection()
             BalanceChartSettingsSection()
             MerchantLogoSettingsSection()
             #if os(macOS)
@@ -178,6 +179,19 @@ struct GeneralSettings: View {
         #if os(iOS)
         .capturableSheet(isPresented: $showHelp) { HelpSheet() }
         #endif
+    }
+}
+
+/// Überweisungen: opt-in clipboard check when the form opens (#663), per device.
+struct TransferSettingsSection: View {
+    @AppStorage(ClipboardPaymentCheck.enabledKey) private var clipboardCheck = ClipboardPaymentCheck.enabledDefault
+
+    var body: some View {
+        Section {
+            Toggle("Zwischenablage beim Öffnen einer Überweisung prüfen", isOn: $clipboardCheck)
+            Text("Nur bei leerem Formular. Der Inhalt wird nur auf diesem Gerät gelesen, nie gespeichert oder protokolliert. Felder werden erst nach Bestätigung im Hinweis ausgefüllt.")
+                .appFont(.caption).foregroundStyle(.secondary)
+        } header: { Text("Überweisungen").appSectionHeader() }
     }
 }
 
