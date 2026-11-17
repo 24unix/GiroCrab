@@ -178,7 +178,7 @@ pub fn search_by_bic(query: &str, limit: usize) -> Vec<FinTsBankInfo> {
     bics()
         .iter()
         .filter(|(_, bic)| {
-            bic.starts_with(&q[..8]) && branch.map_or(true, |br| bic.len() == 8 || &bic[8..] == br)
+            bic.starts_with(&q[..8]) && branch.is_none_or(|br| bic.len() == 8 || &bic[8..] == br)
         })
         .filter_map(|(blz, _)| find(blz))
         .take(limit)

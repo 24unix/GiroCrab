@@ -689,7 +689,10 @@ mod tests {
         for q in ["DEUTDEFFXXX", "deutdeff", "DEUTDEFF"] {
             let r = search(q, vec![], 500);
             assert!(r.iter().any(|b| b.blz == "50070010"), "bic {q}");
-            assert!(r.iter().all(|b| b.name.contains("Deutsche Bank")), "bic {q}");
+            assert!(
+                r.iter().all(|b| b.name.contains("Deutsche Bank")),
+                "bic {q}"
+            );
         }
         let r = search("DEUTDEDBXXX", vec![], 500);
         assert!(r.iter().any(|b| b.blz == "50070024"), "bic DEUTDEDBXXX");
