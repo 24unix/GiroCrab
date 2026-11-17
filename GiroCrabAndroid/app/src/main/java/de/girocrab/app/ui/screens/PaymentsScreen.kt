@@ -63,6 +63,8 @@ import de.girocrab.app.model.Account
 import de.girocrab.app.model.AccountKind
 import de.girocrab.app.model.AppUiState
 import de.girocrab.app.model.Booking
+import de.girocrab.app.model.CorePaymentDetails
+import de.girocrab.app.model.CorePaymentParser
 import de.girocrab.app.model.DirectDebitMandate
 import de.girocrab.app.model.Interval
 import de.girocrab.app.model.StandingOrder
@@ -226,6 +228,21 @@ fun parseEpcQr(text: String): EpcPayload? {
     return EpcPayload(l[5], iban, amount, purpose)
 }
 
+/**
+ * Payment data from a scanned EPC QR or pasted text, via the core parser (EPC first, then free text).
+ * Without the native core it falls back to [parseEpcQr]. A result needs an IBAN with a valid checksum.
+ */
+fun parsePaymentInput(text: String): EpcPayload? {
+    val core = CorePaymentParser.parseEpcPayload(text)?.takeIf { it.hasValidIban() }
+        ?: CorePaymentParser.parsePaymentText(text)?.takeIf { it.hasValidIban() }
+    if (core != null) {
+        return EpcPayload(core.name.orEmpty(), core.iban.orEmpty().filter { !it.isWhitespace() }, core.amountCents?.takeIf { it > 0 }, core.purpose.orEmpty())
+    }
+    return parseEpcQr(text)
+}
+
+private fun CorePaymentDetails.hasValidIban(): Boolean = iban?.let { isValidIban(it.filter { c -> !c.isWhitespace() }) } == true
+
 fun sequenceTypeFor(m: DirectDebitMandate, oneOff: Set<String>): SequenceType = when {
     m.id in oneOff -> SequenceType.OOFF
     m.lastUsed == null -> SequenceType.FRST
@@ -325,8 +342,8 @@ fun PaymentsScreen(
                 0 -> TransferHome(
                     onNew = { prefill = null; showTransfer = true },
                     onQuickFill = {
-                        if (onScanQr != null) onScanQr { raw -> parseEpcQr(raw)?.let { prefill = it; showTransfer = true } }
-                        else onPasteClipboard()?.let { raw -> parseEpcQr(raw)?.let { prefill = it; showTransfer = true } }
+                        if (onScanQr != null) onScanQr { raw -> parsePaymentInput(raw)?.let { prefill = it; showTransfer = true } }
+                        else onPasteClipboard()?.let { raw -> parsePaymentInput(raw)?.let { prefill = it; showTransfer = true } }
                     },
                 )
                 1 -> FixedCostsTab(state, today, masked)
@@ -351,8 +368,8 @@ fun PaymentsScreen(
             today = today,
             onDismiss = { showTransfer = false },
             onSubmit = { onSubmitTransfer(it); showTransfer = false },
-            onScanQr = onScanQr?.let { scan -> { scan { raw -> parseEpcQr(raw)?.let { prefill = it } } } },
-            onPaste = { onPasteClipboard()?.let { raw -> parseEpcQr(raw)?.let { prefill = it } } },
+            onScanQr = onScanQr?.let { scan -> { scan { raw -> parsePaymentInput(raw)?.let { prefill = it } } } },
+            onPaste = { onPasteClipboard()?.let { raw -> parsePaymentInput(raw)?.let { prefill = it } } },
         )
     }
 }

@@ -21,7 +21,7 @@ android {
         release {
             isMinifyEnabled = true
             // UniFFI uses JNA reflection: keep generated bindings and JNA.
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 

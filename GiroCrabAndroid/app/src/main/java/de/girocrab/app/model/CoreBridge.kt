@@ -31,6 +31,48 @@ class DefaultCoreBridge : CoreBridge {
     override fun demoSnapshot(): VaultSnapshot = DemoData.build()
 }
 
+/** Payment fields found by the core parser; `null` = not found. Mirrors `PaymentDetails` in girocrab-core. */
+data class CorePaymentDetails(
+    val name: String?,
+    val iban: String?,
+    val bic: String?,
+    val amountCents: Long?,
+    val purpose: String?,
+)
+
+/**
+ * Payment parser of `girocrab-core` (`payment_input.rs`), shared with the other front ends.
+ * Like [DefaultCoreBridge] it reaches the UniFFI bindings by reflection, so the app builds and runs without
+ * the native library; every function then returns null and the caller falls back to its own parser.
+ * UniFFI puts the top-level functions of the namespace `girocrab_core` into the file `girocrab_core.kt`
+ * (JVM class `Girocrab_coreKt`) and names them in lowerCamelCase; record fields become getters.
+ * Never log the text: it is clipboard or QR content.
+ */
+object CorePaymentParser {
+    private val bindings: Class<*>? by lazy {
+        runCatching { Class.forName("uniffi.girocrab_core.Girocrab_coreKt") }.getOrNull()
+    }
+
+    /** EPC QR (GiroCode) payload, or null when it is none or the core is unavailable. */
+    fun parseEpcPayload(payload: String): CorePaymentDetails? = call("parseEpcPayload", payload)
+
+    /** Free text (clipboard): IBAN with valid checksum, BIC, amount, name and purpose. */
+    fun parsePaymentText(text: String): CorePaymentDetails? = call("parsePaymentText", text)
+
+    private fun call(function: String, input: String): CorePaymentDetails? = runCatching {
+        val cls = bindings ?: return@runCatching null
+        val record = cls.getMethod(function, String::class.java).invoke(null, input) ?: return@runCatching null
+        fun field(getter: String): Any? = record.javaClass.getMethod(getter).invoke(record)
+        CorePaymentDetails(
+            name = field("getName") as String?,
+            iban = field("getIban") as String?,
+            bic = field("getBic") as String?,
+            amountCents = (field("getAmountCents") as Number?)?.toLong(),
+            purpose = field("getPurpose") as String?,
+        )
+    }.getOrNull()
+}
+
 /** Realistic German demo data across 7 banks. Deterministic (seeded). */
 object AnnouncementLoader {
     /** Parses `policy/announcements.json` (bundled as a Java resource). Signature verification is the caller's job. */
