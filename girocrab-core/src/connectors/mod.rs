@@ -17,6 +17,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::trf;
 
 pub mod bank_directory;
+pub mod broker_documents;
 pub mod bunq;
 pub mod comdirect;
 pub mod demo;
