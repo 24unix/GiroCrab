@@ -399,29 +399,29 @@ component BookingLine inherits Rectangle {
             HorizontalLayout {
                 spacing: 5px;
                 alignment: start;
-                Text { text: b.account; color: Theme.muted; font-size: 11px; overflow: elide; max-width: 110px; }
+                Text { text: b.account; color: Theme.muted; font-size: 11px; overflow: elide; horizontal-stretch: 1; min-width: 0px; }
                 Text { text: "·"; color: Theme.muted; font-size: 11px; }
                 Rectangle {
                     background: b.category-color.with-alpha(0.18);
                     border-radius: 8px;
                     horizontal-stretch: 0;
+                    width: cat-text.preferred-width + 14px;
                     HorizontalLayout {
                         padding-left: 7px; padding-right: 7px; padding-top: 1px; padding-bottom: 1px;
-                        Text { text: b.category; color: Theme.dark ? b.category-color.brighter(0.4) : b.category-color.darker(0.3); font-size: 10px; font-weight: 600; overflow: elide; }
+                        cat-text := Text { text: b.category; color: Theme.dark ? b.category-color.brighter(0.4) : b.category-color.darker(0.3); font-size: 10px; font-weight: 600; }
                     }
                 }
                 if b.tags-text != "": Rectangle {
                     background: Theme.text.with-alpha(0.08);
                     border-radius: 8px;
                     horizontal-stretch: 0;
+                    width: tag-text.preferred-width + 14px;
                     HorizontalLayout {
                         padding-left: 7px; padding-right: 7px; padding-top: 1px; padding-bottom: 1px;
-                        Text { text: b.tags-text; color: Theme.muted; font-size: 10px; overflow: elide; }
+                        tag-text := Text { text: b.tags-text; color: Theme.muted; font-size: 10px; }
                     }
                 }
-                if b.detail != "": Text { text: "·"; color: Theme.muted; font-size: 11px; }
-                if b.detail != "": Text { text: b.detail; color: Theme.muted; font-size: 11px; overflow: elide; horizontal-stretch: 1; }
-                if b.detail == "": Rectangle { horizontal-stretch: 1; }
+                if b.category == "" && b.tags-text == "" && b.detail != "": Text { text: b.detail; color: Theme.muted; font-size: 11px; overflow: elide; horizontal-stretch: 1; }
             }
         }
         Text {
@@ -1059,20 +1059,20 @@ export component MainWindow inherits Window {
         }
         // ---- project announcement banner (announcements.rs)
         if SettingsImportState.banner-title != "": Rectangle {
-            height: 24px;
+            height: 30px;
             background: SettingsImportState.banner-important ? Theme.warning-bg : Theme.bar;
             HorizontalLayout {
                 padding-left: 14px;
                 padding-right: 14px;
                 spacing: 12px;
                 Text { text: SettingsImportState.banner-title; color: SettingsImportState.banner-important ? Theme.warning-text : Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                Button { height: 20px; y: 2px; text: "Lesen"; clicked => { SettingsImportState.banner-show(); } }
-                Button { height: 20px; y: 2px; text: "Ausblenden"; clicked => { SettingsImportState.banner-dismiss(); } }
+                Button { height: 24px; y: 3px; text: "Lesen"; clicked => { SettingsImportState.banner-show(); } }
+                Button { height: 24px; y: 3px; text: "Ausblenden"; clicked => { SettingsImportState.banner-dismiss(); } }
             }
         }
         // ---- demo banner
         if root.demo-active: Rectangle {
-            height: 24px;
+            height: 30px;
             background: Theme.warning-bg;
             HorizontalLayout {
                 padding-left: 14px;
@@ -1080,7 +1080,7 @@ export component MainWindow inherits Window {
                 spacing: 12px;
                 Text { text: "Demo-Daten – diese Buchungen sind frei erfunden."; color: Theme.warning-text; vertical-alignment: center; horizontal-stretch: 1; }
                 Button {
-                    height: 20px; y: 2px;
+                    height: 24px; y: 3px;
                     text: root.has-own-vault ? "Zurück zum eigenen Tresor" : "Eigenes Konto anlegen";
                     primary: true;
                     clicked => { root.demo-switch(); }
