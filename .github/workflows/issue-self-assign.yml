@@ -1,13 +1,15 @@
 name: Issue Self Assign
 
-# Lets contributors assign themselves with `/assign` (or a few German phrases) and release
-# with `/unassign`. The onboarding comment for new issue authors lives in issue-ai-invite.yml
-# (kept there so authors do not get two comments).
+# Lets contributors assign themselves with `/assign` (or German/English phrases in comments
+# or directly in the issue body when opening) and release with `/unassign`.
+# Verifies that GitHub actually persisted the assignee (retrying on eventual-consistency lag).
 #
-# SECURITY: comment text is never interpolated into `run:`. It reaches the script only via `env:`.
+# SECURITY: comment/issue text is never interpolated into `run:`. It reaches the script only via `env:`.
 on:
   issue_comment:
     types: [created]
+  issues:
+    types: [opened]
 
 permissions:
   issues: write
@@ -17,36 +19,43 @@ jobs:
   assign:
     if: >-
       !github.event.issue.pull_request &&
-      github.event.comment.user.type != 'Bot' &&
-      !endsWith(github.event.comment.user.login, '[bot]')
+      github.event.sender.type != 'Bot' &&
+      !endsWith(github.event.sender.login, '[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      EVENT_NAME: ${{ github.event_name }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
-      ACTOR: ${{ github.event.comment.user.login }}
-      COMMENT_ID: ${{ github.event.comment.id }}
-      AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
-      COMMENT_BODY: ${{ github.event.comment.body }}
+      ACTOR: ${{ github.event.comment.user.login || github.event.issue.user.login }}
+      COMMENT_ID: ${{ github.event.comment.id || '' }}
+      AUTHOR_ASSOC: ${{ github.event.comment.author_association || github.event.issue.author_association }}
+      RAW_BODY: ${{ github.event.comment.body || github.event.issue.body || '' }}
     steps:
       - name: Handle assign / unassign commands
         run: |
           set -euo pipefail
-          text=$(printf '%s' "$COMMENT_BODY" | tr '[:upper:]' '[:lower:]' | tr -d '\r')
-          react() { gh api -X POST "repos/$GH_REPO/issues/comments/$COMMENT_ID/reactions" -f content="$1" >/dev/null || true; }
+          text=$(printf '%s' "$RAW_BODY" | tr '[:upper:]' '[:lower:]' | tr -d '\r')
+          react() {
+            if [ -n "$COMMENT_ID" ]; then
+              gh api -X POST "repos/$GH_REPO/issues/comments/$COMMENT_ID/reactions" -f content="$1" >/dev/null || true
+            else
+              gh api -X POST "repos/$GH_REPO/issues/$ISSUE_NUMBER/reactions" -f content="$1" >/dev/null || true
+            fi
+          }
 
-          if printf '%s' "$text" | grep -Eq '(^|[[:space:]])/unassign([[:space:]]|$)'; then
-            gh issue edit "$ISSUE_NUMBER" --remove-assignee "$ACTOR"
+          if [ "$EVENT_NAME" = "issue_comment" ] && printf '%s' "$text" | grep -Eq '(^|[[:space:]])/unassign([[:space:]]|$)'; then
+            gh api -X DELETE "repos/$GH_REPO/issues/$ISSUE_NUMBER/assignees" -f "assignees[]=$ACTOR" >/dev/null || true
             react '+1'
             exit 0
           fi
 
-          if ! printf '%s' "$text" | grep -Eq '^[[:space:]]*(/assign-me|/assign|/take)([[:space:]]|$)|ich übernehme das|ich schaue mir das an|ich schaue es mir|gerne mir zuweisen'; then
+          if ! printf '%s' "$text" | grep -Eq '(^|[[:space:]])(/assign-me|/assign|/take)([[:space:]]|$)|ich übernehme das|ich schaue mir das an|ich schaue es mir|gerne mir zuweisen|ich würde das gern selbst umsetzen|i.d like to take this on|i would like to take this on'; then
             exit 0
           fi
 
-          assignees=$(gh issue view "$ISSUE_NUMBER" --json assignees --jq '.assignees[].login')
+          assignees=$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.assignees[].login' || true)
           if printf '%s\n' "$assignees" | grep -qx "$ACTOR"; then
             react 'eyes'
             exit 0
@@ -57,9 +66,26 @@ jobs:
             exit 0
           fi
 
+          # GitHub only allows assigning non-collaborators after their comment/issue is indexed.
+          # Retry up to 4 times via REST API and verify that `.assignees` actually contains $ACTOR.
+          assigned_ok=false
+          for attempt in 1 2 3 4; do
+            gh api -X POST "repos/$GH_REPO/issues/$ISSUE_NUMBER/assignees" -f "assignees[]=$ACTOR" >/dev/null 2>&1 || true
+            now_assigned=$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.assignees[].login' || true)
+            if printf '%s\n' "$now_assigned" | grep -qx "$ACTOR"; then
+              assigned_ok=true
+              break
+            fi
+            sleep 2
+          done
+
           react 'rocket'
-          gh issue edit "$ISSUE_NUMBER" --add-assignee "$ACTOR"
-          body="Super, @$ACTOR, das Issue ist dir zugewiesen. 🚀 Mit \`/unassign\` gibst du es wieder frei. Details: \`CONTRIBUTING.md\`."
+          if [ "$assigned_ok" = true ]; then
+            body="Super, @$ACTOR, das Issue ist dir zugewiesen. 🚀 Mit \`/unassign\` gibst du es wieder frei. Details: \`CONTRIBUTING.md\`."
+          else
+            body="Super, @$ACTOR – du bist für dieses Issue vorgemerkt! 🚀 (Hinweis für @dr-prinz: GitHub hat das Assignee-Feld noch nicht gesetzt, bitte kurz manuell zuweisen.) Details: \`CONTRIBUTING.md\`."
+          fi
+
           if [ "$AUTHOR_ASSOC" = "NONE" ] || [ "$AUTHOR_ASSOC" = "FIRST_TIME_CONTRIBUTOR" ]; then
             body="$body
 
