@@ -1,5 +1,0 @@
-======================================================================
-AUTONOMER CLAUDE SCREENSHOT-REVIEW & SYNC-PARITÄT (17.11.2026 13:40:17)
-======================================================================
-
-=== 1. Erzeuge aktuelle Ist-Screenshots (komprimiert für minimalen Token-Einsatz) ===

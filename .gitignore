@@ -133,3 +133,5 @@ github_issues_prs_full.txt
 
 # AI provenance research export (tools/export-ai-provenance.py)
 provenance-dataset.jsonl
+tmp/
+GiroCrabAndroid/.gradle/

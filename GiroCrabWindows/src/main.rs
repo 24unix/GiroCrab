@@ -1723,8 +1723,12 @@ fn main() -> Result<(), slint::PlatformError> {
             win.on_vault_sync_toggled(move |on| {
                 if let Some(w) = weak.upgrade() {
                     w.set_vault_status(
-                        if on { "Synchronisation eingeschaltet. Ordner wählen." } else { "Synchronisation ausgeschaltet." }
-                            .into(),
+                        if on {
+                            "Synchronisation eingeschaltet. Ordner wählen."
+                        } else {
+                            "Synchronisation ausgeschaltet."
+                        }
+                        .into(),
                     );
                 }
             });
