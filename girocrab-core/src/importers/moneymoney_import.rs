@@ -332,29 +332,39 @@ pub fn parse_csv_export(text: &str) -> CoreResult<Vec<MmRow>> {
 }
 
 fn xml_unescape(s: &str) -> String {
-    static CHAR_REF: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"&#(x?[0-9a-fA-F]+);").unwrap());
+    // One pass over all entities: a decoded `&` must not start another one
+    // (`&#38;lt;` is the text "&lt;", not "<").
+    static ENTITY: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"&(?:#(x?[0-9a-fA-F]+)|(lt|gt|quot|apos|amp));").unwrap());
     let s = s.trim();
     let s = s
         .strip_prefix("<![CDATA[")
         .and_then(|x| x.strip_suffix("]]>"))
         .map(|x| x.to_string())
         .unwrap_or_else(|| {
-            let t = CHAR_REF.replace_all(s, |c: &regex::Captures| {
-                let v = &c[1];
-                let n = match v.strip_prefix('x') {
-                    Some(h) => u32::from_str_radix(h, 16).ok(),
-                    None => v.parse().ok(),
-                };
-                n.and_then(char::from_u32)
-                    .map(|c| c.to_string())
-                    .unwrap_or_default()
-            });
-            t.replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&apos;", "'")
-                .replace("&amp;", "&")
+            ENTITY
+                .replace_all(s, |c: &regex::Captures| {
+                    if let Some(v) = c.get(1) {
+                        let v = v.as_str();
+                        let n = match v.strip_prefix('x') {
+                            Some(h) => u32::from_str_radix(h, 16).ok(),
+                            None => v.parse().ok(),
+                        };
+                        return n
+                            .and_then(char::from_u32)
+                            .map(|c| c.to_string())
+                            .unwrap_or_default();
+                    }
+                    match &c[2] {
+                        "lt" => "<",
+                        "gt" => ">",
+                        "quot" => "\"",
+                        "apos" => "'",
+                        _ => "&",
+                    }
+                    .to_string()
+                })
+                .into_owned()
         });
     s.trim().to_string()
 }
@@ -595,7 +605,8 @@ pub(crate) fn find_or_create_category(
 /// several statements name no single account.
 fn statement_account(text: &str) -> Option<(String, String)> {
     use crate::connectors::fints::sepa;
-    static STMT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(?:\w+:)?Stmt>").unwrap());
+    static STMT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"<(?:\w+:)?(?:Stmt|Rpt|Ntfctn)>").unwrap());
     static ACCT: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"(?s)<(?:\w+:)?Acct>(.*?)</(?:\w+:)?Acct>").unwrap());
     static IBAN: LazyLock<Regex> =
@@ -604,6 +615,7 @@ fn statement_account(text: &str) -> Option<(String, String)> {
         LazyLock::new(|| Regex::new(r"<(?:\w+:)?Ccy>\s*([^<]+?)\s*<").unwrap());
     static FIELD_25: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^:25:(.+)$").unwrap());
     if text.contains("BkToCstmr") {
+        // camt.053 `Stmt`, camt.052 `Rpt`, camt.054 `Ntfctn`.
         if STMT.find_iter(text).count() != 1 {
             return None;
         }
@@ -1814,6 +1826,10 @@ mod tests {
         assert_eq!(xml_unescape("<![CDATA[ a &amp; b ]]>"), "a &amp; b");
         // an invalid code point is dropped
         assert_eq!(xml_unescape("a&#xD800;b"), "ab");
+        // no double decoding
+        assert_eq!(xml_unescape("&amp;#38;lt;"), "&#38;lt;");
+        assert_eq!(xml_unescape("&#38;lt;"), "&lt;");
+        assert_eq!(xml_unescape("&amp;lt;"), "&lt;");
     }
 
     #[test]
@@ -1834,6 +1850,16 @@ mod tests {
         );
         let two = camt.replace("</Stmt>", "</Stmt><Stmt></Stmt>");
         assert_eq!(statement_account(&two), None);
+        for (open, close) in [("Rpt", "Rpt"), ("Ntfctn", "Ntfctn")] {
+            let other = camt
+                .replace("<Stmt>", &format!("<{open}>"))
+                .replace("</Stmt>", &format!("</{close}>"));
+            assert_eq!(
+                statement_account(&other),
+                Some(("DE89370400440532013000".into(), "EUR".into())),
+                "{open}"
+            );
+        }
 
         let mt = |accounts: &[&str]| -> String {
             accounts

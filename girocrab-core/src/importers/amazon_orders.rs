@@ -107,7 +107,7 @@ const MONTHS: [(&str, u32); 21] = [
 /// "12. März 2025", "March 12, 2025", "12.03.2025" -> "2025-03-12".
 pub fn parse_date(s: &str) -> Option<String> {
     static DMY: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(\d{1,2})\.(\d{1,2})\.(\d{4})").unwrap());
+        LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap());
     static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
     let s = s.trim();
     if let Some(c) = DMY.captures(s) {
@@ -129,7 +129,8 @@ pub fn parse_date(s: &str) -> Option<String> {
 }
 
 fn iso(y: u32, m: u32, d: u32) -> Option<String> {
-    ((1..=12).contains(&m) && (1..=31).contains(&d)).then(|| format!("{y:04}-{m:02}-{d:02}"))
+    chrono::NaiveDate::from_ymd_opt(i32::try_from(y).ok()?, m, d)
+        .map(|_| format!("{y:04}-{m:02}-{d:02}"))
 }
 
 /// First price found in free text ("EUR 12,99", "12,99 €", "Gesamt: 1.234,56 €").
@@ -442,6 +443,9 @@ mod tests {
         assert_eq!(parse_date("March 12, 2025").as_deref(), Some("2025-03-12"));
         assert_eq!(parse_date("05.11.2025").as_deref(), Some("2025-11-05"));
         assert_eq!(parse_date("bald"), None);
+        assert_eq!(parse_date("31.02.2025"), None);
+        assert_eq!(parse_date("Bestellung 112.03.2025"), None);
+        assert_eq!(parse_date("am 29.02.2024.").as_deref(), Some("2024-02-29"));
     }
 
     #[test]

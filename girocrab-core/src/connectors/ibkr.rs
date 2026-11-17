@@ -36,12 +36,17 @@ const SEND_URL: &str =
 /// Attempts at `GetStatement` while IBKR is still generating the statement.
 const MAX_POLLS: u32 = 8;
 const POLL_DELAY: Duration = Duration::from_secs(4);
+/// Attempts per HTTP request on transient network errors, with exponential backoff.
+const NET_ATTEMPTS: u32 = 3;
+const RETRY_DELAY: Duration = Duration::from_secs(2);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub struct IbkrConnector {
     client: Option<reqwest::Client>,
     send_url: String,
     poll_delay: Duration,
     max_polls: u32,
+    retry_delay: Duration,
 }
 
 impl Default for IbkrConnector {
@@ -57,6 +62,7 @@ impl IbkrConnector {
             send_url: SEND_URL.into(),
             poll_delay: POLL_DELAY,
             max_polls: MAX_POLLS,
+            retry_delay: RETRY_DELAY,
         }
     }
 
@@ -65,6 +71,7 @@ impl IbkrConnector {
             self.client = Some(
                 reqwest::Client::builder()
                     .user_agent(concat!("GiroCrab/", env!("CARGO_PKG_VERSION")))
+                    .connect_timeout(CONNECT_TIMEOUT)
                     .timeout(Duration::from_secs(60))
                     .build()
                     .map_err(net_err)?,
@@ -78,13 +85,18 @@ impl IbkrConnector {
         url: &str,
         params: &[(&str, &str)],
     ) -> CoreResult<(reqwest::StatusCode, String)> {
-        let resp = self
-            .client()?
-            .get(url)
-            .query(params)
-            .send()
-            .await
-            .map_err(net_err)?;
+        let client = self.client()?;
+        let mut attempt = 0;
+        let resp = loop {
+            attempt += 1;
+            match client.get(url).query(params).send().await {
+                Ok(r) => break r,
+                Err(e) if attempt < NET_ATTEMPTS && is_transient(&e) => {
+                    tokio::time::sleep(self.retry_delay * 2u32.pow(attempt - 1)).await;
+                }
+                Err(e) => return Err(net_err(e)),
+            }
+        };
         let status = resp.status();
         let body = super::read_text_limited(resp).await.map_err(|e| match e {
             CoreError::Network { message } => CoreError::Network {
@@ -189,9 +201,36 @@ impl BankConnector for IbkrConnector {
 // ------------------------------------------------------------------ errors
 
 fn net_err(e: reqwest::Error) -> CoreError {
+    let e = e.without_url();
+    let kind = if e.is_timeout() {
+        " (Zeitüberschreitung)"
+    } else if e.is_connect() {
+        " (Verbindung fehlgeschlagen)"
+    } else {
+        ""
+    };
     CoreError::Network {
-        message: e.without_url().to_string(),
+        message: format!("{}{kind}", error_chain(&e)),
     }
+}
+
+/// Connection drops, timeouts and failed connects are worth another attempt.
+fn is_transient(e: &reqwest::Error) -> bool {
+    e.is_timeout() || e.is_connect() || e.is_request()
+}
+
+/// `error` plus its whole `source()` chain, joined with ": " (URLs removed).
+fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(e) = cur {
+        let text = strip_url(&e.to_string());
+        if !text.is_empty() && parts.last() != Some(&text) {
+            parts.push(text);
+        }
+        cur = e.source();
+    }
+    parts.join(": ")
 }
 
 /// Drops `(url: …)`-style fragments (they would contain the token).
@@ -499,15 +538,12 @@ fn parse_statements(xml: &str) -> CoreResult<Vec<Statement>> {
             ("FlexStatement", TagKind::Close) => out.extend(cur.take()),
             ("FlexStatement", _) => {
                 out.extend(cur.take());
-                let mut s = Statement {
+                let s = Statement {
                     account_id: attr(&t.attrs, "accountId").to_string(),
                     base_currency: attr(&t.attrs, "baseCurrency").to_ascii_uppercase(),
                     to_date: norm_date(attr(&t.attrs, "toDate")),
                     ..Default::default()
                 };
-                if s.base_currency.is_empty() {
-                    s.base_currency = "EUR".into();
-                }
                 if t.kind == TagKind::SelfClose {
                     out.push(s);
                 } else {
@@ -528,6 +564,11 @@ fn parse_statements(xml: &str) -> CoreResult<Vec<Statement>> {
                     {
                         s.cash_base = parse_cents(attr(&t.attrs, "endingCash"));
                     }
+                    "AccountInformation" if !attr(&t.attrs, "currency").is_empty() => {
+                        if s.base_currency.is_empty() {
+                            s.base_currency = attr(&t.attrs, "currency").to_ascii_uppercase();
+                        }
+                    }
                     "EquitySummaryByReportDateInBase" => {
                         let date = attr(&t.attrs, "reportDate").to_string();
                         if s.equity.as_ref().is_none_or(|(d, _, _)| date >= *d) {
@@ -544,6 +585,12 @@ fn parse_statements(xml: &str) -> CoreResult<Vec<Statement>> {
         }
     }
     out.extend(cur.take());
+    // No base currency in the report at all: assume EUR, as before.
+    for s in &mut out {
+        if s.base_currency.is_empty() {
+            s.base_currency = "EUR".into();
+        }
+    }
     if out.is_empty() {
         return Err(CoreError::Protocol {
             message: tr("Interactive Brokers: Der Bericht enthält kein FlexStatement. Bitte in der Flex Query Konten, Offene Positionen und Cash-Transaktionen aktivieren.").into(),
@@ -1289,6 +1336,7 @@ mod tests {
         let mut c = IbkrConnector::new();
         c.send_url = format!("{base}/SendRequest");
         c.poll_delay = Duration::from_millis(5);
+        c.retry_delay = Duration::from_millis(5);
         c
     }
 
@@ -1321,6 +1369,67 @@ mod tests {
         );
         assert!(log[1].starts_with("GET /GetStatement?"));
         assert!(log[1].contains("q=1234567890") && log[1].contains("t=TOKEN123"));
+    }
+
+    #[test]
+    fn base_currency_comes_from_account_information() {
+        let xml = r#"<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1" toDate="2026-11-12">
+<AccountInformation accountId="U1" currency="chf" />
+<OpenPosition accountId="U1" currency="USD" fxRateToBase="0.9" symbol="AAPL" position="1" markPrice="200.00" positionValue="200.00" levelOfDetail="SUMMARY" />
+<CashReportCurrency accountId="U1" currency="BASE_SUMMARY" endingCash="10.00" />
+</FlexStatement></FlexStatements></FlexQueryResponse>"#;
+        let r = build_fetch(xml, "2026-01-01").unwrap();
+        assert!(r.accounts.iter().all(|a| a.currency == "CHF"));
+        // Total is converted to the base currency: 200 USD * 0.9.
+        assert_eq!(r.accounts[0].balance_cents, 18000);
+    }
+
+    #[test]
+    fn base_currency_defaults_to_eur_only_when_absent() {
+        let xml = r#"<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1" toDate="2026-11-12"></FlexStatement></FlexStatements></FlexQueryResponse>"#;
+        let r = build_fetch(xml, "2026-01-01").unwrap();
+        assert_eq!(r.accounts[0].currency, "EUR");
+    }
+
+    #[test]
+    fn error_chain_lists_all_causes() {
+        #[derive(Debug)]
+        struct Outer(std::io::Error);
+        impl std::fmt::Display for Outer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "error sending request")
+            }
+        }
+        impl std::error::Error for Outer {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+        let e = Outer(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "connection reset by peer",
+        ));
+        assert_eq!(
+            error_chain(&e),
+            "error sending request: connection reset by peer"
+        );
+    }
+
+    #[tokio::test]
+    async fn network_error_after_retries_names_the_cause() {
+        // Nothing listens on this port.
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        drop(l);
+        let mut c = connector(&format!("http://127.0.0.1:{port}"));
+        let err = c.fetch(&ctx("T", "Q")).await.unwrap_err();
+        match err {
+            CoreError::Network { message } => {
+                assert!(message.contains("error sending request: "), "{message}");
+                assert!(message.contains("Verbindung fehlgeschlagen"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[tokio::test]
