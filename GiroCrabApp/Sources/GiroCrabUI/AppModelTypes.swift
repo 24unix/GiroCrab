@@ -677,3 +677,9 @@ enum TagRenameIntent: Equatable {
     case similar(new: String, existing: String)
     case tooLong
 }
+
+/// Sum of the selected bookings in one currency (#878).
+struct SelectionTotal: Equatable {
+    let currency: String
+    let cents: Int64
+}

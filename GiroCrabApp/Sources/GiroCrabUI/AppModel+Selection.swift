@@ -27,6 +27,14 @@ extension AppModel {
     }
 
     var isMultiSelection: Bool { selectedBookingIDs.count > 1 }
+
+    /// Sum of the selected bookings over all accounts, one entry per currency (#878).
+    /// Currencies are never added together; the entries are sorted by currency code.
+    var selectionTotals: [SelectionTotal] {
+        Dictionary(grouping: selectedBookings, by: \.currency)
+            .map { SelectionTotal(currency: $0.key, cents: $0.value.reduce(Int64(0)) { $0 + $1.amountCents }) }
+            .sorted { $0.currency < $1.currency }
+    }
     /// The selected bookings in list order.
     var selectedBookings: [Booking] { visibleBookings.filter { selectedBookingIDs.contains($0.id) } }
 

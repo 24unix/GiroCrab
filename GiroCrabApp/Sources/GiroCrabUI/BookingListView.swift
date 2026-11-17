@@ -146,12 +146,15 @@ struct BookingStreamView: View {
                 .coordinateSpace(name: StreamDayTracker.space)
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .scrollBounceBehavior(.basedOnSize)
-                #if os(iOS)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    // keeps the last booking clear of the floating search bar
-                    Color.clear.frame(height: 64)
+                    VStack(spacing: 0) {
+                        SelectionSummaryBar()
+                        #if os(iOS)
+                        // keeps the last booking clear of the floating search bar
+                        Color.clear.frame(height: 64)
+                        #endif
+                    }
                 }
-                #endif
             }
             .background(Theme.canvas)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
@@ -989,6 +992,53 @@ struct PendingHatch: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+}
+
+/// Bar below the list while several bookings are selected (#878): count and sum over all
+/// accounts, one sum per currency. Observes the selection itself, so the list is not invalidated.
+private struct SelectionSummaryBar: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.isMultiSelection {
+            let totals = model.selectionTotals
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("\(model.selectedBookingIDs.count) Buchungen ausgewählt")
+                    .appFont(.callout, weight: .medium, monospacedDigit: true)
+                Spacer(minLength: 12)
+                VStack(alignment: .trailing, spacing: 2) {
+                    ForEach(totals, id: \.currency) { total in
+                        LabeledContent("Summe") {
+                            Text(Money.format(total.cents, currency: total.currency))
+                                .sensitive(.amounts)
+                                .appFont(.callout, weight: .semibold, monospacedDigit: true)
+                                .foregroundStyle(Theme.outflow)
+                        }
+                        .labeledContentStyle(.inlineSum)
+                    }
+                }
+                .fixedSize()
+            }
+            .padding(.horizontal, 20).padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(.bar)
+            .overlay(alignment: .top) { Divider() }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+}
+
+/// "Summe  1.234,56 €" on one line (the default macOS style puts label and value apart).
+private struct InlineSumStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 8) {
+            configuration.label.appFont(.callout).foregroundStyle(Theme.secondary)
+            configuration.content
+        }
+    }
+}
+private extension LabeledContentStyle where Self == InlineSumStyle {
+    static var inlineSum: InlineSumStyle { InlineSumStyle() }
 }
 
 /// Selection highlight reads selection locally instead of invalidating day cards.
