@@ -1,5 +1,7 @@
 import Foundation
 import CoreGraphics
+import CoreTransferable
+import UniformTypeIdentifiers
 import GiroCrabCore
 
 /// EPC QR code ("GiroCode", EPC069-12 v002) for a SEPA credit transfer, for
@@ -12,11 +14,14 @@ enum GiroCode {
         girocodePayload(name: name, iban: iban, bic: bic, amountCents: amountCents, purpose: purpose)
     }
 
+    /// Pixels per module: drawn at about its own size, the code stays sharp even
+    /// where `.interpolation(.none)` is ignored (screenshots, bug report capture,
+    /// printing), and the exported PNG is large enough to scan.
+    static let pixelsPerModule = 10
+
     /// QR image (error correction "M", as the EPC guideline requires), quiet zone
-    /// included, `pixelsPerModule` pixels per module: drawn at about its own size,
-    /// the code stays sharp even where `.interpolation(.none)` is ignored
-    /// (screenshots, bug report capture, printing).
-    static func image(for payload: String, pixelsPerModule: Int = 10) -> CGImage? {
+    /// included, `pixelsPerModule` pixels per module (default `GiroCode.pixelsPerModule`).
+    static func image(for payload: String, pixelsPerModule: Int = GiroCode.pixelsPerModule) -> CGImage? {
         guard let m = girocodeMatrix(payload: payload), pixelsPerModule > 0 else { return nil }
         let n = Int(m.width), scale = pixelsPerModule, side = n * scale
         var pixels = [UInt8](repeating: 255, count: side * side)
@@ -32,5 +37,23 @@ enum GiroCode {
         return CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: side,
                        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
+    /// The code as PNG for copy, save and share (the picture carries IBAN and amount).
+    static func png(for payload: String) -> Data? {
+        image(for: payload).flatMap(BugReport.png)
+    }
+}
+
+/// The GiroCode picture handed to `ShareLink`, composed only when asked.
+struct GiroCodeImage: Transferable {
+    let payload: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .png) { item in
+            guard let png = GiroCode.png(for: item.payload) else { throw CocoaError(.fileWriteUnknown) }
+            return png
+        }
+        .suggestedFileName("GiroCode.png")
     }
 }

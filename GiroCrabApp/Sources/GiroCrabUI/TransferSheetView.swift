@@ -11,7 +11,8 @@ struct TransferSheetView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.textScale) private var textScale
-    @State private var confirming = false
+    @State private var step: Step = .form
+    @State private var exportingGiroCode: PNGFileDocument?
     @State private var suggestions: [KnownRecipient] = []
     @FocusState private var nameFocused: Bool
     @State private var dropTargeted = false
@@ -21,6 +22,9 @@ struct TransferSheetView: View {
     @State private var ownTargetID: Int64?
 
     private let maxPurpose = 140
+
+    /// The form, then either the review before sending or the GiroCode.
+    enum Step { case form, review, giroCode }
 
     /// Own accounts that can receive a transfer: any kind, but with an IBAN, not archived, not the sender.
     private var ownTargets: [Account] {
@@ -61,7 +65,7 @@ struct TransferSheetView: View {
     /// The account can send from GiroCrab (FinTS / bunq); otherwise the form
     /// ends with a GiroCode for the bank's app.
     private var canSend: Bool {
-        model.options.demoSheetName != "transfer-girocode" && model.canSendTransfer(from: account?.id) // screenshots
+        model.canSendTransfer(from: account?.id)
     }
     private var giroCodePayload: String? {
         guard let cents else { return nil }
@@ -99,14 +103,14 @@ struct TransferSheetView: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             header
-            if !confirming && model.canBatchTransfer {
+            if step == .form && model.canBatchTransfer {
                 TransferKindPicker(batch: false).padding(.bottom, 10)
             }
             Divider()
-            if confirming {
-                confirmation
-            } else {
-                form(draft: $model.transferDraft)
+            switch step {
+            case .form: form(draft: $model.transferDraft)
+            case .review: sendConfirmation
+            case .giroCode: giroCodeView
             }
             if model.transferError != nil || model.transferInstantDeclined != nil {
                 VStack(alignment: .leading, spacing: 8) {
@@ -127,7 +131,11 @@ struct TransferSheetView: View {
         }
         .macFrame(width: 560, height: 700)
         .task { // screenshots
-            if ["transfer-confirm", "transfer-girocode"].contains(model.options.demoSheetName) { confirming = true }
+            switch model.options.demoSheetName {
+            case "transfer-confirm": step = .review
+            case "transfer-girocode": step = .giroCode
+            default: break
+            }
         }
         .overlay {
             if dropTargeted {
@@ -136,7 +144,7 @@ struct TransferSheetView: View {
             }
         }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
-            guard !confirming, let p = providers.first else { return false }
+            guard step == .form, let p = providers.first else { return false }
             _ = p.loadObject(ofClass: URL.self) { url, _ in
                 guard let url else { return }
                 Task { @MainActor in await importInvoice(url) }
@@ -171,7 +179,11 @@ struct TransferSheetView: View {
     }
 
     private var title: LocalizedStringKey {
-        confirming ? (canSend ? "Überweisung prüfen" : "GiroCode scannen") : "Neue Überweisung"
+        switch step {
+        case .form: "Neue Überweisung"
+        case .review: "Überweisung prüfen"
+        case .giroCode: "GiroCode scannen"
+        }
     }
 
     /// Title left, the two helpers (templates, paste) as small actions right.
@@ -179,11 +191,19 @@ struct TransferSheetView: View {
         HStack(spacing: 12) {
             Text(title).appFont(.title2, weight: .semibold)
             Spacer()
-            if !confirming {
+            if step == .form {
                 TransferTemplatesMenu()
+                #if os(macOS)
                 Button { pasteFromClipboard() } label: { Label("Einfügen", systemImage: "doc.on.clipboard") }
                     .keyboardShortcut("v", modifiers: [.command, .shift])
                     .help("Erkennt IBAN, Betrag, Empfänger und Zweck (⇧⌘V; ⌘V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD, GiroCode) hierher ziehen.")
+                #else
+                // the system's paste button reads the clipboard without the "Allow Paste" prompt
+                PasteButton(payloadType: String.self) { strings in
+                    Task { @MainActor in pasteText(strings.joined(separator: "\n")) }
+                }
+                .labelStyle(.iconOnly)
+                #endif
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 14)
@@ -405,17 +425,15 @@ struct TransferSheetView: View {
 
     // MARK: confirmation
 
-    @ViewBuilder private var confirmation: some View {
-        if canSend { sendConfirmation } else { giroCodeView }
-    }
-
-    /// Read-only account (e.g. C24): the transfer as EPC QR code.
+    /// The transfer as EPC QR code for the bank's app: the only way out for
+    /// read-only accounts (e.g. C24), on request for sendable ones.
     private var giroCodeView: some View {
         let d = model.transferDraft
+        let payload = giroCodePayload
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 16) {
                 Group {
-                    if let payload = giroCodePayload, let cg = GiroCode.image(for: payload) {
+                    if let payload, let cg = GiroCode.image(for: payload) {
                         Image(decorative: cg, scale: 1)
                             .interpolation(.none)
                             .resizable()
@@ -427,9 +445,7 @@ struct TransferSheetView: View {
                 .frame(width: 200, height: 200)
                 .sensitive() // the code carries name, IBAN, amount and purpose
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(Money.format(-(cents ?? 0)).replacingOccurrences(of: "-", with: ""))
-                        .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
-                        .sensitive(.amounts)
+                    amountHeadline
                     summaryRow("An", d.name)
                     summaryRow("IBAN", d.iban)
                     if !bicText.isEmpty { summaryRow("BIC", bicText.uppercased()) }
@@ -441,10 +457,50 @@ struct TransferSheetView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border))
+            if let payload { giroCodeActions(payload) }
             Label("In der App Ihrer Bank „Fotoüberweisung“ bzw. „QR-Code scannen“ wählen, den Code scannen und dort mit TAN freigeben. GiroCrab sendet nichts.", systemImage: "camera.viewfinder")
                 .appFont(.callout).foregroundStyle(Theme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if canSend {
+                Label("Ausführungsdatum und Echtzeitüberweisung wählen Sie in der App Ihrer Bank; ein GiroCode enthält sie nicht.", systemImage: "info.circle")
+                    .appFont(.callout).foregroundStyle(Theme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        #if os(macOS)
+        .fileExporter(isPresented: Binding(get: { exportingGiroCode != nil }, set: { if !$0 { exportingGiroCode = nil } }),
+                      document: exportingGiroCode, contentType: .png, defaultFilename: "GiroCode.png") { _ in }
+        #endif
+    }
+
+    /// Copy / save (macOS) or share (iOS) the code as a picture.
+    private func giroCodeActions(_ payload: String) -> some View {
+        HStack(spacing: 8) {
+            #if os(macOS)
+            Button("Bild kopieren", systemImage: "doc.on.doc") {
+                if let png = GiroCode.png(for: payload) { BugReport.copyToPasteboard(png) }
+            }
+            Button("Sichern …", systemImage: "square.and.arrow.down") {
+                exportingGiroCode = GiroCode.png(for: payload).map(PNGFileDocument.init(data:))
+            }
+            #else
+            ShareLink(item: GiroCodeImage(payload: payload), preview: SharePreview("GiroCode")) {
+                Label("Bild teilen", systemImage: "square.and.arrow.up")
+            }
+            #endif
+        }
+        .help("Das Bild enthält IBAN, Empfänger und Betrag.")
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    /// The amount at the top of the review and the GiroCode step.
+    private var amountHeadline: some View {
+        Text(Money.format(cents ?? 0))
+            .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
+            .sensitive(.amounts)
     }
 
     /// Read-only review in the same grouped style as the form: the amount first,
@@ -453,9 +509,7 @@ struct TransferSheetView: View {
         let d = model.transferDraft
         return Form {
             Section {
-                Text(Money.format(-(cents ?? 0)).replacingOccurrences(of: "-", with: ""))
-                    .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
-                    .sensitive(.amounts)
+                amountHeadline
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 6)
             }
@@ -525,26 +579,33 @@ struct TransferSheetView: View {
 
     private var buttons: some View {
         HStack {
-            if confirming && !canSend {
-                Button("Zurück") { confirming = false }
+            switch step {
+            case .giroCode:
+                Button("Zurück") { step = .form }
                 Spacer()
                 Button("Fertig") { dismiss() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-            } else if confirming {
+            case .review:
                 Button("Abbrechen", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Zurück") { confirming = false }
+                Button("Zurück") { step = .form }
                 Button(isBunq ? "In der bunq-App freigeben" : "Jetzt mit TAN freigeben") { model.startTransfer() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(model.transferBusy)
-            } else {
+            case .form:
                 Button("Abbrechen", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(canSend ? "Weiter" : "GiroCode erstellen") { model.transferError = nil; confirming = true }
+                if canSend {
+                    // nothing is sent, so no PIN needed
+                    Button("Als GiroCode anzeigen") { leaveForm(to: .giroCode) }
+                        .disabled(!canReview || giroCodePayload == nil)
+                }
+                let next: Step = canSend ? .review : .giroCode
+                Button(next == .review ? "Weiter" : "GiroCode erstellen") { leaveForm(to: next) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(!canReview || (canSend && !pinStored && model.transferDraft.pin.isEmpty)
@@ -553,14 +614,20 @@ struct TransferSheetView: View {
         }
     }
 
+    private func leaveForm(to next: Step) {
+        model.transferError = nil
+        step = next
+    }
+
     // MARK: clipboard / invoice drop
 
+    #if os(macOS)
     private func pasteFromClipboard() {
-        #if os(macOS)
-        let text = NSPasteboard.general.string(forType: .string) ?? ""
-        #else
-        let text = UIPasteboard.general.string ?? ""
-        #endif
+        pasteText(NSPasteboard.general.string(forType: .string) ?? "")
+    }
+    #endif
+
+    private func pasteText(_ text: String) {
         report(PaymentParser.parseText(text))
     }
 

@@ -3715,6 +3715,17 @@
         }
       }
     },
+    "Als GiroCode anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show as GiroCode"
+          }
+        }
+      }
+    },
     "Als PNG sichern …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5011,6 +5022,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Execution date"
+          }
+        }
+      }
+    },
+    "Ausführungsdatum und Echtzeitüberweisung wählen Sie in der App Ihrer Bank; ein GiroCode enthält sie nicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the execution date and instant transfer in your bank's app; a GiroCode cannot carry them."
           }
         }
       }
@@ -7068,6 +7090,28 @@
         }
       }
     },
+    "Bild kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy Image"
+          }
+        }
+      }
+    },
+    "Bild teilen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Image"
+          }
+        }
+      }
+    },
     "Bis" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8193,6 +8237,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The fetch log is not attached: it could not be fully loaded and sanitized."
+          }
+        }
+      }
+    },
+    "Das Bild enthält IBAN, Empfänger und Betrag." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The image contains the IBAN, recipient and amount."
           }
         }
       }
