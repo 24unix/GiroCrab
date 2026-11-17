@@ -19,7 +19,7 @@ final class DocumentsScopeTests: XCTestCase {
         let all = model.allDocuments()
         let receipts = model.allDocuments(scope: .receipts)
         let postbox = model.allDocuments(scope: .postbox)
-        XCTAssertEqual(all.count, 9)
+        XCTAssertEqual(all.count, 12)
         XCTAssertEqual(Set(receipts.map(\.id)).union(postbox.map(\.id)), Set(all.map(\.id)))
         XCTAssertTrue(Set(receipts.map(\.id)).isDisjoint(with: postbox.map(\.id)))
         for docs in [receipts, postbox] {

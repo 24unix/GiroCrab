@@ -86,6 +86,32 @@ fn demo_documents(conn: &Connection, today: NaiveDate) -> CoreResult<()> {
             true,
             None,
         ),
+        // Older ones (last year or before, whatever today is): the type and year filters of the
+        // document list need more than one of each to show.
+        (
+            "demo-depot",
+            "Musterbank – Jahressteuerbescheinigung",
+            "steuer",
+            400,
+            true,
+            None,
+        ),
+        (
+            "demo-depot",
+            "MSCI World – Wertpapierabrechnung Sparplan",
+            "abrechnung",
+            430,
+            true,
+            None,
+        ),
+        (
+            "demo-giro",
+            "Musterbank – Kontoauszug Jahresende",
+            "kontoauszug",
+            410,
+            true,
+            None,
+        ),
     ];
     for (i, (account_ref, title, doc_type, days_ago, bank, counterparty)) in
         docs.into_iter().enumerate()
@@ -2884,7 +2910,7 @@ mod tests {
         let docs = v
             .list_all_documents(crate::documents::DocumentFilter::default())
             .unwrap();
-        assert_eq!(docs.len(), 9);
+        assert_eq!(docs.len(), 12);
         let accounts: std::collections::HashSet<_> = docs.iter().map(|d| d.account_id).collect();
         assert_eq!(accounts.len(), 3);
         for bank in [false, true] {
@@ -2897,7 +2923,12 @@ mod tests {
         let today = Local::now().date_naive();
         for d in &docs {
             let date = NaiveDate::parse_from_str(&d.doc_date, "%Y-%m-%d").unwrap();
-            assert!((0..=30).contains(&(today - date).num_days()));
+            let age = (today - date).num_days();
+            // recent ones, and three of last year or before (the year and type filters)
+            assert!(
+                (0..=30).contains(&age) || (366..=800).contains(&age),
+                "{age} days"
+            );
             let bytes = v.get_document_bytes(d.id).unwrap();
             assert!(bytes.starts_with(b"%PDF"));
             let text = crate::documents::extract_pdf_text(&bytes);
@@ -2921,7 +2952,7 @@ mod tests {
             v.list_all_documents(crate::documents::DocumentFilter::default())
                 .unwrap()
                 .len(),
-            9
+            12
         );
     }
 

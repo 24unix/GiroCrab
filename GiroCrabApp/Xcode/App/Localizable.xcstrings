@@ -663,6 +663,17 @@
         }
       }
     },
+    "%lld Belege nach „%@“ exportiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld receipts exported to “%@”"
+          }
+        }
+      }
+    },
     "%lld Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1307,6 +1318,17 @@
         }
       }
     },
+    "%lld exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export %lld …"
+          }
+        }
+      }
+    },
     "%lld fehlerhaft" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1427,6 +1449,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld of %2$lld bookings loaded – older bookings are not shown yet."
+          }
+        }
+      }
+    },
+    "%lld von %lld Dokumenten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld of %lld documents"
           }
         }
       }
@@ -1713,23 +1746,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "%u Belege nach „%@/GiroCrab-Belege“ exportiert" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$u Belege nach „%2$@/GiroCrab-Belege“ exportiert"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$u documents exported to “%2$@/GiroCrab-Belege”"
           }
         }
       }
@@ -2703,6 +2719,17 @@
         }
       }
     },
+    "Abrechnung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settlement"
+          }
+        }
+      }
+    },
     "Abruf" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3330,6 +3357,17 @@
         }
       }
     },
+    "Alle Jahre" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All years"
+          }
+        }
+      }
+    },
     "Alle Konten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3473,6 +3511,17 @@
         }
       }
     },
+    "Alle Typen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All types"
+          }
+        }
+      }
+    },
     "Alle Verbindungen sind belegt. Versuchen Sie es gleich noch einmal." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3502,6 +3551,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deselect all"
+          }
+        }
+      }
+    },
+    "Alle als gelesen markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark all as read"
           }
         }
       }
@@ -3792,6 +3852,17 @@
         }
       }
     },
+    "Als gelesen markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as read"
+          }
+        }
+      }
+    },
     "Als geprüft markieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3821,6 +3892,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Send as regular transfer"
+          }
+        }
+      }
+    },
+    "Als ungelesen markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as unread"
           }
         }
       }
@@ -10190,6 +10272,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "External analysis is only available with your own unlocked vault – not with the demo data."
+          }
+        }
+      }
+    },
+    "Die gesamte Dokumentensammlung exportieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export the whole document collection"
           }
         }
       }
@@ -18180,6 +18273,17 @@
         }
       }
     },
+    "Kontoauszug" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account statement"
+          }
+        }
+      }
+    },
     "Kontoauszug-Import fehlgeschlagen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19320,6 +19424,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mark"
+          }
+        }
+      }
+    },
+    "Markiert die Dokumente, die gerade in der Liste stehen, als gelesen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marks the documents in the list as read"
           }
         }
       }
@@ -21844,6 +21959,28 @@
         }
       }
     },
+    "Nur Dokumente dieses Kalenderjahres" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only documents of this calendar year"
+          }
+        }
+      }
+    },
+    "Nur Dokumente dieses Typs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only documents of this type"
+          }
+        }
+      }
+    },
     "Nur Einnahmen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21939,6 +22076,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Only when the form is empty. The content is read on this device only and is never stored or logged. Fields are filled in only after you confirm in the notice."
+          }
+        }
+      }
+    },
+    "Nur die Dokumente exportieren, die gerade in der Liste stehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export only the documents currently in the list"
           }
         }
       }
@@ -22066,6 +22214,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Only without a Linked Booking"
+          }
+        }
+      }
+    },
+    "Nur ungelesene" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unread only"
           }
         }
       }
@@ -22968,6 +23127,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Teal"
+          }
+        }
+      }
+    },
+    "Pfad kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy Path"
+          }
+        }
+      }
+    },
+    "Pfad kopiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Path copied"
           }
         }
       }
@@ -27779,6 +27960,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unknown account"
+          }
+        }
+      }
+    },
+    "Ungelesen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unread"
           }
         }
       }

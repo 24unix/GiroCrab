@@ -109,6 +109,11 @@ struct SidebarView: View {
                 Text("Belege & PostBox").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
+            .badge(model.unseenDocumentCount)
+            .contextMenu {
+                Button("Alle als gelesen markieren") { model.markAllDocumentsSeen() }
+                    .disabled(model.unseenDocumentCount == 0)
+            }
             .tag(SidebarItem.documents)
             .listRowInsets(Self.rowInsets)
             }

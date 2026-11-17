@@ -179,6 +179,26 @@ extension AppModel {
         try? vault?.getDocumentBytes(docId: doc.id)
     }
 
+    /// Marks documents read or unread (opened in the list, or by hand).
+    func markDocumentsSeen(_ ids: [Int64], seen: Bool) {
+        guard let vault, !ids.isEmpty else { return }
+        runCore {
+            _ = try vault.markDocumentsSeen(docIds: ids, seen: seen)
+            unseenDocumentCount = Int(try vault.unseenDocumentCount())
+        }
+        documentsVersion += 1
+    }
+
+    /// Marks every unread document read (sidebar: „Belege & PostBox“).
+    func markAllDocumentsSeen() {
+        guard let vault else { return }
+        runCore {
+            _ = try vault.markAllDocumentsSeen(accountId: nil)
+            unseenDocumentCount = Int(try vault.unseenDocumentCount())
+        }
+        documentsVersion += 1
+    }
+
     private func documentsChanged() {
         documentsVersion += 1
         reloadBookings()
@@ -277,6 +297,15 @@ extension AppModel {
         guard let url = writeTemporaryFile(for: doc) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
+
+    /// Writes the document to the temp directory and copies the file path to the pasteboard
+    /// (without opening Finder or the document). The copy is deleted on lock and quit.
+    func copyDocumentPath(_ doc: DocumentInfo) {
+        guard let url = writeTemporaryFile(for: doc) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.path, forType: .string)
+        toast = String(localized: "Pfad kopiert")
+    }
     #endif
 
     /// Decrypts the document into an owner-only temp file; nil when it cannot be read or written.
@@ -304,13 +333,16 @@ extension AppModel {
         return url
     }
 
-    func exportAllDocuments(to folder: URL) {
+    /// Exports the whole collection, or only the documents with `ids` (the list the user filtered).
+    /// The year folders go straight into `folder`, or into `subfolder` inside it (the account).
+    func exportAllDocuments(to folder: URL, ids: [Int64]? = nil, subfolder: String? = nil) {
         guard let vault else { return }
         let ok = folder.startAccessingSecurityScopedResource()
         defer { if ok { folder.stopAccessingSecurityScopedResource() } }
         runCore {
-            let n = try vault.exportAllDocuments(destDir: folder.path)
-            toast = String(localized: "\(n) Belege nach „\(folder.lastPathComponent)/GiroCrab-Belege“ exportiert")
+            let n = try vault.exportDocuments(destDir: folder.path, docIds: ids ?? [], subfolder: subfolder ?? "")
+            let target = subfolder.map { "\(folder.lastPathComponent)/\($0)" } ?? folder.lastPathComponent
+            toast = String(localized: "\(n) Belege nach „\(target)“ exportiert")
         }
     }
 }

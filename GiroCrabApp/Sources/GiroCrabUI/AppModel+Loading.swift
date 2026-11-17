@@ -52,16 +52,20 @@ extension AppModel {
         }
     }
 
-    /// Badge counts of „Geplant“ and „Lastschriften“: two `COUNT(*)`s off the main thread.
+    /// Badge counts of „Geplant“, „Lastschriften“ and the unread documents: `COUNT(*)`s off the main thread.
     func refreshSidebarCounts() {
         guard isUnlocked else { return }
+        sidebarCountsGeneration &+= 1
+        let generation = sidebarCountsGeneration
         Task { [weak self] in
             guard let self,
                   let r = try? await self.vaultOffMain({ v in
-                      (Int(try v.countPlannedPayments()), Int(try v.countActiveMandates()))
+                      (Int(try v.countPlannedPayments()), Int(try v.countActiveMandates()), Int(try v.unseenDocumentCount()))
                   }) else { return }
+            guard self.sidebarCountsGeneration == generation else { return }
             if self.plannedCount != r.0 { self.plannedCount = r.0 }
             if self.mandateCount != r.1 { self.mandateCount = r.1 }
+            if self.unseenDocumentCount != r.2 { self.unseenDocumentCount = r.2 }
         }
     }
 

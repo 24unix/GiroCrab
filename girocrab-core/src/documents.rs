@@ -61,6 +61,8 @@ pub struct DocumentInfo {
     /// "METRO · −56,13 EUR · 2026-11-07" (empty if not linked)
     pub booking_label: String,
     pub account_name: String,
+    /// Read: opened in the preview, marked by hand, or old on arrival (see [`UNSEEN_DAYS`]).
+    pub seen: bool,
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record)]
@@ -115,6 +117,31 @@ pub(crate) fn title_from_file(file_name: &str) -> String {
     stem.replace(['_', '-'], " ").trim().to_string()
 }
 
+/// A document that arrives dated longer ago than this is "read" from the start: a history fetch
+/// or an archive import must not flood the unread count. Newer ones are unread until opened.
+pub(crate) const UNSEEN_DAYS: i64 = 45;
+
+/// `seen_at` of a document arriving with this date: now if it is old, else NULL (unread). An
+/// unreadable date counts as new.
+fn seen_on_arrival(date: &str) -> Option<i64> {
+    let d = chrono::NaiveDate::parse_from_str(date.get(..10)?, "%Y-%m-%d").ok()?;
+    let old = (chrono::Local::now().date_naive() - d).num_days() > UNSEEN_DAYS;
+    old.then(|| chrono::Utc::now().timestamp())
+}
+
+/// Marks documents read (`seen` true) or unread; returns how many changed.
+pub(crate) fn mark_seen(conn: &Connection, ids: &[i64], seen: bool) -> CoreResult<u32> {
+    let mut changed = 0;
+    for id in ids {
+        changed += conn.execute(
+            "UPDATE booking_documents SET seen_at = CASE WHEN ?2 THEN strftime('%s','now') ELSE NULL END
+              WHERE id = ?1 AND (seen_at IS NOT NULL) != ?2",
+            params![id, seen],
+        )? as u32;
+    }
+    Ok(changed)
+}
+
 pub(crate) fn insert_doc(
     conn: &Connection,
     booking_id: Option<i64>,
@@ -133,9 +160,9 @@ pub(crate) fn insert_doc(
         });
     }
     let n = conn.execute(
-        "INSERT OR IGNORE INTO booking_documents(booking_id, account_id, title, doc_type, mime_type, file_name, pdf_bytes, source_url, doc_date)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![booking_id, account_id, title, doc_type, mime, file_name, bytes, source_url, date],
+        "INSERT OR IGNORE INTO booking_documents(booking_id, account_id, title, doc_type, mime_type, file_name, pdf_bytes, source_url, doc_date, seen_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![booking_id, account_id, title, doc_type, mime, file_name, bytes, source_url, date, seen_on_arrival(date)],
     )?;
     Ok(if n > 0 {
         Some(conn.last_insert_rowid())
@@ -414,6 +441,7 @@ fn row_to_info(r: &rusqlite::Row) -> rusqlite::Result<DocumentInfo> {
         created_at: r.get(10)?,
         account_name: r.get::<_, Option<String>>(11)?.unwrap_or_default(),
         booking_label,
+        seen: r.get(15)?,
     })
 }
 
@@ -421,7 +449,7 @@ fn row_to_info(r: &rusqlite::Row) -> rusqlite::Result<DocumentInfo> {
 /// `ON DELETE SET NULL` did): `t` and `da` only join live rows.
 const SELECT_INFO: &str = "SELECT d.id, t.id, COALESCE(da.id, t.account_id), d.title, d.doc_type, d.mime_type, d.file_name,
         length(d.pdf_bytes), d.source_url, COALESCE(NULLIF(d.doc_date,''), t.booking_date, ''), d.created_at, a.name,
-        t.counterparty, t.amount_cents, t.booking_date
+        t.counterparty, t.amount_cents, t.booking_date, d.seen_at IS NOT NULL
    FROM booking_documents d
    LEFT JOIN transactions t ON t.id = d.booking_id AND t.deleted_ms IS NULL
    LEFT JOIN accounts da ON da.id = d.account_id AND da.deleted_ms IS NULL
@@ -545,6 +573,35 @@ impl Vault {
         Ok(rows)
     }
 
+    /// Marks documents read (`seen` true) or unread. Returns how many changed.
+    pub fn mark_documents_seen(&self, doc_ids: Vec<i64>, seen: bool) -> Result<u32, CoreError> {
+        let db = self.db()?;
+        mark_seen(&db, &doc_ids, seen)
+    }
+
+    /// Marks every unread document read; with `account_id` only those of that account (its own
+    /// and those of its bookings). Returns how many changed.
+    pub fn mark_all_documents_seen(&self, account_id: Option<i64>) -> Result<u32, CoreError> {
+        let db = self.db()?;
+        Ok(db.execute(
+            "UPDATE booking_documents SET seen_at = strftime('%s','now')
+              WHERE seen_at IS NULL
+                AND (?1 IS NULL OR account_id = ?1
+                     OR booking_id IN (SELECT id FROM transactions WHERE account_id = ?1))",
+            [account_id],
+        )? as u32)
+    }
+
+    /// Number of unread documents (for the badge in the sidebar).
+    pub fn unseen_document_count(&self) -> Result<u32, CoreError> {
+        let db = self.db()?;
+        Ok(db.query_row(
+            "SELECT count(*) FROM booking_documents WHERE seen_at IS NULL",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u32)
+    }
+
     pub fn get_document_bytes(&self, doc_id: i64) -> Result<Vec<u8>, CoreError> {
         let db = self.db()?;
         db.query_row(
@@ -577,7 +634,7 @@ impl Vault {
                 what: trf("Buchung {0}", &[&booking_id]),
             })?;
         let mime = sniff_mime(&bytes, &file_name);
-        insert_doc(
+        let id = insert_doc(
             &db,
             Some(booking_id),
             Some(account_id),
@@ -591,7 +648,10 @@ impl Vault {
         )?
         .ok_or_else(|| CoreError::InvalidInput {
             message: tr("Beleg bereits vorhanden").into(),
-        })
+        })?;
+        // added by hand: the user knows it
+        mark_seen(&db, &[id], true)?;
+        Ok(id)
     }
 
     /// Stores a document for an account without a booking (PostBox).
@@ -606,7 +666,7 @@ impl Vault {
         let db = self.db()?;
         let mime = sniff_mime(&bytes, &file_name);
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        insert_doc(
+        let id = insert_doc(
             &db,
             None,
             Some(account_id),
@@ -620,7 +680,9 @@ impl Vault {
         )?
         .ok_or_else(|| CoreError::InvalidInput {
             message: tr("Dokument bereits vorhanden").into(),
-        })
+        })?;
+        mark_seen(&db, &[id], true)?;
+        Ok(id)
     }
 
     /// Re-links (or unlinks) a document.
@@ -713,7 +775,7 @@ impl Vault {
         let db = self.db()?;
         match found {
             Some((id, acc, date, lbl)) => {
-                insert_doc(
+                let added = insert_doc(
                     &db,
                     Some(id),
                     Some(acc),
@@ -725,11 +787,15 @@ impl Vault {
                     "",
                     &date,
                 )?;
+                // dropped by hand: the user knows it
+                if let Some(added) = added {
+                    mark_seen(&db, &[added], true)?;
+                }
                 Ok(Some(lbl))
             }
             None => {
                 let date = dates_in(&text).into_iter().next().unwrap_or_default();
-                insert_doc(
+                let added = insert_doc(
                     &db,
                     None,
                     None,
@@ -741,6 +807,9 @@ impl Vault {
                     "",
                     &date,
                 )?;
+                if let Some(added) = added {
+                    mark_seen(&db, &[added], true)?;
+                }
                 Ok(None)
             }
         }
@@ -778,8 +847,40 @@ impl Vault {
     /// Exports every document into `dest_dir/<Jahr>/<Datum>_<Händler>_<Titel>.pdf`
     /// (für die Steuererklärung). Returns the number of files written.
     pub fn export_all_documents(&self, dest_dir: String) -> Result<u32, CoreError> {
-        let docs = self.list_all_documents(DocumentFilter::default())?;
-        let base = std::path::Path::new(&dest_dir).join(tr("GiroCrab-Belege"));
+        self.export_documents(dest_dir, Vec::new(), tr("GiroCrab-Belege").to_string())
+    }
+
+    /// Like [`export_all_documents`](Self::export_all_documents), but only the documents with these
+    /// ids (the list the user filtered); an empty list exports everything.
+    pub fn export_documents(
+        &self,
+        dest_dir: String,
+        doc_ids: Vec<i64>,
+        subfolder: String,
+    ) -> Result<u32, CoreError> {
+        let wanted: HashSet<i64> = doc_ids.into_iter().collect();
+        let docs: Vec<DocumentInfo> = self
+            .list_all_documents(DocumentFilter::default())?
+            .into_iter()
+            .filter(|d| wanted.is_empty() || wanted.contains(&d.id))
+            .collect();
+        // The year folders go straight into the chosen folder, or into `subfolder` (e.g. the account).
+        let subfolder: String = subfolder
+            .chars()
+            .map(|c| {
+                if "/\\:".contains(c) || c.is_control() {
+                    '-'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let subfolder = subfolder.trim().trim_start_matches('.').to_string();
+        let base = if subfolder.is_empty() {
+            std::path::PathBuf::from(&dest_dir)
+        } else {
+            std::path::Path::new(&dest_dir).join(subfolder)
+        };
         let mut used = HashSet::new();
         let mut n = 0u32;
         for d in docs {
@@ -1182,6 +1283,147 @@ mod tests {
     }
 
     #[test]
+    fn documents_are_unread_until_opened_and_old_ones_arrive_read() {
+        let dir = crate::test_support::TempDir::new("girocrab-docs-seen");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![8u8; 32],
+        )
+        .unwrap();
+        let (acc, recent, old, undated) = {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            let g = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES (?1, 'x', 'Depot')",
+                [g],
+            )
+            .unwrap();
+            let acc = db.last_insert_rowid();
+            let day = |ago: i64| {
+                (chrono::Local::now().date_naive() - chrono::Duration::days(ago))
+                    .format("%Y-%m-%d")
+                    .to_string()
+            };
+            let add = |title: &str, url: &str, date: &str| {
+                insert_doc(
+                    &db,
+                    None,
+                    Some(acc),
+                    title,
+                    "postbox",
+                    "application/pdf",
+                    "x.pdf",
+                    b"%PDF-1.4 x",
+                    url,
+                    date,
+                )
+                .unwrap()
+                .unwrap()
+            };
+            (
+                acc,
+                add("Neu", "u1", &day(3)),
+                add("Alt", "u2", &day(200)),
+                add("Ohne Datum", "u3", ""),
+            )
+        };
+        let seen = |id: i64| {
+            v.list_all_documents(DocumentFilter::default())
+                .unwrap()
+                .into_iter()
+                .find(|d| d.id == id)
+                .unwrap()
+                .seen
+        };
+        // a recent document is unread, an old one arrives read, an unreadable date counts as new
+        assert!(!seen(recent) && seen(old) && !seen(undated));
+        assert_eq!(v.unseen_document_count().unwrap(), 2);
+        // read and unread again
+        assert_eq!(v.mark_documents_seen(vec![recent], true).unwrap(), 1);
+        assert_eq!(v.mark_documents_seen(vec![recent], true).unwrap(), 0);
+        assert!(seen(recent));
+        assert_eq!(v.mark_documents_seen(vec![recent, old], false).unwrap(), 2);
+        assert_eq!(v.unseen_document_count().unwrap(), 3);
+        // all read, here for another account nothing changes
+        assert_eq!(v.mark_all_documents_seen(Some(acc + 99)).unwrap(), 0);
+        assert_eq!(v.mark_all_documents_seen(Some(acc)).unwrap(), 3);
+        assert_eq!(v.unseen_document_count().unwrap(), 0);
+        // added by hand: read at once
+        let by_hand = v
+            .attach_document_to_account(
+                acc,
+                "Von Hand".into(),
+                "a.pdf".into(),
+                b"%PDF-1.4 y".to_vec(),
+                "beleg".into(),
+            )
+            .unwrap();
+        assert!(seen(by_hand));
+        assert_eq!(v.unseen_document_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn the_unread_count_matches_what_the_list_shows_for_odd_rows() {
+        let dir = crate::test_support::TempDir::new("girocrab-docs-odd");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![9u8; 32],
+        )
+        .unwrap();
+        {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            let g = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES (?1, 'x', 'Konto')",
+                [g],
+            )
+            .unwrap();
+            let acc = db.last_insert_rowid();
+            db.execute("INSERT INTO accounts(group_id, external_ref, name, deleted_ms) VALUES (?1, 'y', 'Weg', 1)", [g]).unwrap();
+            let gone = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, deleted_ms) VALUES (?1, 't', '2026-11-01', 100, 1)",
+                [acc],
+            )
+            .unwrap();
+            let deleted_booking = db.last_insert_rowid();
+            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let add = |booking: Option<i64>, account: Option<i64>, url: &str| {
+                insert_doc(
+                    &db,
+                    booking,
+                    account,
+                    "T",
+                    "postbox",
+                    "application/pdf",
+                    "x.pdf",
+                    b"%PDF-1.4 x",
+                    url,
+                    &today,
+                )
+                .unwrap()
+                .unwrap()
+            };
+            add(Some(deleted_booking), Some(acc), "a");
+            add(None, Some(gone), "b");
+            add(None, None, "c");
+            add(None, Some(acc), "d");
+        }
+        let listed = v
+            .list_all_documents(DocumentFilter::default())
+            .unwrap()
+            .into_iter()
+            .filter(|d| !d.seen)
+            .count();
+        assert_eq!(listed as u32, v.unseen_document_count().unwrap());
+        assert_eq!(listed, 4);
+    }
+
+    #[test]
     fn drop_matches_metro_receipt_and_stores_encrypted() {
         let p_dir = crate::test_support::TempDir::new("girocrab-docs");
         let p = p_dir.join("v.db");
@@ -1219,6 +1461,36 @@ mod tests {
                 .unwrap()
                 >= 2
         );
+        // only the listed documents (the list the user filtered)
+        let one = docs.iter().find(|d| d.booking_id.is_some()).unwrap().id;
+        let part = crate::test_support::TempDir::new("export-part");
+        assert_eq!(
+            v.export_documents(
+                part.path().to_string_lossy().to_string(),
+                vec![one],
+                String::new(),
+            )
+            .unwrap(),
+            1
+        );
+        // without a subfolder the year folders lie directly in the chosen folder
+        let written: usize = std::fs::read_dir(part.path())
+            .unwrap()
+            .flatten()
+            .inspect(|y| assert!(y.path().is_dir() && y.file_name() != "_"))
+            .flat_map(|y| std::fs::read_dir(y.path()).unwrap().flatten())
+            .inspect(|f| assert!(f.path().is_file()))
+            .count();
+        assert_eq!(written, 1);
+        // with one (the account) they lie inside it
+        let named = crate::test_support::TempDir::new("export-named");
+        v.export_documents(
+            named.path().to_string_lossy().to_string(),
+            vec![one],
+            "TR Verrechnungskonto".into(),
+        )
+        .unwrap();
+        assert!(named.path().join("TR Verrechnungskonto").is_dir());
         let _ = std::fs::remove_file(p);
     }
 }

@@ -41,6 +41,8 @@
 //!   (a rule that only adds tags); the table is rebuilt for the dropped NOT NULL.
 //! - 29: `depot_values`: value of a securities depot per day, one point per fetch.
 //! - 30: `tx_date_id` covers `deleted_ms`, `account_id` and `category_id` ([`TX_DATE_ID_COVERING`]).
+//! - 31: `booking_documents.seen_at`: read status of documents (NULL = unread); documents that exist
+//!   count as read; the list index carries the column, a partial index finds the unread ones.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -87,7 +89,29 @@ const STEPS: &[Step] = &[
     Step::Hook(rule_tags),                                     // 28 (#580)
     Step::Sql(crate::depot_values::SCHEMA),                    // 29: depot value history
     Step::Sql(TX_DATE_ID_COVERING),                            // 30
+    Step::Hook(document_seen),                                 // 31: read status of documents
 ];
+
+/// Step 31: `booking_documents.seen_at` (NULL = unread). The documents a vault has already count
+/// as read: an update must not turn a whole archive into "new". The index the document list is
+/// read from carries the column (it must not read through the PDFs), and a partial index finds
+/// the unread ones for the badge. Idempotent.
+fn document_seen(conn: &Connection) -> CoreResult<()> {
+    if !has_column(conn, "main", "booking_documents", "seen_at")? {
+        conn.execute_batch(
+            "ALTER TABLE booking_documents ADD COLUMN seen_at INTEGER;
+             UPDATE booking_documents SET seen_at = created_at;",
+        )?;
+    }
+    conn.execute_batch(
+        "DROP INDEX IF EXISTS booking_documents_info;
+         CREATE INDEX booking_documents_info ON booking_documents(
+             doc_date DESC, id DESC, booking_id, account_id, title, doc_type, mime_type, file_name,
+             length(pdf_bytes), source_url, created_at, seen_at);
+         CREATE INDEX IF NOT EXISTS booking_documents_unseen ON booking_documents(id) WHERE seen_at IS NULL;",
+    )?;
+    Ok(())
+}
 
 /// Step 28 (#580): rules may set tags (`tag_uuids`, a JSON array of tag uuids, so a
 /// rename or a merge on any device keeps them) and may leave the category out. SQLite
@@ -937,7 +961,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 30);
+        assert_eq!(SCHEMA_VERSION, 31);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

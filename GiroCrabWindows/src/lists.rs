@@ -486,6 +486,7 @@ mod tests {
             source_url: String::new(),
             doc_date: date.into(),
             created_at: 0,
+            seen: true,
             booking_label: booking.into(),
             account_name: "Giro".into(),
         }

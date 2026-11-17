@@ -31,7 +31,9 @@ and `migrate` runs the missing ones in a single transaction.
 | 27 | built-in category and account-group identities (#678) |
 | 28 | rules that set tags (#580): `rules.tag_uuids`, `rules.category_id` nullable |
 | 29 | `depot_values`: value history of securities depots |
-| 30+ | future changes; the tables of securities depots are described in `docs/DEPOT_DATENMODELL.md` |
+| 30 | `tx_date_id` also covers `deleted_ms`, `account_id` and `category_id` (counts and period sums from the index) |
+| 31 | `booking_documents.seen_at`: read status of documents; the document list index carries the column, a partial index finds the unread ones |
+| 32+ | future changes; the tables of securities depots are described in `docs/DEPOT_DATENMODELL.md` |
 
 **Changing the schema**
 

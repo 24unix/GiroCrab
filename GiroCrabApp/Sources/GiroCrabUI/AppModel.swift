@@ -18,7 +18,8 @@ public final class AppModel {
     }
 
     let options: LaunchOptions
-    private(set) var vault: Vault? { didSet { vaultRevision &+= 1 } }
+    /// A swapped-in vault (unlock, demo ↔ own) shows its own sidebar badges: the counts are read again.
+    private(set) var vault: Vault? { didSet { vaultRevision &+= 1; if vault != nil { refreshSidebarCounts() } } }
     /// Counts vault swaps (unlock, lock, demo ↔ own): views that cache vault data reload when it changes.
     private(set) var vaultRevision = 0
     /// Securities depot view: inventory or activities (toolbar on macOS, header on iOS).
@@ -395,6 +396,10 @@ public final class AppModel {
     /// Sidebar badges: scheduled payments / active mandates over all accounts (SQL counts).
     var plannedCount = 0
     var mandateCount = 0
+    /// Unread documents (badge of „Belege & PostBox“), a partial-index COUNT.
+    var unseenDocumentCount = 0
+    /// Counts the sidebar badge reads: an older read that finishes late must not overwrite a newer one.
+    @ObservationIgnored var sidebarCountsGeneration = 0
     var selectedPlannedID: String?
     /// „Lastschriften“ (#143): mandates of the creditor account shown.
     var mandates: [Mandate] = []
@@ -676,7 +681,7 @@ public final class AppModel {
     /// Result of the latest mirror run, for the settings.
     var documentMirrorStatus: String?
     var mirrorRunning = false
-    var documentsVersion = 0
+    var documentsVersion = 0 { didSet { refreshSidebarCounts() } }
     /// Account whose statements (HKEKA) are being fetched by the running session.
     var statementsAccountID: Int64?
     var statementsCountBefore = 0

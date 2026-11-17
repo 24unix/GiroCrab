@@ -1,6 +1,7 @@
 {
   " und ": " and ",
   "%1 Bit · Schlüssel %2, Version %3": "%1 bits · key %2, version %3",
+  "%1 Belege nach „%2/GiroCrab-Belege“ exportiert": "%1 receipts exported to “%2/GiroCrab-Belege”",
   "%1 Tags löschen …": "Delete %1 Tags …",
   "%1 Tags löschen?": "Delete %1 tags?",
   "%1 Umsätze übernommen – weitere werden geladen …": "%1 transactions imported – loading more…",

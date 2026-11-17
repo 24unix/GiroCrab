@@ -134,6 +134,7 @@ struct DocumentsCard: View {
                     Menu {
                         #if os(macOS)
                         Button("Im Finder anzeigen") { model.showInFinder(d) }
+                        Button("Pfad kopieren") { model.copyDocumentPath(d) }
                         #endif
                         Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                             .disabled(d.bookingId == nil)
@@ -212,11 +213,19 @@ struct DocumentsScopePicker: View {
     }
 }
 
+/// „Belege & PostBox“: documents, not bookings. Layout, filters, read status, export and the rules for
+/// changing this view (no booking inspector here, nothing assigned in the view): `docs/BELEGE_UND_POSTBOX_UI.md`.
 struct DocumentsView: View {
     @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @State private var search = ""
     @State private var unlinkedOnly = false
+    @State private var unseenOnly = false
+    /// Document type (`DocumentFilters.types`) and calendar year of the document date; nil = all.
+    @State private var typeFilter: String?
+    @State private var yearFilter: Int?
+    /// The documents the export was started for (nil: all); the iOS folder dialog answers later.
+    @State private var exportIDs: [Int64]?
     @State private var selected: Int64?
     @State private var importing = false
     @State private var exporting = false
@@ -232,7 +241,8 @@ struct DocumentsView: View {
 
     var body: some View {
         @Bindable var model = model
-        let docs = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly, accountId: model.documentsAccountFilter, scope: model.documentsScope)
+        let found = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly, accountId: model.documentsAccountFilter, scope: model.documentsScope)
+        let docs = DocumentFilters.apply(found, type: typeFilter, year: yearFilter, unseenOnly: unseenOnly, keeping: selected ?? previewDoc?.id)
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -248,6 +258,7 @@ struct DocumentsView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             accountPicker
                             unlinkedToggle
+                            unseenRow(docs)
                         }
                     } else {
                         ViewThatFits(in: .horizontal) {
@@ -261,17 +272,21 @@ struct DocumentsView: View {
                                 unlinkedToggle
                             }
                         }
+                        unseenRow(docs)
                     }
-                    Text("\(docs.count) Dokumente").appFont(.caption).foregroundStyle(Theme.secondary)
+                    if found.count > 1 { typeAndYearPickers(found) }
+                    Text(docs.count == found.count ? String(localized: "\(docs.count) Dokumente")
+                         : String(localized: "\(docs.count) von \(found.count) Dokumenten"))
+                        .appFont(.caption).foregroundStyle(Theme.secondary)
                     ViewThatFits(in: .horizontal) {
                         HStack {
                             importButton
                             Spacer(minLength: 12)
-                            exportButton
+                            exportButton(docs)
                         }
                         VStack(alignment: .leading, spacing: 8) {
                             importButton
-                            exportButton
+                            exportButton(docs)
                         }
                     }
                 }
@@ -279,8 +294,14 @@ struct DocumentsView: View {
                     ForEach(docs) { d in
                         HStack(spacing: 10) {
                             Image(systemName: docSymbol(d)).foregroundStyle(Theme.accent).frame(width: 22)
+                                .overlay(alignment: .topLeading) {
+                                    if !d.seen {
+                                        Circle().fill(Color.blue).frame(width: 8, height: 8).offset(x: -4, y: -3)
+                                            .accessibilityLabel(Text("Ungelesen"))
+                                    }
+                                }
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(d.title).fontWeight(.medium).lineLimit(2)
+                                Text(d.title).fontWeight(d.seen ? .medium : .bold).lineLimit(2)
                                     .frame(maxWidth: .infinity, alignment: .leading).sensitive()
                                 Text("\(d.originTitle) · \(d.accountName.isEmpty ? String(localized: "Ohne Konto") : d.accountName)")
                                     .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
@@ -296,8 +317,12 @@ struct DocumentsView: View {
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button("Vorschau") { model.quickLook(d) }
+                            Button(d.seen ? "Als ungelesen markieren" : "Als gelesen markieren") {
+                                model.markDocumentsSeen([d.id], seen: !d.seen)
+                            }
                             #if os(macOS)
                             Button("Im Finder anzeigen") { model.showInFinder(d) }
+                            Button("Pfad kopieren") { model.copyDocumentPath(d) }
                             #endif
                             Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                             .disabled(d.bookingId == nil)
@@ -325,12 +350,16 @@ struct DocumentsView: View {
                 // into the preview sheet instead and clear it so the same
                 // document can be opened again.
                 .onChange(of: selected) { _, id in
-                    guard isCompact, let id, let d = docs.first(where: { $0.id == id }) else { return }
+                    guard let id, let d = docs.first(where: { $0.id == id }) else { return }
+                    // opened = read
+                    if !d.seen { model.markDocumentsSeen([id], seen: true) }
+                    guard isCompact else { return }
                     previewDoc = d
                     selected = nil
                 }
                 .overlay {
-                    if docs.isEmpty && model.documentsScope == .all && model.documentsAccountFilter == nil && !unlinkedOnly && search.isEmpty {
+                    if docs.isEmpty && model.documentsScope == .all && model.documentsAccountFilter == nil && !unlinkedOnly && !unseenOnly && search.isEmpty
+                        && typeFilter == nil && yearFilter == nil {
                         ContentUnavailableView("Keine Belege", systemImage: "doc.on.doc", description: Text("Belege kommen beim Abruf (Trade Republic, comdirect-PostBox, FinTS-Kontoauszug) oder per Drag & Drop."))
                     } else if docs.isEmpty {
                         ContentUnavailableView {
@@ -342,6 +371,9 @@ struct DocumentsView: View {
                                 model.documentsScope = .all
                                 model.documentsAccountFilter = nil
                                 unlinkedOnly = false
+                                unseenOnly = false
+                                typeFilter = nil
+                                yearFilter = nil
                                 search = ""
                             }
                         }
@@ -387,10 +419,14 @@ struct DocumentsView: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            model.dropAnywhere(urls)
+            // a dropped receipt is stored as read: no filter may hide it
+            unseenOnly = false
+            typeFilter = nil
+            yearFilter = nil
+            return model.dropAnywhere(urls)
         } isTargeted: { targeted = $0 }
         .fileImporter(isPresented: $exporting, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result { model.exportAllDocuments(to: url) }
+            if case .success(let url) = result { model.exportAllDocuments(to: url, ids: exportIDs, subfolder: exportSubfolder) }
         }
         .confirmationDialog("Beleg löschen?", isPresented: Binding(get: { docToDelete != nil }, set: { if !$0 { docToDelete = nil } }), presenting: docToDelete) { d in
             Button("Löschen", role: .destructive) { model.deleteDocument(d) }
@@ -425,6 +461,10 @@ struct DocumentsView: View {
                 model.documentsAccountFilter = nil
                 search = ""
                 unlinkedOnly = false
+                // a new receipt is stored as read, with today's type and year: no filter may hide it
+                unseenOnly = false
+                typeFilter = nil
+                yearFilter = nil
                 model.dropAnywhere(urls)
             case .failure(let error):
                 guard (error as NSError).code != NSUserCancelledError else { return }
@@ -433,12 +473,27 @@ struct DocumentsView: View {
         }
     }
 
-    private var exportButton: some View {
-        Button { chooseExportFolder(model: model, fallback: $exporting) } label: {
-            Label("Alle exportieren …", systemImage: "square.and.arrow.up")
+    /// Without a filter: the whole collection. With one (account, type, year, search, "ohne Umsatz"):
+    /// exactly the documents on screen, named by their number.
+    /// The account's name while the list is narrowed to one account: the export puts its files there.
+    private var exportSubfolder: String? {
+        model.documentsAccountFilter.flatMap { model.accountsByID[$0]?.name }
+    }
+
+    private func exportButton(_ docs: [DocumentInfo]) -> some View {
+        let filtered = model.documentsAccountFilter != nil || model.documentsScope != .all || !search.isEmpty
+            || unlinkedOnly || unseenOnly || typeFilter != nil || yearFilter != nil
+        return Button {
+            exportIDs = filtered ? docs.map(\.id) : nil
+            chooseExportFolder(model: model, fallback: $exporting, ids: exportIDs, subfolder: exportSubfolder)
+        } label: {
+            Label(filtered ? String(localized: "\(docs.count) exportieren …") : String(localized: "Alle exportieren …"),
+                  systemImage: "square.and.arrow.up")
                 .lineLimit(isCompact ? nil : 1).fixedSize(horizontal: !isCompact, vertical: true)
         }
-        .help("Die gesamte Dokumentensammlung exportieren, unabhängig von den Filtern")
+        .disabled(filtered && docs.isEmpty)
+        .help(filtered ? String(localized: "Nur die Dokumente exportieren, die gerade in der Liste stehen")
+                       : String(localized: "Die gesamte Dokumentensammlung exportieren"))
     }
 
     private var accountPicker: some View {
@@ -461,6 +516,44 @@ struct DocumentsView: View {
         .help("Dokumente eines Kontos anzeigen")
     }
 
+    /// Type and year of the documents found so far (only what exists is offered), for a long list.
+    @ViewBuilder
+    private func typeAndYearPickers(_ found: [DocumentInfo]) -> some View {
+        let types = DocumentFilters.types(of: found)
+        let years = DocumentFilters.years(of: found)
+        HStack(spacing: 12) {
+            if types.count > 1 || typeFilter != nil {
+                Picker("Typ", selection: $typeFilter) {
+                    Text("Alle Typen").tag(String?.none)
+                    ForEach(types, id: \.self) { Text(DocumentFilters.typeTitle($0)).tag(String?.some($0)) }
+                }
+                .pickerStyle(.menu).fixedSize().help("Nur Dokumente dieses Typs")
+            }
+            if years.count > 1 || yearFilter != nil {
+                Picker("Jahr", selection: $yearFilter) {
+                    Text("Alle Jahre").tag(Int?.none)
+                    ForEach(years, id: \.self) { Text(String($0)).tag(Int?.some($0)) }
+                }
+                .pickerStyle(.menu).fixedSize().help("Nur Dokumente dieses Kalenderjahres")
+            }
+        }
+    }
+
+    /// „Nur ungelesene“ and, next to it, mark what the list shows as read.
+    private func unseenRow(_ docs: [DocumentInfo]) -> some View {
+        let unread = docs.filter { !$0.seen }.map(\.id)
+        return HStack {
+            Toggle("Nur ungelesene", isOn: $unseenOnly)
+                .toggleStyle(.switch).controlSize(.small)
+                .lineLimit(isCompact ? nil : 1).fixedSize(horizontal: !isCompact, vertical: true)
+            Spacer(minLength: 8)
+            Button("Alle als gelesen markieren") { model.markDocumentsSeen(unread, seen: true) }
+                .buttonStyle(.borderless).controlSize(.small)
+                .disabled(unread.isEmpty)
+                .help("Markiert die Dokumente, die gerade in der Liste stehen, als gelesen")
+        }
+    }
+
     private var unlinkedToggle: some View {
         Toggle("Nur ohne zugeordneten Umsatz", isOn: $unlinkedOnly)
             .toggleStyle(.switch).controlSize(.small)
@@ -474,7 +567,7 @@ extension View {
     /// panel whose button says „Exportieren“ (a file importer would say
     /// „Öffnen“ for an export) and that can create a new folder.
     @MainActor
-    func chooseExportFolder(model: AppModel, fallback: Binding<Bool>) {
+    func chooseExportFolder(model: AppModel, fallback: Binding<Bool>, ids: [Int64]? = nil, subfolder: String? = nil) {
         #if os(macOS)
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -483,9 +576,45 @@ extension View {
         panel.allowsMultipleSelection = false
         panel.message = String(localized: "Ordner für die exportierten Belege wählen")
         panel.prompt = String(localized: "Exportieren")
-        if panel.runModal() == .OK, let url = panel.url { model.exportAllDocuments(to: url) }
+        if panel.runModal() == .OK, let url = panel.url { model.exportAllDocuments(to: url, ids: ids, subfolder: subfolder) }
         #else
         fallback.wrappedValue = true
         #endif
+    }
+}
+
+/// Type and year filter of the document list (client side: the list is already in memory).
+enum DocumentFilters {
+    /// Known types in reading order; others follow alphabetically.
+    private static let order = ["abrechnung", "steuer", "kontoauszug", "postbox", "beleg"]
+
+    static func types(of docs: [DocumentInfo]) -> [String] {
+        let present = Set(docs.map(\.docType).filter { !$0.isEmpty })
+        return order.filter(present.contains) + present.subtracting(order).sorted()
+    }
+
+    static func years(of docs: [DocumentInfo]) -> [Int] {
+        Array(Set(docs.compactMap { Int($0.docDate.prefix(4)) })).sorted(by: >)
+    }
+
+    static func typeTitle(_ type: String) -> String {
+        switch type {
+        case "abrechnung": String(localized: "Abrechnung")
+        case "steuer": String(localized: "Steuer")
+        case "kontoauszug": String(localized: "Kontoauszug")
+        case "postbox": String(localized: "PostBox")
+        case "beleg": String(localized: "Beleg")
+        default: type
+        }
+    }
+
+    /// `unseenOnly`: only unread ones, plus the one in `keeping` (the open document must not vanish
+    /// from the list the moment it is read).
+    static func apply(_ docs: [DocumentInfo], type: String?, year: Int?, unseenOnly: Bool = false,
+                      keeping: Int64? = nil) -> [DocumentInfo] {
+        docs.filter { d in
+            (type == nil || d.docType == type) && (year == nil || d.docDate.hasPrefix("\(year!)-"))
+                && (!unseenOnly || !d.seen || d.id == keeping)
+        }
     }
 }
