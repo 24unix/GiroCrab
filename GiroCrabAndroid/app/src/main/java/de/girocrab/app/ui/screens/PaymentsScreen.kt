@@ -273,6 +273,7 @@ private val dateFmt = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).with
 // Screen
 // ---------------------------------------------------------------------------
 
+private val MODES = listOf("Überweisung", "Fixkosten & Abos", "Daueraufträge")
 private val TABS = listOf("Geplante Zahlungen", "Daueraufträge", "Lastschriften")
 
 /**
@@ -289,7 +290,8 @@ fun PaymentsScreen(
     modifier: Modifier = Modifier,
     today: LocalDate = LocalDate.now(),
 ) {
-    var tab by rememberSaveable { mutableStateOf(0) }
+    var tab by rememberSaveable { mutableStateOf(1) }
+    var mode by rememberSaveable { mutableStateOf(0) }
     var showTransfer by rememberSaveable { mutableStateOf(false) }
     var prefill by remember { mutableStateOf<EpcPayload?>(null) }
     val masked = state.privacyMode
@@ -306,13 +308,35 @@ fun PaymentsScreen(
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             if (state.demoActive) DemoHintBanner()
-            TabRow(selectedTabIndex = tab) {
-                TABS.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, maxLines = 1) }) }
+            androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                MODES.forEachIndexed { i, t ->
+                    androidx.compose.material3.SegmentedButton(
+                        selected = mode == i,
+                        onClick = { mode = i },
+                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, MODES.size),
+                        icon = {},
+                    ) { Text(t, maxLines = 1, style = MaterialTheme.typography.labelMedium) }
+                }
             }
-            when (tab) {
-                0 -> PlannedTab(state, today, masked)
-                1 -> StandingOrdersTab(state, masked)
-                else -> DirectDebitsTab(state, today, masked)
+            when (mode) {
+                0 -> TransferHome(
+                    onNew = { prefill = null; showTransfer = true },
+                    onQuickFill = {
+                        if (onScanQr != null) onScanQr { raw -> parseEpcQr(raw)?.let { prefill = it; showTransfer = true } }
+                        else onPasteClipboard()?.let { raw -> parseEpcQr(raw)?.let { prefill = it; showTransfer = true } }
+                    },
+                )
+                1 -> FixedCostsTab(state, today, masked)
+                else -> {
+                    TabRow(selectedTabIndex = tab) {
+                        TABS.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, maxLines = 1) }) }
+                    }
+                    when (tab) {
+                        0 -> PlannedTab(state, today, masked)
+                        1 -> StandingOrdersTab(state, masked)
+                        else -> DirectDebitsTab(state, today, masked)
+                    }
+                }
             }
         }
     }
@@ -645,7 +669,7 @@ private fun TransferSheet(
                 OutlinedButton(onClick = { onScanQr?.invoke() ?: onPaste() }) {
                     Icon(Icons.Default.QrCodeScanner, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (onScanQr != null) "EPC-QR scannen" else "EPC-QR einfügen")
+                    Text("GiroCode / Rechnung einlesen")
                 }
             }
             Text("Von Konto", style = MaterialTheme.typography.labelMedium)
@@ -671,8 +695,8 @@ private fun TransferSheet(
                 supportingText = {
                     when {
                         iban.isBlank() -> {}
-                        ibanOk -> Text("IBAN gültig")
-                        else -> Text("Prüfziffer ungültig")
+                        ibanOk -> Text("✓ IBAN-Prüfsumme gültig (#571)")
+                        else -> Text("✗ IBAN-Prüfsumme ungültig – bitte Tippfehler prüfen")
                     }
                 },
             )
@@ -743,6 +767,64 @@ private fun VopBanner(vop: VopResult) {
             Icon(icon, null, Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(text, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun TransferHome(onNew: () -> Unit, onQuickFill: () -> Unit) {
+    Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("SEPA-Überweisung", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Die IBAN wird live per Prüfsumme (#571) kontrolliert; der Empfängername wird vor dem Senden mit bekannten Empfängern abgeglichen (Empfängerprüfung).",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(onClick = onQuickFill, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.QrCodeScanner, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("GiroCode / Rechnung einlesen")
+        }
+        Button(onClick = onNew, modifier = Modifier.fillMaxWidth()) { Text("Neue Überweisung") }
+    }
+}
+
+@Composable
+private fun FixedCostsTab(state: AppUiState, today: LocalDate, masked: Boolean) {
+    val contracts = remember(state.data, today) { detectRecurring(state.data.bookings, today).sortedBy { it.next } }
+    val monthly = contracts.sumOf { abs(it.amountCents) }
+    val endOfMonth = today.withDayOfMonth(today.lengthOfMonth())
+    val upcoming = contracts.filter { it.next <= endOfMonth }
+    val dayFmt = remember { DateTimeFormatter.ofPattern("dd.MM.") }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Fixkosten pro Monat", style = MaterialTheme.typography.labelMedium)
+                    Text(formatMoney(-monthly, masked = masked), style = MaterialTheme.typography.headlineSmall)
+                    Text("${contracts.size} erkannte Verträge & Abos", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item { Text("Noch bis Monatsende (Prognose, #550)", style = MaterialTheme.typography.titleSmall) }
+        if (upcoming.isEmpty()) item { Text("Keine weiteren Abbuchungen in diesem Monat.", style = MaterialTheme.typography.bodySmall) }
+        items(upcoming) { c ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${c.next.format(dayFmt)}  ${c.counterparty}", style = MaterialTheme.typography.bodyMedium)
+                Text(formatMoney(c.amountCents, masked = masked), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        item { Text("Erkannte Verträge", style = MaterialTheme.typography.titleSmall) }
+        if (contracts.isEmpty()) item { Text("Noch keine wiederkehrenden Zahlungen erkannt.", style = MaterialTheme.typography.bodySmall) }
+        items(contracts) { c ->
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column {
+                        Text(c.counterparty, style = MaterialTheme.typography.bodyLarge)
+                        Text("monatlich · nächste ${c.next.format(dateFmt)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(formatMoney(c.amountCents, masked = masked), style = MaterialTheme.typography.bodyLarge)
+                }
+            }
         }
     }
 }

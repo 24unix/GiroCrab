@@ -205,6 +205,20 @@ fun AnalyticsScreen(
                         SummaryCell("Netto", formatEur(inc - exp, hide, signed = true), NetColor)
                     }
                     CashflowChart(monthly, hide)
+                    run {
+                        val rate = if (inc > 0) ((inc - exp) * 100f / inc) else 0f
+                        androidx.compose.material3.Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = RoundedCornerShape(50),
+                        ) {
+                            Text(
+                                "Sparen & Investieren vs. Konsum (#614): Sparquote " +
+                                    (if (hide) "•••" else "%.0f %%".format(Locale.GERMANY, rate)),
+                                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
                     Row(horizontalArrangement = spacedBy(16.dp)) {
                         LegendDot(IncomeColor, "Einnahmen")
                         LegendDot(ExpenseColor, "Ausgaben")
@@ -246,6 +260,82 @@ fun AnalyticsScreen(
                         )
                     }
                 }
+            }
+        }
+        item {
+            var prorate by rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+            val budgets = remember { androidx.compose.runtime.mutableStateMapOf("Lebensmittel" to 45000L, "Restaurants" to 15000L, "Freizeit" to 20000L) }
+            var editing by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+            var newName by remember { androidx.compose.runtime.mutableStateOf("") }
+            var editText by remember { androidx.compose.runtime.mutableStateOf("") }
+            val curMonth = YearMonth.from(today)
+            val spent = remember(all) {
+                all.filter { it.amountCents < 0 && YearMonth.from(it.bookingDate) == curMonth }
+            }
+            val catNames = remember(state.data.categories) { state.data.categories.associate { it.id to it.name } }
+            val income = monthly.lastOrNull()?.incomeCents ?: 0L
+            val expense = monthly.lastOrNull()?.expenseCents ?: 0L
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = spacedBy(10.dp)) {
+                    Text("Monatsbudgets & Sparquote", style = MaterialTheme.typography.titleMedium)
+                    val rate = if (income > 0) (income - expense) * 100f / income else 0f
+                    Text(
+                        "Sparquote diesen Monat: " + (if (hide) "•••" else "%.0f %%".format(Locale.GERMANY, rate)),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    budgets.entries.sortedBy { it.key }.forEach { (name, limit) ->
+                        val used = spent.filter { (catNames[it.categoryId] ?: "").equals(name, ignoreCase = true) }.sumOf { -it.amountCents }
+                            .let { if (it == 0L && !prorate && spent.isEmpty()) 0L else it }
+                        val frac = if (limit > 0) used.toFloat() / limit else 0f
+                        val col = if (frac > 1f) ExpenseColor else if (frac > 0.85f) Color(0xFFFF9500) else IncomeColor
+                        Column(Modifier.clickable { editing = name; editText = (limit / 100).toString() }) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(name, style = MaterialTheme.typography.bodyMedium)
+                                Text("${formatEur(used, hide)} / ${formatEur(limit, hide)}", style = MaterialTheme.typography.bodySmall, color = col)
+                            }
+                            ShareBar(frac, col)
+                        }
+                    }
+                    androidx.compose.material3.TextButton(onClick = { editing = "Neues Budget"; editText = "100" }) {
+                        Text("Budget hinzufügen / ändern")
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Jahreszahlungen anteilig umlegen (1/12, #253)", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.material3.Switch(prorate, { prorate = it })
+                    }
+                }
+            }
+            editing?.let { key ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { editing = null },
+                    title = { Text(if (key == "Neues Budget") "Budget hinzufügen" else "Limit für $key (€)") },
+                    text = {
+                        Column {
+                            if (key == "Neues Budget") {
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = newName, onValueChange = { newName = it }, label = { Text("Kategorie") }, singleLine = true,
+                                )
+                            }
+                            androidx.compose.material3.OutlinedTextField(
+                                value = editText, onValueChange = { editText = it }, label = { Text("Limit pro Monat (€)") }, singleLine = true,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            val v = editText.replace(',', '.').toDoubleOrNull()
+                            val name = if (key == "Neues Budget") newName.trim() else key
+                            if (v != null && name.isNotEmpty()) budgets[name] = (v * 100).toLong()
+                            editing = null; newName = ""
+                        }) { Text("Speichern") }
+                    },
+                    dismissButton = { androidx.compose.material3.TextButton(onClick = { editing = null }) { Text("Abbrechen") } },
+                )
             }
         }
         item {
