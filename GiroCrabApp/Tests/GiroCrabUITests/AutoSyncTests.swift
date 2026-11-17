@@ -55,9 +55,10 @@ final class AutoSyncTests: XCTestCase {
     }
 
     func testTheIntervalSurvivesARelaunch() {
-        let suite = "AutoSyncTests.relaunch"
-        UserDefaults().removePersistentDomain(forName: suite)
-        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        // one name for both instances: the second one is "the next app start"
+        let suite = "AutoSyncTests.relaunch.\(UUID().uuidString)"
+        UserDefaults(suiteName: suite)!.removePersistentDomain(forName: suite)
+        defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
         UserDefaults(suiteName: suite)!.set(12, forKey: AutoSync.hoursKey)
         // a new UserDefaults instance = the next app start
         let stored = UserDefaults(suiteName: suite)!.object(forKey: AutoSync.hoursKey) as? Int

@@ -2,10 +2,10 @@ name: Android Build
 
 on:
   push:
-    branches: [ feat/android-parity ]
-    paths:
-      - 'GiroCrabAndroid/**'
-      - '.github/workflows/android.yml'
+    branches: [main, feat/android-parity, fix/android-workflow-green]
+    paths: ['GiroCrabAndroid/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['GiroCrabAndroid/**', '.github/workflows/android.yml']
   workflow_dispatch:
 
 concurrency:
@@ -37,8 +37,16 @@ jobs:
         working-directory: GiroCrabAndroid
         run: gradle assembleDebug --console=plain --stacktrace
 
+      - name: Check APK
+        working-directory: GiroCrabAndroid
+        run: |
+          ls -la app/build/outputs/apk/debug/
+          unzip -l app/build/outputs/apk/debug/*.apk | grep -c 'classes.*\.dex'
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GiroCrab-Android-debug-apk
+          name: girocrab-android-debug-apk
           path: GiroCrabAndroid/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

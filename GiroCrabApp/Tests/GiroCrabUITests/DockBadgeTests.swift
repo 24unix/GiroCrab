@@ -5,15 +5,17 @@ import XCTest
 /// last known state while the vault is locked or the demo is shown.
 final class DockBadgeTests: XCTestCase {
     private var defaults: UserDefaults!
-    private let suite = "DockBadgeTests"
+    private var suite = ""
 
     override func setUp() {
-        UserDefaults().removePersistentDomain(forName: suite)
+        super.setUp()
+        suite = "DockBadgeTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
     }
 
     override func tearDown() {
-        UserDefaults().removePersistentDomain(forName: suite)
+        defaults.removePersistentDomain(forName: suite)
         defaults = nil
     }
 

@@ -4,7 +4,7 @@ import XCTest
 /// Colour of negative amounts in the booking list (GitHub #218).
 final class NegativeAmountStyleTests: XCTestCase {
     func testNeutralUntilRedIsChosen() throws {
-        let suite = "NegativeAmountStyleTests"
+        let suite = "NegativeAmountStyleTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defaults.removePersistentDomain(forName: suite)
         XCTAssertEqual(NegativeAmountStyle.current(defaults), .neutral)

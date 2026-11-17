@@ -4,12 +4,13 @@ import XCTest
 /// Budgets can be hidden completely (Ansicht › Budgets anzeigen).
 final class BudgetVisibilityTests: XCTestCase {
     func testBudgetsShowUntilSwitchedOff() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "BudgetVisibilityTests"))
-        defaults.removePersistentDomain(forName: "BudgetVisibilityTests")
+        let suite = "BudgetVisibilityTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
         XCTAssertTrue(ViewLayout.showsBudgets(defaults))
         defaults.set(false, forKey: ViewLayout.budgetsKey)
         XCTAssertFalse(ViewLayout.showsBudgets(defaults))
-        defaults.removePersistentDomain(forName: "BudgetVisibilityTests")
+        defaults.removePersistentDomain(forName: suite)
     }
 
     /// Each card follows its own switch: budgets stay when the analytics

@@ -71,6 +71,7 @@ Internal code identifiers (module, function, test and file names) are exempt; `s
 - Swift: `cd GiroCrabApp && swift test -q --filter <Suite>`; whole suite ~30 s. `AppModel` tests
   run against a demo vault: `AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))`,
   pattern in `Tests/GiroCrabUITests/SelectionLoadTests.swift`. Run them before pushing.
+- Tests, die `UserDefaults.standard` nutzen, tragen `// test: serial-defaults` (läuft seriell nach der parallelen Phase, `scripts/swift-test-split.sh`). Eigene Suites immer mit `\(UUID().uuidString)` (`scripts/lint-test-defaults.sh`).
 - Rust: `cargo test -q -p girocrab-core --lib <module>` for one module; whole `--lib` run ~10 s. It stays
   that fast only because unit tests skip `cipher_memory_security` (`cfg!(test)` in `Vault::apply_key`) and
   `.cargo/config.toml` builds SQLite with `SQLITE_DEFAULT_MEMSTATUS=0`: both make parallel test threads

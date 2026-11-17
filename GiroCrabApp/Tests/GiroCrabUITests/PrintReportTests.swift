@@ -110,8 +110,10 @@ final class PrintReportTests: XCTestCase {
     }
 
     func testOptionsSavedBeforeTheLogoOptionStillLoad() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "PrintReportTestsLegacy"))
-        defaults.removePersistentDomain(forName: "PrintReportTestsLegacy")
+        let suite = "PrintReportTestsLegacy.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(Data(#"{"showNote":false,"direction":"income"}"#.utf8), forKey: "print.options")
         let o = PrintOptions.load(defaults)
         XCTAssertFalse(o.showNote)
@@ -159,8 +161,10 @@ final class PrintReportTests: XCTestCase {
     }
 
     func testOptionsRoundTrip() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "PrintReportTests"))
-        defaults.removePersistentDomain(forName: "PrintReportTests")
+        let suite = "PrintReportTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
         var o = PrintOptions()
         o.direction = .expenses
         o.groupByAccount = true

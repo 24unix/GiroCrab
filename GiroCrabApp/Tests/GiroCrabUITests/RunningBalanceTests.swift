@@ -1,3 +1,4 @@
+// test: serial-defaults (shares UserDefaults.standard across xctest processes)
 import XCTest
 @testable import GiroCrabUI
 import GiroCrabCore

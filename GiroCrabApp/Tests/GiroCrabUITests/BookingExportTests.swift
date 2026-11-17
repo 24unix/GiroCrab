@@ -321,8 +321,10 @@ final class BookingExportTests: XCTestCase {
         o.showCategory = false
         o.showNote = true
         o.showDailyBalance = false
-        let defaults = UserDefaults(suiteName: "BookingExportTests")!
-        defaults.removePersistentDomain(forName: "BookingExportTests")
+        let suite = "BookingExportTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
         o.save(defaults)
         let loaded = ExportOptions.load(defaults)
         XCTAssertEqual(loaded.format, .camt053v02)
