@@ -198,7 +198,7 @@ fn account_rows(vault: &Vault, privacy: bool) -> Result<(Vec<AccountRow>, String
     let accounts = vault.list_accounts().map_err(|e| e.to_string())?;
     let total: i64 = accounts
         .iter()
-        .filter(|a| a.in_total && a.currency == "EUR")
+        .filter(|a| a.in_total && a.currency == "EUR" && a.archived_unix.is_none())
         .map(|a| a.balance_cents)
         .sum();
     // Accounts are grouped under their bank; the sort is stable, so the order inside a group stays.
