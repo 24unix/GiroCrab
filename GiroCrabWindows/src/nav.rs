@@ -542,7 +542,7 @@ pub fn category_fold_id(key: &str) -> Option<String> {
 /// Moves `target_id` one place up (before its predecessor) or down (after its
 /// successor) in `ids`. Returns `false` when nothing changed (id missing or
 /// already at the edge).
-pub fn move_category_in_order(ids: &mut Vec<i64>, target_id: i64, move_up: bool) -> bool {
+pub fn move_category_in_order(ids: &mut [i64], target_id: i64, move_up: bool) -> bool {
     let Some(pos) = ids.iter().position(|&id| id == target_id) else {
         return false;
     };
