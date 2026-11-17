@@ -67,7 +67,9 @@ fn pick(mode: &str, own: &str, builtin: Option<String>) -> Option<(Source, Strin
     let own = (!own.is_empty()).then(|| (Source::Own, own.to_string()));
     let builtin = builtin.map(|b| (Source::Builtin, b));
     match normalize_mode(mode) {
-        "own" => own,
+        // Mode `own` without a value (e.g. the user picked it but never saved an ID) must not
+        // dead-end: GiroCrab's registration is the fallback, the own one stays preferred.
+        "own" => own.or(builtin),
         "builtin" => builtin.or(own),
         // Not decided yet: existing users keep working with what they have.
         _ => own.or(builtin),
@@ -110,9 +112,41 @@ mod tests {
     }
 
     #[test]
-    fn own_mode_never_uses_builtin() {
+    fn own_mode_prefers_own_and_falls_back_to_builtin_when_empty() {
         assert_eq!(pick("own", "OWN", b()).unwrap().1, "OWN");
-        assert!(pick("own", "  ", b()).is_none());
+        // "own" without a value must not dead-end: GiroCrab's registration takes over.
+        assert_eq!(pick("own", "  ", b()).unwrap().0, Source::Builtin);
+        assert!(pick("own", "  ", None).is_none());
+    }
+
+    #[test]
+    fn full_matrix_mode_own_builtin() {
+        let modes = ["", "builtin", "own", "garbage"];
+        for mode in modes {
+            for own in ["", "  ", "OWN"] {
+                for builtin in [None, b()] {
+                    let has_own = !own.trim().is_empty();
+                    let got = pick(mode, own, builtin.clone());
+                    // Something exists -> there is always a result; nothing exists -> None.
+                    assert_eq!(
+                        got.is_some(),
+                        has_own || builtin.is_some(),
+                        "mode={mode:?} own={own:?} builtin={builtin:?}"
+                    );
+                    let Some((src, id)) = got else { continue };
+                    match (normalize_mode(mode), has_own, builtin.is_some()) {
+                        ("builtin", _, true) => assert_eq!(src, Source::Builtin),
+                        ("", true, _) | ("own", true, _) => assert_eq!(src, Source::Own),
+                        ("", false, true) | ("own", false, true) => {
+                            assert_eq!(src, Source::Builtin)
+                        }
+                        ("builtin", true, false) => assert_eq!(src, Source::Own),
+                        other => panic!("unexpected case {other:?}"),
+                    }
+                    assert_eq!(id, if src == Source::Own { "OWN" } else { "BUILTIN" });
+                }
+            }
+        }
     }
 
     #[test]

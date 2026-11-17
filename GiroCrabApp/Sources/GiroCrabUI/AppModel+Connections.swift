@@ -147,12 +147,39 @@ extension AppModel {
     func missingSettings(for connection: BankConnection) -> [String] {
         if Self.isMagicDemoLogin(connection.loginName) { return [] }
         guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }
-        return d.requiredSettings.filter { key in
-            // A custom FinTS product ID is an optional override (GiroCrab ships its own), so an empty
-            // one is never "missing". A value entered once is a global setting and covers every bank.
-            if key == "fints.product_id" { return false }
-            return !(settings.first { $0.key == key }?.hasValue ?? false)
-        }
+        return userRequiredKeys(for: d).filter { key in !(settingEntry(key)?.hasValue ?? false) }
+    }
+
+    /// Settings the core lists as required that are only an optional override for the user.
+    /// A custom FinTS product ID is one: GiroCrab ships its own, and a value entered once is a
+    /// global setting that covers every bank.
+    nonisolated static let optionalSettingKeys: Set<String> = ["fints.product_id"]
+
+    /// The ONLY place that turns `requiredSettings` into what the user must provide
+    /// (`scripts/lint-required-settings.sh`). Add-bank forms, the assistant and setup use it.
+    nonisolated static func userRequiredKeys(_ requiredSettings: [String]) -> [String] {
+        requiredSettings.filter { !optionalSettingKeys.contains($0) }
+    }
+
+    /// The core's `MissingSetting` for a key that is only an optional override.
+    nonisolated static func isMissingProductID(_ error: Error) -> Bool {
+        guard let ce = error as? CoreError, case .MissingSetting(let key) = ce else { return false }
+        return optionalSettingKeys.contains(key)
+    }
+
+    func userRequiredKeys(for descriptor: BankDescriptor) -> [String] {
+        Self.userRequiredKeys(descriptor.requiredSettings)
+    }
+
+    /// The core could not resolve a FinTS registration (no embedded ID and no own one).
+    /// Never a setup form: with an embedded ID the mode returns to `builtin` and the caller
+    /// retries once; otherwise the user is offered the own-ID alternative in an alert.
+    /// Returns true when a retry should follow.
+    func recoverFromMissingProductID(_ vault: Vault) -> Bool {
+        guard fintsBuiltinAvailable, fintsProductIDMode != "builtin" else { return false }
+        try? vault.setFintsProductIdMode(mode: "builtin")
+        reloadProductIDState(vault)
+        return true
     }
 
     /// "Mit … erneut versuchen" after a bank rejected the FinTS registration in use.
@@ -200,7 +227,9 @@ extension AppModel {
     /// After a rejected registration: switch to the own one, open Settings › Banks (FinTS registration)
     /// and put the cursor into its field (no extra field in the alert).
     func enterOwnProductID() {
-        setFintsProductIDMode("own")
+        // Mode `own` only once an ID is stored (`OwnProductIDField.commit`), or an existing one is replaced:
+        // an empty field must not leave the user in a mode without a registration.
+        if settingEntry("fints.product_id")?.hasValue == true { setFintsProductIDMode("own") }
         focusOwnProductID = true
         openSettings(.banks)
     }

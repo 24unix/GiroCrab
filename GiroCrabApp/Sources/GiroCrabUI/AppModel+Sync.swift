@@ -523,6 +523,19 @@ extension AppModel {
             webLoginConnection = conn
             return
         }
+        if Self.isMissingProductID(error),
+           let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }) {
+            // Never a setup form for the optional FinTS registration: it would be an empty,
+            // seemingly mandatory field. Fall back to GiroCrab's registration (once), else offer the own ID.
+            if let vault, recoverFromMissingProductID(vault) {
+                requestSync(conn)
+                return
+            }
+            showError(String(localized: "Abruf von „\(conn.displayName)“ fehlgeschlagen"),
+                      String(localized: "Diese Version enthält keine FinTS-Registrierung von GiroCrab. Tragen Sie Ihre eigene Registrierung ein."))
+            errorAlternatives = [(String(localized: "Eigene Registrierung eintragen …"), { [weak self] in self?.enterOwnProductID() })]
+            return
+        }
         if let ce = error as? CoreError, case .MissingSetting(let key) = ce,
            let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }) {
             var keys = missingSettings(for: conn)

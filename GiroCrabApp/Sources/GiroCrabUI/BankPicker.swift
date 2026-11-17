@@ -67,7 +67,7 @@ struct KindAddForm: View {
             } header: {
                 Text("Zugang").appSectionHeader()
             } footer: {
-                let missing = d.requiredSettings.filter { key in !(model.settings.first { $0.key == key }?.hasValue ?? false) }
+                let missing = model.userRequiredKeys(for: d).filter { key in !(model.settings.first { $0.key == key }?.hasValue ?? false) }
                 AddFormFooter(lines: [d.note] + (missing.isEmpty || submit != nil ? [] :
                     [String(localized: "Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))")]),
                               // in the assistant the link sits under the credential fields ("Einrichten")
@@ -114,7 +114,7 @@ struct Psd2AddForm: View {
     }
 
     private var missing: [String] {
-        (bankCatalog().first { $0.kind == .enableBanking }?.requiredSettings ?? [])
+        AppModel.userRequiredKeys(bankCatalog().first { $0.kind == .enableBanking }?.requiredSettings ?? [])
             .filter { key in !(model.settings.first { $0.key == key }?.hasValue ?? false) }
     }
 

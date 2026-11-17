@@ -925,6 +925,7 @@ struct OwnProductIDField: View {
         text = ""
         guard !value.isEmpty else { return }
         model.saveSettingInBackground("fints.product_id", value)
+        model.setFintsProductIDMode("own")
     }
 
     /// After a rejected registration the alert sends the user here.
