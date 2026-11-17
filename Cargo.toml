@@ -3,7 +3,7 @@ members = ["girocrab-core", "girocrab-mcp", "uniffi-bindgen", "tools/gen-bic-dir
 resolver = "2"
 
 [workspace.package]
-version = "0.7.5"
+version = "0.8.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/GiroCrab/GiroCrab"

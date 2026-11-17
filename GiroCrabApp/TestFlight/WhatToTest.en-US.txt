@@ -1,0 +1,10 @@
+🦀 Full GiroCrab v0.8.0 feature set inside!
+
+Note on the version number: Community development is moving faster than Apple's review cycle for new marketing version trains. To deliver updates without review delays, the complete v0.8.0 feature set (including vault schema v27 for seamless iCloud sync with macOS v0.8.0) ships immediately as a new Build under the pre-approved 0.7.5 version train – watch the Build number!
+
+What's new in this build (v0.8.0):
+• 🏦 Built-in FinTS Product Registration out of the box.
+• 🛡️ Automatic encrypted Vault Backup before schema migrations.
+• 📈 EquatePlus connector, native currency per IBKR depot position, C24 category import, and custom categories preserved across language changes.
+• ⚡ Major Performance Boost: ListCache (~30× faster), pre-compiled regexes, and faster rule application after iCloud merges.
+• 🧭 Analytics & Polish: Cashflow follows account selection, recurring detection separates merchants sharing an IBAN, and multi-select review.

@@ -11,12 +11,12 @@
 <p align="center">FinTS 3.0 · PSD2 · SEPA · Datenimport — 100&nbsp;% lokal verschlüsselt, kostenlos, Daten bleiben auf deinem Gerät.</p>
 
 <p align="center">
-  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.7.5 · Apple Silicon (.dmg)" width="260" height="56"></a>
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.8.0 · Apple Silicon (.dmg)" width="260" height="56"></a>
   &nbsp;
   <a href="https://testflight.apple.com/join/KBmvKVpT"><img src="docs/assets/download-ios.svg" alt="iOS &amp; iPadOS App – kostenlos via Apple TestFlight" width="260" height="56"></a>
 </p>
 
-<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.7.5</sub></p>
+<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.8.0</sub></p>
 
 <p align="center">
   <a href="https://github.com/GiroCrab/GiroCrab/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/GiroCrab/GiroCrab?label=release&color=2ea44f"></a>
@@ -52,6 +52,15 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 ### Für wen ist GiroCrab?
 
 GiroCrab ist eine freie, quelloffene Banking-App (GPLv3) für macOS, Linux (Qt 6 / QML) und – derzeit als Beta über TestFlight – für iPhone und iPad. Alle Daten liegen verschlüsselt auf deinem Gerät. GiroCrab ist ein junges Community-Projekt: Die Bankenabdeckung wächst noch (siehe Bank-Tabelle), und PSD2-Zugänge laufen über einen eigenen, kostenlosen Enable-Banking-Zugang.
+
+### ✨ Neu in v0.8.0
+- 🏦 **Integrierte FinTS-Produktregistrierung:** Offizielle FinTS-Produktregistrierungs-ID ist direkt im Release hinterlegt – der manuelle Eintrag entfällt.
+- 🛡️ **Automatisches Tresor-Backup & Wiederherstellung:** Vor Migrationen und sensiblen Operationen legt GiroCrab automatisch verschlüsselte Sicherheits-Backups des Tresors an.
+- 📈 **EquatePlus, IBKR-Einzelwährungen & C24-Kategorien (#750, #720, #625, #626, #763, #678):** Neuer Connector für EquatePlus (Mitarbeiteraktien & PDF-Belege), automatisches Archivieren abgewählter Konten, native Originalwährungen je IBKR-Depotposition (mit Retry-Logik), C24-Kategorien-Import sowie sprachunabhängige eigene Kategorien und Gruppen.
+- ⚡ **Massive Performance-Sprünge (#754, #759, #760):** `ListCache` für Buchungslisten und Händlerhistorie (~20–30× schneller), einmalig kompilierte `LazyLock`-Regex beim Import (~1.000× schneller bei großen Dateien) und gezieltes `apply_rules_to` nach iCloud-Merges.
+- 🧭 **Analysen, Serien & Mehrfachauswahl (#731, #755, #615, #756, #725, #753, #659):** Cashflow-Karte folgt der Kontoauswahl in der Seitenleiste, wiederkehrende Buchungen trennen bekannte Händler hinter derselben IBAN, und „Geprüft“ wirkt auf die gesamte Mehrfachauswahl.
+- 📱 **iOS / TestFlight – v0.8.0 unter der Haube (Build-Nummer zählt!):** Unsere Community-Entwicklung liefert neue Features aktuell schneller aus, als Apples Versions-Review für neue Release-Zweige hinterherkommt. Damit Updates ohne Review-Wartezeit sofort bei euch landen, erscheint der komplette **v0.8.0-Funktionsumfang** (inkl. Tresor-Schema v27 für nahtlosen iCloud-Sync mit macOS v0.8.0) auf iOS direkt als neuer **Build unter Version 0.7.5**.
+- 🪟 **Neu & Experimentell – GiroCrab für Windows (`GiroCrabWindows/`):** Erste frühe Windows-Preview auf Basis desselben `girocrab-core`! **Wir suchen Tester & Rust-/Windows-Entwickler** – probiere es aus, melde Feedback in den Issues (`windows`) oder gestalte die Windows-Oberfläche direkt per PR mit!
 
 ### ✨ Neu in v0.7.5
 - **FinTS-Daueraufträge (#496):** Daueraufträge direkt per FinTS mit TAN-Freigabe anlegen, ändern und löschen (macOS & iOS, inkl. Anlage aus bestehenden Buchungen).
@@ -240,7 +249,7 @@ Die Demo enthält fiktive Konten und erfundene Buchungen – keine echten Daten.
 ### 📦 Download (macOS)
 
 Das fertige Disk-Image [`GiroCrab-macOS-arm64.dmg`](https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg) (Apple Silicon, macOS 14+) gibt es unter [GitHub Releases](../../releases) – ohne Rust oder Xcode.
-Aktuelle Version: **v0.7.5**. DMG öffnen und `GiroCrab.app` nach `/Programme` ziehen – die App ist **von Apple notarisiert** und aktualisiert sich per Sparkle selbst.
+Aktuelle Version: **v0.8.0**. DMG öffnen und `GiroCrab.app` nach `/Programme` ziehen – die App ist **von Apple notarisiert** und aktualisiert sich per Sparkle selbst.
 **iPhone / iPad:** [TestFlight-Beta beitreten](https://testflight.apple.com/join/KBmvKVpT).
 
 **Intel-Macs:** Die offiziellen Binaries sind nur für Apple Silicon (`arm64`). Auf Intel-Macs lässt sich GiroCrab mit Swift/Xcode selbst aus dem Quellcode bauen (siehe [Schnellstart](#schnellstart)).
@@ -275,6 +284,15 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 ### Who is GiroCrab for?
 
 GiroCrab is a free, open-source banking app (GPLv3) for macOS, Linux (Qt 6 / QML) and – currently in beta via TestFlight – for iPhone and iPad. All data stays encrypted on your device. GiroCrab is a young community project: bank coverage is still growing (see the bank table), and PSD2 access works through your own free Enable Banking account.
+
+### ✨ What's new in v0.8.0
+- 🏦 **Built-in FinTS Product Registration:** Official FinTS product registration ID is now bundled out of the box in release builds – no manual setup required.
+- 🛡️ **Automatic Vault Backup & Restore:** GiroCrab now automatically creates encrypted safety backups of your vault before migrations and critical operations.
+- 📈 **EquatePlus, IBKR Native Currencies & C24 Categories (#750, #720, #625, #626, #763, #678):** New EquatePlus connector (employee equity plans & PDF statements), automatic archiving of deselected accounts, native currency display per IBKR depot position (plus retry backoff), C24 category import, and custom categories/groups preserved across language changes.
+- ⚡ **Major Performance Gains (#754, #759, #760):** `ListCache` for booking lists and merchant history (~20–30× faster), pre-compiled `LazyLock` regexes across importers (~1,000× faster on large imports), and targeted `apply_rules_to` after iCloud merges.
+- 🧭 **Analytics, Recurring & Multi-Select (#731, #755, #615, #756, #725, #753, #659):** Cashflow card follows sidebar account selection, recurring detection separates known merchants sharing an IBAN, and “Reviewed” applies to the full multi-selection.
+- 📱 **iOS / TestFlight – Full v0.8.0 under the hood (watch the Build number!):** Community development is currently moving faster than Apple's review cycle for new marketing version trains. To deliver updates without review delays, the complete **v0.8.0 feature set** (including vault schema v27 for seamless iCloud sync with macOS v0.8.0) ships on iOS immediately as a new **Build under version 0.7.5**.
+- 🪟 **New & Experimental – GiroCrab for Windows (`GiroCrabWindows/`):** Very early Windows preview powered by the exact same `girocrab-core`! **Looking for testers & Rust/Windows contributors** – take it for a spin, share feedback via issues (`windows`), or jump in with PRs!
 
 ### ✨ What's new in v0.7.5
 - **FinTS Standing Orders (#496):** Create, edit, and delete standing orders via FinTS with TAN approval on macOS and iOS (including creating from existing bookings).
@@ -429,7 +447,7 @@ Adding a bank usually takes under 100 lines – start from
 ### Download (macOS)
 
 The pre-built disk image [`GiroCrab-macOS-arm64.dmg`](https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg) (Apple Silicon, macOS 14+) is available under
-[GitHub Releases](../../releases) – no Rust or Xcode required. Current version: **v0.7.5**. Open the DMG and drag `GiroCrab.app` to `/Applications` – the app is **notarized by Apple** and updates itself via Sparkle.
+[GitHub Releases](../../releases) – no Rust or Xcode required. Current version: **v0.8.0**. Open the DMG and drag `GiroCrab.app` to `/Applications` – the app is **notarized by Apple** and updates itself via Sparkle.
 **iPhone / iPad:** [join the TestFlight beta](https://testflight.apple.com/join/KBmvKVpT).
 
 **Intel Macs:** the official binaries are Apple Silicon (`arm64`) only. On Intel Macs you can build GiroCrab yourself from source with Swift/Xcode (see [Quickstart](#quickstart)).

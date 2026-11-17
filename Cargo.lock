@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "gen-bic-directory"
-version = "0.7.5"
+version = "0.8.0"
 
 [[package]]
 name = "getrandom"
@@ -856,11 +856,11 @@ dependencies = [
 
 [[package]]
 name = "girocrab"
-version = "0.7.5"
+version = "0.8.0"
 
 [[package]]
 name = "girocrab-core"
-version = "0.7.5"
+version = "0.8.0"
 dependencies = [
  "aes",
  "async-trait",
@@ -899,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "girocrab-mcp"
-version = "0.7.5"
+version = "0.8.0"
 dependencies = [
  "girocrab-core",
  "serde_json",
@@ -2788,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "uniffi-bindgen"
-version = "0.7.5"
+version = "0.8.0"
 dependencies = [
  "uniffi",
 ]

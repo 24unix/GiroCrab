@@ -656,6 +656,11 @@ ios_pipeline() {
     exit 1
   fi
 
+  if [ -d "GiroCrabApp/TestFlight" ]; then
+    mkdir -p "$IOS_ARCHIVE/TestFlight"
+    cp -f GiroCrabApp/TestFlight/WhatToTest.*.txt "$IOS_ARCHIVE/TestFlight/" 2>/dev/null || true
+    echo "==> Embedded TestFlight/WhatToTest.*.txt into archive"
+  fi
   xcodebuild -exportArchive \
     -archivePath "$IOS_ARCHIVE" \
     -exportOptionsPlist "$IOS_PLIST" \
