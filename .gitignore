@@ -99,6 +99,10 @@ __pycache__/
 *.swp
 *~
 
+# --- Nix / direnv (opt-in, see docs/nix.md) ---
+.envrc
+.direnv/
+
 # --- Token/build hygiene (added) ---
 *.xcframework/
 **/Generated/

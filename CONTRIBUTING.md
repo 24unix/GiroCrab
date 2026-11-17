@@ -21,6 +21,10 @@ rebuilds in seconds. `#if DEBUG` code is active, e.g. the banking policy lives i
 
 Swift-only changes: `cd GiroCrabApp && swift build -q` (no core rebuild needed).
 
+Optional: `nix develop` (flake.nix) sets up the pinned Rust toolchain plus Apple targets and the
+native build tools the dependency tree needs (SQLCipher/OpenSSL, AWS-LC). Xcode itself still has to
+be installed separately – see [docs/nix.md](docs/nix.md).
+
 Free disk space with `scripts/clean.sh [--deep]`: the default run removes `dist/`, `build/`, stray
 temp files, GiroCrab DerivedData, incremental Rust caches and merged local branches while keeping
 built dependencies and the xcframework; `--deep` also runs `cargo clean` and removes `GiroCrabApp/.build`.
