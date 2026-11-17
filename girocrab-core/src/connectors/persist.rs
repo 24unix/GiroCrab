@@ -707,6 +707,7 @@ pub(crate) fn store_fetch(
                 }
             }
         }
+        let mut postbox_added = 0u32;
         for d in &data.documents {
             if archived_ids.contains_key(&d.account_ref) || blocked_refs.contains(&d.account_ref) {
                 continue;
@@ -722,16 +723,22 @@ pub(crate) fn store_fetch(
                 .ok()
                 .flatten()
             };
-            let Some(acc_id) = account_ids
-                .get(&d.account_ref)
-                .copied()
-                .or_else(|| by_ref(&tx))
-                .or_else(|| account_ids.values().next().copied())
-            else {
-                continue;
+            // no account given: the document stays without one (PostBox, #838)
+            let acc_id = if d.account_ref.is_empty() {
+                None
+            } else {
+                let Some(id) = account_ids
+                    .get(&d.account_ref)
+                    .copied()
+                    .or_else(|| by_ref(&tx))
+                    .or_else(|| account_ids.values().next().copied())
+                else {
+                    continue;
+                };
+                Some(id)
             };
-            let booking_id: Option<i64> = match &d.booking_external_id {
-                Some(ext) => tx
+            let booking_id: Option<i64> = match (&d.booking_external_id, acc_id) {
+                (Some(ext), Some(acc_id)) => tx
                     .query_row(
                         // includes soft-deleted rows
                         "SELECT id FROM transactions WHERE account_id = ?1 AND external_id = ?2",
@@ -739,20 +746,47 @@ pub(crate) fn store_fetch(
                         |r| r.get(0),
                     )
                     .optional()?,
-                None => None,
+                _ => None,
             };
-            let _ = crate::documents::insert_doc(
-                &tx,
-                booking_id,
-                Some(acc_id),
-                &d.title,
-                &d.doc_type,
-                &d.mime_type,
-                &d.file_name,
-                &d.bytes,
-                &d.source_url,
-                &d.date,
-            );
+            // without bytes (download failed) only a stored copy gets its account
+            let added = if d.bytes.is_empty() {
+                Ok(None)
+            } else {
+                crate::documents::insert_doc(
+                    &tx,
+                    booking_id,
+                    acc_id,
+                    &d.title,
+                    &d.doc_type,
+                    &d.mime_type,
+                    &d.file_name,
+                    &d.bytes,
+                    &d.source_url,
+                    &d.date,
+                )
+            };
+            match (added, acc_id) {
+                (Ok(Some(_)), _) if d.source_url.starts_with("comdirect:postbox:") => {
+                    postbox_added += 1
+                }
+                // stored before without an account: it gets the one found now
+                (Ok(None), Some(acc_id)) if !d.source_url.is_empty() => {
+                    tx.execute(
+                        "UPDATE booking_documents SET account_id = ?1
+                          WHERE source_url = ?2 AND account_id IS NULL AND booking_id IS NULL",
+                        params![acc_id, d.source_url],
+                    )?;
+                }
+                _ => {}
+            }
+        }
+        let postbox_documents = data.postbox_fetched.then_some(postbox_added);
+        if data.postbox_fetched {
+            tx.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![postbox_last_key(connection_id), today()],
+            )?;
         }
         for r in &data.statements_fetched {
             if let Some(id) = account_ids.get(r) {
@@ -824,6 +858,7 @@ pub(crate) fn store_fetch(
             transactions_skipped_archived: skipped_archived,
             new_accounts,
             revoked_accounts,
+            postbox_documents,
         })
     }
 }
@@ -860,6 +895,32 @@ pub(crate) fn statements_auto_key(account_id: i64) -> String {
     format!("statements.auto.{account_id}")
 }
 
+/// Vault setting key: fetch the comdirect PostBox through the REST API next
+/// to this FinTS login (#838).
+pub(crate) fn postbox_key(connection_id: i64) -> String {
+    format!("comdirect.postbox.{connection_id}")
+}
+
+/// Vault setting key: date (YYYY-MM-DD) of the last PostBox fetch of a login.
+pub(crate) fn postbox_last_key(connection_id: i64) -> String {
+    format!("comdirect.postbox.last.{connection_id}")
+}
+
+/// Days between two PostBox fetches during regular syncs: each needs its own
+/// approval in the photoTAN app.
+const POSTBOX_DAYS: i64 = 7;
+
+/// Whether a sync may add the PostBox fetch (#838).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PostboxMode {
+    /// Never: an automatic sync must not ask for an approval.
+    Off,
+    /// When it is on for the login and due.
+    Due,
+    /// Now ("PostBox jetzt abrufen").
+    Now,
+}
+
 /// Vault setting key: date (YYYY-MM-DD) of the last automatic statement fetch.
 pub(crate) fn statements_last_key(account_id: i64) -> String {
     format!("statements.last.{account_id}")
@@ -876,7 +937,85 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
-        self.begin_sync_inner(connection_id, secret, demo, None)
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Due)
+    }
+
+    /// Like [`begin_sync`](Self::begin_sync) for an automatic sync in the
+    /// background: nothing in it may need a new approval, so the comdirect
+    /// PostBox fetch (#838) is left out.
+    pub fn begin_quiet_sync(
+        self: Arc<Self>,
+        connection_id: i64,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<SyncSession>, CoreError> {
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Off)
+    }
+
+    /// Turns the PostBox fetch through comdirect's REST API on or off for a
+    /// comdirect FinTS login (#838). Needs the API's client id and secret.
+    pub fn set_comdirect_postbox(
+        &self,
+        connection_id: i64,
+        enabled: bool,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        if !enabled {
+            db.execute(
+                "DELETE FROM settings WHERE key IN (?1, ?2)",
+                params![postbox_key(connection_id), postbox_last_key(connection_id)],
+            )?;
+            return Ok(());
+        }
+        let key: String = db
+            .query_row(
+                "SELECT connector FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
+                [connection_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf("Bankzugang {0}", &[&connection_id]),
+            })?;
+        if !is_comdirect_fints(&key) {
+            return Err(CoreError::InvalidInput {
+                message: tr("Die PostBox lässt sich nur für comdirect-Zugänge per FinTS zusätzlich abrufen.").into(),
+            });
+        }
+        for k in ["comdirect.client_id", "comdirect.client_secret"] {
+            if Vault::setting_inner(&db, k)?.is_none_or(|v| v.trim().is_empty()) {
+                return Err(CoreError::MissingSetting { key: k.into() });
+            }
+        }
+        db.execute(
+            "INSERT INTO settings(key, value) VALUES (?1, '1')
+             ON CONFLICT(key) DO UPDATE SET value = '1'",
+            [postbox_key(connection_id)],
+        )?;
+        Ok(())
+    }
+
+    /// Is the PostBox fetch through comdirect's REST API on for this login?
+    pub fn comdirect_postbox_enabled(&self, connection_id: i64) -> Result<bool, CoreError> {
+        let db = self.db()?;
+        Ok(Vault::setting_inner(&db, &postbox_key(connection_id))?.as_deref() == Some("1"))
+    }
+
+    /// Syncs a comdirect FinTS login and fetches its PostBox now, whenever it
+    /// was fetched last (#838). Same session / TAN flow as `begin_sync`, with
+    /// the PostBox approval first.
+    pub fn fetch_comdirect_postbox(
+        self: Arc<Self>,
+        connection_id: i64,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<SyncSession>, CoreError> {
+        if !self.comdirect_postbox_enabled(connection_id)? {
+            return Err(CoreError::InvalidInput {
+                message: tr("Der PostBox-Abruf ist für diesen Zugang nicht eingeschaltet.").into(),
+            });
+        }
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Now)
     }
 
     /// Turns the automatic PDF statement fetch (FinTS HKEKA, at most weekly,
@@ -950,7 +1089,7 @@ impl Vault {
                 message: tr("Für diese Bank können keine Kontoauszüge abgerufen werden.").into(),
             });
         }
-        self.begin_sync_inner(conn_id, secret, demo, Some(ext))
+        self.begin_sync_inner(conn_id, secret, demo, Some(ext), PostboxMode::Off)
     }
 }
 
@@ -986,6 +1125,7 @@ impl Vault {
         secret: String,
         demo: bool,
         statements_only: Option<String>,
+        postbox: PostboxMode,
     ) -> Result<Arc<SyncSession>, CoreError> {
         // No PIN typed: use the one stored in the vault ("PIN im Tresor speichern").
         let secret = if secret.is_empty() {
@@ -1139,12 +1279,79 @@ impl Vault {
             since,
             since_by_account,
         };
+        let mut connector = make_connector_for(kind, &key_str, demo);
+        if !demo && is_comdirect_fints(&key_str) {
+            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox)? {
+                connector = Box::new(super::comdirect_postbox::FintsWithPostbox::new(
+                    connector, since,
+                ));
+            }
+        }
         Ok(Arc::new(SyncSession::new(
             self.clone(),
             kind,
-            make_connector_for(kind, &key_str, demo),
+            connector,
             ctx,
         )))
+    }
+
+    /// `Some(oldest document date)` when this sync also fetches the comdirect
+    /// PostBox (#838): switched on, client id and secret set, and due (never
+    /// fetched, or `POSTBOX_DAYS` ago) or asked for now. A week of overlap
+    /// covers documents dated a little before they appear; the unique
+    /// `source_url` keeps them from being stored twice.
+    fn postbox_since(
+        &self,
+        connection_id: i64,
+        ctx: &ConnectContext,
+        mode: PostboxMode,
+    ) -> CoreResult<Option<String>> {
+        if mode == PostboxMode::Off || !self.comdirect_postbox_enabled(connection_id)? {
+            return Ok(None);
+        }
+        for k in ["comdirect.client_id", "comdirect.client_secret"] {
+            if let Err(e) = ctx.setting(k) {
+                return if mode == PostboxMode::Now {
+                    Err(e)
+                } else {
+                    Ok(None)
+                };
+            }
+        }
+        let last = {
+            let db = self.db()?;
+            Vault::setting_inner(&db, &postbox_last_key(connection_id))?
+                .and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())
+        };
+        Ok(postbox_window(
+            last,
+            chrono::Local::now().date_naive(),
+            mode,
+        ))
+    }
+}
+
+/// Is `key` a comdirect login via FinTS?
+fn is_comdirect_fints(key: &str) -> bool {
+    ConnectorKind::fints_blz(key)
+        .is_some_and(|b| super::fints_directory::COMDIRECT_BLZ.contains(&b))
+}
+
+/// The PostBox window of a sync (see [`Vault::postbox_since`]).
+pub(crate) fn postbox_window(
+    last: Option<chrono::NaiveDate>,
+    today: chrono::NaiveDate,
+    mode: PostboxMode,
+) -> Option<String> {
+    match (mode, last) {
+        (PostboxMode::Off, _) => None,
+        (_, None) => Some(String::new()),
+        (PostboxMode::Due, Some(d)) if (today - d).num_days() < POSTBOX_DAYS => None,
+        (_, Some(d)) => Some(
+            (d - chrono::Duration::days(POSTBOX_DAYS))
+                .format("%Y-%m-%d")
+                .to_string(),
+        ),
     }
 }
 

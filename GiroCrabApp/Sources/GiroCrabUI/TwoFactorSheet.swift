@@ -32,7 +32,7 @@ struct TwoFactorSheet: View {
                 }
 
                 if model.isDemo || AppModel.isMagicDemoLogin(active.connection.loginName) {
-                    DemoHintBanner(style: .pinAndTan, buttonTitle: c.kind == .decoupledPush ? nil : "TAN 123456 einfügen") {
+                    DemoHintBanner(style: .pinAndTan, buttonTitle: c.kind == .decoupledPush || c.kind == .progress ? nil : "TAN 123456 einfügen") {
                         code = "123456"
                     }
                 }
@@ -56,6 +56,15 @@ struct TwoFactorSheet: View {
                         Text(active.waiting ? "Warte auf Freigabe …" : "Push-Nachricht gesendet")
                             .appFont(.callout).foregroundStyle(.secondary)
                     }
+                case .progress:
+                    // approval given, a longer download runs (comdirect PostBox, #838)
+                    Image(systemName: "tray.and.arrow.down")
+                        .font(.system(size: 56, weight: .light))
+                        .foregroundStyle(.tint)
+                        .padding(.top, 6)
+                    Text(c.title).appFont(.title3, weight: .bold)
+                    Text(c.message).multilineTextAlignment(.center).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    ProgressView().controlSize(.small)
                 case .code, .imageCode:
                     Image(systemName: c.kind == .imageCode ? "qrcode.viewfinder" : "lock.rotation")
                         .font(.system(size: 44, weight: .light))

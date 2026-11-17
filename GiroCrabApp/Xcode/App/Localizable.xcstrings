@@ -1381,6 +1381,17 @@
         }
       }
     },
+    "%lld neue PostBox-Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld new PostBox documents"
+          }
+        }
+      }
+    },
     "%lld ungenutzte Tags entfernen?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18048,6 +18059,17 @@
         }
       }
     },
+    "Konto zuordnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assign to account"
+          }
+        }
+      }
+    },
     "Konto · %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18220,6 +18242,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Statements, receipts and PostBox documents are copied after every sync to <folder>/<account>/<year>/. Existing files are never overwritten. Note: the PDFs in this folder are not encrypted – in iCloud Drive they are also stored in your iCloud."
+          }
+        }
+      }
+    },
+    "Kontoauszüge, Finanzreport und Wertpapierabrechnungen aus der comdirect-PostBox, höchstens einmal pro Woche beim Abruf. Dafür sind Client-ID und Client-Secret der comdirect-API nötig und eine eigene Freigabe in der photoTAN-App. Wertpapierdokumente kommen ans Depot, die übrigen auf das erste Girokonto. Über das Kontextmenü in „Belege & PostBox“ lässt sich ein Dokument einem anderen Konto zuordnen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statements, Finanzreport and securities confirmations from the comdirect PostBox, at most once a week during a sync. This needs the client ID and client secret of the comdirect API and a separate approval in the photoTAN app. Securities documents go to the depot, the others to the first checking account. The context menu in “Documents & PostBox” moves a document to another account."
           }
         }
       }
@@ -23106,6 +23139,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "PostBox"
+          }
+        }
+      }
+    },
+    "PostBox jetzt abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch PostBox now"
+          }
+        }
+      }
+    },
+    "PostBox nicht abgerufen. Bitte Client-ID und Client-Secret der comdirect-API prüfen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PostBox not fetched. Please check the client ID and client secret of the comdirect API."
+          }
+        }
+      }
+    },
+    "PostBox über die Schnittstelle der Bank abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch the PostBox through the bank's interface"
           }
         }
       }
@@ -30999,6 +31065,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "no consent stored"
+          }
+        }
+      }
+    },
+    "keine neuen PostBox-Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no new PostBox documents"
           }
         }
       }

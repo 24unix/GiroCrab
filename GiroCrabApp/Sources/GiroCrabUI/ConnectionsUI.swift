@@ -172,6 +172,11 @@ struct ConnectionEditSheet: View {
         }
     }
 
+    /// comdirect via FinTS: the API credentials for the PostBox (#838), shown in its section.
+    private var postboxKeys: [String] {
+        isComdirect && connection.connector == .finTsGeneric ? ["comdirect.client_id", "comdirect.client_secret"] : []
+    }
+
     /// Optional power-user PSD2 credentials (collapsed "Erweitert" section).
     private var advancedKeys: [String] {
         switch connection.connector {
@@ -225,6 +230,8 @@ struct ConnectionEditSheet: View {
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
     @State private var importingStatement = false
     @State private var confirmSwitch = false
+    /// comdirect via FinTS: PostBox through the bank's API as well (#838).
+    @State private var postbox = false
     /// comdirect logins can switch between FinTS and comdirect's own API.
     private var isComdirect: Bool {
         connection.connector == .comdirect
@@ -333,6 +340,33 @@ struct ConnectionEditSheet: View {
                         Text("Konten, Kategorien und Notizen bleiben erhalten. Beim nächsten Abruf ordnet GiroCrab Konten und Buchungen dem neuen Weg zu.")
                             .appFont(.caption).foregroundStyle(Theme.secondary)
                             .leadingFooter()
+                    }
+                    if connection.connector == .finTsGeneric {
+                        Section {
+                            ForEach(postboxKeys, id: \.self) { key in field(key) }
+                            Toggle("PostBox über die Schnittstelle der Bank abrufen", isOn: Binding(
+                                get: { postbox },
+                                set: { on in
+                                    // the switch needs the credentials stored
+                                    if on { saveSettings(postboxKeys) }
+                                    model.setComdirectPostbox(connection.id, on)
+                                    postbox = model.comdirectPostboxEnabled(connection.id)
+                                }))
+                            if postbox {
+                                Button {
+                                    save()
+                                    dismiss()
+                                    model.fetchComdirectPostbox(model.connections.first { $0.id == connection.id } ?? connection)
+                                } label: { Label("PostBox jetzt abrufen", systemImage: "tray.and.arrow.down") }
+                                    .disabled(model.syncingConnectionID != nil)
+                            }
+                        } header: {
+                            Text("PostBox").appSectionHeader()
+                        } footer: {
+                            Text("Kontoauszüge, Finanzreport und Wertpapierabrechnungen aus der comdirect-PostBox, höchstens einmal pro Woche beim Abruf. Dafür sind Client-ID und Client-Secret der comdirect-API nötig und eine eigene Freigabe in der photoTAN-App. Wertpapierdokumente kommen ans Depot, die übrigen auf das erste Girokonto. Über das Kontextmenü in „Belege & PostBox“ lässt sich ein Dokument einem anderen Konto zuordnen.")
+                                .appFont(.caption).foregroundStyle(Theme.secondary)
+                                .leadingFooter()
+                        }
                     }
                 }
                 Section {
@@ -537,13 +571,24 @@ struct ConnectionEditSheet: View {
         login = connection.loginName
         status = model.connectionStatus(connection.id)
         storePin = status?.hasPin ?? false
+        if isComdirect, connection.connector == .finTsGeneric { postbox = model.comdirectPostboxEnabled(connection.id) }
         if isFinTs { tanMedium = model.revealSetting(tanMediumKey) }
-        for key in keys + advancedKeys {
+        for key in keys + advancedKeys + postboxKeys {
             let e = model.settingEntry(key)
             if e?.isSecret == true {
                 values[key] = model.revealSetting(key)
             } else {
                 values[key] = e?.value ?? model.revealSetting(key)
+            }
+        }
+    }
+
+    private func saveSettings(_ keys: [String]) {
+        for key in keys {
+            let v = values[key] ?? ""
+            let current = (model.settingEntry(key)?.isSecret ?? false) ? model.revealSetting(key) : (model.settingEntry(key)?.value ?? "")
+            if v != current {
+                model.saveSetting(key, v)
             }
         }
     }
@@ -558,13 +603,7 @@ struct ConnectionEditSheet: View {
                 model.setConnectionPin(connection.id, pin)
             }
         }
-        for key in keys + advancedKeys {
-            let v = values[key] ?? ""
-            let current = (model.settingEntry(key)?.isSecret ?? false) ? model.revealSetting(key) : (model.settingEntry(key)?.value ?? "")
-            if v != current {
-                model.saveSetting(key, v)
-            }
-        }
+        saveSettings(keys + advancedKeys + postboxKeys)
         if isFinTs {
             let medium = tanMedium.trimmingCharacters(in: .whitespaces)
             if medium != model.revealSetting(tanMediumKey) { model.saveSetting(tanMediumKey, medium) }

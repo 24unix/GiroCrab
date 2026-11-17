@@ -1317,8 +1317,9 @@ QtObject {
         return sections.filter(s => s.accounts.length > 0)
     }
     /// Combo box entries: "Alle Konten", then each section title and its accounts (`label(a)`).
-    function accountMenuOptions(label) {
+    function accountMenuOptions(label, withoutAccount) {
         const out = [{ id: null, title: qsTr("Alle Konten") }]
+        if (withoutAccount) out.push({ id: documentsWithoutAccount, title: qsTr("Ohne Konto") })
         for (const s of accountMenuSections) {
             out.push({ id: undefined, title: s.title, header: true })
             for (const a of s.accounts) out.push({ id: a.id, title: label(a) })
@@ -1704,6 +1705,7 @@ QtObject {
             const gate = bankingGate(connection)
             if (gate) {
                 statementsAccountID = null
+                postboxConnectionID = null
                 if (syncBatchTotal > 1 && !gate.all) {
                     syncBatchSkipped = syncBatchSkipped.concat([qsTr("%1 (Sicherheitssperre)").arg(connection.display_name)])
                     syncNextInQueue()
@@ -1781,7 +1783,11 @@ QtObject {
         // would hand this login's PIN to another bank.
         if (statementsAccountID !== null && (!accountsByID[statementsAccountID] || accountsByID[statementsAccountID].connection_id !== connection.id))
             statementsAccountID = null
+            postboxConnectionID = null
         const statementsFor = statementsAccountID
+        // "PostBox jetzt abrufen" (#838) only for exactly this login
+        if (postboxConnectionID !== connection.id) postboxConnectionID = null
+        const postboxNow = postboxConnectionID !== null
         // Kept for the "GiroCrab-Registrierung" retry of a rejected product ID, so the
         // login is not asked again; finishSync takes it and clears it.
         const keepSecret = () => { if (statementsFor === null) failedSyncSecret = secret }
@@ -1789,6 +1795,8 @@ QtObject {
         try {
             id = statementsFor !== null
                 ? core("fetch_account_statements", { account_id: statementsFor, secret: secret, demo: isDemo })
+                : postboxNow
+                ? core("fetch_comdirect_postbox", { connection_id: connection.id, secret: secret, demo: isDemo })
                 : core("begin_sync", { connection_id: connection.id, secret: secret, demo: isDemo })
         } catch (e) {
             keepSecret()
@@ -1805,12 +1813,12 @@ QtObject {
         if (step.NeedsChallenge) {
             const c = step.NeedsChallenge.challenge
             activeChallenge = { connection: connection, challenge: c, waiting: false, busy: false, error: "" }
-            if (c.kind === "DecoupledPush") schedulePoll(connection, c.poll_interval_seconds)
+            if (c.kind === "DecoupledPush" || c.kind === "Progress") schedulePoll(connection, c.poll_interval_seconds)
         } else if (step.StillWaiting) {
             const c = step.StillWaiting.challenge
             activeChallenge = activeChallenge === null
                 ? { connection: connection, challenge: c, waiting: true, busy: false, error: "" }
-                : Object.assign({}, activeChallenge, { waiting: true, busy: false })
+                : Object.assign({}, activeChallenge, { challenge: c, waiting: true, busy: false })
             schedulePoll(connection, c.poll_interval_seconds)
         } else if (step.Finished) {
             const s = step.Finished.summary
@@ -1821,10 +1829,19 @@ QtObject {
             if (statementsAccountID !== null) {
                 const n = Math.max(0, accountDocuments(statementsAccountID).length - statementsCountBefore)
                 statementsAccountID = null
+                postboxConnectionID = null
                 documentsVersion++
                 toast = qsTr("%1: %2 neue Kontoauszüge").arg(connection.display_name).arg(n)
+            } else if (postboxConnectionID === connection.id) {
+                postboxConnectionID = null
+                documentsVersion++
+                toast = syncNotice(connection, s) + " · " + postboxNote(s)
             } else {
                 toast = syncNotice(connection, s)
+                if (s.postbox_documents > 0) {
+                    documentsVersion++
+                    toast += " · " + postboxNote(s)
+                }
             }
             reloadAll()
             checkPendingAccountSelection()
@@ -1884,6 +1901,7 @@ QtObject {
         const s = activeSession
         activeSession = null; activeChallenge = null
         statementsAccountID = null
+        postboxConnectionID = null
         const gen = ++syncGeneration
         // End the bank dialog first (the next login may be the same bank); syncingConnectionID
         // stays set until then. "Alle abbrechen", a lock or a new sync meanwhile own the state.
@@ -1904,6 +1922,7 @@ QtObject {
             logSync(syncingConnectionID, "Cancelled", qsTr("Vom Benutzer abgebrochen"), 0, syncLogSource())
         activeSession = null; activeChallenge = null; pendingLogin = null; syncingConnectionID = null
         statementsAccountID = null
+        postboxConnectionID = null
         syncGeneration++
         resetSyncBatch()
         if (s !== null) coreAsync("session_cancel", { session: s }, null, () => {})
@@ -1915,6 +1934,7 @@ QtObject {
         // A cancelled "Kontoauszüge abrufen" must never carry over to the next sync:
         // it would send that login's PIN for another bank's account.
         statementsAccountID = null
+        postboxConnectionID = null
         if (syncBatchTotal <= 1) { resetSyncBatch(); return }
         if (connection) syncBatchSkipped = syncBatchSkipped.concat([connection.display_name])
         syncNextInQueue()
@@ -1944,6 +1964,7 @@ QtObject {
         const retrySecret = failedSyncSecret
         failedSyncSecret = ""
         statementsAccountID = null
+        postboxConnectionID = null
         pollTimer.stop()
         activeSession = null; activeChallenge = null; syncingConnectionID = null
         resetSyncBatch()
@@ -2250,7 +2271,11 @@ QtObject {
     /// Bumped whenever documents change, so lists re-read them.
     property int documentsVersion: 0
     property var documentsAccountFilter: null
+    /// `documentsAccountFilter` value for documents without an account (e.g. PostBox, #838).
+    readonly property int documentsWithoutAccount: -1
     property var statementsAccountID: null
+    /// comdirect FinTS login whose PostBox is fetched now ("PostBox jetzt abrufen", #838).
+    property var postboxConnectionID: null
     property int statementsCountBefore: 0
     property var accountDocumentsFor: null      // AccountDocumentsSheet
     function openAccountDocuments(a) { accountDocumentsFor = a }
@@ -2264,7 +2289,9 @@ QtObject {
     function allDocuments(search, unlinkedOnly, accountId) {
         void documentsVersion
         if (!isUnlocked) return []
-        return run(() => core("list_all_documents", { filter: { account_id: accountId, doc_type: null, search: search || null, unlinked_only: unlinkedOnly } })) || []
+        const withoutAccount = accountId === documentsWithoutAccount
+        const docs = run(() => core("list_all_documents", { filter: { account_id: withoutAccount ? null : accountId, doc_type: null, search: search || null, unlinked_only: unlinkedOnly } })) || []
+        return withoutAccount ? docs.filter(d => d.account_id === null || d.account_id === undefined) : docs
     }
     function accountDocuments(accountID) { return allDocuments("", false, accountID) }
     function documentsChanged() { documentsVersion++; reloadBookings() }
@@ -2301,6 +2328,11 @@ QtObject {
         if (!path) return
         const folder = () => Qt.openUrlExternally("file://" + path.slice(0, path.lastIndexOf("/")))
         coreAsync("show_in_file_manager", { path: path }, shown => { if (!shown) folder() }, () => folder())
+    }
+    /// Moves a document to another account, or to none (#838).
+    function setDocumentAccount(d, accountID) {
+        run(() => core("set_document_account", { doc_id: d.id, account_id: accountID }))
+        documentsChanged()
     }
     function linkDocument(d, bookingID) {
         const linked = run(() => { core("link_document", { doc_id: d.id, booking_id: bookingID }); return true })
@@ -2356,6 +2388,22 @@ QtObject {
     }
     function autoStatements(a) { return run(() => core("auto_statements_enabled", { account_id: a.id })) || false }
     function setAutoStatements(a, on) { run(() => core("set_auto_statements", { account_id: a.id, enabled: on })) }
+    /// comdirect via FinTS: also fetch the PostBox through comdirect's API (#838).
+    function comdirectPostbox(id) { return run(() => core("comdirect_postbox_enabled", { connection_id: id })) || false }
+    function setComdirectPostbox(id, on) { run(() => core("set_comdirect_postbox", { connection_id: id, enabled: on })) }
+    /// "PostBox jetzt abrufen": syncs the login with the PostBox, however recent the last fetch.
+    function fetchComdirectPostbox(c) {
+        if (syncingConnectionID !== null) return
+        postboxConnectionID = c.id
+        requestSync(c)
+    }
+    /// Toast suffix of a sync with the comdirect PostBox.
+    function postboxNote(s) {
+        if (s.postbox_documents === null || s.postbox_documents === undefined)
+            return qsTr("PostBox nicht abgerufen. Bitte Client-ID und Client-Secret der comdirect-API prüfen.")
+        return s.postbox_documents === 0 ? qsTr("keine neuen PostBox-Dokumente")
+            : qsTr("%1 neue PostBox-Dokumente").arg(s.postbox_documents)
+    }
     function docSymbol(d) {
         switch (d.doc_type) {
         case "abrechnung": return "chart.line.uptrend.xyaxis.circle"
@@ -3256,11 +3304,11 @@ QtObject {
         } else if (step.NeedsChallenge) {
             const c = step.NeedsChallenge.challenge
             activeChallenge = { connection: connection, challenge: c, waiting: false, busy: false, error: "" }
-            if (c.kind === "DecoupledPush") schedulePoll(connection, c.poll_interval_seconds)
+            if (c.kind === "DecoupledPush" || c.kind === "Progress") schedulePoll(connection, c.poll_interval_seconds)
         } else if (step.StillWaiting) {
             const c = step.StillWaiting.challenge
             if (activeChallenge === null) activeChallenge = { connection: connection, challenge: c, waiting: true, busy: false, error: "" }
-            else activeChallenge = Object.assign({}, activeChallenge, { waiting: true, busy: false })
+            else activeChallenge = Object.assign({}, activeChallenge, { challenge: c, waiting: true, busy: false })
             schedulePoll(connection, c.poll_interval_seconds)
         } else if (step.Finished) {
             pollTimer.stop()
@@ -3451,7 +3499,7 @@ QtObject {
         transferCancelNotice = null
         activeSession = null; activeChallenge = null; payeeCheck = null
         pendingLogin = null; setupRequest = null; webLoginConnection = null
-        syncingConnectionID = null; statementsAccountID = null
+        syncingConnectionID = null; statementsAccountID = null; postboxConnectionID = null
         failedSyncSecret = ""
         syncGeneration++
         resetSyncBatch()

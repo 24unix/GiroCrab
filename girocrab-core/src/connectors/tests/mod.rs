@@ -1411,6 +1411,7 @@ mod body_limit;
 mod content_id;
 mod direct_debit;
 mod payment_method;
+mod postbox;
 mod standing_order;
 mod statements_auto;
 mod transfer_cancel;

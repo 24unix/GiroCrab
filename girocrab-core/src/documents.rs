@@ -634,6 +634,43 @@ impl Vault {
         Ok(())
     }
 
+    /// Moves a document to another account, or to none (`None`). A booking of
+    /// another account it was linked to is unlinked; one of the new account
+    /// stays (#838: PostBox documents GiroCrab put on the wrong account).
+    pub fn set_document_account(
+        &self,
+        doc_id: i64,
+        account_id: Option<i64>,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        if let Some(a) = account_id {
+            let exists: bool = db.query_row(
+                "SELECT EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND deleted_ms IS NULL)",
+                [a],
+                |r| r.get(0),
+            )?;
+            if !exists {
+                return Err(CoreError::NotFound {
+                    what: trf("Konto {0}", &[&a]),
+                });
+            }
+        }
+        let n = db.execute(
+            "UPDATE booking_documents SET account_id = ?1,
+                booking_id = CASE WHEN ?1 IS NOT NULL AND
+                    (SELECT account_id FROM transactions WHERE id = booking_id) = ?1
+                    THEN booking_id ELSE NULL END
+              WHERE id = ?2",
+            params![account_id, doc_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: trf("Dokument {0}", &[&doc_id]),
+            });
+        }
+        Ok(())
+    }
+
     pub fn delete_document(&self, doc_id: i64) -> Result<(), CoreError> {
         self.db()?
             .execute("DELETE FROM booking_documents WHERE id = ?1", [doc_id])?;

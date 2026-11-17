@@ -157,7 +157,7 @@ extension AppModel {
             payeeCheck = PendingPayeeCheck(connection: connection, check: check)
         case .needsChallenge(let c):
             activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: false)
-            if c.kind == .decoupledPush { schedulePoll(connection: connection, interval: c.pollIntervalSeconds) }
+            if c.kind == .decoupledPush || c.kind == .progress { schedulePoll(connection: connection, interval: c.pollIntervalSeconds) }
         case .stillWaiting(let c):
             if activeChallenge == nil {
                 activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: true)

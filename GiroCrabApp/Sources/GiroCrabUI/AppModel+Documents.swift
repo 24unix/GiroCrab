@@ -80,6 +80,23 @@ extension AppModel {
         runCore { try vault.setAutoStatements(accountId: account.id, enabled: on) }
     }
 
+    /// comdirect via FinTS: also fetch the PostBox through comdirect's API (#838).
+    func comdirectPostboxEnabled(_ connectionID: Int64) -> Bool {
+        (try? vault?.comdirectPostboxEnabled(connectionId: connectionID)) ?? false
+    }
+
+    func setComdirectPostbox(_ connectionID: Int64, _ on: Bool) {
+        guard let vault else { return }
+        runCore { try vault.setComdirectPostbox(connectionId: connectionID, enabled: on) }
+    }
+
+    /// "PostBox jetzt abrufen": syncs the login with the PostBox, however recent the last fetch.
+    func fetchComdirectPostbox(_ connection: BankConnection) {
+        guard syncingConnectionID == nil else { return }
+        postboxConnectionID = connection.id
+        requestSync(connection)
+    }
+
     // MARK: - Belege & PostBox
 
     func accountDocuments(_ accountID: Int64) -> [DocumentInfo] {
@@ -152,8 +169,10 @@ extension AppModel {
 
     func allDocuments(search: String = "", unlinkedOnly: Bool = false, accountId: Int64? = nil, scope: DocumentsScope = .all) -> [DocumentInfo] {
         _ = documentsVersion
-        let f = DocumentFilter(accountId: accountId, docType: nil, search: search.isEmpty ? nil : search, unlinkedOnly: unlinkedOnly)
-        return ((try? vault?.listAllDocuments(filter: f)) ?? []).filter(scope.includes)
+        let withoutAccount = accountId == Self.documentsWithoutAccount
+        let f = DocumentFilter(accountId: withoutAccount ? nil : accountId, docType: nil, search: search.isEmpty ? nil : search, unlinkedOnly: unlinkedOnly)
+        return ((try? vault?.listAllDocuments(filter: f)) ?? [])
+            .filter { scope.includes($0) && (!withoutAccount || $0.accountId == nil) }
     }
 
     func documentData(_ doc: DocumentInfo) -> Data? {
@@ -237,6 +256,13 @@ extension AppModel {
         runCore { try vault.linkDocument(docId: doc.id, bookingId: booking?.id); linked = true }
         documentsChanged()
         if linked && booking == nil { toast = String(localized: "Zuordnung aufgehoben") }
+    }
+
+    /// Moves a document to another account, or to none (#838).
+    func setDocumentAccount(_ doc: DocumentInfo, _ accountID: Int64?) {
+        guard let vault else { return }
+        runCore { try vault.setDocumentAccount(docId: doc.id, accountId: accountID) }
+        documentsChanged()
     }
 
     /// Writes the document to a temp file and shows it in QuickLook.

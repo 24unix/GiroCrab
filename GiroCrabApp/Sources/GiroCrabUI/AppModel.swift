@@ -378,9 +378,11 @@ public final class AppModel {
     var iconColorTarget: IconColorTarget?
     /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).
     var newCategoryRequest: NewCategoryRequest?
-    /// "Belege & PostBox" filtered to one account (#172); nil = all accounts.
+    /// "Belege & PostBox" filtered to one account (#172); nil = all accounts,
+    /// `documentsWithoutAccount` = documents without an account (e.g. PostBox, #838).
     var documentsScope: DocumentsScope = .all
     var documentsAccountFilter: Int64?
+    static let documentsWithoutAccount: Int64 = -1
     /// „Geplant“ (#240): payments with a bank order, the filters and a reload
     /// marker (set by everything that can change them: transfers, syncs).
     var plannedPayments: [PlannedPayment] = []
@@ -675,6 +677,8 @@ public final class AppModel {
     /// Account whose statements (HKEKA) are being fetched by the running session.
     var statementsAccountID: Int64?
     var statementsCountBefore = 0
+    /// comdirect FinTS login whose PostBox is fetched now ("PostBox jetzt abrufen", #838).
+    var postboxConnectionID: Int64?
     /// Decrypted copy shown in QuickLook; removed again as soon as the
     /// preview closes or shows another document (and on lock / quit).
     var quickLookURL: URL? {
@@ -1507,6 +1511,7 @@ public final class AppModel {
         // the failure text may name a bank: gone with the vault
         autoSyncStatus = AutoSyncStatus()
         statementsAccountID = nil
+        postboxConnectionID = nil
         syncGeneration &+= 1
         resetSyncBatch()
         transferBusy = false

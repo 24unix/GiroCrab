@@ -34,7 +34,7 @@ Sheet {
             visible: sheet.active !== null && (AppModel.isDemo || AppModel.isMagicDemoLogin(sheet.active.connection.login_name))
             Layout.fillWidth: true
             credentials: false
-            buttonTitle: sheet.c && sheet.c.kind === "DecoupledPush" ? "" : qsTr("TAN 123456 einfügen")
+            buttonTitle: sheet.c && (sheet.c.kind === "DecoupledPush" || sheet.c.kind === "Progress") ? "" : qsTr("TAN 123456 einfügen")
             onFill: code.text = "123456"
         }
         // .decoupledPush
@@ -50,6 +50,14 @@ Sheet {
             RowLayout { Layout.alignment: Qt.AlignHCenter; spacing: 8
                 BusyIndicator { implicitWidth: 18; implicitHeight: 18; running: parent.visible }
                 Text { text: sheet.active && sheet.active.waiting ? qsTr("Warte auf Freigabe …") : qsTr("Push-Nachricht gesendet"); color: Theme.secondary; font.pixelSize: Theme.callout + 1 } }
+        }
+        // .progress: approval given, a longer download runs (comdirect PostBox, #838)
+        ColumnLayout {
+            visible: sheet.c !== null && sheet.c.kind === "Progress"
+            Layout.fillWidth: true; spacing: 12
+            SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: "tray"; size: 56; color: Theme.accent }
+            ChallengeTexts {}
+            BusyIndicator { Layout.alignment: Qt.AlignHCenter; implicitWidth: 18; implicitHeight: 18; running: parent.visible }
         }
         // .code, .imageCode
         ColumnLayout {

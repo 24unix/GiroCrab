@@ -301,6 +301,18 @@ struct DocumentsView: View {
                             #endif
                             Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                             .disabled(d.bookingId == nil)
+                            Menu("Konto zuordnen") {
+                                Button("Ohne Konto") { model.setDocumentAccount(d, nil) }
+                                    .disabled(d.accountId == nil)
+                                ForEach(model.accountMenuSections) { section in
+                                    Section(section.title) {
+                                        ForEach(section.accounts) { a in
+                                            Button(a.name) { model.setDocumentAccount(d, a.id) }
+                                                .disabled(d.accountId == a.id)
+                                        }
+                                    }
+                                }
+                            }
                             Divider()
                             Button("Beleg löschen …", role: .destructive) { docToDelete = d }
                         }
@@ -433,6 +445,7 @@ struct DocumentsView: View {
         @Bindable var model = model
         return Picker("Konto", selection: $model.documentsAccountFilter) {
             Text("Alle Konten").tag(Int64?.none)
+            Text("Ohne Konto").tag(Int64?.some(AppModel.documentsWithoutAccount))
             Divider()
             ForEach(model.accountMenuSections) { section in
                 Section(section.title) {
@@ -443,7 +456,7 @@ struct DocumentsView: View {
             }
         }
         .pickerStyle(.menu)
-        .sensitive(model.documentsAccountFilter == nil ? [] : .personal)
+        .sensitive(model.documentsAccountFilter == nil || model.documentsAccountFilter == AppModel.documentsWithoutAccount ? [] : .personal)
         .frame(minWidth: isCompact ? 0 : 150, maxWidth: isCompact ? .infinity : 270)
         .help("Dokumente eines Kontos anzeigen")
     }

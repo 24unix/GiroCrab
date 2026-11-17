@@ -168,13 +168,40 @@ impl ComdirectConnector {
         super::read_body_limited(resp, super::MAX_DOC_BYTES).await
     }
 
-    /// PostBox: recent PDF documents (Finanzreport, Wertpapierabrechnungen …).
+    /// PostBox: recent PDF documents (Finanzreport, Wertpapierabrechnungen …),
+    /// all attached to `account_ref`.
     async fn postbox(
         &mut self,
         account_ref: &str,
         since: &str,
     ) -> Vec<crate::documents::RemoteDocument> {
+        let mut docs = self.postbox_documents(since).await.unwrap_or_default();
+        for d in &mut docs {
+            d.account_ref = account_ref.to_string();
+        }
+        docs
+    }
+
+    /// PostBox PDFs created on or after `since` (`YYYY-MM-DD`, empty = all),
+    /// without an account (`account_ref` empty). `None` when the listing
+    /// failed, so the caller does not take an empty PostBox for a fetched one.
+    pub(crate) async fn postbox_documents(
+        &mut self,
+        since: &str,
+    ) -> Option<Vec<crate::documents::RemoteDocument>> {
+        let entries = self.postbox_entries(since).await?;
         let mut out = Vec::new();
+        for e in &entries {
+            if let Some(d) = self.postbox_download(e).await {
+                out.push(d);
+            }
+        }
+        Some(out)
+    }
+
+    /// The PostBox PDFs created on or after `since` (empty = all), as listed by
+    /// the bank; advertisements are left out. `None` when the listing failed.
+    pub(crate) async fn postbox_entries(&mut self, since: &str) -> Option<Vec<Value>> {
         let mut entries: Vec<Value> = Vec::new();
         // The v2 route may be missing for some contracts: the first page picks the route.
         let mut route = None;
@@ -194,7 +221,10 @@ impl ComdirectConnector {
                     found
                 }
             };
-            let Some(page) = page else { break };
+            let Some(page) = page else {
+                route?;
+                break;
+            };
             let got = page["values"].as_array().map_or(0, Vec::len);
             entries.extend(page["values"].as_array().cloned().unwrap_or_default());
             first += got;
@@ -202,59 +232,90 @@ impl ComdirectConnector {
                 break;
             }
         }
-        for d in entries {
-            let mime = d["mimeType"].as_str().unwrap_or("application/pdf");
-            let date: String = d["dateCreation"]
-                .as_str()
-                .unwrap_or("")
-                .chars()
-                .take(10)
-                .collect();
-            if mime != "application/pdf"
-                || d["advertisement"].as_bool().unwrap_or(false)
-                || (!date.is_empty() && date.as_str() < since)
-            {
-                continue;
+        entries.retain(|d| {
+            let date = postbox_date(d);
+            d["mimeType"].as_str().unwrap_or("application/pdf") == "application/pdf"
+                && !d["advertisement"].as_bool().unwrap_or(false)
+                && (date.is_empty() || date.as_str() >= since)
+                && !d["documentId"].as_str().unwrap_or_default().is_empty()
+        });
+        Some(entries)
+    }
+
+    /// Downloads one listed PostBox PDF (without an account). The API allows
+    /// only a few requests per second: a refused download is tried again
+    /// after a pause.
+    pub(crate) async fn postbox_download(
+        &mut self,
+        d: &Value,
+    ) -> Option<crate::documents::RemoteDocument> {
+        let id = d["documentId"].as_str()?.to_string();
+        for attempt in 0..3u64 {
+            if attempt > 0 {
+                tokio::time::sleep(std::time::Duration::from_secs(attempt)).await;
             }
-            let id = d["documentId"].as_str().unwrap_or_default().to_string();
-            if id.is_empty() {
-                continue;
-            }
-            let mut bytes = Vec::new();
+            let mut last = String::new();
             for path in [
                 format!("/api/messages/v2/documents/{id}"),
                 format!("/api/messages/v1/documents/{id}"),
             ] {
-                if let Ok(b) = self.get_bytes(&path, "application/pdf").await {
-                    bytes = b;
-                    break;
+                match self.get_bytes(&path, "application/pdf").await {
+                    Ok(b) if b.starts_with(b"%PDF") => {
+                        let mut doc = postbox_stub(d)?;
+                        doc.bytes = b;
+                        return Some(doc);
+                    }
+                    Ok(_) => last = "no PDF".into(),
+                    Err(CoreError::Bank { code, .. }) => last = code,
+                    Err(_) => last = "network".into(),
                 }
             }
-            if !bytes.starts_with(b"%PDF") {
-                continue;
+            crate::depot_debug::log(&format!(
+                "comdirect postbox: download failed ({last}), attempt {}",
+                attempt + 1
+            ));
+            if last == "no PDF" {
+                break;
             }
-            let name = d["name"].as_str().unwrap_or("PostBox-Dokument").to_string();
-            let lower = name.to_lowercase();
-            out.push(crate::documents::RemoteDocument {
-                account_ref: account_ref.to_string(),
-                booking_external_id: None,
-                title: name.clone(),
-                doc_type: if lower.contains("steuer") {
-                    "steuer".into()
-                } else if lower.contains("abrechnung") {
-                    "abrechnung".into()
-                } else {
-                    "postbox".into()
-                },
-                mime_type: "application/pdf".into(),
-                file_name: format!("{}_{}.pdf", date, name.replace(' ', "_")),
-                bytes,
-                source_url: format!("comdirect:postbox:{id}"),
-                date,
-            });
         }
-        out
+        None
     }
+}
+
+/// A listed PostBox document without its bytes (title, type, date, key).
+/// Without bytes it is not stored, but a stored copy still gets its account.
+pub(crate) fn postbox_stub(d: &Value) -> Option<crate::documents::RemoteDocument> {
+    let id = d["documentId"].as_str().filter(|s| !s.is_empty())?;
+    let date = postbox_date(d);
+    let name = d["name"].as_str().unwrap_or("PostBox-Dokument").to_string();
+    let lower = name.to_lowercase();
+    Some(crate::documents::RemoteDocument {
+        account_ref: String::new(),
+        booking_external_id: None,
+        title: name.clone(),
+        doc_type: if lower.contains("steuer") {
+            "steuer".into()
+        } else if lower.contains("abrechnung") {
+            "abrechnung".into()
+        } else {
+            "postbox".into()
+        },
+        mime_type: "application/pdf".into(),
+        file_name: format!("{}_{}.pdf", date, name.replace(' ', "_")),
+        bytes: Vec::new(),
+        source_url: format!("comdirect:postbox:{id}"),
+        date,
+    })
+}
+
+/// Creation date (`YYYY-MM-DD`) of a PostBox entry, empty if unknown.
+fn postbox_date(d: &Value) -> String {
+    d["dateCreation"]
+        .as_str()
+        .unwrap_or("")
+        .chars()
+        .take(10)
+        .collect()
 }
 
 impl Default for ComdirectConnector {

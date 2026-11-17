@@ -23,6 +23,10 @@ pub enum ChallengeKind {
     ImageCode,
     /// Open `redirect_url` in the browser, then paste the resulting URL/code.
     Redirect,
+    /// Nothing to do: the approval was given and a longer download runs
+    /// (`message` tells how far). The UI shows it and calls `poll()` again
+    /// after `poll_interval_seconds` (comdirect PostBox, #838).
+    Progress,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -55,6 +59,9 @@ pub struct SyncSummary {
     pub new_accounts: Vec<String>,
     /// Accounts the bank / consent no longer grants access to (newly marked).
     pub revoked_accounts: Vec<String>,
+    /// New documents from the comdirect PostBox when this sync fetched it
+    /// next to FinTS (#838); `None` = not fetched (not due, off or failed).
+    pub postbox_documents: Option<u32>,
 }
 
 #[derive(Debug, Clone, uniffi::Enum)]
@@ -470,7 +477,11 @@ pub struct FetchResult {
     /// Accounts (external refs) whose statements were fetched automatically.
     pub statements_fetched: Vec<String>,
     /// PDFs fetched from the bank (trade confirmations, PostBox, statements).
+    /// An empty `account_ref` stores the document without an account.
     pub documents: Vec<crate::documents::RemoteDocument>,
+    /// The comdirect PostBox next to a FinTS login was fetched (#838): its
+    /// last fetch date moves on.
+    pub postbox_fetched: bool,
     /// external_id prefix of provisional bookings (card holds) this fetch
     /// lists completely: stored ones missing from it are removed.
     pub hold_prefix: Option<String>,

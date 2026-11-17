@@ -97,7 +97,9 @@ pub fn drive<S: Stepper, U: Ui>(session: &S, ui: &U) -> Result<SyncSummary, Stri
             SyncStep::Finished { summary } => return Ok(summary),
             SyncStep::StillWaiting { challenge } => wait_and_poll(session, ui, &challenge)?,
             SyncStep::NeedsChallenge { challenge } => match challenge.kind {
-                ChallengeKind::DecoupledPush => wait_and_poll(session, ui, &challenge)?,
+                ChallengeKind::DecoupledPush | ChallengeKind::Progress => {
+                    wait_and_poll(session, ui, &challenge)?
+                }
                 ChallengeKind::Code | ChallengeKind::ImageCode => submit(session, ui, &challenge)?,
                 ChallengeKind::Redirect => {
                     let url = challenge.redirect_url.as_deref().unwrap_or_default();
@@ -211,6 +213,7 @@ mod tests {
             transactions_skipped_archived: 0,
             new_accounts: vec![],
             revoked_accounts: vec![],
+            postbox_documents: None,
         }
     }
 

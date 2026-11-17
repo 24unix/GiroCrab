@@ -11,6 +11,7 @@ extension AppModel {
         withFreshBankingPolicy { [self] in
             if let gate = bankingGate(for: connection) {
                 statementsAccountID = nil
+                postboxConnectionID = nil
                 if syncBatchTotal > 1, !gate.all {
                     // A lock published while "Alle abrufen" runs: skip this
                     // login, go on with the rest, name it in the closing notice.
@@ -194,6 +195,7 @@ extension AppModel {
         activeSession = nil
         activeChallenge = nil
         statementsAccountID = nil
+        postboxConnectionID = nil
         syncGeneration &+= 1
         let generation = syncGeneration
         Task {
@@ -245,6 +247,7 @@ extension AppModel {
         // A cancelled "Kontoauszüge abrufen" must never carry over to the next
         // sync – it would send that login's PIN for another bank's account.
         statementsAccountID = nil
+        postboxConnectionID = nil
         guard syncBatchTotal > 1 else { resetSyncBatch(); return }
         if let name = connection?.displayName { syncBatchSkipped.append(name) }
         syncNextInQueue()
@@ -254,6 +257,16 @@ extension AppModel {
         syncQueue = []
         syncBatchTotal = 0
         syncBatchSkipped = []
+    }
+
+    /// Toast suffix of a sync with the comdirect PostBox (#838).
+    static func postboxNote(_ s: SyncSummary) -> String {
+        guard let n = s.postboxDocuments else {
+            return String(localized: "PostBox nicht abgerufen. Bitte Client-ID und Client-Secret der comdirect-API prüfen.")
+        }
+        return n == 0
+            ? String(localized: "keine neuen PostBox-Dokumente")
+            : String(localized: "\(n) neue PostBox-Dokumente")
     }
 
     /// Toast suffix: new bookings the bank delivered for archived accounts (not stored).
@@ -295,6 +308,12 @@ extension AppModel {
             statementsAccountID = nil
         }
         let statementsFor = statementsAccountID
+        // "PostBox jetzt abrufen" only for exactly this login, never in an automatic sync
+        if postboxConnectionID != connection.id || quietSyncConnectionID == connection.id {
+            postboxConnectionID = nil
+        }
+        let postboxNow = postboxConnectionID != nil
+        let quiet = quietSyncConnectionID == connection.id
         syncingConnectionID = connection.id
         syncGeneration &+= 1
         Task {
@@ -303,6 +322,11 @@ extension AppModel {
                 let session: SyncSession
                 if let accountID = statementsFor {
                     session = try vault.fetchAccountStatements(accountId: accountID, secret: secret, demo: isDemo)
+                } else if postboxNow {
+                    session = try vault.fetchComdirectPostbox(connectionId: connection.id, secret: secret, demo: isDemo)
+                } else if quiet {
+                    // no new approval in the background (e.g. the comdirect PostBox, #838)
+                    session = try vault.beginQuietSync(connectionId: connection.id, secret: secret, demo: isDemo)
                 } else {
                     session = try vault.beginSync(connectionId: connection.id, secret: secret, demo: isDemo)
                 }
@@ -343,11 +367,12 @@ extension AppModel {
         switch step {
         case .needsChallenge(let c):
             activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: false)
-            if c.kind == .decoupledPush { schedulePoll(connection: connection, interval: c.pollIntervalSeconds) }
+            if c.kind == .decoupledPush || c.kind == .progress { schedulePoll(connection: connection, interval: c.pollIntervalSeconds) }
         case .stillWaiting(let c):
             if activeChallenge == nil {
                 activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: true)
             } else {
+                activeChallenge?.challenge = c  // progress steps bring a new text
                 activeChallenge?.waiting = true
                 activeChallenge?.busy = false
             }
@@ -365,12 +390,19 @@ extension AppModel {
                 toast = n > 0
                     ? String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
                     : String(localized: "\(connection.displayName): keine neuen Kontoauszüge. Falls die Bank keine elektronischen Kontoauszüge per FinTS anbietet, lassen sie sich hier nicht abrufen.")
+            } else if postboxConnectionID == connection.id {
+                postboxConnectionID = nil
+                documentsVersion += 1
+                toast = syncNotice(connection, s) + " · " + Self.postboxNote(s)
             } else {
                 let quiet = quietSyncConnectionID == connection.id
                 // scheduled syncs only speak up when something changed
                 if !quiet || s.transactionsImported > 0 || !s.newAccounts.isEmpty || !s.revokedAccounts.isEmpty {
-                    toast = syncNotice(connection, s) + Self.skippedArchivedNote(s)
+                    var note = syncNotice(connection, s) + Self.skippedArchivedNote(s)
+                    if let n = s.postboxDocuments, n > 0 { note += " · " + Self.postboxNote(s) }
+                    toast = note
                 }
+                if s.postboxDocuments.map({ $0 > 0 }) ?? false { documentsVersion += 1 }
             }
             let wasQuiet = quietSyncConnectionID == connection.id
             quietSyncConnectionID = nil
@@ -488,6 +520,7 @@ extension AppModel {
         pendingLogin = nil
         syncingConnectionID = nil
         statementsAccountID = nil
+        postboxConnectionID = nil
         syncGeneration &+= 1
         resetSyncBatch()
         Task { await s?.cancel() }
@@ -511,6 +544,7 @@ extension AppModel {
             return
         }
         statementsAccountID = nil
+        postboxConnectionID = nil
         syncingConnectionIDBeforeError = syncingConnectionID
         pollTask?.cancel()
         activeSession = nil

@@ -18,6 +18,8 @@ Sheet {
     property var revealed: ({})
     property var status: null
     property bool showAdvanced: false
+    /// comdirect via FinTS: PostBox through the bank's API as well (#838).
+    property bool postbox: false
 
     readonly property string kind: connection ? connection.connector : ""
     readonly property var descriptor: connection ? AppModel.descriptor(kind) : null
@@ -44,6 +46,8 @@ Sheet {
     }
     // With GiroCrab's own registration built in, it is chosen in Settings, not per bank.
     readonly property var keys: AppModel.fintsBuiltinAvailable ? allKeys.filter(k => k !== "fints.product_id") : allKeys
+    /// comdirect via FinTS: the API credentials for the PostBox (#838), shown in its section.
+    readonly property var postboxKeys: isComdirect && kind === "FinTsGeneric" ? ["comdirect.client_id", "comdirect.client_secret"] : []
     /// Optional power-user PSD2 credentials (collapsed "Erweitert" section).
     readonly property var advancedKeys: kind === "AmericanExpress"
         ? ["enablebanking.use.amex", "enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url", "enablebanking.aspsp.amex", "enablebanking.country.amex"]
@@ -78,10 +82,11 @@ Sheet {
         pin = ""
         status = AppModel.connectionStatus(connection.id)
         storePin = status ? status.has_pin : false
+        postbox = isComdirect && kind === "FinTsGeneric" ? AppModel.comdirectPostbox(connection.id) : false
         revealed = ({})
         showAdvanced = false
         const v = {}
-        for (const key of keys.concat(advancedKeys)) {
+        for (const key of keys.concat(advancedKeys, postboxKeys)) {
             const e = AppModel.settingEntry(key)
             v[key] = e && e.is_secret ? AppModel.revealSetting(key) : (e ? e.value : AppModel.revealSetting(key))
         }
@@ -94,13 +99,16 @@ Sheet {
             if (!storePin) AppModel.setConnectionPin(connection.id, null)
             else if (pin !== "") AppModel.setConnectionPin(connection.id, pin)
         }
-        for (const key of keys.concat(advancedKeys)) {
+        saveSettings(keys.concat(advancedKeys, postboxKeys))
+        pin = ""
+    }
+    function saveSettings(list) {
+        for (const key of list) {
             const e = AppModel.settingEntry(key)
             const v = values[key] || ""
             const current = e && e.is_secret ? AppModel.revealSetting(key) : (e ? e.value : "")
             if (v !== current) AppModel.saveSetting(key, v)
         }
-        pin = ""
     }
     function current() { return AppModel.connections.find(c => c.id === connection.id) || connection }
 
@@ -257,6 +265,29 @@ Sheet {
                                       value: sheet.kind === "Comdirect" ? qsTr("Schnittstelle der Bank") : qsTr("Online-Banking (FinTS)") }
                     Button { text: sheet.kind === "Comdirect" ? qsTr("Auf FinTS umstellen …") : qsTr("Auf die Schnittstelle der Bank umstellen …")
                              onClicked: confirmSwitch.open() }
+                }
+                SettingsFormSection {
+                    visible: sheet.isComdirect && sheet.kind === "FinTsGeneric"
+                    title: qsTr("PostBox")
+                    footer: qsTr("Kontoauszüge, Finanzreport und Wertpapierabrechnungen aus der comdirect-PostBox, höchstens einmal pro Woche beim Abruf. Dafür sind Client-ID und Client-Secret der comdirect-API nötig und eine eigene Freigabe in der photoTAN-App. Wertpapierdokumente kommen ans Depot, die übrigen auf das erste Girokonto. Über das Kontextmenü in „Belege & PostBox“ lässt sich ein Dokument einem anderen Konto zuordnen.")
+                    Repeater { model: sheet.postboxKeys; KeyField { required property string modelData; key: modelData } }
+                    CheckBox {
+                        text: qsTr("PostBox über die Schnittstelle der Bank abrufen")
+                        checked: sheet.postbox
+                        onToggled: {
+                            // the switch needs the credentials stored
+                            if (checked) sheet.saveSettings(sheet.postboxKeys)
+                            AppModel.setComdirectPostbox(sheet.connection.id, checked)
+                            sheet.postbox = AppModel.comdirectPostbox(sheet.connection.id)
+                            checked = Qt.binding(() => sheet.postbox)
+                        }
+                    }
+                    Button {
+                        visible: sheet.postbox
+                        text: qsTr("PostBox jetzt abrufen")
+                        enabled: AppModel.syncingConnectionID === null
+                        onClicked: { sheet.save(); const c = sheet.current(); sheet.close(); AppModel.fetchComdirectPostbox(c) }
+                    }
                 }
                 SettingsFormSection {
                     title: qsTr("Kontenauswahl")

@@ -48,6 +48,35 @@ Rectangle {
         AppMenuItem { text: qsTr("Zuordnung aufheben")
                       enabled: !!view.menuDoc && view.menuDoc.booking_id !== null && view.menuDoc.booking_id !== undefined
                       onTriggered: AppModel.linkDocument(view.menuDoc, null) }
+        // move to another account or none (#838), one submenu per sidebar section
+        AppMenu {
+            id: accountMenu
+            title: qsTr("Konto zuordnen")
+            AppMenuItem { text: qsTr("Ohne Konto")
+                          enabled: !!view.menuDoc && view.menuDoc.account_id !== null && view.menuDoc.account_id !== undefined
+                          onTriggered: AppModel.setDocumentAccount(view.menuDoc, null) }
+            Instantiator {
+                model: AppModel.accountMenuSections
+                delegate: AppMenu {
+                    id: sectionMenu
+                    required property var modelData
+                    title: AppModel.menuText(modelData.title)
+                    Instantiator {
+                        model: sectionMenu.modelData.accounts
+                        delegate: AppMenuItem {
+                            required property var modelData
+                            text: AppModel.menuText(modelData.name)
+                            enabled: !!view.menuDoc && view.menuDoc.account_id !== modelData.id
+                            onTriggered: AppModel.setDocumentAccount(view.menuDoc, modelData.id)
+                        }
+                        onObjectAdded: (index, object) => sectionMenu.insertItem(index, object)
+                        onObjectRemoved: (index, object) => sectionMenu.removeItem(object)
+                    }
+                }
+                onObjectAdded: (index, object) => accountMenu.addMenu(object)
+                onObjectRemoved: (index, object) => accountMenu.removeMenu(object)
+            }
+        }
         AppMenuSeparator {}
         AppMenuItem { text: qsTr("Beleg löschen …"); onTriggered: view.docToDelete = view.menuDoc } }
 
@@ -74,14 +103,14 @@ Rectangle {
                     columnSpacing: 12; rowSpacing: 8
                     // same order and groups as the sidebar (#412)
                     AppComboBox {
-                        readonly property var options: AppModel.accountMenuOptions(a => a.name)
+                        readonly property var options: AppModel.accountMenuOptions(a => a.name, true)
                         Layout.minimumWidth: 150; Layout.maximumWidth: 270; Layout.fillWidth: true
                         model: options
                         textRole: "title"
                         currentIndex: Math.max(0, options.findIndex(o => o.id === AppModel.documentsAccountFilter && !o.header))
                         onActivated: i => { if (!options[i].header) AppModel.documentsAccountFilter = options[i].id }
                         ToolTip.text: qsTr("Dokumente eines Kontos anzeigen"); ToolTip.visible: hovered; ToolTip.delay: 600
-                        Sensitive { when: AppModel.documentsAccountFilter !== null }   // the selected account's name
+                        Sensitive { when: AppModel.documentsAccountFilter !== null && AppModel.documentsAccountFilter !== AppModel.documentsWithoutAccount }   // the selected account's name
                     }
                     Item { visible: view.width >= 980; Layout.fillWidth: true }
                     Switch { text: qsTr("Nur ohne zugeordneten Umsatz"); checked: view.unlinkedOnly; onToggled: view.unlinkedOnly = checked }

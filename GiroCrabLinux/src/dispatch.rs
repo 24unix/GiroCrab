@@ -642,6 +642,17 @@ fn call(method: &str, a: &Value) -> R {
                 .map_err(|e| core_error_json(&e))?;
             ok(crate::sessions::register(crate::sessions::Session::Sync(s)))
         }
+        "fetch_comdirect_postbox" => {
+            let v = vault()?;
+            let s = v
+                .fetch_comdirect_postbox(
+                    arg(a, "connection_id")?,
+                    arg(a, "secret")?,
+                    arg(a, "demo")?,
+                )
+                .map_err(|e| core_error_json(&e))?;
+            ok(crate::sessions::register(crate::sessions::Session::Sync(s)))
+        }
         "begin_transfer" => {
             let v = vault()?;
             let t = v
@@ -1439,6 +1450,8 @@ vault_methods! {
     set_connection_pin(connection_id, pin) connection_status(connection_id)
     clear_connection_session(connection_id) set_connection_session(connection_id, cookies)
     switch_comdirect_access(connection_id)
+    set_comdirect_postbox(connection_id, enabled) comdirect_postbox_enabled(connection_id)
+    set_document_account(doc_id, account_id)
     fints_product_id_mode() set_fints_product_id_mode(mode) fints_product_id_source()
     list_holdings(account_id) balance_history(account_ids, days)
     rename_account(account_id, name)
