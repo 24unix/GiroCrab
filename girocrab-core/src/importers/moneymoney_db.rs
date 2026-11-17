@@ -453,6 +453,9 @@ struct SrcAccount {
     /// Balance MoneyMoney displays (`accounts.balances` blob): (cents, currency).
     shown_balance: Option<(i64, String)>,
     balance_ts: Option<i64>,
+    /// `accounts.cancel_tsp`: when the account was deactivated/closed in MoneyMoney
+    /// (Unix seconds); `None` = still active.
+    cancelled_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1187,6 +1190,7 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
                 "balances",
                 "balance_tsp",
                 "bic",
+                "cancel_tsp",
             ],
             "ORDER BY sort, rowid",
         )?;
@@ -1214,6 +1218,7 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
                 shown_balance: parse_balances_blob(get(r, 11)?),
                 balance_ts: vint(get(r, 12)?).filter(|t| *t > 0),
                 bic: vtext(get(r, 13)?),
+                cancelled_ts: vint(get(r, 14)?).filter(|t| *t > 0),
             })
         })?;
         src.accounts = rows.collect::<Result<_, _>>()?;
@@ -2745,6 +2750,14 @@ fn import(
             if kind == AccountKind::Loan {
                 Vault::derive_initial_balance(conn, account_id)?;
             }
+            // Deactivated in MoneyMoney: archived here too (offline account that
+            // stays readable). Never un-archives what the user archived.
+            if let Some(ts) = a.cancelled_ts {
+                conn.execute(
+                    "UPDATE accounts SET archived_unix = ?1, archived_ms = ?2 WHERE id = ?3 AND archived_unix IS NULL",
+                    params![ts, now_ms(), account_id],
+                )?;
+            }
             // #212: MoneyMoney's opening balance becomes the account's. MoneyMoney
             // has no cut-off date: the Startsaldo applies before the first
             // booking. A balance-history row is dated, though (its value is the
@@ -3120,3 +3133,39 @@ fn statement_files(explicit: Option<String>, found: Option<PathBuf>) -> Option<S
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(test)]
+mod inactive_account_tests {
+    use super::tests::{fake_db, options_from, PW};
+    use super::*;
+
+    #[test]
+    fn inactive_moneymoney_account_is_imported_archived() {
+        let path = fake_db();
+        {
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(&format!("PRAGMA key = '{}';", PW.replace('\'', "''")))
+                .unwrap();
+            c.execute_batch("UPDATE accounts SET cancel_tsp = 1700000000 WHERE rowid = 2;")
+                .unwrap();
+        }
+        let v = Vault::open(
+            crate::test_support::thread_temp_path("mmdb-inactive-vault.db")
+                .to_string_lossy()
+                .to_string(),
+            vec![7u8; 32],
+        )
+        .unwrap();
+        let p = v
+            .preview_moneymoney_database(path.clone(), PW.into(), None)
+            .unwrap();
+        v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
+            .unwrap();
+        let accounts = v.list_accounts().unwrap();
+        let find = |name: &str| accounts.iter().find(|a| a.name == name).unwrap();
+        let card = find("Visa-Karte");
+        assert!(card.archived_unix.is_some());
+        assert_eq!(card.archived_unix, Some(1_700_000_000));
+        assert!(find("Girokonto").archived_unix.is_none());
+    }
+}
