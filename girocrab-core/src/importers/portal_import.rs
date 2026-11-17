@@ -1196,7 +1196,7 @@ pub(crate) fn merge_imported_split_parts(
 
 /// Moves category, note and check mark from `from` to `to` where `to` has none,
 /// then deletes `from` (tombstone, so other devices drop it too).
-fn hand_over(db: &rusqlite::Connection, from: i64, to: i64) -> Result<(), CoreError> {
+pub(crate) fn hand_over(db: &rusqlite::Connection, from: i64, to: i64) -> Result<(), CoreError> {
     let now = crate::dates::now_ms();
     db.execute(
         "UPDATE transactions SET (category_id, category_source, rule_id, category_ms) =

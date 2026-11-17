@@ -12,7 +12,7 @@ extension AppModel {
     /// PSD2 banks such as C24 and must not move the cards off the web login.
     func usesPortal(_ c: BankConnection) -> Bool {
         if Self.isMagicDemoLogin(c.loginName) { return false }
-        if !isDemo, [.amazonOrders, .fnz, .quirion, .schwaebischHall, .equatePlus].contains(c.connector) { return true }
+        if !isDemo, [.advanzia, .amazonOrders, .fnz, .quirion, .schwaebischHall, .equatePlus].contains(c.connector) { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
         return !Self.cardUsesEnableBanking(
             optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
@@ -160,11 +160,11 @@ func clearPortalSession(_ kind: ConnectorKind) async {
 struct PortalDomains: Sendable {
     let domains: [String]
 
-    init(_ hosts: [String]) {
+    init(_ hosts: [String], includeBaseDomains: Bool = true) {
         var all = Set<String>()
         for h in hosts.map({ $0.lowercased() }) where !h.isEmpty {
             all.insert(h)
-            all.insert(Self.baseDomain(h))
+            if includeBaseDomains { all.insert(Self.baseDomain(h)) }
         }
         domains = all.sorted()
     }
@@ -291,11 +291,12 @@ final class PortalBrowser {
 
     /// `captureTraffic: false` leaves the page untouched (no injected fetch/XHR hook) and
     /// identifies as desktop Safari – used for Amazon, whose sign-in is picky about both.
-    init(url: URL, domains: PortalDomains, captureTraffic: Bool = true, userScript: String? = nil) {
+    init(url: URL, domains: PortalDomains, captureTraffic: Bool = true, userScript: String? = nil,
+         websiteDataStore: WKWebsiteDataStore? = nil) {
         self.domains = domains
         navigationGuard = PortalNavigationGuard()
         let cfg = WKWebViewConfiguration()
-        cfg.websiteDataStore = .default()
+        cfg.websiteDataStore = websiteDataStore ?? .default()
         let ucc = WKUserContentController()
         if captureTraffic {
             ucc.addUserScript(WKUserScript(source: Self.hook, injectionTime: .atDocumentStart, forMainFrameOnly: false))

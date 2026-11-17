@@ -13,6 +13,7 @@ pub fn bank_catalog() -> Vec<BankDescriptor> {
 pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
     match kind {
+        ConnectorKind::Advanzia => advanzia::bank_descriptor(kind),
         ConnectorKind::VolksbankKasselGoettingen => BankDescriptor {
             kind,
             name: "Volksbank Kassel Göttingen".into(),
@@ -348,6 +349,15 @@ pub struct MatrixEntry {
 /// FinTS functions (securities, PDF statements) are offered where the bank's
 /// BPD advertises them.
 pub const BANK_MATRIX: &[MatrixEntry] = &[
+    MatrixEntry {
+        name: "Advanzia Bank",
+        kind: Some(ConnectorKind::Advanzia),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::TestingWanted,
+        issues: &[177],
+    },
     MatrixEntry {
         name: "Volksbank Kassel Göttingen",
         kind: Some(ConnectorKind::VolksbankKasselGoettingen),
@@ -729,6 +739,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         )),
         ConnectorKind::AmazonOrders => Box::new(crate::importers::amazon_orders::WebOnlyConnector),
         ConnectorKind::Fnz => Box::new(fnz::WebOnlyConnector),
+        ConnectorKind::Advanzia => Box::new(advanzia::WebOnlyConnector),
         ConnectorKind::Ibkr => Box::new(ibkr::IbkrConnector::new()),
         ConnectorKind::Quirion => Box::new(quirion::WebOnlyConnector),
         ConnectorKind::SchwaebischHall => Box::new(schwaebisch_hall::WebOnlyConnector),

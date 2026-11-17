@@ -103,7 +103,7 @@ fn booking_columns(share_sql: &str) -> String {
          t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
          (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
          t.purpose_code, t.gvc, t.salary_flag, {share_sql},
-         (t.external_id LIKE 'pending-%'), t.item_refs, t.end_to_end_id, t.mandate_id, t.creditor_id, t.external_id"
+         ((t.external_id LIKE 'pending-%' OR t.external_id LIKE 'advanzia-hold-%')), t.item_refs, t.end_to_end_id, t.mandate_id, t.creditor_id, t.external_id"
     )
 }
 
@@ -774,7 +774,8 @@ fn keeps(filter: &BookingFilter, flow: FlowKind, merchant: &str) -> bool {
 pub(crate) const LIVE_BOOKINGS_SQL: &str = "t.deleted_ms IS NULL AND a.deleted_ms IS NULL";
 
 /// Entries the bank reported as not booked yet (`pending-…` external id).
-pub(crate) const PENDING_SQL: &str = "t.external_id LIKE 'pending-%'";
+pub(crate) const PENDING_SQL: &str =
+    "(t.external_id LIKE 'pending-%' OR t.external_id LIKE 'advanzia-hold-%')";
 
 /// `values` as an inlined SQL list ("1,2,3"): integers can't inject, and one
 /// statement keeps its ORDER BY without chunking around the parameter limit.

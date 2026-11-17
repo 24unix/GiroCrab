@@ -277,6 +277,7 @@ extension AppModel {
 
     func removeConnection(_ id: Int64) {
         guard let vault else { return }
+        if advanziaWorkflow?.connection.id == id { advanziaWorkflow?.cancel() }
         // Trade Republic: also drop the browser session (tr_session, tr_refresh, website data).
         if connections.first(where: { $0.id == id })?.connector == .tradeRepublic {
             Task { await WebLoginSheet.clearAllTradeRepublicWebData() }

@@ -10,7 +10,13 @@ struct AccountEditSheet: View {
     @State private var owner = ""
     @State private var kind: AccountKind = .checking
     @State private var note = ""
+    @State private var login = ""
+    @State private var advanziaSettings = AdvanziaConnectionSettingsState()
 
+    private var advanziaConnection: BankConnection? {
+        guard let a = account, a.connector == .advanzia, let id = a.connectionId else { return nil }
+        return model.connections.first { $0.id == id }
+    }
     private var account: Account? { model.account(for: accountID) }
 
     var body: some View {
@@ -24,6 +30,10 @@ struct AccountEditSheet: View {
                     Picker("Kontoart", selection: $kind) {
                         ForEach(AccountKind.importChoices, id: \.self) { k in Text(k.label).tag(k) }
                     }
+                }
+                if advanziaConnection != nil {
+                    TextField("Advanzia-Benutzername", text: $login).autocorrectionDisabled().sensitive()
+                    AdvanziaConnectionFields(state: advanziaSettings)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Konto-Notiz")
@@ -39,19 +49,33 @@ struct AccountEditSheet: View {
             HStack {
                 Spacer()
                 Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Sichern") { save(); dismiss() }
+                Button("Sichern") { saveAndFinish() }
                     .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || (advanziaConnection != nil && (advanziaSettings.busy || !advanziaSettings.loaded)))
             }
         }
         .padding(22)
-        .macFrame(width: 440)
+        .macFrame(width: advanziaConnection == nil ? 440 : 560)
+        .task {
+            if let c = advanziaConnection {
+                login = c.loginName
+                await advanziaSettings.load(connectionID: c.id, model: model)
+            }
+        }
         .onAppear {
             guard let a = account else { return }
             name = a.name; owner = a.owner; kind = a.kind; note = model.accountNote(for: a.id)
         }
     }
 
+    private func saveAndFinish() {
+        if let c = advanziaConnection {
+            Task {
+                guard await advanziaSettings.save(connection: c, name: c.displayName, login: login, model: model) != nil else { return }
+                save(); dismiss()
+            }
+        } else { save(); dismiss() }
+    }
     private func save() {
         guard let a = account else { return }
         let newName = name.trimmingCharacters(in: .whitespaces)

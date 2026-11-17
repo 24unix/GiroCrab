@@ -105,7 +105,7 @@ struct AddBankSheet: View {
         case .bank: return String(localized: "Bank hinzufügen")
         case .access:
             guard let s = selected else { return "" }
-            return s.id == Self.manualFinTs.id ? String(localized: "Andere FinTS-Bank") : s.name
+            return s.id == Self.manualFinTs.id ? String(localized: "Andere FinTS-Bank") : Self.displayName(s)
         case .setup: return String(localized: "Einrichten")
         }
     }
@@ -115,6 +115,9 @@ struct AddBankSheet: View {
         case .bank:
             return String(localized: "Suchen Sie Ihre Bank nach Name, Bankleitzahl oder IBAN.")
         case .access:
+            if selected?.connector == .advanzia {
+                return String(localized: "Zugangsdaten und Freigabeverfahren festlegen. Danach startet der Abruf im Hintergrund.")
+            }
             return String(localized: "Wie GiroCrab die Umsätze abruft. PIN und TAN fragt GiroCrab erst beim ersten Abruf ab.")
         case .setup:
             return String(localized: "Diese Angaben braucht GiroCrab einmalig, danach gelten sie für alle Banken dieser Art.")
@@ -336,8 +339,8 @@ struct AddBankSheet: View {
     }
 
     private func bankRow(_ r: BankSearchResult) -> some View {
-        row(symbol: Self.symbol(r), title: r.name, detail: Self.detailLine(r),
-            accessibility: [r.name, Self.accessibleDetail(r)].compactMap { $0 }.joined(separator: ", "))
+        row(symbol: Self.symbol(r), title: Self.displayName(r), detail: Self.detailLine(r),
+            accessibility: [Self.displayName(r), Self.accessibleDetail(r)].compactMap { $0 }.joined(separator: ", "))
             .tag(r.id)
     }
 
@@ -474,6 +477,10 @@ struct AddBankSheet: View {
     }
 
     // MARK: - Labels
+
+    static func displayName(_ result: BankSearchResult) -> String {
+        result.connector == .advanzia ? String(localized: "Advanzia Bank (Zugang mein.advanzia.com)") : result.name
+    }
 
     static func groupTitle(_ m: BankAccessMode) -> LocalizedStringKey {
         switch m {

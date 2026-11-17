@@ -457,6 +457,8 @@ pub struct FetchResult {
     /// Accounts (external refs) whose balance could not be read this time: the
     /// reported `balance_cents` is a placeholder and the stored balance stays.
     pub balances_unknown: Vec<String>,
+    /// Explicit bank-reported balances, including zero; never derive a replacement.
+    pub balances_reported: Vec<String>,
     /// Securities transactions (buy, sell, dividend …) of depots; added or
     /// refreshed by `(account, external_id)`, never removed.
     pub security_transactions: Vec<RemoteSecurityTransaction>,

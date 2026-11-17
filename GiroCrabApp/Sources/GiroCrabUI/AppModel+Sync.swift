@@ -28,6 +28,9 @@ extension AppModel {
     }
 
     private func requestSyncChecked(_ connection: BankConnection) {
+        if connection.connector == .advanzia, !isDemo, !Self.isMagicDemoLogin(connection.loginName) {
+            startAdvanzia(connection); return
+        }
         // Amex / Amazon Visa: embedded web-portal login (no API keys needed).
         if usesPortal(connection) {
             webLoginConnection = connection
@@ -214,6 +217,7 @@ extension AppModel {
     /// "Alle abbrechen": ends the running sync and closes whichever prompt of
     /// the batch is open (PIN, setup, browser login, TAN).
     func cancelAllSync() {
+        advanziaWorkflow?.cancel()
         setupRequest = nil
         webLoginConnection = nil   // in a batch only the Trade Republic login
         cancelSync()
@@ -298,6 +302,9 @@ extension AppModel {
 
     func startSync(_ connection: BankConnection, secret: String) {
         guard let vault else { return }
+        if connection.connector == .advanzia, !isDemo, !Self.isMagicDemoLogin(connection.loginName) {
+            startAdvanzia(connection); return
+        }
         if usesPortal(connection) { webLoginConnection = connection; return }
         pendingLogin = nil
         // Statements only for an account of exactly this login: a stale value

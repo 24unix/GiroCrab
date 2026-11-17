@@ -128,6 +128,7 @@ struct ConnectionEditSheet: View {
     @State private var name = ""
     @State private var login = ""
     @State private var pin = ""
+    @State private var advanziaSettings = AdvanziaConnectionSettingsState()
     @State private var storePin = false
     @State private var tanMedium = ""
     private var isFinTs: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(connection.connector) }
@@ -165,7 +166,7 @@ struct ConnectionEditSheet: View {
         case .comdirect: return ["comdirect.client_id", "comdirect.client_secret"]
         case .payPal: return ["paypal.client_id", "paypal.client_secret", "paypal.environment"]
         case .tradeRepublic: return []
-        case .americanExpress, .amazonVisa: return []
+        case .americanExpress, .amazonVisa, .advanzia: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
         case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus, .ffb, .fordMoney, .opelDirektbank: return []
@@ -280,6 +281,9 @@ struct ConnectionEditSheet: View {
                             .autocorrectionDisabled()
                     }
                 } header: { Text("Zugang").appSectionHeader() }
+                if connection.connector == .advanzia {
+                    AdvanziaConnectionFields(state: advanziaSettings)
+                }
                 if !keys.isEmpty {
                     Section {
                         ForEach(keys, id: \.self) { key in field(key) }
@@ -414,6 +418,11 @@ struct ConnectionEditSheet: View {
         }
         .macFrame(minWidth: 560, minHeight: 560)
         .onAppear(perform: load)
+        .task {
+            if connection.connector == .advanzia {
+                await advanziaSettings.load(connectionID: connection.id, model: model)
+            }
+        }
         .confirmRemoveConnection($confirmRemove) { dismiss() }
         .confirmationDialog("Abrufweg umstellen?", isPresented: $confirmSwitch, titleVisibility: .visible) {
             Button("Umstellen") {
@@ -544,15 +553,25 @@ struct ConnectionEditSheet: View {
     }
     private var saveBtn: some View {
         Button("Speichern") { saveAll() }
+            .disabled(connection.connector == .advanzia && (advanziaSettings.busy || !advanziaSettings.loaded))
             .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
     }
     private var fetchBtn: some View {
         Button("Speichern & abrufen") { saveAll(thenSync: true) }
+            .disabled(connection.connector == .advanzia && (advanziaSettings.busy || !advanziaSettings.loaded))
     }
 
     /// The login's settings and the account selection, saved together; a fetch only starts after
     /// the selection is stored (a switched-off account must not be fetched).
     private func saveAll(thenSync: Bool = false) {
+        if connection.connector == .advanzia {
+            Task { @MainActor in
+                guard let updated = await advanziaSettings.save(connection: connection, name: name, login: login, model: model) else { return }
+                dismiss()
+                if thenSync { model.requestSync(updated) }
+            }
+            return
+        }
         save()
         let id = connection.id
         let draft = selection

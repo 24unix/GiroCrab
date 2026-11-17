@@ -263,3 +263,35 @@ fn header_chart_agrees_with_the_list_on_a_computed_balance() {
     }
     assert_eq!(chart[&day(4)], 10_000);
 }
+
+#[test]
+fn legacy_advanzia_hold_never_changes_a_reported_balance_or_running_history() {
+    let v = vault("rb-advanzia-legacy-hold");
+    let a = account(&v, "Fictional card", Some((-10_000, "2026-03-02")));
+    let posted = add(&v, a, "advanzia-post-fictional", "2026-03-02", -1_000);
+    let held = add(&v, a, "advanzia-hold-fictional", "2026-03-03", -9_999);
+    let p = page(
+        &v,
+        BookingFilter {
+            account_ids: vec![a],
+            ..Default::default()
+        },
+    );
+    assert_eq!(after(&p)[&posted], -10_000);
+    assert!(
+        !after(&p).contains_key(&held),
+        "pending bookings have no running balance"
+    );
+    assert!(
+        p.transactions
+            .iter()
+            .find(|b| b.id == held)
+            .unwrap()
+            .is_pending
+    );
+    let db = v.db().unwrap();
+    assert_eq!(super::booked_after(&db, a, "2026-03-02").unwrap(), 0);
+    assert!(super::booked_per_day(&db, &[a], "2026-03-02", None)
+        .unwrap()
+        .is_empty());
+}

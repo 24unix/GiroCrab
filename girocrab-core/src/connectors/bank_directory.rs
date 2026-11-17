@@ -129,6 +129,11 @@ pub fn psd2_catalog() -> Vec<Psd2Bank> {
 fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
     vec![
         (ConnectorKind::Bunq, "bunq", "bunq niederlande"),
+        (
+            ConnectorKind::Advanzia,
+            "Advanzia Bank",
+            "advanzia mein.advanzia.com mastercard kreditkarte",
+        ),
         (ConnectorKind::Comdirect, "comdirect", "comdirect"),
         (
             ConnectorKind::TradeRepublic,

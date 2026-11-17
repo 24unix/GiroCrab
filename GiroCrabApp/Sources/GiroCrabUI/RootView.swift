@@ -824,6 +824,7 @@ struct MainSplitView: View {
         .openingBalanceSheet(model)
         .offlineAccountSheets(model)
         .tangibleAssetSheets(model)
+        .modifier(AdvanziaBackgroundModifier())
         #if os(macOS)
         // AppModel.openSettings(_:), e.g. the merchant-logo tip → Settings › Händler-Logos
         .onChange(of: model.settingsRequested) { _, requested in
@@ -862,7 +863,7 @@ struct MainSplitView: View {
             AccountSelectionSheet(connection: c)
                 .environment(model)
         }
-        .capturableSheet(isPresented: $model.showAddBank) {
+        .capturableSheet(isPresented: $model.showAddBank, onDismiss: { model.advanziaWorkflow?.start() }) {
             AddBankSheet()
                 .environment(model)
         }

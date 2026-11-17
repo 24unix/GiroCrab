@@ -1403,6 +1403,17 @@
         }
       }
     },
+    "%lld neue Buchungen übernommen. Bankkontostand aktualisiert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld new transactions imported. Bank balance updated."
+          }
+        }
+      }
+    },
     "%lld neue PostBox-Dokumente" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2880,6 +2891,262 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Switch access method?"
+          }
+        }
+      }
+    },
+    "Advanzia Bank (Zugang mein.advanzia.com)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia Bank (login at mein.advanzia.com)"
+          }
+        }
+      }
+    },
+    "Advanzia hat die Anmeldung abgelehnt. Bitte das Passwort prüfen und erneut bestätigen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia rejected the sign-in. Check the password and confirm again."
+          }
+        }
+      }
+    },
+    "Advanzia hat die Anmeldung oder den Code abgelehnt. Prüfen Sie die Bankseite; GiroCrab wiederholt die Eingabe nicht automatisch." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia rejected the login or code. Check the bank page; GiroCrab will not repeat the entry automatically."
+          }
+        }
+      }
+    },
+    "Advanzia hat nicht rechtzeitig geantwortet. Bitte den Abruf erneut starten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia did not respond in time. Please start the fetch again."
+          }
+        }
+      }
+    },
+    "Advanzia konnte nicht sicher abgerufen werden. Bitte die Bankseite prüfen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia could not be retrieved safely. Check the bank page."
+          }
+        }
+      }
+    },
+    "Advanzia konnte nicht sicher abgerufen werden. Bitte die Umsatzübersicht öffnen und erneut versuchen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia could not be fetched safely. Please open the transaction overview and try again."
+          }
+        }
+      }
+    },
+    "Advanzia konnte nicht vorbereitet werden. Bitte das Bankfenster erneut öffnen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia could not be prepared. Please reopen the bank window."
+          }
+        }
+      }
+    },
+    "Advanzia konnte nicht vorbereitet werden. Bitte den Abruf erneut starten." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not prepare Advanzia. Start retrieval again."
+          }
+        }
+      }
+    },
+    "Advanzia meldet eine andere Karte. Der Import wurde gestoppt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia reported a different card. The import was stopped."
+          }
+        }
+      }
+    },
+    "Advanzia meldet sich an …" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signing in to Advanzia …"
+          }
+        }
+      }
+    },
+    "Advanzia wird vorbereitet …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing Advanzia…"
+          }
+        }
+      }
+    },
+    "Advanzia – Anmeldung und Abruf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia – sign in and fetch"
+          }
+        }
+      }
+    },
+    "Advanzia-Abruf abgeschlossen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia retrieval completed."
+          }
+        }
+      }
+    },
+    "Advanzia-Abruf anzeigen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Advanzia retrieval"
+          }
+        }
+      }
+    },
+    "Advanzia-Anmeldung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia sign-in"
+          }
+        }
+      }
+    },
+    "Advanzia-Benutzername" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia username"
+          }
+        }
+      }
+    },
+    "Advanzia-Einstellungen konnten nicht geladen werden. Bitte das Fenster erneut öffnen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not load Advanzia settings. Please reopen the window."
+          }
+        }
+      }
+    },
+    "Advanzia-Einstellungen konnten nicht vollständig gespeichert werden. Prüfen Sie Benutzername und Passwort und versuchen Sie es erneut." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia settings could not be saved completely. Check your username and password and try again."
+          }
+        }
+      }
+    },
+    "Advanzia-Import abgebrochen. Bitte Konto-Zuordnung und Umsatzdaten prüfen; es wurden keine unvollständigen Daten übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia import stopped. Please check the account mapping and transactions; no incomplete data was imported."
+          }
+        }
+      }
+    },
+    "Advanzia-Passwort" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia password"
+          }
+        }
+      }
+    },
+    "Advanzia-Sitzung abgelaufen. Bitte erneut anmelden und SMS-Code eingeben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia session expired. Please sign in again and enter the SMS code."
+          }
+        }
+      }
+    },
+    "Advanzia-Sitzung abgelaufen. Bitte erneut anmelden und die gewählte Freigabe bestätigen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia session expired. Please sign in again and confirm the chosen approval method."
+          }
+        }
+      }
+    },
+    "Advanzia-Umsätze und Bankkontostand werden übernommen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importing Advanzia transactions and bank balance…"
+          }
+        }
+      }
+    },
+    "Advanzia: %lld Konten aktualisiert, %lld neue Buchungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia: %lld accounts updated, %lld new transactions."
           }
         }
       }
@@ -5906,6 +6173,26 @@
         }
       }
     },
+    "Bankseite ausblenden" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide bank page"
+          }
+        }
+      }
+    },
+    "Bankseite öffnen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open bank page"
+          }
+        }
+      }
+    },
     "Bankverbindung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6276,6 +6563,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Require %@ on Unlock"
+          }
+        }
+      }
+    },
+    "Beim nächsten Abruf ist eine neue Anmeldung mit SMS-Freigabe erforderlich." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The next fetch requires signing in again with SMS approval."
+          }
+        }
+      }
+    },
+    "Beim nächsten Abruf ist eine neue Anmeldung mit dem gewählten Freigabeverfahren erforderlich." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The next fetch requires signing in again with the chosen approval method."
           }
         }
       }
@@ -7260,6 +7569,17 @@
         }
       }
     },
+    "Bitte auswählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please select"
+          }
+        }
+      }
+    },
     "Bitte bestätigen Sie die Abfrage auf Ihrem Gerät (Face ID oder Code)." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7282,6 +7602,38 @@
         }
       }
     },
+    "Bitte das Advanzia-Passwort eingeben. Die Anmeldung wird im Hintergrund fortgesetzt." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the Advanzia password. Sign-in will continue in the background."
+          }
+        }
+      }
+    },
+    "Bitte das zu speichernde Advanzia-Passwort eingeben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please enter the Advanzia password to save."
+          }
+        }
+      }
+    },
+    "Bitte den Advanzia-Benutzernamen eintragen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please enter your Advanzia username."
+          }
+        }
+      }
+    },
     "Bitte den Kaufpreis angeben." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7289,6 +7641,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Please enter the purchase price."
+          }
+        }
+      }
+    },
+    "Bitte den SMS-Code eingeben. Anschließend läuft der Abruf automatisch weiter." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the SMS code. Retrieval will then continue automatically."
+          }
+        }
+      }
+    },
+    "Bitte den SMS-Code im Bankformular eingeben. Danach läuft der Abruf automatisch weiter." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please enter the SMS code in the bank form. Fetching then continues automatically."
+          }
+        }
+      }
+    },
+    "Bitte die Anmeldung in der Advanzia-App bestätigen. Danach läuft der Abruf automatisch weiter." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please approve the sign-in in the Advanzia app. Fetching then continues automatically."
           }
         }
       }
@@ -7333,6 +7717,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Please enter a name."
+          }
+        }
+      }
+    },
+    "Bitte einmalig das Zielkonto auswählen. Danach beginnt die Übernahme automatisch." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please select the target account once. Import then starts automatically."
           }
         }
       }
@@ -8334,6 +8729,28 @@
         }
       }
     },
+    "Das Advanzia-Passwort konnte nicht gelöscht werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia password could not be deleted."
+          }
+        }
+      }
+    },
+    "Das Advanzia-Passwort konnte nicht lokal gespeichert werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia password could not be saved locally."
+          }
+        }
+      }
+    },
     "Das Bild enthält IBAN, Empfänger und Betrag." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8477,6 +8894,36 @@
         }
       }
     },
+    "Das Passwort konnte nicht sicher übermittelt werden. Sie können es erneut versuchen oder die Bankseite öffnen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The password could not be submitted safely. You can try again or open the bank page."
+          }
+        }
+      }
+    },
+    "Das Passwort wird lokal im Schlüsselbund gespeichert und für spätere Abrufe verwendet." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The password is saved in the local keychain and used for future retrievals."
+          }
+        }
+      }
+    },
+    "Das Passwort wird nur für diesen Abruf verwendet. Bei einem späteren Abruf kann GiroCrab erneut danach fragen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The password is used only for this retrieval. GiroCrab may ask for it again on a later retrieval."
+          }
+        }
+      }
+    },
     "Das TAN-Medium brauchen Sie nur, wenn die Bank danach fragt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8495,6 +8942,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sharing via iCloud Keychain requires a signed release build of GiroCrab and is not available in this version. The option stays off. Copy the vault key manually instead (“Copy vault key”) and paste it on the other device."
+          }
+        }
+      }
+    },
+    "Das gespeicherte Passwort ist nicht verfügbar. Melden Sie sich im Bankformular an oder prüfen Sie die Zugangseinstellungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The saved password is unavailable. Sign in using the bank form or check the connection settings."
+          }
+        }
+      }
+    },
+    "Das gespeicherte Passwort ist nicht verfügbar. Öffnen Sie die Bankseite oder prüfen Sie die Zugangseinstellungen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The saved password is unavailable. Open the bank page or check the connection settings."
           }
         }
       }
@@ -8561,6 +9029,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Data"
+          }
+        }
+      }
+    },
+    "Daten gespeichert. Die Anzeige konnte nicht aktualisiert werden; bitte den Tresor erneut öffnen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data saved. The display could not be refreshed; please reopen the vault."
           }
         }
       }
@@ -9137,6 +9616,47 @@
         }
       }
     },
+    "Der Advanzia-Abruf benötigt Ihre Aufmerksamkeit." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanzia retrieval needs your attention."
+          }
+        }
+      }
+    },
+    "Der Advanzia-Bankkontostand konnte nicht bestätigt werden. Es wurden keine Umsätze importiert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia bank balance could not be confirmed. No transactions were imported."
+          }
+        }
+      }
+    },
+    "Der Advanzia-Zugang konnte nicht vollständig gespeichert werden. Bitte erneut versuchen. Der Abruf wurde noch nicht gestartet." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia connection could not be saved completely. Try again. Retrieval has not started yet."
+          }
+        }
+      }
+    },
+    "Der Advanzia-Zugang konnte nicht vorbereitet werden. Bitte den Tresor und die Sicherheitshinweise prüfen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia connection could not be prepared. Check the vault and security notices."
+          }
+        }
+      }
+    },
     "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Bitte zuerst im Online-Banking prüfen, ob der Dauerauftrag angelegt, geändert oder gelöscht wurde, bevor Sie es erneut versuchen.\n\nBank: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9221,6 +9741,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The “GiroCrab” folder in iCloud Drive already contains other files. Your existing data stays unchanged in its current folder and keeps syncing there."
+          }
+        }
+      }
+    },
+    "Der SMS-Code konnte nicht sicher übermittelt werden. Bitte die Bankseite öffnen und dort bestätigen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The SMS code could not be submitted safely. Open the bank page and confirm there."
           }
         }
       }
@@ -9687,6 +10217,70 @@
         }
       }
     },
+    "Die Advanzia-API hat den Abruf abgelehnt. Bitte erneut anmelden oder den Abruf wiederholen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia API rejected the request. Please sign in again or retry."
+          }
+        }
+      }
+    },
+    "Die Advanzia-Anmeldung konnte nicht automatisch fortgesetzt werden. Bei Bedarf können Sie die Bankseite öffnen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia sign-in could not continue automatically. You can open the bank page if needed."
+          }
+        }
+      }
+    },
+    "Die Advanzia-Anmeldung wartet zu lange. Öffnen Sie die Bankseite, um die Freigabe zu prüfen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia login has been waiting too long. Open the bank page to check the approval."
+          }
+        }
+      }
+    },
+    "Die Advanzia-Antwort hat ein unerwartetes Format. Es wurden keine unvollständigen Daten importiert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia response has an unexpected format. No incomplete data was imported."
+          }
+        }
+      }
+    },
+    "Die Advanzia-Antwort ist zu groß. Es wurden keine unvollständigen Daten importiert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia response is too large. No incomplete data was imported."
+          }
+        }
+      }
+    },
+    "Die Advanzia-Karte wurde noch nicht erkannt. Öffnen Sie im Bankfenster die Umsatzübersicht; GiroCrab übernimmt die Daten anschließend automatisch." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Advanzia card has not been detected yet. Open the transaction overview in the bank window; GiroCrab will then import automatically."
+          }
+        }
+      }
+    },
     "Die Amazon-Sitzung ist abgelaufen. Bitte erneut anmelden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10067,6 +10661,26 @@
         }
       }
     },
+    "Die SMS-Freigabe wird geprüft …" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verifying SMS approval …"
+          }
+        }
+      }
+    },
+    "Die SMS-Freigabe wurde noch nicht bestätigt. Prüfen Sie den Code oder öffnen Sie die Bankseite." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMS approval has not been confirmed yet. Check the code or open the bank page."
+          }
+        }
+      }
+    },
     "Die Sicherheitssperre verhindert direkte Überweisungen von diesem Konto. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10173,6 +10787,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The connection works: the helper reaches GiroCrab, and the key is accepted."
+          }
+        }
+      }
+    },
+    "Die Vormerkung konnte nicht verworfen werden. Buchungen mit Belegen oder Aufteilungen bleiben geschützt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The pending charge could not be discarded. Transactions with documents or splits remain protected."
           }
         }
       }
@@ -10558,6 +11183,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This account"
+          }
+        }
+      }
+    },
+    "Dieses Konto stammt aus einer früheren Version. Wählen Sie es einmalig aus, um es mit seinen vorhandenen Umsätzen weiterzuverwenden." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This account comes from an earlier version. Select it once to continue using it with its existing transactions."
           }
         }
       }
@@ -11322,6 +11957,17 @@
         }
       }
     },
+    "Ein Passwort ist gespeichert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A password is saved."
+          }
+        }
+      }
+    },
     "Ein Tag bleibt und übernimmt die Buchungen der anderen. Um einen anderen zu behalten, klicken Sie ihn an." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11439,6 +12085,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A selected transaction counts as reviewed after this time – like a read email. Never with multiple selection."
+          }
+        }
+      }
+    },
+    "Eine fehlende Vormerkung kann außerhalb des geladenen Ausschnitts liegen. Nur verwerfen, wenn Sie den Vorgang selbst geprüft haben. Die gebuchten Umsätze bleiben erhalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A missing pending charge may be outside the loaded window. Discard it only after checking it yourself. Posted transactions are retained."
           }
         }
       }
@@ -13165,6 +13822,17 @@
         }
       }
     },
+    "Freigabeverfahren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approval method"
+          }
+        }
+      }
+    },
     "Freigeben …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13315,6 +13983,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab includes a helper for AI assistants and other MCP clients. Add the following entry to your program's MCP configuration; it then starts the helper itself."
+          }
+        }
+      }
+    },
+    "Für Karten mit Zugang über mein.advanzia.com. Nach dem Hinzufügen läuft die Anmeldung im Hintergrund; nur eine erforderliche Freigabe wird angezeigt." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For cards accessed through mein.advanzia.com. After adding the connection, sign-in runs in the background; only a required approval is shown."
           }
         }
       }
@@ -13848,6 +14526,17 @@
         }
       }
     },
+    "Gespeichertes Passwort löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete saved password"
+          }
+        }
+      }
+    },
     "Gestern, %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14141,6 +14830,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab is running from a temporary copy. Move the app to the Applications folder and restart it so the path in the entry stays valid."
+          }
+        }
+      }
+    },
+    "GiroCrab meldet sich mit den gespeicherten Zugangsdaten an. Bestätigen Sie anschließend den SMS-Code im Bankfenster oder die Freigabe in der Advanzia-App. Danach werden die Umsätze automatisch übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab signs in using your saved credentials. Then enter the SMS code in the bank window or approve in the Advanzia app. Transactions are imported automatically afterwards."
+          }
+        }
+      }
+    },
+    "GiroCrab meldet sich mit den gespeicherten Zugangsdaten an. Geben Sie anschließend den SMS-Code ein oder bestätigen Sie die Freigabe in der Advanzia-App. Danach werden die Umsätze automatisch übernommen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab signs in using the saved credentials. Then enter the SMS code or approve in the Advanzia app. Transactions are imported automatically afterwards."
+          }
+        }
+      }
+    },
+    "GiroCrab nutzt die vorhandene Sitzung oder meldet sich mit den gespeicherten Zugangsdaten an. Eine erforderliche Freigabe bestätigen Sie selbst." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab uses the existing session or signs in using your saved credentials. You confirm any required approval yourself."
           }
         }
       }
@@ -15484,6 +16205,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show in Finder"
+          }
+        }
+      }
+    },
+    "Im Hintergrund warten" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wait in background"
           }
         }
       }
@@ -18713,6 +19444,17 @@
         }
       }
     },
+    "Kreditkartenkonto zuordnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link credit card account"
+          }
+        }
+      }
+    },
     "Kreis" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19226,6 +19968,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Load logos from the internet"
+          }
+        }
+      }
+    },
+    "Lokale Sitzung löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete local session?"
           }
         }
       }
@@ -20628,6 +21381,17 @@
         }
       }
     },
+    "Neu anmelden und erneut versuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in again and retry"
+          }
+        }
+      }
+    },
     "Neu aufnehmen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21189,6 +21953,17 @@
         }
       }
     },
+    "Neues Kreditkartenkonto anlegen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a new credit card account"
+          }
+        }
+      }
+    },
     "Neues Offline-Konto" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21207,6 +21982,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Offline Account…"
+          }
+        }
+      }
+    },
+    "Neues Passwort (leer = unverändert)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New password (leave empty to keep)"
           }
         }
       }
@@ -22350,6 +23136,17 @@
         }
       }
     },
+    "Offene Vormerkungen (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open pending charges (%lld)"
+          }
+        }
+      }
+    },
     "Ohne Anbieter zeigt GiroCrab mitgelieferte Markenzeichen, sonst Monogramme und Kategorie-Symbole. Mit Anbieter werden Favicons geladen und verschlüsselt im Tresor zwischengespeichert. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22995,6 +23792,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Store Password in Vault"
+          }
+        }
+      }
+    },
+    "Passwort lokal im Schlüsselbund speichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save password in the local keychain"
+          }
+        }
+      }
+    },
+    "Passwort löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete password"
+          }
+        }
+      }
+    },
+    "Passwort optional lokal speichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optionally save password locally"
+          }
+        }
+      }
+    },
+    "Passwort und SMS-Code werden im Bankfenster eingegeben. Dort können Sie das Passwort optional lokal speichern und ein bestehendes Kreditkartenkonto zuordnen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter your password and SMS code in the bank window. You can optionally save the password locally and link an existing credit card account there."
           }
         }
       }
@@ -24411,6 +25252,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The category’s SF Symbol"
+          }
+        }
+      }
+    },
+    "SMS-Code" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMS code"
+          }
+        }
+      }
+    },
+    "SMS-Code ausschließlich im Bankformular eingeben. Die Umsatzliste kann unvollständig sein; fehlende Vormerkungen bleiben erhalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the SMS code only in the bank form. The transaction list may be incomplete; missing pending charges are retained."
           }
         }
       }
@@ -27920,6 +28782,17 @@
         }
       }
     },
+    "Umsätze und Kontostand abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch transactions and balance"
+          }
+        }
+      }
+    },
     "Umsätze übernehmen (%lld erkannt)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28696,6 +29569,17 @@
         }
       }
     },
+    "Verwerfen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard…"
+          }
+        }
+      }
+    },
     "Viele Banken begrenzen Echtzeitüberweisungen (oft auf 100.000 € oder ein eigenes Limit). Die Bank kann den Auftrag dann ablehnen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29066,6 +29950,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Templates"
+          }
+        }
+      }
+    },
+    "Vormerkung verwerfen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard pending charge?"
           }
         }
       }
@@ -30562,6 +31457,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Connection"
+          }
+        }
+      }
+    },
+    "Zugangsdaten und Freigabeverfahren festlegen. Danach startet der Abruf im Hintergrund." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set your credentials and approval method. Retrieval will then start in the background."
+          }
+        }
+      }
+    },
+    "Zugangsdaten und Freigabeverfahren ändern Sie unter „Bankzugang bearbeiten“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change credentials and the approval method under “Edit bank connection”."
           }
         }
       }

@@ -35,7 +35,7 @@ struct KindAddForm: View {
     /// Banks that need the login to sign in. For the others (Amazon, Amex,
     /// PayPal, bunq …) the field is only an optional display name.
     private var loginRequired: Bool {
-        [.comdirect, .tradeRepublic, .volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .alteLeipziger].contains(kind)
+        [.comdirect, .tradeRepublic, .advanzia, .volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .alteLeipziger].contains(kind)
     }
 
     /// Page where the bank hands out the API credentials GiroCrab asks for.
@@ -51,6 +51,10 @@ struct KindAddForm: View {
     /// One section: login and the fixed facts as rows, every explanation once
     /// in the footer (HIG: notes belong under the section, not between rows).
     var body: some View {
+        if kind == .advanzia { AdvanziaAddForm(onAdded: onAdded, submit: submit) }
+        else { standardForm }
+    }
+    @ViewBuilder private var standardForm: some View {
         if let d = bankCatalog().first(where: { $0.kind == kind }) {
             Section {
                 TextField(d.loginLabel, text: $login, prompt: loginRequired ? nil : Text("Optional"))

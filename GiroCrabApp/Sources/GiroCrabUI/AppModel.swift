@@ -19,7 +19,14 @@ public final class AppModel {
 
     let options: LaunchOptions
     /// A swapped-in vault (unlock, demo ↔ own) shows its own sidebar badges: the counts are read again.
-    private(set) var vault: Vault? { didSet { vaultRevision &+= 1; if vault != nil { refreshSidebarCounts() } } }
+    /// Any vault swap cancels a running Advanzia workflow.
+    private(set) var vault: Vault? {
+        didSet {
+            vaultRevision &+= 1
+            advanziaWorkflow?.cancel()
+            if vault != nil { refreshSidebarCounts() }
+        }
+    }
     /// Counts vault swaps (unlock, lock, demo ↔ own): views that cache vault data reload when it changes.
     private(set) var vaultRevision = 0
     /// Securities depot view: inventory or activities (toolbar on macOS, header on iOS).
@@ -89,6 +96,7 @@ public final class AppModel {
     var categoryHistory: [CategoryPeriodSum] = []
     /// Bar width of the category chart (#557); `.automatic` follows the global setting (months if that is automatic too).
     var categoryBarUnit: BalanceBarUnit = .automatic
+    var advanziaWorkflow: AdvanziaWorkflow?
     var connections: [BankConnection] = []
     /// Login with accounts that another login already delivers: asks which to fetch (#346).
     var accountSelectionConnection: BankConnection?

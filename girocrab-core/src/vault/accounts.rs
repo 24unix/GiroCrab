@@ -522,6 +522,8 @@ impl Vault {
         // (unless a Startsaldo drives the balance; bank-synced cards ignore one).
         for a in accounts.iter_mut().filter(|a| {
             a.kind == AccountKind::CreditCard
+                // Advanzia imports require a checked bank balance, including genuine zero.
+                && a.connector != Some(ConnectorKind::Advanzia)
                 && a.balance_cents == 0
                 && a.transaction_count > 0
                 && !(a.balance_derived && a.opening_balance_cents.is_some())
