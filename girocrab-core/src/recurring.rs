@@ -830,10 +830,160 @@ pub fn pro_rate_splits_monthly(splits: &[(i64, i64)], interval_months: u8) -> Ve
     out
 }
 
+/// A detected price hike of a recurring debit (or a duplicate debit).
+///
+/// Amounts are positive magnitudes of the debit in cents. For a duplicate debit
+/// (same amount twice within [`DUPLICATE_WINDOW_DAYS`]) `previous_cents` is the single
+/// charge, `new_cents` the doubled sum and `increase_cents` the extra charge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriceIncreaseAlert {
+    pub counterparty: String,
+    pub previous_cents: i64,
+    pub new_cents: i64,
+    pub increase_cents: i64,
+    pub booking_date: String,
+}
+
+/// Debits of the same amount at most this many days apart count as a duplicate.
+const DUPLICATE_WINDOW_DAYS: i64 = 3;
+
+/// Detects price increases in recurring debits (electricity, insurance, streaming, mobile …)
+/// and duplicate debits. `series` holds `(counterparty, booking_date ISO, amount_cents)`;
+/// only debits (negative amounts) are considered, in any order.
+///
+/// Price increase: per counterparty, the latest debit is higher than the previous one,
+/// by at most 100 %, while the two debits before it were equal (a stable price), so at
+/// least three debits are needed. Duplicate: two equal debits within
+/// [`DUPLICATE_WINDOW_DAYS`]; the second one is not used for the price comparison.
+/// Result is sorted by booking date, then counterparty.
+pub fn detect_price_increases(series: &[(String, String, i64)]) -> Vec<PriceIncreaseAlert> {
+    let mut groups: HashMap<String, (String, Vec<(NaiveDate, i64)>)> = HashMap::new();
+    for (name, date, cents) in series {
+        let key = name.trim().to_lowercase();
+        let Some(d) = parse_iso(date) else { continue };
+        if *cents >= 0 || key.is_empty() {
+            continue;
+        }
+        groups
+            .entry(key)
+            .or_insert_with(|| (name.trim().to_string(), Vec::new()))
+            .1
+            .push((d, cents.abs()));
+    }
+
+    let mut alerts = Vec::new();
+    for (name, mut list) in groups.into_values() {
+        list.sort();
+        let mut unique: Vec<(NaiveDate, i64)> = Vec::new();
+        for (d, amount) in list {
+            if let Some(&(pd, pa)) = unique.last() {
+                if pa == amount && (d - pd).num_days() <= DUPLICATE_WINDOW_DAYS {
+                    alerts.push(PriceIncreaseAlert {
+                        counterparty: name.clone(),
+                        previous_cents: amount,
+                        new_cents: amount * 2,
+                        increase_cents: amount,
+                        booking_date: iso(d),
+                    });
+                    continue;
+                }
+            }
+            unique.push((d, amount));
+        }
+        if let [.., a, b, c] = unique.as_slice() {
+            if a.1 == b.1 && c.1 > b.1 && c.1 <= b.1 * 2 {
+                alerts.push(PriceIncreaseAlert {
+                    counterparty: name.clone(),
+                    previous_cents: b.1,
+                    new_cents: c.1,
+                    increase_cents: c.1 - b.1,
+                    booking_date: iso(c.0),
+                });
+            }
+        }
+    }
+    alerts.sort_by(|a, b| {
+        (&a.booking_date, &a.counterparty).cmp(&(&b.booking_date, &b.counterparty))
+    });
+    alerts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::merchants::MerchantResolver;
+
+    fn row(name: &str, d: &str, cents: i64) -> (String, String, i64) {
+        (name.to_string(), d.to_string(), cents)
+    }
+
+    #[test]
+    fn price_increase_detected() {
+        let s = [
+            row("Netflix", "2026-01-05", -1299),
+            row("Netflix", "2026-02-05", -1299),
+            row("Netflix", "2026-03-05", -1499),
+        ];
+        let a = detect_price_increases(&s);
+        assert_eq!(
+            a,
+            vec![PriceIncreaseAlert {
+                counterparty: "Netflix".into(),
+                previous_cents: 1299,
+                new_cents: 1499,
+                increase_cents: 200,
+                booking_date: "2026-03-05".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn stable_price_unordered_input_and_credits_ignored() {
+        let s = [
+            row("Stadtwerke", "2026-03-01", -5000),
+            row("Stadtwerke", "2026-01-01", -5000),
+            row("Stadtwerke", "2026-02-01", -5000),
+            row("Stadtwerke", "2026-02-15", 9000),
+        ];
+        assert!(detect_price_increases(&s).is_empty());
+    }
+
+    #[test]
+    fn needs_three_debits_and_ignores_price_drops() {
+        let two = [row("Mobil", "2026-01-01", -999), row("Mobil", "2026-02-01", -1999)];
+        assert!(detect_price_increases(&two).is_empty());
+        let drop = [
+            row("Mobil", "2026-01-01", -1999),
+            row("Mobil", "2026-02-01", -1999),
+            row("Mobil", "2026-03-01", -999),
+        ];
+        assert!(detect_price_increases(&drop).is_empty());
+    }
+
+    #[test]
+    fn huge_jump_is_not_a_price_increase() {
+        let s = [
+            row("Versicherung", "2026-01-01", -1000),
+            row("Versicherung", "2026-02-01", -1000),
+            row("Versicherung", "2026-03-01", -9000),
+        ];
+        assert!(detect_price_increases(&s).is_empty());
+    }
+
+    #[test]
+    fn duplicate_debit_detected_and_case_insensitive() {
+        let s = [
+            row("Netflix", "2026-01-05", -1299),
+            row("netflix ", "2026-01-06", -1299),
+            row("Netflix", "2026-02-05", -1299),
+        ];
+        let a = detect_price_increases(&s);
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].booking_date, "2026-01-06");
+        assert_eq!(a[0].increase_cents, 1299);
+        assert_eq!(a[0].new_cents, 2598);
+    }
+
     use crate::models::{AccountKind, CategorySource};
 
     fn bk(id: i64, d: &str, cents: i64, iban: &str, name: &str) -> Booking {
