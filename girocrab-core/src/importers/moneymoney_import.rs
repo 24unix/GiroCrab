@@ -1014,15 +1014,7 @@ fn find_twin(
     name: &str,
     purpose: &str,
 ) -> CoreResult<Option<i64>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT id, counterparty, counterparty_iban, purpose, booking_date,
-                IFNULL(category_id, 0), trim(IFNULL(note, '')),
-                abs(julianday(booking_date) - julianday(?4))
-           FROM transactions
-          WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
-            AND deleted_ms IS NULL AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2
-          ORDER BY id",
-    )?;
+    let mut stmt = conn.prepare_cached(TWIN_CANDIDATES_SQL)?;
     let rows = stmt.query_map(
         params![account_id, cents, exclude_id.unwrap_or(-1), date],
         |r| {
@@ -1059,6 +1051,20 @@ fn find_twin(
     }
     Ok(pick_twin(&hits))
 }
+
+/// Imported rows of amount `?2` within two days of `?4`. The BETWEEN bounds, a
+/// day wider than the window, let `tx_amount_date` find the candidates; the
+/// julianday test still decides.
+const TWIN_CANDIDATES_SQL: &str =
+    "SELECT id, counterparty, counterparty_iban, purpose, booking_date,
+        IFNULL(category_id, 0), trim(IFNULL(note, '')),
+        abs(julianday(booking_date) - julianday(?4))
+   FROM transactions
+  WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
+    AND deleted_ms IS NULL AND id != ?3
+    AND booking_date BETWEEN date(?4, '-3 days') AND date(?4, '+3 days')
+    AND abs(julianday(booking_date) - julianday(?4)) <= 2
+  ORDER BY id";
 
 /// A MoneyMoney row that may be the twin of a bank booking.
 struct Twin {
@@ -1140,8 +1146,8 @@ pub(crate) fn adopt_import(
     purpose: &str,
     booking_text: &str,
 ) -> CoreResult<bool> {
-    // Checked first: on a re-fetch most bookings are already stored, and this
-    // spares them the fingerprint and twin lookups.
+    // store_fetch has checked this already; other callers rely on it here:
+    // taking over another row would break the unique key.
     let taken = conn
         .prepare_cached(
             // includes soft-deleted rows: (account, external_id) is unique
@@ -1183,33 +1189,30 @@ fn take_over(
     Ok(())
 }
 
-/// Re-sync repair: the bank booking `external_id` already exists (old duplicate) while its
+/// Re-sync repair: the bank booking `bank_id` is stored (old duplicate) while its
 /// MoneyMoney twin is still un-adopted. If the bank row is untouched (no manual category,
 /// note, check mark, splits or documents) it is removed and the rich MoneyMoney row takes
 /// over its external id. Returns true when merged.
 pub(crate) fn merge_synced_twin(
     conn: &Connection,
-    account_id: i64,
-    external_id: &str,
+    bank_id: i64,
     date: &str,
     cents: i64,
     iban: &str,
     name: &str,
     purpose: &str,
 ) -> CoreResult<bool> {
-    let bank: Option<(i64, String, String)> = conn
+    let bank: Option<(i64, String, String, String)> = conn
         .prepare_cached(
-            "SELECT id, counterparty_iban, booking_text FROM transactions
-              WHERE account_id = ?1 AND external_id = ?2
+            "SELECT account_id, external_id, counterparty_iban, booking_text FROM transactions
+              WHERE id = ?1
                 AND deleted_ms IS NULL AND category_source != 'manual' AND checked = 0 AND trim(note) = ''
                 AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id)
                 AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = transactions.id)",
         )?
-        .query_row(params![account_id, external_id], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-        })
+        .query_row([bank_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
         .optional()?;
-    let Some((bank_id, bank_iban, bank_text)) = bank else {
+    let Some((account_id, external_id, bank_iban, bank_text)) = bank else {
         return Ok(false);
     };
     let Some(mm_id) = find_twin(
@@ -1238,7 +1241,7 @@ pub(crate) fn merge_synced_twin(
         "UPDATE transactions SET external_id = external_id || '#merged-' || id WHERE id = ?1",
         [bank_id],
     )?;
-    take_over(conn, mm_id, external_id, &bank_iban, &bank_text)?;
+    take_over(conn, mm_id, &external_id, &bank_iban, &bank_text)?;
     conn.execute(
         "UPDATE transactions SET external_id = ?2 WHERE id = ?1",
         params![bank_id, mm_ext],
@@ -1954,6 +1957,22 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
     }
 
     #[test]
+    fn twin_search_uses_the_amount_date_index() {
+        let (_dir, v) = vault();
+        let p = crate::test_support::query_plan(
+            &v.db().unwrap(),
+            TWIN_CANDIDATES_SQL,
+            params![1, -1250, -1, "2026-05-10"],
+        );
+        assert!(
+            p.contains(
+                "INDEX tx_amount_date (amount_cents=? AND booking_date>? AND booking_date<?)"
+            ),
+            "{p}"
+        );
+    }
+
+    #[test]
     fn adopt_import_matches_by_purpose_when_bank_sends_no_counterparty() {
         let (_dir, v) = vault();
         let acc = mm_acct(
@@ -2136,6 +2155,7 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             "17.09.2026;Bäckerei Sonne;Kartenzahlung EREF: 1111;-4,20;Essen;\n17.09.2026;Bäckerei Sonne;Kartenzahlung EREF: 2222;-4,20;Essen;\n",
         );
         let db = v.db().unwrap();
+        let mut bank_ids = Vec::new();
         for ext in ["f1", "f2"] {
             db.execute(
                 "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
@@ -2143,12 +2163,12 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
                 params![acc, ext],
             )
             .unwrap();
+            bank_ids.push(db.last_insert_rowid());
         }
-        for ext in ["f1", "f2"] {
+        for bank_id in bank_ids {
             assert!(merge_synced_twin(
                 &db,
-                acc,
-                ext,
+                bank_id,
                 "2026-09-17",
                 -420,
                 "",
@@ -2189,21 +2209,18 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
                 params![acc, ext, date, cents, name],
             )
             .unwrap();
+            db.last_insert_rowid()
         };
-        ins("f1", "2026-05-10", -1250, "REWE");
-        ins("f2", "2026-05-12", -700, "ALDI");
+        let f1 = ins("f1", "2026-05-10", -1250, "REWE");
+        let f2 = ins("f2", "2026-05-12", -700, "ALDI");
         db.execute(
             "UPDATE transactions SET note = 'meins' WHERE external_id = 'f2'",
             [],
         )
         .unwrap();
 
-        assert!(
-            merge_synced_twin(&db, acc, "f1", "2026-05-10", -1250, "", "REWE", "EREF+1").unwrap()
-        );
-        assert!(
-            !merge_synced_twin(&db, acc, "f2", "2026-05-12", -700, "", "ALDI", "EREF+1").unwrap()
-        );
+        assert!(merge_synced_twin(&db, f1, "2026-05-10", -1250, "", "REWE", "EREF+1").unwrap());
+        assert!(!merge_synced_twin(&db, f2, "2026-05-12", -700, "", "ALDI", "EREF+1").unwrap());
 
         let n: i64 = db
             .query_row(

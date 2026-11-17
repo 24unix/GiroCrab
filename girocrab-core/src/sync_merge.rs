@@ -488,22 +488,6 @@ pub(crate) fn revive_account_if_deleted(conn: &Connection, id: i64) -> CoreResul
     Ok(())
 }
 
-/// Whether the booking `(account, external_id)` exists as a soft-deleted row:
-/// fetch and import must not insert or update it.
-pub(crate) fn booking_is_deleted(
-    conn: &Connection,
-    account_id: i64,
-    external_id: &str,
-) -> CoreResult<bool> {
-    Ok(conn
-        .prepare_cached(
-            // includes soft-deleted rows
-            "SELECT EXISTS (SELECT 1 FROM transactions
-              WHERE account_id = ?1 AND external_id = ?2 AND deleted_ms IS NOT NULL)",
-        )?
-        .query_row(params![account_id, external_id], |r| r.get(0))?)
-}
-
 pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
     let (connector, login, bank): (String, String, String) = conn
         .query_row(

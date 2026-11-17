@@ -1163,8 +1163,7 @@ fn twin_merge_soft_deletes_the_bank_copy() {
     let bank_id = db.last_insert_rowid();
     assert!(crate::importers::moneymoney_import::merge_synced_twin(
         &db,
-        acc,
-        "f1",
+        bank_id,
         "2026-05-10",
         -1250,
         "",
@@ -2792,8 +2791,7 @@ fn twin_tombstone_is_not_revived_by_merge() {
         .unwrap();
         assert!(crate::importers::moneymoney_import::merge_synced_twin(
             &db,
-            acc,
-            "f1",
+            db.last_insert_rowid(),
             "2026-05-10",
             -1250,
             "",
@@ -3628,10 +3626,13 @@ fn twin_merge_leaves_a_tombstone_for_the_moneymoney_key() {
             );
         }
         // A repairs the duplicate
+        let bank_id = n(
+            &a,
+            &format!("SELECT id FROM transactions WHERE account_id = {acc} AND external_id = 'f1'"),
+        );
         assert!(crate::importers::moneymoney_import::merge_synced_twin(
             &a.db().unwrap(),
-            acc,
-            "f1",
+            bank_id,
             "2026-05-10",
             -1250,
             "",

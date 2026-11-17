@@ -25,35 +25,83 @@ pub(super) fn is_content_id(id: &str, prefix: char) -> bool {
 /// One-time migration of ids from older versions: a booking stored under a
 /// legacy content id (`h…`, `DefaultHasher` / list position) with exactly the
 /// same content gets the new id instead of being imported a second time.
+/// The caller checks that no row holds the new id yet: the UPDATE would hit
+/// the unique key. Returns true when a row was adopted.
 fn adopt_legacy_content_id(
     tx: &rusqlite::Connection,
     account_id: i64,
     t: &RemoteTransaction,
-) -> CoreResult<()> {
+) -> CoreResult<bool> {
     if !is_content_id(&t.external_id, CONTENT_ID_PREFIX) {
-        return Ok(());
+        return Ok(false);
     }
     let pattern = format!("h{}", "[0-9a-f]".repeat(16));
-    tx.prepare_cached(
-        "UPDATE transactions SET external_id = ?1
-          WHERE id = (SELECT id FROM transactions
-                       WHERE account_id = ?2 AND external_id GLOB ?3
-                         AND booking_date = ?4 AND value_date = ?5 AND amount_cents = ?6
-                         AND counterparty = ?7 AND purpose = ?8
-                       ORDER BY id LIMIT 1)
-            AND NOT EXISTS (SELECT 1 FROM transactions WHERE account_id = ?2 AND external_id = ?1)",
-    )?
-    .execute(params![
-        t.external_id,
-        account_id,
-        pattern,
-        t.booking_date,
-        t.value_date,
-        t.amount_cents,
-        t.counterparty,
-        t.purpose
-    ])?;
-    Ok(())
+    let n = tx
+        .prepare_cached(
+            "UPDATE transactions SET external_id = ?1
+              WHERE id = (SELECT id FROM transactions
+                           WHERE account_id = ?2 AND external_id GLOB ?3
+                             AND booking_date = ?4 AND value_date = ?5 AND amount_cents = ?6
+                             AND counterparty = ?7 AND purpose = ?8
+                           ORDER BY id LIMIT 1)",
+        )?
+        .execute(params![
+            t.external_id,
+            account_id,
+            pattern,
+            t.booking_date,
+            t.value_date,
+            t.amount_cents,
+            t.counterparty,
+            t.purpose
+        ])?;
+    Ok(n > 0)
+}
+
+/// The row stored under a fetched booking's `(account_id, external_id)`,
+/// soft-deleted ones included: the one read that decides whether the booking
+/// is new, deleted or known. Holds the columns [`refresh_existing`] compares.
+struct Stored {
+    id: i64,
+    deleted: bool,
+    counterparty: String,
+    purpose: String,
+    purpose_code: String,
+    gvc: String,
+    end_to_end_id: String,
+    mandate_id: String,
+    creditor_id: String,
+    item_refs: String,
+}
+
+impl Stored {
+    fn read(
+        tx: &rusqlite::Connection,
+        account_id: i64,
+        external_id: &str,
+    ) -> CoreResult<Option<Self>> {
+        Ok(tx
+            .prepare_cached(
+                "SELECT id, deleted_ms IS NOT NULL, counterparty, purpose, purpose_code, gvc,
+                        end_to_end_id, mandate_id, creditor_id, item_refs
+                   FROM transactions WHERE account_id = ?1 AND external_id = ?2",
+            )?
+            .query_row(params![account_id, external_id], |r| {
+                Ok(Self {
+                    id: r.get(0)?,
+                    deleted: r.get(1)?,
+                    counterparty: r.get(2)?,
+                    purpose: r.get(3)?,
+                    purpose_code: r.get(4)?,
+                    gvc: r.get(5)?,
+                    end_to_end_id: r.get(6)?,
+                    mandate_id: r.get(7)?,
+                    creditor_id: r.get(8)?,
+                    item_refs: r.get(9)?,
+                })
+            })
+            .optional()?)
+    }
 }
 
 /// A booking the bank delivers again: fills bank fields an older version did
@@ -62,7 +110,7 @@ fn adopt_legacy_content_id(
 /// changes, since most bookings of every fetch are already stored.
 fn refresh_existing(
     tx: &rusqlite::Connection,
-    account_id: i64,
+    s: &Stored,
     t: &RemoteTransaction,
 ) -> CoreResult<()> {
     // A group is filled only while all of it is empty, so a row never mixes
@@ -75,38 +123,25 @@ fn refresh_existing(
         let clean = crate::text::is_clean;
         (!clean(stored) && !fresh.is_empty() && clean(fresh)).then_some(fresh)
     }
-    let changes = tx
-        .prepare_cached(
-            // includes soft-deleted rows
-            "SELECT id, counterparty, purpose, purpose_code, gvc, end_to_end_id, mandate_id, creditor_id, item_refs
-               FROM transactions WHERE account_id = ?1 AND external_id = ?2",
-        )?
-        .query_row(params![account_id, t.external_id], |r| {
-            let s = |i| r.get_ref(i)?.as_str().map_err(rusqlite::Error::from);
-            let [code, gvc] = fill([s(3)?, s(4)?], [&t.purpose_code, &t.gvc]);
-            let [e2e, mandate, creditor] = fill(
-                [s(5)?, s(6)?, s(7)?],
-                [&t.end_to_end_id, &t.mandate_id, &t.creditor_id],
-            );
-            let [items] = fill([s(8)?], [&t.item_refs]);
-            Ok((
-                r.get::<_, i64>(0)?,
-                [
-                    heal(s(1)?, &t.counterparty),
-                    heal(s(2)?, &t.purpose),
-                    code,
-                    gvc,
-                    e2e,
-                    mandate,
-                    creditor,
-                    items,
-                ],
-            ))
-        })
-        .optional()?;
-    let Some((id, set)) = changes.filter(|(_, set)| *set != [None; 8]) else {
+    let [code, gvc] = fill([&s.purpose_code, &s.gvc], [&t.purpose_code, &t.gvc]);
+    let [e2e, mandate, creditor] = fill(
+        [&s.end_to_end_id, &s.mandate_id, &s.creditor_id],
+        [&t.end_to_end_id, &t.mandate_id, &t.creditor_id],
+    );
+    let [items] = fill([&s.item_refs], [&t.item_refs]);
+    let set = [
+        heal(&s.counterparty, &t.counterparty),
+        heal(&s.purpose, &t.purpose),
+        code,
+        gvc,
+        e2e,
+        mandate,
+        creditor,
+        items,
+    ];
+    if set == [None; 8] {
         return Ok(());
-    };
+    }
     let [counterparty, purpose, code, gvc, e2e, mandate, creditor, items] = set;
     tx.prepare_cached(
         "UPDATE transactions SET counterparty = COALESCE(?2, counterparty), purpose = COALESCE(?3, purpose),
@@ -116,7 +151,7 @@ fn refresh_existing(
           WHERE id = ?1",
     )?
     .execute(params![
-        id,
+        s.id,
         counterparty,
         purpose,
         code,
@@ -542,7 +577,7 @@ pub(crate) fn store_fetch(
         let mut skipped_archived = 0u32;
         {
             let mut ins = tx.prepare(
-                "INSERT OR IGNORE INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
+                "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
                          counterparty, counterparty_iban, purpose, booking_text, purpose_code, gvc,
                          end_to_end_id, mandate_id, creditor_id, item_refs)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
@@ -550,83 +585,85 @@ pub(crate) fn store_fetch(
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
                     if let Some(id) = archived_ids.get(&t.account_ref) {
-                        let known = tx
-                            .prepare_cached(
-                                // includes soft-deleted rows
-                                "SELECT 1 FROM transactions WHERE account_id = ?1 AND external_id = ?2",
-                            )?
-                            .exists(params![id, t.external_id])?;
                         if !deleted_refs.contains(&t.account_ref) {
+                            let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
                             skipped_archived += u32::from(!known);
                         }
                     }
                     continue;
                 };
-                adopt_legacy_content_id(&tx, *acc_id, t)?;
-                // Deleted bookings stay deleted: neither inserted nor updated again.
-                if crate::sync_merge::booking_is_deleted(&tx, *acc_id, &t.external_id)? {
-                    continue;
-                }
-                // Already imported from MoneyMoney? Adopt that row (keeps category + note).
-                // Never for a hold: it is dropped once posted and would take the row with it.
-                if !t.external_id.starts_with("pending-")
-                    && crate::importers::moneymoney_import::adopt_import(
-                        &tx,
-                        *acc_id,
-                        &t.external_id,
-                        &t.booking_date,
-                        t.amount_cents,
-                        &t.counterparty_iban,
-                        &t.counterparty,
-                        &t.purpose,
-                        &t.booking_text,
-                    )?
-                {
-                    continue;
-                }
-                let n = ins.execute(params![
-                    acc_id,
-                    t.external_id,
-                    t.booking_date,
-                    t.value_date,
-                    t.amount_cents,
-                    t.currency,
-                    t.counterparty,
-                    t.counterparty_iban,
-                    t.purpose,
-                    t.booking_text,
-                    t.purpose_code,
-                    t.gvc,
-                    t.end_to_end_id,
-                    t.mandate_id,
-                    t.creditor_id,
-                    t.item_refs
-                ])? as u32;
-                if n > 0 && data.adjust_balances {
-                    tx.prepare_cached(
-                        "UPDATE accounts SET balance_cents = balance_cents + ?1, balance_date = ?2 WHERE id = ?3",
-                    )?
-                    .execute(params![t.amount_cents, t.booking_date, acc_id])?;
-                }
-                imported += n;
-                if n == 0 {
-                    // Old duplicate: bank row exists although an MoneyMoney twin does too.
-                    // (Not for holds, see above.)
-                    if !t.external_id.starts_with("pending-")
-                        && crate::importers::moneymoney_import::merge_synced_twin(
-                            &tx,
-                            *acc_id,
-                            &t.external_id,
-                            &t.booking_date,
-                            t.amount_cents,
-                            &t.counterparty_iban,
-                            &t.counterparty,
-                            &t.purpose,
-                        )?
-                    {
-                        continue;
+                let stored = match Stored::read(&tx, *acc_id, &t.external_id)? {
+                    None if adopt_legacy_content_id(&tx, *acc_id, t)? => {
+                        Stored::read(&tx, *acc_id, &t.external_id)?
                     }
-                    refresh_existing(&tx, *acc_id, t)?;
+                    stored => stored,
+                };
+                // A hold never takes over or merges with an imported row: it
+                // is dropped once posted and would take the row with it.
+                let hold = t.external_id.starts_with("pending-");
+                match stored {
+                    // Deleted bookings stay deleted: neither inserted nor updated again.
+                    Some(stored) if stored.deleted => {}
+                    // Known: an untouched duplicate of an imported row gives way to
+                    // it, anything else is refreshed.
+                    Some(stored) => {
+                        if hold
+                            || !crate::importers::moneymoney_import::merge_synced_twin(
+                                &tx,
+                                stored.id,
+                                &t.booking_date,
+                                t.amount_cents,
+                                &t.counterparty_iban,
+                                &t.counterparty,
+                                &t.purpose,
+                            )?
+                        {
+                            refresh_existing(&tx, &stored, t)?;
+                        }
+                    }
+                    // New: adopt the row imported from MoneyMoney (keeps category +
+                    // note), else insert it.
+                    None => {
+                        if hold
+                            || !crate::importers::moneymoney_import::adopt_import(
+                                &tx,
+                                *acc_id,
+                                &t.external_id,
+                                &t.booking_date,
+                                t.amount_cents,
+                                &t.counterparty_iban,
+                                &t.counterparty,
+                                &t.purpose,
+                                &t.booking_text,
+                            )?
+                        {
+                            ins.execute(params![
+                                acc_id,
+                                t.external_id,
+                                t.booking_date,
+                                t.value_date,
+                                t.amount_cents,
+                                t.currency,
+                                t.counterparty,
+                                t.counterparty_iban,
+                                t.purpose,
+                                t.booking_text,
+                                t.purpose_code,
+                                t.gvc,
+                                t.end_to_end_id,
+                                t.mandate_id,
+                                t.creditor_id,
+                                t.item_refs
+                            ])?;
+                            imported += 1;
+                            if data.adjust_balances {
+                                tx.prepare_cached(
+                                    "UPDATE accounts SET balance_cents = balance_cents + ?1, balance_date = ?2 WHERE id = ?3",
+                                )?
+                                .execute(params![t.amount_cents, t.booking_date, acc_id])?;
+                            }
+                        }
+                    }
                 }
             }
         }

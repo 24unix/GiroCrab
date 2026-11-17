@@ -141,6 +141,29 @@ fn legacy_content_ids_are_adopted_not_duplicated() {
 }
 
 #[test]
+fn deleted_legacy_booking_stays_deleted_when_adopted() {
+    let (v, conn) = setup();
+    let mut old = tx("2026-11-05", -350, "Café");
+    old.external_id = "h0123456789abcdef".into();
+    store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(vec![old.clone()])).unwrap();
+    v.db()
+        .unwrap()
+        .execute("UPDATE transactions SET deleted_ms = 5", [])
+        .unwrap();
+    let mut new = old;
+    new.external_id = ContentIds::default().next(&new);
+    let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(vec![new.clone()])).unwrap();
+    assert_eq!(s.transactions_imported, 0);
+    assert_eq!(ext_ids(&v), [new.external_id]);
+    let deleted: Option<i64> = v
+        .db()
+        .unwrap()
+        .query_row("SELECT deleted_ms FROM transactions", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(deleted, Some(5));
+}
+
+#[test]
 fn empty_external_ids_do_not_collapse() {
     let (v, conn) = setup();
     let coffee = tx("2026-11-05", -350, "Café");
@@ -210,6 +233,97 @@ fn refetch_fills_empty_field_groups_and_heals_text() {
             "M-1",
             "C-1",
             "A1"
+        ]
+    );
+}
+
+/// A booking imported from a MoneyMoney export into the fetched account.
+fn imported_row(v: &Vault, ext: &str, t: &RemoteTransaction, note: &str) {
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                                      counterparty, purpose, note)
+             SELECT id, ?1, ?2, ?2, ?3, ?4, ?5, ?6 FROM accounts",
+            rusqlite::params![ext, t.booking_date, t.amount_cents, t.counterparty, t.purpose, note],
+        )
+        .unwrap();
+}
+
+/// `(external_id, note)` of the live bookings.
+fn live(v: &Vault) -> Vec<(String, String)> {
+    let db = v.db().unwrap();
+    let mut st = db
+        .prepare("SELECT external_id, note FROM transactions WHERE deleted_ms IS NULL ORDER BY id")
+        .unwrap();
+    st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+#[test]
+fn new_booking_adopts_its_imported_twin_but_a_hold_does_not() {
+    let (v, conn) = setup();
+    store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(vec![])).unwrap();
+    let mut coffee = tx("2026-11-05", -350, "Café");
+    coffee.external_id = "t1".into();
+    let mut hold = tx("2026-11-08", -1_200, "Kiosk");
+    hold.external_id = "pending-hold-portal-1".into();
+    imported_row(&v, "mm-1", &coffee, "Frühstück");
+    imported_row(&v, "mm-2", &hold, "");
+    // the same booking twice in one delivery is stored once
+    let s = store_fetch(
+        &v,
+        ConnectorKind::Comdirect,
+        conn,
+        fetch(vec![coffee.clone(), hold.clone(), coffee]),
+    )
+    .unwrap();
+    assert_eq!(s.transactions_imported, 1);
+    assert_eq!(
+        live(&v),
+        [
+            ("t1".into(), "Frühstück".into()),
+            ("mm-2".into(), String::new()),
+            ("pending-hold-portal-1".into(), String::new()),
+        ]
+    );
+}
+
+#[test]
+fn refetch_merges_an_untouched_duplicate_into_its_imported_twin() {
+    let (v, conn) = setup();
+    let mut coffee = tx("2026-11-05", -350, "Café");
+    coffee.external_id = "t1".into();
+    let mut rent = tx("2026-11-01", -90_000, "Vermieter");
+    rent.external_id = "t2".into();
+    let mut hold = tx("2026-11-08", -1_200, "Kiosk");
+    hold.external_id = "pending-hold-portal-1".into();
+    let all = vec![coffee.clone(), rent.clone(), hold.clone()];
+    // stored before the export was imported: the bank rows exist next to their twins
+    store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(all.clone())).unwrap();
+    imported_row(&v, "mm-1", &coffee, "Frühstück");
+    imported_row(&v, "mm-2", &rent, "");
+    imported_row(&v, "mm-3", &hold, "");
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE transactions SET note = 'meins' WHERE external_id = 't2'",
+            [],
+        )
+        .unwrap();
+    let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(all)).unwrap();
+    assert_eq!(s.transactions_imported, 0);
+    // the untouched duplicate gives way to its twin; the edited one and the hold stay
+    assert_eq!(
+        live(&v),
+        [
+            ("t2".into(), "meins".into()),
+            ("pending-hold-portal-1".into(), String::new()),
+            ("t1".into(), "Frühstück".into()),
+            ("mm-2".into(), String::new()),
+            ("mm-3".into(), String::new()),
         ]
     );
 }
