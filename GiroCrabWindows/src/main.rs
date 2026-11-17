@@ -1555,6 +1555,17 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(v) => {
                     *demo_active.lock().unwrap() = demo;
                     win.set_demo_active(demo);
+                    if demo {
+                        win.set_allowance_total("Einzelperson 1.000 € / Ehepaar 2.000 €".into());
+                        win.set_allowance_allocated(800);
+                        win.set_allowance_banks(ModelRc::new(VecModel::from(vec![
+                            SharedString::from("Musterbank: 450 €"),
+                            SharedString::from("Trade Republic: 350 €"),
+                        ])));
+                        win.set_allowance_income(
+                            "Ausgeschöpft: 312,40 € aus Zinsen & Dividenden".into(),
+                        );
+                    }
                     win.set_has_own_vault(
                         std::fs::metadata(vault_path()).is_ok_and(|m| m.len() > 0),
                     );
