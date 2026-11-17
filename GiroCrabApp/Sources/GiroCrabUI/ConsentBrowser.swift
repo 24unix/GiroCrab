@@ -31,6 +31,8 @@ final class ConsentBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     private let redirect: String
     private let onRedirect: (URL) -> Void
     private var done = false
+    /// Popup windows (OAuth); kept alive so `window.opener` keeps working.
+    private var popups: [WKWebView] = []
 
     init(url: URL, redirect: String, onRedirect: @escaping (URL) -> Void) {
         let cfg = WKWebViewConfiguration()
@@ -71,11 +73,27 @@ final class ConsentBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
-    // Pages that open a new window (target=_blank): stay in this one.
+    // Pages that open a new window (OAuth popups): return a child web view built from the
+    // passed configuration so `window.opener` stays alive. It is overlaid on this one.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
-        return nil
+        let child = WKWebView(frame: webView.bounds, configuration: configuration)
+#if os(macOS)
+        child.autoresizingMask = [.width, .height]
+#else
+        child.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+#endif
+        child.navigationDelegate = self
+        child.uiDelegate = self
+        webView.addSubview(child)
+        popups.append(child)
+        return child
+    }
+
+    func webViewDidClose(_ webView: WKWebView) {
+        guard let i = popups.firstIndex(of: webView) else { return }
+        popups.remove(at: i)
+        webView.removeFromSuperview()
     }
 }
 

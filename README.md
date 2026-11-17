@@ -192,12 +192,14 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
+| ING Business | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#721](https://github.com/GiroCrab/GiroCrab/issues/721) |
 | PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 | Alte Leipziger (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ✅ Verifiziert |
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | 🧪 Test gesucht |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht |
+| EquatePlus | Web-Portal | – | ✓ | ✓ | – | – | – | 🧪 Test gesucht |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |
@@ -401,12 +403,14 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
+| ING Business | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#721](https://github.com/GiroCrab/GiroCrab/issues/721) |
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
 | PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Alte Leipziger (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ✅ Verified |
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | 🧪 Testing wanted |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted |
+| EquatePlus | Web-Portal | – | ✓ | ✓ | – | – | – | 🧪 Testing wanted |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |
