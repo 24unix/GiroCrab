@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, params_from_iter, Connection};
 
 use super::{Vault, LIVE_BOOKINGS_SQL};
 use crate::error::{CoreError, CoreResult};
@@ -99,23 +99,28 @@ impl Vault {
         only: Option<&HashSet<i64>>,
     ) -> CoreResult<u32> {
         let set = Self::rule_set(conn)?;
-        let only_sql = if only_uncategorised {
+        let source_sql = if only_uncategorised {
             "t.category_source = 'none'"
         } else {
             "t.category_source != 'manual'"
         };
+        // Bound as one JSON array, so a large id set can't exceed SQLite's
+        // variable limit.
+        let ids_json = only.map(serde_json::to_string).transpose()?;
+        let ids_sql = if ids_json.is_some() {
+            " AND t.id IN (SELECT value FROM json_each(?1))"
+        } else {
+            ""
+        };
         let mut stmt = conn.prepare(&format!(
             "SELECT {}
              FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id
-             WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND {only_sql}",
+             WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND {source_sql}{ids_sql}",
             RuleRow::COLUMNS
         ))?;
         let rows: Vec<RuleRow> = stmt
-            .query_map([], RuleRow::read)?
+            .query_map(params_from_iter(ids_json), RuleRow::read)?
             .collect::<Result<_, _>>()?;
-        let rows = rows
-            .into_iter()
-            .filter(|r| only.is_none_or(|ids| ids.contains(&r.id)));
         let mut changed = 0u32;
         let mut upd_rule = conn.prepare("UPDATE transactions SET category_id = ?1, rule_id = ?2, category_source = 'rule' WHERE id = ?3")?;
         let mut upd_none = conn.prepare("UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none' WHERE id = ?1")?;
@@ -479,5 +484,52 @@ mod preview_tests {
         assert_eq!(preview(5), expenses[..5]);
         assert_eq!(preview(0), expenses[..1], "limit 0 still shows one");
         assert_eq!(preview(10_000), expenses);
+    }
+}
+
+#[cfg(test)]
+mod apply_rules_to_tests {
+    use super::*;
+
+    #[test]
+    fn categorises_only_the_given_live_uncategorised_bookings() {
+        let dir = crate::test_support::TempDir::new("girocrab-apply-to");
+        let p = dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        let c = v.db().unwrap();
+        c.execute_batch(
+            "INSERT INTO account_groups(name) VALUES ('G');
+             INSERT INTO accounts(group_id, external_ref, name) VALUES (1, 'A1', 'Konto');
+             INSERT INTO accounts(group_id, external_ref, name, archived_unix) VALUES (1, 'A2', 'Archiv', 1);
+             INSERT INTO categories(name) VALUES ('Lebensmittel');
+             INSERT INTO rules(name, category_id, field, match_kind, pattern)
+                 VALUES ('REWE', 1, 'any', 'keyword', 'REWE');
+             INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty,
+                                      category_source, deleted_ms)
+             VALUES (1, 'hit', '2026-01-02', -100, 'REWE Markt', 'none', NULL),
+                    (1, 'manual', '2026-01-02', -100, 'REWE Markt', 'manual', NULL),
+                    (1, 'deleted', '2026-01-02', -100, 'REWE Markt', 'none', 1),
+                    (2, 'archived', '2026-01-02', -100, 'REWE Markt', 'none', NULL),
+                    (1, 'outside', '2026-01-02', -100, 'REWE Markt', 'none', NULL);",
+        )
+        .unwrap();
+        // Every booking but 'outside' (rowids follow the insert order).
+        let ids = HashSet::from([1, 2, 3, 4]);
+
+        assert_eq!(Vault::apply_rules_to(&c, &HashSet::new()).unwrap(), 0);
+        assert_eq!(Vault::apply_rules_to(&c, &ids).unwrap(), 1);
+        let source = |ext: &str| -> String {
+            c.query_row(
+                "SELECT category_source FROM transactions WHERE external_id = ?1",
+                [ext],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(source("hit"), "rule");
+        assert_eq!(source("manual"), "manual");
+        assert_eq!(source("deleted"), "none");
+        assert_eq!(source("archived"), "none");
+        assert_eq!(source("outside"), "none", "not in the set");
     }
 }
