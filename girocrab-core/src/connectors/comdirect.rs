@@ -766,6 +766,7 @@ pub(crate) fn parse_positions(pos: &Value) -> Vec<crate::models::Holding> {
                 profit_loss_prev_day_cents: opt_cents(&p["profitLossPrevDayAbs"]),
                 profit_loss_prev_day_rel: percent(&p["profitLossPrevDayRel"]),
                 custody_type: s(&p["custodyType"]),
+                ..Default::default()
             }
         })
         .collect()

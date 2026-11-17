@@ -231,6 +231,18 @@ pub struct Holding {
     /// Custody type as the bank names it (e.g. "Girosammelverwahrung"), "" = unknown.
     #[uniffi(default = "")]
     pub custody_type: String,
+    /// Native currency of the position (ISO code), "" = the account currency (#625).
+    /// `current_price_cents`, `purchase_price_cents` and `value_cents` are always in
+    /// the account currency so depot sums stay correct; the `native_*` fields carry
+    /// the same figures in `currency` when it differs.
+    #[uniffi(default = "")]
+    pub currency: String,
+    #[uniffi(default = None)]
+    pub native_price_cents: Option<i64>,
+    #[uniffi(default = None)]
+    pub native_purchase_price_cents: Option<i64>,
+    #[uniffi(default = None)]
+    pub native_value_cents: Option<i64>,
 }
 
 /// What a securities transaction was (#314).

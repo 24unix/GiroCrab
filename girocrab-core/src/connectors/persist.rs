@@ -523,11 +523,13 @@ pub(crate) fn store_fetch(
                 tx.execute(
                     "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents,
                             prev_day_price_cents, prev_day_value_cents, profit_loss_purchase_cents, profit_loss_purchase_rel,
-                            profit_loss_prev_day_cents, profit_loss_prev_day_rel, custody_type)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                            profit_loss_prev_day_cents, profit_loss_prev_day_rel, custody_type,
+                            currency, native_price_cents, native_purchase_price_cents, native_value_cents)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                     params![acc_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents,
                             h.prev_day_price_cents, h.prev_day_value_cents, h.profit_loss_purchase_cents, h.profit_loss_purchase_rel,
-                            h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type],
+                            h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type,
+                            h.currency, h.native_price_cents, h.native_purchase_price_cents, h.native_value_cents],
                 )?;
                 tx.execute("INSERT INTO holding_classifications(holding_id,asset_class,instrument,direct_crypto) VALUES (?1,?2,?3,?4)",
                     params![tx.last_insert_rowid(),remote.classification.asset_class.map(|a|a.as_str()),remote.classification.instrument.map(|a|a.as_str()),remote.direct_crypto])?;

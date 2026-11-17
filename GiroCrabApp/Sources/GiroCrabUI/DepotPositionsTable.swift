@@ -179,7 +179,15 @@ struct DepotPositionsTable<RowMenu: View>: View {
         if p.hidesPrice { return "–" }
         return p.basis == .percentOfNominal
             ? DepotFormat.percent(Double(p.holding.currentPriceCents) / 100)
-            : Money.format(p.holding.currentPriceCents, currency: currency)
+            : nativePrice(p)
+    }
+
+    /// Price in the position's own currency (#625); the account currency otherwise.
+    private func nativePrice(_ p: DepotPosition) -> String {
+        if let native = p.holding.nativeCurrency(accountCurrency: currency), let cents = p.holding.nativePriceCents {
+            return Money.format(cents, currency: native)
+        }
+        return Money.format(p.holding.currentPriceCents, currency: currency)
     }
 
     private func shareText(_ p: DepotPosition) -> String { p.share.map { DepotFormat.percent($0 * 100, digits: 1) } ?? "–" }
@@ -331,6 +339,9 @@ struct DepotPositionsTable<RowMenu: View>: View {
             line("Menge / Einheit", "\(quantityText(p)) \(unitText(p))")
             if !p.hidesPrice { line("Kurs", priceText(p)) }
             line("Marktwert", Money.format(p.holding.valueCents, currency: currency))
+            if let native = p.holding.nativeCurrency(accountCurrency: currency), let cents = p.holding.nativeValueCents {
+                line("Marktwert (Handelswährung)", Money.format(cents, currency: native))
+            }
             line("Anteil", shareText(p))
             if let g = p.gain {
                 line("GuV", [Money.signed(g.cents, currency: currency), g.percent.map { DepotFormat.percent($0, signed: true) }]

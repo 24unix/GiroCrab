@@ -105,10 +105,10 @@ fn security_assets(db: &Connection, account_id: i64) -> CoreResult<Vec<Classifie
         Ok((
             holding_from_row(r)?,
             ClassificationValues {
-                asset_class: class_of(r.get(14)?),
-                instrument: instrument_of(r.get(15)?),
+                asset_class: class_of(r.get(18)?),
+                instrument: instrument_of(r.get(19)?),
             },
-            r.get::<_, bool>(16)?,
+            r.get::<_, bool>(20)?,
         ))
     })?;
     let mut out = Vec::new();

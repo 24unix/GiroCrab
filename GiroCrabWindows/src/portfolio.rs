@@ -722,6 +722,7 @@ mod tests {
             profit_loss_prev_day_cents: None,
             profit_loss_prev_day_rel: None,
             custody_type: String::new(),
+            ..Default::default()
         }
     }
 

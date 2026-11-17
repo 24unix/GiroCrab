@@ -737,7 +737,8 @@ impl Vault {
 pub(crate) const HOLDING_COLUMNS: &str =
     "h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents,
      h.prev_day_price_cents, h.prev_day_value_cents, h.profit_loss_purchase_cents, h.profit_loss_purchase_rel,
-     h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type";
+     h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type,
+     h.currency, h.native_price_cents, h.native_purchase_price_cents, h.native_value_cents";
 
 /// Restricts `holdings h` to one active account, largest position first.
 pub(crate) const HOLDING_FILTER: &str = "h.account_id = ?1
@@ -760,6 +761,10 @@ pub(crate) fn holding_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Holdin
         profit_loss_prev_day_cents: r.get(11)?,
         profit_loss_prev_day_rel: r.get(12)?,
         custody_type: r.get(13)?,
+        currency: r.get(14)?,
+        native_price_cents: r.get(15)?,
+        native_purchase_price_cents: r.get(16)?,
+        native_value_cents: r.get(17)?,
     })
 }
 

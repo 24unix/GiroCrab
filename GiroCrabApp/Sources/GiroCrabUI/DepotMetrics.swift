@@ -703,3 +703,11 @@ enum DepotTab: String, CaseIterable, Identifiable {
         }
     }
 }
+
+extension Holding {
+    /// The position's own currency when it differs from the account's (#625), else nil.
+    /// `currentPriceCents` / `valueCents` stay in the account currency so sums remain correct.
+    func nativeCurrency(accountCurrency: String) -> String? {
+        currency.isEmpty || currency.caseInsensitiveCompare(accountCurrency) == .orderedSame ? nil : currency
+    }
+}

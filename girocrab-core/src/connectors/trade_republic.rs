@@ -728,6 +728,7 @@ fn holding_of(
             profit_loss_prev_day_rel: day_gain.map(|g| g.1),
             // Trade Republic does not report how a position is held
             custody_type: String::new(),
+            ..Default::default()
         },
     }
 }

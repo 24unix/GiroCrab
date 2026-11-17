@@ -616,15 +616,19 @@ fn parse_holding(a: &Attrs, base: &str) -> Option<Holding> {
         (false, true) => description.to_string(),
         (true, _) => symbol.to_string(),
     };
-    let price = parse_cents(attr(a, "markPrice")).map(|c| to_base(c, a, base));
-    let value = parse_cents(attr(a, "positionValue"))
-        .map(|c| to_base(c, a, base))
-        .or_else(|| price.map(|p| (p as f64 * quantity).round() as i64))
-        .unwrap_or(0);
+    // Figures in the position's own currency (`currency`), as the report gives them.
+    let native_price = parse_cents(attr(a, "markPrice"));
+    let native_value = parse_cents(attr(a, "positionValue"))
+        .or_else(|| native_price.map(|p| (p as f64 * quantity).round() as i64));
+    let native_purchase = parse_cents(attr(a, "costBasisPrice")).or_else(|| {
+        parse_cents(attr(a, "costBasisMoney")).map(|c| (c as f64 / quantity).round() as i64)
+    });
+    let price = native_price.map(|c| to_base(c, a, base));
+    let value = native_value.map(|c| to_base(c, a, base)).unwrap_or(0);
     let price = price
         .or_else(|| (quantity != 0.0).then(|| (value as f64 / quantity).round() as i64))
         .unwrap_or(0);
-    // Per-unit cost basis; fall back to the total cost basis / quantity.
+    // Per-unit cost basis in the base currency; the money total is converted first.
     let purchase = parse_cents(attr(a, "costBasisPrice"))
         .map(|c| to_base(c, a, base))
         .or_else(|| {
@@ -632,6 +636,9 @@ fn parse_holding(a: &Attrs, base: &str) -> Option<Holding> {
                 .map(|c| (to_base(c, a, base) as f64 / quantity).round() as i64)
         })
         .unwrap_or(0);
+    // Native figures only where the position is not held in the base currency.
+    let cur = attr(a, "currency").to_ascii_uppercase();
+    let foreign = !cur.is_empty() && !cur.eq_ignore_ascii_case(base);
     Some(Holding {
         isin,
         wkn: String::new(),
@@ -640,6 +647,10 @@ fn parse_holding(a: &Attrs, base: &str) -> Option<Holding> {
         current_price_cents: price,
         purchase_price_cents: purchase,
         value_cents: value,
+        currency: if foreign { cur } else { String::new() },
+        native_price_cents: native_price.filter(|_| foreign),
+        native_purchase_price_cents: native_purchase.filter(|_| foreign),
+        native_value_cents: native_value.filter(|_| foreign),
         ..Default::default()
     })
 }
@@ -1162,6 +1173,12 @@ mod tests {
         assert_eq!(nestle.current_price_cents, 10_600);
         assert_eq!(nestle.purchase_price_cents, 9_540);
         assert_eq!(nestle.value_cents, 53_000);
+        // Positions keep their own currency next to the base-currency figures (#625).
+        assert_eq!(sap.currency, "");
+        assert_eq!(sap.native_value_cents, None);
+        assert_eq!(nestle.currency, "CHF");
+        assert_eq!(nestle.native_price_cents, Some(10_000));
+        assert_eq!(nestle.native_value_cents, Some(50_000));
         let apple = &r.holdings[2].holding;
         assert_eq!(apple.isin, "037833100"); // cusip fallback
         assert_eq!(apple.value_cents, 45_000);
@@ -1382,6 +1399,46 @@ mod tests {
         assert!(r.accounts.iter().all(|a| a.currency == "CHF"));
         // Total is converted to the base currency: 200 USD * 0.9.
         assert_eq!(r.accounts[0].balance_cents, 18000);
+    }
+
+    #[test]
+    fn multi_currency_depot_keeps_native_positions_and_base_total() {
+        let xml = r#"<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1" baseCurrency="CHF" toDate="2026-11-12">
+<CashReportCurrency accountId="U1" currency="BASE_SUMMARY" endingCash="250.00" />
+<CashReportCurrency accountId="U1" currency="USD" endingCash="100.00" />
+<OpenPosition accountId="U1" currency="USD" fxRateToBase="0.8" symbol="AAPL" description="APPLE INC" isin="US0378331005" position="10" markPrice="200.00" costBasisPrice="150.00" positionValue="2000.00" levelOfDetail="SUMMARY" />
+<OpenPosition accountId="U1" currency="EUR" fxRateToBase="0.95" symbol="SAP" description="SAP SE" isin="DE0007164600" position="5" markPrice="120.00" costBasisMoney="500.00" positionValue="600.00" levelOfDetail="SUMMARY" />
+<OpenPosition accountId="U1" currency="CHF" fxRateToBase="1" symbol="NESN" description="NESTLE" isin="CH0038863350" position="4" markPrice="100.00" costBasisPrice="90.00" positionValue="400.00" levelOfDetail="SUMMARY" />
+</FlexStatement></FlexStatements></FlexQueryResponse>"#;
+        let r = build_fetch(xml, "2026-01-01").unwrap();
+        // Accounts and cash stay in the base currency.
+        assert!(r.accounts.iter().all(|a| a.currency == "CHF"));
+        assert_eq!(r.accounts[1].balance_cents, 25_000);
+        // Depot total: 2000*0.8 + 600*0.95 + 400 = 1600 + 570 + 400 CHF.
+        assert_eq!(r.accounts[0].balance_cents, 160_000 + 57_000 + 40_000);
+
+        let h: Vec<_> = r.holdings.iter().map(|h| &h.holding).collect();
+        let (aapl, sap, nesn) = (h[0], h[1], h[2]);
+        assert_eq!(aapl.currency, "USD");
+        assert_eq!(aapl.native_price_cents, Some(20_000));
+        assert_eq!(aapl.native_value_cents, Some(200_000));
+        assert_eq!(aapl.native_purchase_price_cents, Some(15_000));
+        assert_eq!(
+            (aapl.current_price_cents, aapl.value_cents),
+            (16_000, 160_000)
+        );
+        assert_eq!(sap.currency, "EUR");
+        assert_eq!(sap.native_price_cents, Some(12_000));
+        assert_eq!(sap.native_value_cents, Some(60_000));
+        assert_eq!(sap.native_purchase_price_cents, Some(10_000)); // 500.00 / 5
+        assert_eq!((sap.current_price_cents, sap.value_cents), (11_400, 57_000));
+        assert_eq!(nesn.currency, "");
+        assert_eq!(nesn.native_value_cents, None);
+        assert_eq!(nesn.value_cents, 40_000);
+        assert_eq!(
+            h.iter().map(|x| x.value_cents).sum::<i64>(),
+            r.accounts[0].balance_cents
+        );
     }
 
     #[test]

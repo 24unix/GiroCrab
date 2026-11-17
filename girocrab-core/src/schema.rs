@@ -75,7 +75,24 @@ const STEPS: &[Step] = &[
     Step::Hook(crate::tags::tags_tables),                      // 23
     Step::Sql(RULE_ACCOUNTS),                                  // 24
     Step::Sql(TX_AMOUNT_DATE),                                 // 25
+    Step::Hook(holding_native_currency),                       // 26
 ];
+
+/// Step 26 (#625): native currency of a position and its price/value in it
+/// (`NULL` / "" = same as the account). Idempotent like [`item_refs`].
+fn holding_native_currency(conn: &Connection) -> CoreResult<()> {
+    for (col, def) in [
+        ("currency", "TEXT NOT NULL DEFAULT ''"),
+        ("native_price_cents", "INTEGER"),
+        ("native_purchase_price_cents", "INTEGER"),
+        ("native_value_cents", "INTEGER"),
+    ] {
+        if !has_column(conn, "holdings", col)? {
+            conn.execute_batch(&format!("ALTER TABLE holdings ADD COLUMN {col} {def};"))?;
+        }
+    }
+    Ok(())
+}
 
 /// Step 25. Not partial on `deleted_ms IS NULL`: SQLite then picked it for
 /// plain scans of live bookings (`list_categories`), six times slower.
@@ -616,7 +633,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 25);
+        assert_eq!(SCHEMA_VERSION, 26);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers
