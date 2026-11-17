@@ -1342,9 +1342,98 @@ fn run_transfer(
     )
 }
 
+/// Pre-filled transfer fields from a `girocrab://transfer?…` URL (#431).
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+struct TransferPrefill {
+    recipient: String,
+    iban: String,
+    amount: String,
+    purpose: String,
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => out.push(b' '),
+            b'%' => {
+                let hex = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok());
+                match hex {
+                    Some(b) => {
+                        out.push(b);
+                        i += 2;
+                    }
+                    None => out.push(b'%'),
+                }
+            }
+            b => out.push(b),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Parses `girocrab://transfer?recipient=…&iban=…&amount=…&purpose=…`.
+/// Returns `None` for other schemes/hosts. Only pre-fills; never submits.
+fn parse_transfer_url(url: &str) -> Option<TransferPrefill> {
+    let rest = url.trim().strip_prefix("girocrab://")?;
+    let (host, query) = rest.split_once('?').unwrap_or((rest, ""));
+    if !host.trim_end_matches('/').eq_ignore_ascii_case("transfer") {
+        return None;
+    }
+    let query = query.split('#').next().unwrap_or("");
+    let mut p = TransferPrefill::default();
+    for pair in query.split('&').filter(|s| !s.is_empty()) {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        let v = percent_decode(v);
+        match percent_decode(k).to_ascii_lowercase().as_str() {
+            "recipient" | "name" => p.recipient = v,
+            "iban" => p.iban = v.split_whitespace().collect(),
+            "amount" => p.amount = v,
+            "purpose" | "reference" => p.purpose = v,
+            _ => {}
+        }
+    }
+    Some(p)
+}
+
+/// `--transfer-url <url>`, `--transfer-url=<url>` or a bare `girocrab://transfer…` argument
+/// (how Windows hands over a registered URL scheme).
+fn transfer_prefill_from_args(args: impl IntoIterator<Item = String>) -> Option<TransferPrefill> {
+    let mut it = args.into_iter();
+    while let Some(a) = it.next() {
+        let url = if a == "--transfer-url" {
+            it.next()?
+        } else if let Some(u) = a.strip_prefix("--transfer-url=") {
+            u.to_string()
+        } else if a.starts_with("girocrab://") {
+            a
+        } else {
+            continue;
+        };
+        return parse_transfer_url(&url);
+    }
+    None
+}
+
+fn apply_transfer_prefill(win: &MainWindow, p: &TransferPrefill) {
+    win.set_transfer_pre_name(p.recipient.clone().into());
+    win.set_transfer_pre_iban(p.iban.clone().into());
+    win.set_transfer_pre_amount(p.amount.clone().into());
+    win.set_transfer_pre_purpose(p.purpose.clone().into());
+    win.set_transfer_status(SharedString::new());
+    win.set_transfer_open(true);
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     views_ui::purge_stale_documents();
     let win = MainWindow::new()?;
+    // Opened only after the vault is unlocked; the user still has to press "Senden".
+    let pending_transfer: Arc<Mutex<Option<TransferPrefill>>> = Arc::new(Mutex::new(
+        transfer_prefill_from_args(std::env::args().skip(1)),
+    ));
     let demo_mode = vault_key::demo_seed_requested();
     let vault: Arc<Mutex<Option<Arc<Vault>>>> = Arc::new(Mutex::new(None));
     let demo_active = Arc::new(Mutex::new(demo_mode));
@@ -1366,6 +1455,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let open = {
         let (weak, vault, demo_active) = (win.as_weak(), vault.clone(), demo_active.clone());
+        let pending_transfer = pending_transfer.clone();
         move |demo: bool| {
             let Some(win) = weak.upgrade() else { return };
             policy::apply(VERSION);
@@ -1380,6 +1470,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     show(&win, &v, None);
                     *vault.lock().unwrap() = Some(v);
                     win.set_message(SharedString::new());
+                    if let Some(p) = pending_transfer.lock().unwrap().take() {
+                        apply_transfer_prefill(&win, &p);
+                    }
                 }
                 Err(e) => win.set_message(e.into()),
             }
@@ -1696,8 +1789,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let weak = win.as_weak();
         win.on_transfer_start(move || {
             let Some(win) = weak.upgrade() else { return };
-            win.set_transfer_status(SharedString::new());
-            win.set_transfer_open(true);
+            apply_transfer_prefill(&win, &TransferPrefill::default());
         });
     }
     {
@@ -1760,6 +1852,38 @@ fn main() -> Result<(), slint::PlatformError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transfer_url_is_parsed() {
+        let p = parse_transfer_url(
+            "girocrab://transfer?recipient=Max%20Mustermann&iban=DE89%203704%200044%200532%200130%2000&amount=12,50&purpose=Rechnung+42%20%26%20Co",
+        )
+        .unwrap();
+        assert_eq!(p.recipient, "Max Mustermann");
+        assert_eq!(p.iban, "DE89370400440532013000");
+        assert_eq!(p.amount, "12,50");
+        assert_eq!(p.purpose, "Rechnung 42 & Co");
+        assert_eq!(
+            parse_transfer_url("girocrab://transfer"),
+            Some(TransferPrefill::default())
+        );
+        assert!(parse_transfer_url("girocrab://other?iban=x").is_none());
+        assert!(parse_transfer_url("https://transfer?iban=x").is_none());
+        // Bad escapes and UTF-8 survive.
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%C3%A4%zz"), "ä%zz");
+    }
+
+    #[test]
+    fn transfer_url_from_cli_args() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let p = transfer_prefill_from_args(args(&["--transfer-url", "girocrab://transfer?iban=DE1"]))
+            .unwrap();
+        assert_eq!(p.iban, "DE1");
+        assert!(transfer_prefill_from_args(args(&["--transfer-url=girocrab://transfer?amount=5"])).is_some());
+        assert!(transfer_prefill_from_args(args(&["girocrab://transfer?amount=5"])).is_some());
+        assert!(transfer_prefill_from_args(args(&["--demo"])).is_none());
+    }
 
     #[test]
     fn demo_vault_has_accounts_and_bookings() {

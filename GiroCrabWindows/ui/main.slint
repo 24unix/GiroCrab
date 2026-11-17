@@ -743,6 +743,11 @@ export component MainWindow inherits Window {
     in-out property <bool> transfer-open: false;
     in property <[string]> transfer-accounts;
     in-out property <string> transfer-status;
+    // Pre-fill from girocrab://transfer URL / --transfer-url (#431); never auto-submitted.
+    in-out property <string> transfer-pre-name;
+    in-out property <string> transfer-pre-iban;
+    in-out property <string> transfer-pre-amount;
+    in-out property <string> transfer-pre-purpose;
     // ---- navigation and views (views_ui.rs)
     in property <[SideRow]> side-rows;
     in-out property <string> side-selected: "all";
@@ -1808,10 +1813,10 @@ export component MainWindow inherits Window {
                 Text { text: "Überweisung"; font-size: 18px; font-weight: 700; color: Theme.text; }
                 Text { text: "Von Konto"; font-size: 11px; color: Theme.muted; }
                 tr-account := ComboBox { model: root.transfer-accounts; current-index: 0; }
-                tr-name := LineEdit { placeholder-text: "Empfänger (Name)"; }
-                tr-iban := LineEdit { placeholder-text: "IBAN des Empfängers"; }
-                tr-amount := LineEdit { placeholder-text: "Betrag in EUR, z. B. 12,50"; }
-                tr-purpose := LineEdit { placeholder-text: "Verwendungszweck (max. 140 Zeichen)"; }
+                tr-name := LineEdit { text: root.transfer-pre-name; placeholder-text: "Empfänger (Name)"; }
+                tr-iban := LineEdit { text: root.transfer-pre-iban; placeholder-text: "IBAN des Empfängers"; }
+                tr-amount := LineEdit { text: root.transfer-pre-amount; placeholder-text: "Betrag in EUR, z. B. 12,50"; }
+                tr-purpose := LineEdit { text: root.transfer-pre-purpose; placeholder-text: "Verwendungszweck (max. 140 Zeichen)"; }
                 tr-instant := Switch { text: "Echtzeitüberweisung (sofort, rund um die Uhr)"; checked: false; }
                 tr-date := LineEdit {
                     placeholder-text: "Ausführungstermin TT.MM.JJJJ (leer = sofort)";
