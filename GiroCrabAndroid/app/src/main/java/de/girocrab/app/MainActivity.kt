@@ -1,5 +1,7 @@
 package de.girocrab.app
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.layout.size
@@ -339,7 +341,7 @@ private fun RulesListDialog(state: de.girocrab.app.model.AppUiState, vm: AppView
 }
 
 
-/** Brief startup overlay: crab icon + title scale in and fade out after ~850 ms (once per launch; `skip_intro` extra disables it). */
+/** Startup overlay: adaptive light/dark (system dark mode or 19:00-07:00), hero crab springs in, fades out after ~950 ms (`skip_intro` disables it). */
 @Composable
 private fun GiroCrabIntro(skip: Boolean) {
     var show by rememberSaveable { mutableStateOf(!skip) }
@@ -347,37 +349,57 @@ private fun GiroCrabIntro(skip: Boolean) {
     LaunchedEffect(Unit) {
         entered = true
         if (show) {
-            kotlinx.coroutines.delay(850)
+            kotlinx.coroutines.delay(950)
             show = false
         }
     }
+    val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+    val dark = androidx.compose.foundation.isSystemInDarkTheme() || hour >= 19 || hour < 7
+    val bg = androidx.compose.ui.graphics.Color(if (dark) 0xFF0F141C else 0xFFF8F9FB)
+    val fg = androidx.compose.ui.graphics.Color(if (dark) 0xFFF9FAFB else 0xFF111827)
+    val sub = androidx.compose.ui.graphics.Color(if (dark) 0xFF9CA3AF else 0xFF6B7280)
     val scale by androidx.compose.animation.core.animateFloatAsState(
-        if (entered) 1f else 0.7f,
-        androidx.compose.animation.core.tween(700),
+        if (entered) 1f else 0.82f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.6f, stiffness = 200f),
         label = "introScale",
+    )
+    val alpha by androidx.compose.animation.core.animateFloatAsState(
+        if (entered) 1f else 0f,
+        androidx.compose.animation.core.tween(500),
+        label = "introAlpha",
     )
     androidx.compose.animation.AnimatedVisibility(
         visible = show,
         enter = androidx.compose.animation.EnterTransition.None,
-        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250)) +
-            androidx.compose.animation.scaleOut(targetScale = 1.08f, animationSpec = androidx.compose.animation.core.tween(250)),
+        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(300)),
     ) {
         Box(
-            Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0067C0)).clickable(enabled = false) {},
+            Modifier.fillMaxSize().background(bg).clickable(enabled = false) {},
             contentAlignment = Alignment.Center,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.scale(scale)) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.scale(scale).graphicsLayer { this.alpha = alpha },
+            ) {
                 androidx.compose.foundation.Image(
                     painter = androidx.compose.ui.res.painterResource(R.drawable.girocrab_crab),
                     contentDescription = null,
-                    modifier = Modifier.size(128.dp),
+                    modifier = Modifier
+                        .size(152.dp)
+                        .shadow(16.dp, androidx.compose.foundation.shape.RoundedCornerShape(34.dp), clip = false),
                 )
                 Text(
                     "GiroCrab",
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = fg,
                     fontSize = 28.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    modifier = Modifier.padding(top = 12.dp),
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 20.dp),
+                )
+                Text(
+                    "Finanzen. Lokal. Verschlüsselt.",
+                    color = sub,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
         }

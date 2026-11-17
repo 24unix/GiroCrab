@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.girocrab.app.model.Account
+import de.girocrab.app.model.AccountKind
 import de.girocrab.app.model.AppUiState
 import de.girocrab.app.model.Booking
 import de.girocrab.app.model.BookingFilter
@@ -233,6 +234,7 @@ fun BookingStreamScreen(
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun BalanceHeaderCard(
     state: AppUiState,
@@ -253,6 +255,11 @@ fun BalanceHeaderCard(
         account != null -> listOfNotNull(account.bankName, account.iban?.let { maskIban(it, masked) }).joinToString(" · ")
         else -> "${state.scopedAccountIds.size} Konten"
     }
+    var liquid by rememberSaveable { mutableStateOf(false) }
+    val showLiquid = liquid && state.scope == Scope.All
+    val shownCents = if (showLiquid) {
+        data.accounts.filter { it.id in state.scopedAccountIds && it.kind == AccountKind.Giro }.sumOf { it.balanceCents }
+    } else state.totalBalanceCents
     Card(
         modifier.fillMaxWidth().padding(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -260,8 +267,21 @@ fun BalanceHeaderCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (state.scope == Scope.All) {
+                Surface(
+                    onClick = { liquid = !liquid },
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFF0067C0).copy(alpha = if (showLiquid) 0.22f else 0.10f),
+                ) {
+                    Text(
+                        if (showLiquid) "Verfügbar" else "Gesamtvermögen",
+                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
             Text(
-                formatMoney(state.totalBalanceCents, masked = masked),
+                formatMoney(shownCents, masked = masked),
                 style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
                 fontFamily = tabular,
                 fontWeight = FontWeight.Bold,

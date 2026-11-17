@@ -29,7 +29,7 @@ env:
 # Neuer Push auf denselben PR bricht den laufenden Lauf ab (macOS-Runner sind knapp).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   # Which parts changed. A push to main compares with the previous head, a PR with its base;

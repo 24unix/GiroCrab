@@ -1108,6 +1108,19 @@ fn render_header(
         .collect();
     win.set_accounts(ModelRc::new(VecModel::from(rows)));
     win.set_total(total.clone().into());
+    // "Verfügbar": liquid checking accounts only (EUR, counted in the total).
+    if let Ok(accts) = vault.list_accounts() {
+        let liquid: i64 = accts
+            .iter()
+            .filter(|a| {
+                a.in_total
+                    && a.currency == "EUR"
+                    && matches!(a.kind, girocrab_core::AccountKind::Checking)
+            })
+            .map(|a| a.balance_cents)
+            .sum();
+        win.set_liquid_balance(daily::mask(&money(liquid, "EUR"), win.get_privacy()).into());
+    }
     let sel = selected.or(Some(0));
     win.set_selected(sel.map_or(-1, |s| s as i32));
     let cur = if sel == Some(0) {
@@ -1359,7 +1372,9 @@ fn percent_decode(s: &str) -> String {
         match bytes[i] {
             b'+' => out.push(b' '),
             b'%' => {
-                let hex = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok());
+                let hex = s
+                    .get(i + 1..i + 3)
+                    .and_then(|h| u8::from_str_radix(h, 16).ok());
                 match hex {
                     Some(b) => {
                         out.push(b);
@@ -1430,6 +1445,17 @@ fn apply_transfer_prefill(win: &MainWindow, p: &TransferPrefill) {
 fn main() -> Result<(), slint::PlatformError> {
     views_ui::purge_stale_documents();
     let win = MainWindow::new()?;
+    // Splash: dark at night (19:00-07:00 local); otherwise it follows the system theme.
+    // No timezone database here, so local time is approximated as UTC+1 (CET).
+    {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let hour = ((secs / 3600) + 1) % 24;
+        if !(7..19).contains(&hour) {
+            win.set_splash_dark(true);
+        }
+    }
     // Opened only after the vault is unlocked; the user still has to press "Senden".
     let pending_transfer: Arc<Mutex<Option<TransferPrefill>>> = Arc::new(Mutex::new(
         transfer_prefill_from_args(std::env::args().skip(1)),
@@ -1877,10 +1903,14 @@ mod tests {
     #[test]
     fn transfer_url_from_cli_args() {
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        let p = transfer_prefill_from_args(args(&["--transfer-url", "girocrab://transfer?iban=DE1"]))
-            .unwrap();
+        let p =
+            transfer_prefill_from_args(args(&["--transfer-url", "girocrab://transfer?iban=DE1"]))
+                .unwrap();
         assert_eq!(p.iban, "DE1");
-        assert!(transfer_prefill_from_args(args(&["--transfer-url=girocrab://transfer?amount=5"])).is_some());
+        assert!(
+            transfer_prefill_from_args(args(&["--transfer-url=girocrab://transfer?amount=5"]))
+                .is_some()
+        );
         assert!(transfer_prefill_from_args(args(&["girocrab://transfer?amount=5"])).is_some());
         assert!(transfer_prefill_from_args(args(&["--demo"])).is_none());
     }
