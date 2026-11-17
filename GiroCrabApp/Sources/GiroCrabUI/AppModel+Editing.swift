@@ -186,7 +186,7 @@ extension AppModel {
         if let accountIDs {
             f.accountIds = accountIDs; f.categoryId = nil; f.uncategorizedOnly = false
             f.search = nil; f.dateFrom = nil; f.dateTo = nil; f.direction = .all
-            f.scope = .all; f.merchantKey = nil
+            f.scope = .all; f.merchantKey = nil; f.tagIds = []; f.untaggedOnly = false
         }
         f.checked = false; f.limit = 0; f.offset = 0; f.wholeDays = false
         let filter = f

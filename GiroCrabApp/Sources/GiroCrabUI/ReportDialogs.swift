@@ -28,9 +28,13 @@ extension View {
         sheet(item: item, onDismiss: onDismiss) { content($0).reportCapturable() }
     }
 
-    func capturablePopover<Content: View>(isPresented: Binding<Bool>, arrowEdge: Edge = .top,
+    func capturablePopover<Content: View>(isPresented: Binding<Bool>,
+                                          attachmentAnchor: PopoverAttachmentAnchor = .rect(.bounds),
+                                          arrowEdge: Edge = .top,
                                           @ViewBuilder content: @escaping () -> Content) -> some View {
-        popover(isPresented: isPresented, arrowEdge: arrowEdge) { content().reportCapturable() }
+        popover(isPresented: isPresented, attachmentAnchor: attachmentAnchor, arrowEdge: arrowEdge) {
+            content().reportCapturable()
+        }
     }
 
     /// For content presented some other way (a `UIHostingController`).

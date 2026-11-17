@@ -97,7 +97,7 @@ extension AppModel {
     }
 
     /// Vault filter for an export: the list's filter with the sheet's accounts and period.
-    /// `ignoreListFilters` (CAMT.053) drops search, category, direction, merchant and
+    /// `ignoreListFilters` (CAMT.053) drops search, category, direction, tags, merchant and
     /// review status, so the closing balance matches the bank's.
     func exportFilter(accountIDs: [Int64]?, period: ExportPeriodPreset, options: ExportOptions?,
                       ignoreListFilters: Bool = false) -> BookingFilter {
@@ -114,6 +114,8 @@ extension AppModel {
             filter.merchantKey = nil
             filter.direction = .all
             filter.checked = nil
+            filter.tagIds = []
+            filter.untaggedOnly = false
         }
         let salary = salaryCycle?.lastDate
         if let range = period.range(customFrom: options?.customFrom ?? "", customTo: options?.customTo ?? "",
@@ -161,6 +163,8 @@ extension AppModel {
         case .income: report.filterNotes = [PrintDirection.income.title]
         case .expense: report.filterNotes = [PrintDirection.expenses.title]
         }
+        // and the tag filter (#228)
+        if let note = tagFilterNote { report.filterNotes.append(note) }
         return report
     }
 

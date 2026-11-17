@@ -12,6 +12,76 @@ extension AppModel {
     func reloadTags() {
         guard let vault else { tags = []; return }
         runCore { tags = try vault.listTags() }
+        // a deleted or merged tag leaves the list filter
+        let live = tagFilter.tagIDs.intersection(tags.map(\.id))
+        if live != tagFilter.tagIDs { tagFilter.tagIDs = live }
+    }
+
+    // MARK: - Tag filter of the booking list (#228, part 3)
+
+    /// Ticks or unticks a tag (several tags = bookings carrying all of them); ends „Ohne Tag“.
+    func toggleTagFilter(_ id: Int64) {
+        var f = tagFilter
+        f.untagged = false
+        if !f.tagIDs.insert(id).inserted { f.tagIDs.remove(id) }
+        tagFilter = f
+    }
+
+    /// Only bookings without any tag, or back to all.
+    func toggleUntaggedFilter() {
+        tagFilter = tagFilter.untagged ? BookingTagFilter() : BookingTagFilter(untagged: true)
+    }
+
+    func clearTagFilter() { tagFilter = BookingTagFilter() }
+
+    /// The header offers the tag filter once tags exist (or a filter is still on);
+    /// not in „Neue Umsätze“, which ignores the list filters.
+    var showsTagFilter: Bool {
+        sidebarSelection != .newBookings && (!tags.isEmpty || tagFilter.isActive)
+    }
+
+    /// Label of the header's tag button. Never names a tag (the header is part of
+    /// bug report screenshots), only how many are ticked.
+    var tagFilterTitle: String {
+        if tagFilter.untagged { return String(localized: "Ohne Tag") }
+        if tagFilter.tagIDs.isEmpty { return String(localized: "Tags") }
+        return String(localized: "Tags: \(tagFilter.tagIDs.count)")
+    }
+
+    /// The tag filter as the printout header names it; nil = none.
+    var tagFilterNote: String? {
+        if tagFilter.untagged { return String(localized: "Ohne Tag") }
+        let names = tags.filter { tagFilter.tagIDs.contains($0.id) }.map(\.name)
+        return names.isEmpty ? nil : String(localized: "Tags: \(names.joined(separator: ", "))")
+    }
+
+    /// Bookings and sum per tag (`tagID` nil = untagged) for the list's current filter without its
+    /// tag choice: what ticking each tag would show. An aggregate over the whole filter (~80 ms on
+    /// 31k bookings), so off the main thread; nil when the vault is locked or was swapped.
+    func loadTagTotals() async -> [Int64?: TagTotal]? {
+        let filter = currentFilter
+        guard let rows = try? await vaultOffMain({ try $0.tagTotals(filter: filter) }) else { return nil }
+        return Dictionary(rows.map { ($0.tagId, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// „Tags verwalten“: the tag's bookings per account, most first (off the main thread).
+    func loadTagAccountCounts(_ tagID: Int64) async -> [TagAccountCount]? {
+        try? await vaultOffMain { try $0.tagAccountCounts(tagId: tagID) }
+    }
+
+    /// „Tags verwalten“ › bookings per account: closes the sheet and lists every booking of
+    /// the account with this tag (all dates and statuses, no search), as the count promised.
+    func showBookings(ofTag tagID: Int64, account accountID: Int64) {
+        // (leaving a merchant list restores its filters, so that goes first)
+        if merchantFocus != nil { leaveMerchantFocus() }
+        // filters before the selection: their reloads still run on the old one
+        tagFilter = BookingTagFilter(tagIDs: [tagID])
+        statusFilter = .all
+        directionFilter = .all
+        if !searchText.isEmpty { searchText = "" }
+        interactiveSidebarSelection = .account(accountID)
+        if period != .all { interactivePeriod = .all }
+        showTagManager = false
     }
 
     /// Longest tag name the core accepts (characters, after collapsing spaces).

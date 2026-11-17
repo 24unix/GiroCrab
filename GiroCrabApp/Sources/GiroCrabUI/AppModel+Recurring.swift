@@ -63,6 +63,7 @@ extension AppModel {
             period = .all
             directionFilter = .all
             statusFilter = .all
+            tagFilter = BookingTagFilter()
             searchText = ""
         }
         // After a closing sheet / list reload, so the list can scroll to the row.

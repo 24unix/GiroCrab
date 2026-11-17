@@ -23,6 +23,8 @@ use crate::i18n::tr;
 use crate::vault::Vault;
 
 pub(crate) mod merge;
+mod totals;
+pub use totals::{TagAccountCount, TagTotal};
 #[cfg(test)]
 mod tests;
 

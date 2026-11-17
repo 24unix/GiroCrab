@@ -322,7 +322,9 @@ extension AppModel {
             merchantKey: merchantFocus?.key,
             direction: directionFilter,
             checked: statusFilter == .all ? nil : statusFilter == .checked,
-            wholeDays: true
+            wholeDays: true,
+            tagIds: tagFilter.untagged ? [] : tagFilter.tagIDs.sorted(),
+            untaggedOnly: tagFilter.untagged
         )
     }
 

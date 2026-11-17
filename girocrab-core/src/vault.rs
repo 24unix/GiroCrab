@@ -24,7 +24,7 @@ use crate::error::{CoreError, CoreResult};
 
 pub(crate) mod accounts;
 mod backup;
-mod bookings;
+pub(crate) mod bookings;
 mod categories;
 mod merge;
 mod rah10;

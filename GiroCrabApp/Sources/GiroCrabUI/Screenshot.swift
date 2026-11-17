@@ -115,7 +115,8 @@ public enum WindowScreenshot {
     @MainActor
     private static func render(_ target: NSWindow, to path: String) {
         guard target.contentView != nil else { exit(2) }
-        guard let rep = bitmap(of: target) else { exit(3) }
+        guard let drawn = bitmap(of: target) else { exit(3) }
+        let rep = withPopovers(drawn, of: target)
         guard let png = rep.representation(using: .png, properties: [:]) else { exit(4) }
         let url = URL(fileURLWithPath: path)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -127,6 +128,30 @@ public enum WindowScreenshot {
             FileHandle.standardError.write("screenshot: \(error)\n".data(using: .utf8)!)
             exit(5)
         }
+    }
+
+    /// `rep` of `window` with its visible popovers drawn on top (e.g. `--demo-sheet tag-filter`):
+    /// a popover is a window of its own, which `bitmap(of:)` leaves out.
+    @MainActor
+    private static func withPopovers(_ rep: NSBitmapImageRep, of window: NSWindow) -> NSBitmapImageRep {
+        let popovers = NSApp.windows.filter { $0 != window && $0.isVisible && $0.className.contains("Popover") }
+        guard !popovers.isEmpty, window.frame.width > 0,
+              let out = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: rep.pixelsWide, pixelsHigh: rep.pixelsHigh,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: out) else { return rep }
+        let scale = CGFloat(rep.pixelsWide) / window.frame.width
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        rep.draw(in: NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh))
+        for popover in popovers {
+            guard let picture = bitmap(of: popover) else { continue }
+            let f = popover.frame
+            picture.draw(in: NSRect(x: (f.minX - window.frame.minX) * scale, y: (f.minY - window.frame.minY) * scale,
+                                    width: f.width * scale, height: f.height * scale))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return out
     }
 
     /// `--demo-menu <title>`: renders the items of that menu-bar menu (titles,

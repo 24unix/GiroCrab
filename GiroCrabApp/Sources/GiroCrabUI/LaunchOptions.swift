@@ -19,7 +19,8 @@ import Foundation
 ///  --demo-inspector-edit (demo) open the right-hand inspector in its edit mode (#448)
 ///  --demo-sheet account-selection|transfer|moneymoney|moneymoney-db|recurring|print|rules|palette|
 ///               categorizer|payee-match|payee-close|payee-nomatch|error|rule-edit|icon-color|category|icon-color-category|
-///               asset|asset-edit|asset-values|asset-quantities|mandate|collection|collection-files|mandate-select
+///               asset|asset-edit|asset-values|asset-quantities|mandate|collection|collection-files|mandate-select|
+///               tags|tags-accounts|tag-filter
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README / PR screenshots
 ///  --demo-settings general|banks|groups|documents|security|external[:edit|:add|:remove|:select]

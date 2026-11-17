@@ -86,7 +86,7 @@ struct TagManagerView: View {
                             .foregroundStyle(Theme.secondary)
                     }
                     // the keys this sheet answers to, quietly
-                    Text("⌘N Neuer Tag · ↩ Umbenennen · ⌫ Löschen · esc Auswahl aufheben")
+                    Text("⌘N Neuer Tag · ↩ Umbenennen · ⌫ Löschen · esc Auswahl aufheben · Zahl: je Konto")
                         .appFont(.caption2)
                         .foregroundStyle(Theme.tertiary)
                 }
@@ -375,11 +375,124 @@ private struct TagManagerRow: View {
                 .lineLimit(2)
                 .sensitive()
             Spacer(minLength: 8)
+            TagBookingCount(tag: tag)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// A tag's booking count; hovering (or clicking) it shows the bookings per account (#228,
+/// part 3), and clicking an account lists them there.
+private struct TagBookingCount: View {
+    @Environment(AppModel.self) private var model
+    let tag: GiroCrabCore.Tag
+    @State private var showAccounts = false
+    @State private var overCount = false
+    @State private var overPopover = false
+    @State private var hoverTask: Task<Void, Never>?
+
+    var body: some View {
+        Button { if tag.bookingCount > 0 { showAccounts.toggle() } } label: {
             Text(tag.bookingCount, format: .number)
                 .appFont(.callout, monospacedDigit: true)
                 .foregroundStyle(tag.bookingCount == 0 ? Theme.tertiary : Theme.secondary)
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .disabled(tag.bookingCount == 0)
+        .help(Text("Buchungen nach Konten"))
+        .onHover { inside in overCount = inside; hoverChanged() }
+        // to the left, over the list: the count sits at the sheet's right edge
+        .capturablePopover(isPresented: $showAccounts, arrowEdge: .leading) {
+            TagAccountsPopover(tag: tag)
+                .onHover { inside in overPopover = inside; hoverChanged() }
+        }
+        .onDisappear { hoverTask?.cancel() }
+        .task { // screenshots: --demo-sheet tags-accounts (once the sheet stands)
+            guard model.options.demoSheetName == "tags-accounts", tag.id == model.tags.first?.id else { return }
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            showAccounts = true
+        }
+    }
+
+    /// Opens after a short rest on the count; closes once the pointer has left both the
+    /// count and the popover (the gap between them takes a moment to cross).
+    private func hoverChanged() {
+        hoverTask?.cancel()
+        guard tag.bookingCount > 0 else { return }
+        let open = overCount || overPopover
+        guard open != showAccounts else { return }
+        hoverTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: open ? 350_000_000 : 300_000_000)
+            guard !Task.isCancelled, (overCount || overPopover) == open else { return }
+            showAccounts = open
+        }
+    }
+}
+
+/// The tag's bookings per account; a click closes the sheet and lists them.
+private struct TagAccountsPopover: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.textScale) private var textScale
+    let tag: GiroCrabCore.Tag
+    @State private var rows: [TagAccountCount]?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Buchungen nach Konten").appFont(.headline)
+            if let rows {
+                // each booking once, at its own account (adds up to the tag's count) …
+                ForEach(rows.filter { !$0.linked }, id: \.accountId) { accountRow($0) }
+                // … then loans whose view shows some of them too (rates linked from the Girokonto)
+                let linked = rows.filter(\.linked)
+                if !linked.isEmpty {
+                    Divider()
+                    ForEach(linked, id: \.accountId) { accountRow($0) }
+                    Text("Raten von anderen Konten, die mit dem Kredit verknüpft sind.")
+                        .appFont(.caption)
+                        .foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Klick auf ein Konto zeigt seine Buchungen mit diesem Tag.")
+                    .appFont(.caption)
+                    .foregroundStyle(Theme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(width: 280 * textScale)
+        .task { rows = await model.loadTagAccountCounts(tag.id) }
+    }
+
+    private func accountRow(_ r: TagAccountCount) -> some View {
+        Button { model.showBookings(ofTag: tag.id, account: r.accountId) } label: {
+            HStack(spacing: 4) {
+                Text(model.accountsByID[r.accountId]?.name ?? String(localized: "Unbekanntes Konto"))
+                    .appFont(.body)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .sensitive()
+                if r.linked {
+                    Text("(verknüpft)")
+                        .appFont(.body)
+                        .foregroundStyle(Theme.secondary)
+                        .fixedSize()
+                }
+                Spacer(minLength: 12)
+                Text(r.bookingCount, format: .number)
+                    .appFont(.callout, monospacedDigit: true)
+                    .foregroundStyle(Theme.secondary)
+                    .fixedSize()
+            }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.accountsByID[r.accountId] == nil)
+        .help(Text("Diese Buchungen in der Liste zeigen"))
     }
 }
 

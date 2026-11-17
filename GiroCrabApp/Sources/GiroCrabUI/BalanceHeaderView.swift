@@ -58,6 +58,8 @@ struct StreamHeaderCard: View {
         if case .allAccounts? = model.sidebarSelection { return true }
         return false
     }
+    /// Where the tag button sits in the filter row: the tag popover points at it (#228).
+    @State private var tagButtonFrame: CGRect = .zero
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
     @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader: Bool = false
     @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
@@ -279,10 +281,19 @@ struct StreamHeaderCard: View {
                 filterContent.fixedSize(horizontal: true, vertical: false)
             }
         }
+        .coordinateSpace(.named(TagFilterButton.rowSpace))
         // Outside ViewThatFits: its candidates must not each carry the popover.
         .capturablePopover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
             CustomPeriodForm()
         }
+        #if os(macOS)
+        // anchored on the tag button, so its arrow points there and not at the row's middle
+        .capturablePopover(isPresented: $model.showTagFilter,
+                           attachmentAnchor: tagButtonFrame.isEmpty ? .rect(.bounds) : .rect(.rect(tagButtonFrame)),
+                           arrowEdge: .bottom) {
+            TagFilterPopover()
+        }
+        #endif
     }
 
     /// The period menu (also above Sachwerte charts).
@@ -355,6 +366,12 @@ struct StreamHeaderCard: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .help("Nach Status oder nach Einnahmen und Ausgaben filtern")
+                #if os(macOS)
+                // tag filter (#228); the iOS layout follows later
+                if model.showsTagFilter {
+                    TagFilterButton { tagButtonFrame = $0 }
+                }
+                #endif
                 if model.showsCategoryAccountFilter && model.allAccounts.count > 1 {
                     categoryAccountMenu
                 }

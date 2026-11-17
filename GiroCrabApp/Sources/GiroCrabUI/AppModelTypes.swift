@@ -257,6 +257,15 @@ struct MerchantFocusReturn {
     let status: StatusFilter
     let direction: BookingDirection
     let search: String
+    let tags: BookingTagFilter
+}
+
+/// Tag filter of the booking list (#228): bookings carrying every tag in `tagIDs`,
+/// or (`untagged`) only bookings without any tag. Both at once never happens.
+struct BookingTagFilter: Equatable {
+    var tagIDs: Set<Int64> = []
+    var untagged = false
+    var isActive: Bool { untagged || !tagIDs.isEmpty }
 }
 
 struct DayJump: Equatable {
@@ -511,6 +520,7 @@ extension BookingFilter {
     /// narrowed subset), so its `flow` can stand in for `selectionFlow`.
     var listHasFlow: Bool {
         scope == .all && direction == .all && checked == nil && search == nil && categoryId == nil && !uncategorizedOnly
+            && tagIds.isEmpty && !untaggedOnly
     }
 }
 

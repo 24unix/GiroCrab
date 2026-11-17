@@ -437,6 +437,187 @@ fn merged_tag_follows_on_the_other_device() {
     }
 }
 
+fn totals(v: &Vault, filter: BookingFilter) -> Vec<(Option<i64>, u32, i64)> {
+    v.tag_totals(filter)
+        .unwrap()
+        .into_iter()
+        .map(|t| (t.tag_id, t.booking_count, t.sum_cents))
+        .collect()
+}
+
+#[test]
+fn totals_per_tag_follow_the_filter_but_not_its_tags() {
+    let dir = TempDir::new("tags-totals");
+    let v = open(&dir, "a.db");
+    // T1 -1 €, T2 -2 €, T3 -3 €, T4 -4 € on 1..4 January
+    let ids = seed(&v, 4);
+    let trip = v.create_tag("Urlaub".into(), String::new()).unwrap().id;
+    let tax = v.create_tag("Steuer".into(), String::new()).unwrap().id;
+    let gone = v.create_tag("Alt".into(), String::new()).unwrap().id;
+    v.set_booking_tags(ids[0], vec![trip, tax]).unwrap();
+    v.set_booking_tags(ids[1], vec![trip]).unwrap();
+    v.set_booking_tags(ids[2], vec![gone]).unwrap();
+    v.delete_tag(gone).unwrap();
+
+    let all = BookingFilter::default();
+    // a booking with two tags counts for both; T3 lost its only tag
+    let expected = vec![(Some(trip), 2, -300), (Some(tax), 1, -100), (None, 2, -700)];
+    let mut got = totals(&v, all.clone());
+    got.sort_by_key(|t| (t.0.is_none(), t.0));
+    let mut want = expected.clone();
+    want.sort_by_key(|t| (t.0.is_none(), t.0));
+    assert_eq!(got, want);
+    // the counts are what ticking the tag lists
+    assert_eq!(
+        listed(
+            &v,
+            BookingFilter {
+                tag_ids: vec![trip],
+                ..Default::default()
+            }
+        )
+        .len(),
+        2
+    );
+
+    // the filter's own tag choice is left out
+    let ticked = BookingFilter {
+        tag_ids: vec![tax],
+        untagged_only: true,
+        ..Default::default()
+    };
+    assert_eq!(totals(&v, ticked), totals(&v, all.clone()));
+
+    // the period narrows every row
+    let from_second = BookingFilter {
+        date_from: Some("2026-01-02".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        totals(&v, from_second),
+        [(Some(trip), 1, -200), (None, 2, -700)]
+    );
+
+    // filters that need the enriched booking (scope) give the same numbers
+    let everyday = BookingFilter {
+        scope: crate::models::BookingScope::Everyday,
+        ..Default::default()
+    };
+    assert_eq!(totals(&v, everyday), totals(&v, all));
+
+    // deleted bookings drop out
+    crate::sync_merge::soft_delete_booking(&v.db().unwrap(), ids[1]).unwrap();
+    assert_eq!(
+        totals(&v, BookingFilter::default())[0],
+        (Some(trip), 1, -100)
+    );
+}
+
+#[test]
+fn tag_counts_per_account_add_up() {
+    let dir = TempDir::new("tags-accounts");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v, 3);
+    let c = v.db().unwrap();
+    c.execute(
+        "INSERT INTO accounts(group_id, external_ref, name) \
+         VALUES ((SELECT id FROM account_groups WHERE name='G'), 'A2', 'Karte')",
+        [],
+    )
+    .unwrap();
+    let card = c.last_insert_rowid();
+    c.execute(
+        "UPDATE transactions SET account_id = ?1 WHERE id = ?2",
+        params![card, ids[2]],
+    )
+    .unwrap();
+    let giro: i64 = c
+        .query_row(
+            "SELECT account_id FROM transactions WHERE id = ?1",
+            [ids[0]],
+            |r| r.get(0),
+        )
+        .unwrap();
+    drop(c);
+    let trip = v.create_tag("Urlaub".into(), String::new()).unwrap().id;
+    v.add_tag_to_bookings(ids.clone(), trip).unwrap();
+
+    let per_account: Vec<(i64, u32)> = v
+        .tag_account_counts(trip)
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.account_id, r.booking_count))
+        .collect();
+    assert_eq!(per_account, [(giro, 2), (card, 1)]);
+    let total: u32 = per_account.iter().map(|r| r.1).sum();
+    assert_eq!(total, tag_id_count(&v, trip));
+    assert!(v
+        .tag_account_counts(trip)
+        .unwrap()
+        .iter()
+        .all(|r| !r.linked));
+
+    // a loan without bookings of its own shows a linked rate of the Girokonto:
+    // listed apart, the own accounts still add up to the tag's count
+    let c = v.db().unwrap();
+    c.execute(
+        "INSERT INTO accounts(group_id, external_ref, name, kind) \
+         VALUES ((SELECT id FROM account_groups WHERE name='G'), 'L1', 'Autokredit', 'loan')",
+        [],
+    )
+    .unwrap();
+    let loan = c.last_insert_rowid();
+    c.execute(
+        "INSERT INTO loan_links(transaction_id, loan_account_id, source) VALUES (?1, ?2, 'manual')",
+        params![ids[0], loan],
+    )
+    .unwrap();
+    drop(c);
+    let rows = v.tag_account_counts(trip).unwrap();
+    let linked: Vec<(i64, u32)> = rows
+        .iter()
+        .filter(|r| r.linked)
+        .map(|r| (r.account_id, r.booking_count))
+        .collect();
+    assert_eq!(linked, [(loan, 1)]);
+    let own: u32 = rows
+        .iter()
+        .filter(|r| !r.linked)
+        .map(|r| r.booking_count)
+        .sum();
+    assert_eq!(own, tag_id_count(&v, trip));
+    // the loan's list with the tag shows exactly that booking
+    assert_eq!(
+        listed(
+            &v,
+            BookingFilter {
+                account_ids: vec![loan],
+                tag_ids: vec![trip],
+                ..Default::default()
+            }
+        ),
+        [ids[0]]
+    );
+
+    crate::sync_merge::soft_delete_booking(&v.db().unwrap(), ids[2]).unwrap();
+    let rows = v.tag_account_counts(trip).unwrap();
+    assert_eq!(
+        rows.iter().filter(|r| !r.linked).count(),
+        1,
+        "the card's only booking is gone"
+    );
+    assert!(v.tag_account_counts(9999).unwrap().is_empty());
+}
+
+fn tag_id_count(v: &Vault, id: i64) -> u32 {
+    v.list_tags()
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == id)
+        .unwrap()
+        .booking_count
+}
+
 /// Front ends without UniFFI (Linux) send filters as JSON that predate the
 /// tag fields; they must still decode.
 #[cfg(feature = "serde")]

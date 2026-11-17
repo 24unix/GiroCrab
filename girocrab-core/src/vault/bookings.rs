@@ -351,6 +351,12 @@ impl BookingFinisher {
     }
 }
 
+/// Whether `filter` needs the enriched booking (`keeps`), so plain SQL
+/// aggregates cannot answer it.
+pub(crate) fn needs_enrichment(filter: &BookingFilter) -> bool {
+    filters_by_class(filter)
+}
+
 impl Vault {
     /// WHERE clause (plus optional CTE, bound arguments and the KPI share
     /// expression) of a `BookingFilter`; shared by the list and bulk updates.
@@ -558,6 +564,34 @@ impl Vault {
         }
         let where_sql = wh.join(" AND ");
         Ok((cte, where_sql, args, share_sql))
+    }
+
+    /// `(booking id, KPI share)` of every booking `filter` keeps, enriched like
+    /// the list; for aggregates whose filter `needs_enrichment`.
+    pub(crate) fn kept_shares(
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+    ) -> Result<Vec<(i64, i64)>, CoreError> {
+        let (cte, where_sql, args, share_sql) = Self::filter_clauses(db, filter)?;
+        let sql = format!(
+            "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql}",
+            booking_columns(&share_sql)
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(
+            params_from_iter(args.iter().map(|b| b.as_ref())),
+            booking_from_row,
+        )?;
+        let finisher = BookingFinisher::load(db)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (share, mut t) = row?;
+            finisher.finish(&mut t, None);
+            if keeps(filter, t.flow, &t.merchant.key) {
+                out.push((t.id, share));
+            }
+        }
+        Ok(out)
     }
 
     fn set_checked_ids(

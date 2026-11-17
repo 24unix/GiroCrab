@@ -178,7 +178,8 @@ const DEMO_TAGS: [DemoTag; 12] = [
     (
         "Auto",
         "#E67E22",
-        &["Shell Station", "Aral AG", "EnBW%", "Sixt%"],
+        // the Autobank rates are Girokonto bookings linked to the Autokredit (#36)
+        &["Shell Station", "Aral AG", "EnBW%", "Sixt%", "Autobank AG"],
         &[],
     ),
     ("Urlaub", "#2E86DE", &["Sixt%"], &["ICE Ticket%"]),

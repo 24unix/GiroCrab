@@ -195,7 +195,7 @@ extension AppModel {
     // MARK: - Merchant list (GitHub #495)
 
     /// Shows every booking of the booking's merchant in the current period: all
-    /// accounts, no category, status, direction, scope or search filter. The
+    /// accounts, no category, status, direction, tag, scope or search filter. The
     /// merchant key covers differing counterparty spellings of one merchant.
     func focusMerchant(of booking: Booking) {
         let key = booking.merchant.key
@@ -203,11 +203,12 @@ extension AppModel {
         // A second merchant from within a merchant list still returns to the original view.
         let back = merchantFocusReturn ?? MerchantFocusReturn(
             selection: sidebarSelection, scope: scope, status: statusFilter,
-            direction: directionFilter, search: searchText)
+            direction: directionFilter, search: searchText, tags: tagFilter)
         // Filters first: their reloads still run on the old, cheaper selection.
         scope = .all
         statusFilter = .all
         directionFilter = .all
+        tagFilter = BookingTagFilter()
         if !searchText.isEmpty { searchText = "" }
         searchTask?.cancel()
         merchantFocus = MerchantFocus(key: key, name: booking.merchantName)
@@ -229,6 +230,7 @@ extension AppModel {
         scope = back.scope
         statusFilter = back.status
         directionFilter = back.direction
+        tagFilter = back.tags
         if searchText != back.search { searchText = back.search }
     }
 
