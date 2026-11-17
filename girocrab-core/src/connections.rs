@@ -599,11 +599,37 @@ impl Vault {
                 ],
             )?;
         }
+        // A leftover of an earlier switch whose fetch never took it over
+        // (before #537 was fixed): an account already carrying the marked
+        // reference of one marked below. Its key is freed under a reference
+        // no takeover looks at; without bookings it is the stale duplicate.
+        let stale: Vec<(i64, bool, bool)> = tx
+            .prepare(
+                // includes soft-deleted rows: they hold the key just the same
+                "SELECT s.id, s.deleted_ms IS NOT NULL,
+                        EXISTS (SELECT 1 FROM transactions t WHERE t.account_id = s.id AND t.deleted_ms IS NULL)
+                   FROM accounts s JOIN accounts a
+                     ON a.connection_id = s.connection_id AND s.external_ref = ?2 || a.external_ref
+                  WHERE s.connection_id = ?1 AND a.external_ref NOT LIKE 'moneymoney-db:%'",
+            )?
+            .query_map(params![connection_id, SWITCH_MARK], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        for (id, deleted, has_bookings) in stale {
+            tx.execute(
+                "UPDATE accounts SET external_ref = 'switch-stale-' || id || ':' || substr(external_ref, ?2)
+                  WHERE id = ?1",
+                params![id, SWITCH_MARK.len() as i64 + 1],
+            )?;
+            if !deleted && !has_bookings {
+                crate::sync_merge::soft_delete_account(&tx, id)?;
+            }
+        }
         // Accounts: re-adoptable by IBAN (`adopt_account` takes over
         // `moneymoney-db:*` refs of the same login on the next fetch).
         tx.execute(
             "UPDATE accounts SET external_ref = ?2 || external_ref
-              WHERE connection_id = ?1 AND external_ref NOT LIKE 'moneymoney-db:%'",
+              WHERE connection_id = ?1 AND external_ref NOT LIKE 'moneymoney-db:%'
+                AND external_ref NOT LIKE 'switch-stale-%'",
             params![connection_id, SWITCH_MARK],
         )?;
         // Live bookings: re-adoptable like imported ones (`mm-*`, with a
@@ -1360,5 +1386,96 @@ mod tests {
                 "{name}: bookings"
             );
         }
+    }
+
+    /// Adds a live account on connection `c` with reference `ext`, optionally with one booking.
+    fn add_account(v: &Vault, c: i64, ext: &str, kind: &str, booking: bool) -> i64 {
+        let db = v.db().unwrap();
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind)
+             VALUES (?1, (SELECT id FROM account_groups LIMIT 1), ?2, 'Depot', ?3)",
+            params![c, ext, kind],
+        )
+        .unwrap();
+        let id = db.last_insert_rowid();
+        if booking {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+                 VALUES (?1, 'old-1', '2026-11-01', -100, 'X', 'Y')",
+                [id],
+            )
+            .unwrap();
+        }
+        id
+    }
+
+    /// The reported case after #537: an earlier switch left a depot marked,
+    /// the next fetch added a second one with the plain reference. Switching
+    /// again must not fail on the unique key, and leaves one depot that the
+    /// next fetch finds.
+    #[test]
+    fn switching_again_clears_an_empty_marked_twin_of_an_earlier_switch() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-stale");
+        let (v, c, _, depot, _) = comdirect_vault(dir.path(), "v.db");
+        let stale = add_account(&v, c, &format!("{SWITCH_MARK}dep-1"), "brokerage", false);
+
+        assert_eq!(v.switch_comdirect_access(c).unwrap(), "fints:20041155");
+        let db = v.db().unwrap();
+        let live: Vec<i64> = db
+            .prepare("SELECT id FROM accounts WHERE connection_id = ?1 AND kind = 'brokerage' AND deleted_ms IS NULL")
+            .unwrap()
+            .query_map([c], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            live,
+            vec![depot],
+            "the stale twin is gone, the fetched depot stays"
+        );
+        let stale_ref: String = db
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                [stale],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            !stale_ref.starts_with("moneymoney-db:"),
+            "no takeover candidate any more: {stale_ref}"
+        );
+        // the way back finds the depot by its old reference
+        drop(db);
+        v.switch_comdirect_access(c).unwrap();
+        let db = v.db().unwrap();
+        let adopted = crate::importers::moneymoney_db::adopt_account(
+            &db,
+            c,
+            "dep-1",
+            "",
+            "EUR",
+            crate::models::AccountKind::Brokerage,
+        )
+        .unwrap();
+        assert_eq!(adopted, Some(depot));
+    }
+
+    /// A marked twin that still has bookings is not thrown away: its key is
+    /// freed, it stays visible.
+    #[test]
+    fn a_marked_twin_with_bookings_stays() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-stale-bookings");
+        let (v, c, _, _, _) = comdirect_vault(dir.path(), "v.db");
+        let stale = add_account(&v, c, &format!("{SWITCH_MARK}dep-1"), "brokerage", true);
+        v.switch_comdirect_access(c).unwrap();
+        let db = v.db().unwrap();
+        let deleted: Option<i64> = db
+            .query_row(
+                "SELECT deleted_ms FROM accounts WHERE id = ?1",
+                [stale],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(deleted, None);
     }
 }
