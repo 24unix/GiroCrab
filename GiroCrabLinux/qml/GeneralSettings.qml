@@ -139,6 +139,17 @@ ScrollView {
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
                    text: qsTr("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.") }
         }
+        // SettingsView.swift › TransferSettingsSection: opt-in clipboard check (#663), per device
+        SettingsFormSection {
+            title: qsTr("Überweisungen")
+            CheckBox {
+                text: qsTr("Zwischenablage beim Öffnen einer Überweisung prüfen")
+                checked: AppModel.clipboardCheck
+                onToggled: AppModel.clipboardCheck = checked
+            }
+            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                   text: qsTr("Nur bei leerem Formular. Der Inhalt wird nur auf diesem Gerät gelesen, nie gespeichert oder protokolliert. Felder werden erst nach Bestätigung im Hinweis ausgefüllt.") }
+        }
         // SettingsView.swift › BalanceChartSettingsSection (GitHub #203)
         SettingsFormSection {
             title: qsTr("Saldoverlauf")

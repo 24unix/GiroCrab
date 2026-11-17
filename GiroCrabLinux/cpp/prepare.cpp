@@ -113,6 +113,20 @@ extern "C" void girocrab_copy_secret(const char *text)
     });
 }
 
+// ClipboardPaymentCheck (#663): true when the clipboard entry is marked secret by a password
+// manager: `x-kde-passwordManagerHint: secret` (KDE convention, also set by KeePassXC) or the
+// macOS pasteboard markers `org.nspasteboard.ConcealedType` / `TransientType` (KeePassXC and
+// others set them on every platform). Only the mime types are looked at, never the content.
+extern "C" bool girocrab_clipboard_concealed()
+{
+    const QMimeData *data = QGuiApplication::clipboard()->mimeData();
+    if (!data)
+        return false;
+    return data->data(QStringLiteral("x-kde-passwordManagerHint")).trimmed() == "secret"
+        || data->hasFormat(QStringLiteral("org.nspasteboard.ConcealedType"))
+        || data->hasFormat(QStringLiteral("org.nspasteboard.TransientType"));
+}
+
 #include <QtGui/QPainter>
 
 // BugReport.compose (#301): the captured picture with black boxes over the

@@ -22,6 +22,7 @@ extern "C" {
         title: *const std::os::raw::c_char,
     ) -> bool;
     fn girocrab_copy_secret(text: *const std::os::raw::c_char);
+    fn girocrab_clipboard_concealed() -> bool;
     fn girocrab_compose_report(
         base: *const std::os::raw::c_char,
         masks: *const f64,
@@ -555,6 +556,11 @@ fn call(method: &str, a: &Value) -> R {
             // SAFETY: Core.call runs on the GUI thread (QClipboard); the string outlives the call.
             unsafe { girocrab_copy_secret(text.as_ptr()) };
             ok(())
+        }
+        // ClipboardPaymentCheck (#663): is the clipboard marked secret by a password manager?
+        "clipboard_concealed" => {
+            // SAFETY: Core.call runs on the GUI thread (QClipboard); no pointers are passed.
+            ok(unsafe { girocrab_clipboard_concealed() })
         }
         "read_text_file" => read_text_file(a),
         "write_text_file" => write_text_file(a),

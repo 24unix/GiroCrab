@@ -19,6 +19,10 @@ Sheet {
     }
     readonly property var draft: AppModel.transferDraft
     property bool confirming: false
+    /// The user chose „Als GiroCode anzeigen“ although the account can send (#663).
+    property bool giroCodeChosen: false
+    /// Opt-in clipboard check (#663): { payment, summary } the banner offers, null = no banner.
+    property var clipboardOffer: null
     property var suggestions: []
     property string importNote: ""
     /// Linux only: a dropped invoice is being read (large PDFs take seconds) – the sheet shows a spinner.
@@ -55,6 +59,9 @@ Sheet {
         const st = AppModel.connectionStatus(account.connection_id)
         return st ? st.has_pin : false
     }
+    /// Confirmation step: the GiroCode when the account cannot send or the user chose it, else the review.
+    readonly property bool showsGiroCode: confirming && (!canSend || giroCodeChosen)
+    readonly property bool showsReview: confirming && !showsGiroCode
     readonly property string giroCodePayload: cents === null ? "" : (GiroCode.payload(draft.name, draft.iban, bicText, cents, draft.purpose) || "")
     readonly property bool canReview: account !== null && draft.name.trim() !== "" && ibanValid && bicValid && cents !== null
                                       && draft.purpose.length <= maxPurpose
@@ -70,11 +77,14 @@ Sheet {
         // a new presentation starts like a new SwiftUI view: form, no Umbuchung
         confirming = AppModel.demoSheet === "transfer-confirm" && !demoReviewShown // screenshots
         demoReviewShown = true
+        giroCodeChosen = false
+        clipboardOffer = null
         ownTransfer = false
         ownTargetID = null
         importNote = ""
         suggestions = []
         templates = AppModel.transferTemplates()
+        checkClipboard()
     }
     onClosed: AppModel.showTransferSheet = false
 
@@ -121,6 +131,55 @@ Sheet {
     }
     function setExecutionMode(mode) { AppModel.setDraft({ instant: mode === "instant", scheduled: mode === "scheduled" }) }
     function goToReview() { AppModel.transferError = ""; confirming = true }
+    function goBack() { confirming = false; giroCodeChosen = false }
+    /// Nothing typed or prefilled yet (template, link, booking and Umbuchung count as filled).
+    function draftIsEmpty() {
+        return !ownTransfer && [draft.name, draft.iban, draft.amountText, draft.purpose].every(f => f.trim() === "")
+    }
+    /// "DE89 •••• •••• 3000": country, check digits and the last four characters.
+    function maskedIBAN(iban) {
+        const groups = AppModel.groupedIBAN(iban).split(" ").filter(g => g !== "")
+        const all = groups.join("")
+        return groups.length > 2 ? groups[0] + " •••• •••• " + all.slice(-4) : "•".repeat(all.length)
+    }
+    /// Masked IBAN, recipient and amount where found.
+    function offerSummary(p) {
+        const cents = p.amountText === undefined ? null : AppModel.parseCents(p.amountText)
+        return [maskedIBAN(p.iban), p.name, cents === null ? undefined : Fmt.money(cents)].filter(x => x !== undefined && x !== "").join(" · ")
+    }
+    /// Opt-in (#663): offers the clipboard as a payment when the empty form opens, only if it
+    /// changed since the last offer and holds a valid IBAN (the core sets `iban` only then).
+    /// The text is parsed in memory and never stored or logged; only a hash of it is remembered.
+    /// Linux has no paste prompt, so it is simply read. Entries that password managers mark as
+    /// secret (x-kde-passwordManagerHint = secret, org.nspasteboard.ConcealedType / TransientType)
+    /// are skipped, like on macOS: QML's TextEdit.paste() hands over the text only, so the mime
+    /// types are checked natively first (cpp/prepare.cpp) and a concealed entry is never read.
+    function checkClipboard() {
+        if (AppModel.demoSheet === "transfer-clipboard") { // invented payment, the real clipboard stays untouched
+            const demo = { name: "Stadtwerke München", iban: "DE89370400440532013000", amountText: Fmt.plain(8500), purpose: "Abschlag Strom Kd-Nr 482910" }
+            clipboardOffer = { payment: demo, summary: offerSummary(demo) }
+            return
+        }
+        if (!AppModel.clipboardCheck || !draftIsEmpty()) return
+        if (AppModel.clipboardConcealed()) return
+        const text = AppModel.clipboardText()
+        if (text === "" || text.length > 8 * 1024) return // longer text is no payment slip
+        let h = 5381
+        for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) | 0
+        if (h === AppModel.clipboardHandledHash) return
+        AppModel.clipboardHandledHash = h // offered (or skipped) once per content
+        const p = PaymentParser.parseText(text)
+        if (p.iban === undefined) return
+        clipboardOffer = { payment: p, summary: offerSummary(p) }
+    }
+    /// "Übernehmen" fills only empty fields.
+    function acceptClipboard() {
+        const patch = PaymentParser.patch(clipboardOffer.payment)
+        clipboardOffer = null
+        for (const k of Object.keys(patch)) if (String(draft[k]).trim() !== "") delete patch[k]
+        AppModel.setDraft(patch)
+        importNote = qsTr("Felder ausgefüllt – bitte prüfen")
+    }
 
     // ⇧Strg+V; Strg+V outside a text field (inside one, normal paste keeps working).
     Shortcut { sequences: ["Ctrl+Shift+V", StandardKey.Paste]; enabled: sheet.visible && !sheet.confirming; onActivated: sheet.pasteFromClipboard() }
@@ -136,7 +195,7 @@ Sheet {
             Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.topMargin: 14; Layout.bottomMargin: 14
             spacing: 12
             Text {
-                text: sheet.confirming ? (sheet.canSend ? qsTr("Überweisung prüfen") : qsTr("GiroCode scannen")) : qsTr("Neue Überweisung")
+                text: sheet.confirming ? (sheet.showsGiroCode ? qsTr("GiroCode scannen") : qsTr("Überweisung prüfen")) : qsTr("Neue Überweisung")
                 font.pixelSize: Theme.title2; font.weight: Font.DemiBold; color: Theme.text
                 Accessible.role: Accessible.Heading
             }
@@ -166,6 +225,33 @@ Sheet {
             current: "single"
             onActivated: id => { if (id === "batch") Payments.switchToBatchTransfer() }
         }
+        // ClipboardPaymentBanner: "Übernehmen" fills only empty fields
+        Rectangle {
+            visible: !sheet.confirming && sheet.clipboardOffer !== null
+            Layout.fillWidth: true
+            Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.bottomMargin: 10
+            implicitHeight: offerRow.implicitHeight + 20
+            radius: 10; color: Theme.withAlpha(Theme.accent, 0.12)
+            RowLayout {
+                id: offerRow
+                x: 10; y: 10; width: parent.width - 20
+                spacing: 10
+                SFIcon { symbol: "doc.on.clipboard"; size: 14; color: Theme.accent }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 2
+                    Text { text: qsTr("Zahlung in der Zwischenablage"); font.pixelSize: Theme.callout; font.weight: Font.DemiBold; color: Theme.text }
+                    Text {
+                        Layout.fillWidth: true
+                        text: sheet.clipboardOffer ? sheet.clipboardOffer.summary : ""
+                        elide: Text.ElideRight; font.pixelSize: Theme.caption; color: Theme.secondary
+                        font.features: { "tnum": 1 }
+                        Sensitive {} // masked IBAN, recipient and amount
+                    }
+                }
+                Button { text: qsTr("Ignorieren"); onClicked: sheet.clipboardOffer = null }
+                Button { text: qsTr("Übernehmen"); highlighted: true; onClicked: sheet.acceptClipboard() }
+            }
+        }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
 
         ScrollView {
@@ -174,7 +260,7 @@ Sheet {
             Layout.fillWidth: true
             readonly property real chrome: head.implicitHeight + 28 + (kindPicker.visible ? kindPicker.implicitHeight + 10 : 0)
                                            + messages.implicitHeight + buttonRow.implicitHeight + 30
-            readonly property real body: sheet.confirming ? (sheet.canSend ? review.implicitHeight : giroCode.implicitHeight) : form.implicitHeight
+            readonly property real body: sheet.confirming ? (sheet.showsGiroCode ? giroCode.implicitHeight : review.implicitHeight) : form.implicitHeight
             Layout.preferredHeight: Math.min(body + 40, Math.min(700, sheet.maxBodyHeight) - chrome)
             contentWidth: availableWidth
             // several children (form / review): the ScrollView cannot guess the height itself
@@ -466,7 +552,7 @@ Sheet {
             // the amount first, then recipient, payment and execution, each as label + value.
             ColumnLayout {
                 id: review
-                visible: sheet.confirming && sheet.canSend
+                visible: sheet.showsReview
                 x: 20; y: 20; width: scroll.availableWidth - 40
                 spacing: 18
                 GroupedSection {
@@ -504,7 +590,7 @@ Sheet {
             // MARK: confirmation (GiroCode) – read-only account (e.g. C24)
             ColumnLayout {
                 id: giroCode
-                visible: sheet.confirming && !sheet.canSend
+                visible: sheet.showsGiroCode
                 x: 20; y: 20; width: scroll.availableWidth - 40
                 spacing: 14
                 Card {
@@ -514,7 +600,7 @@ Sheet {
                         spacing: 16
                         GiroCodeImage {
                             Layout.preferredWidth: 200; Layout.preferredHeight: 200; Layout.alignment: Qt.AlignTop
-                            payload: sheet.confirming && !sheet.canSend ? sheet.giroCodePayload : ""
+                            payload: sheet.showsGiroCode ? sheet.giroCodePayload : ""
                             Sensitive {} // the code carries name, IBAN, amount and purpose
                         }
                         ColumnLayout {
@@ -532,6 +618,11 @@ Sheet {
                 Hint {
                     indent: false; symbol: "camera.viewfinder"; size: Theme.callout
                     text: qsTr("In der App Ihrer Bank „Fotoüberweisung“ bzw. „QR-Code scannen“ wählen, den Code scannen und dort mit TAN freigeben. GiroCrab sendet nichts.")
+                }
+                Hint {
+                    visible: sheet.canSend
+                    indent: false; symbol: "info.circle"; size: Theme.callout
+                    text: qsTr("Ausführungsdatum und Echtzeitüberweisung wählen Sie in der App Ihrer Bank; ein GiroCode enthält sie nicht.")
                 }
             }
         }
@@ -581,21 +672,28 @@ Sheet {
             Layout.fillWidth: true
             Layout.margins: 14
             spacing: 8
-            Button { visible: !(sheet.confirming && !sheet.canSend); text: qsTr("Abbrechen"); onClicked: sheet.close_() }
-            Button { visible: sheet.confirming && !sheet.canSend; text: qsTr("Zurück"); onClicked: sheet.confirming = false }
+            Button { visible: !sheet.showsGiroCode; text: qsTr("Abbrechen"); onClicked: sheet.close_() }
+            Button { visible: sheet.showsGiroCode; text: qsTr("Zurück"); onClicked: sheet.goBack() }
             Item { Layout.fillWidth: true }
-            Button { visible: sheet.confirming && sheet.canSend; text: qsTr("Zurück"); onClicked: sheet.confirming = false }
+            Button { visible: sheet.showsReview; text: qsTr("Zurück"); onClicked: sheet.goBack() }
             Button {
-                visible: sheet.confirming && !sheet.canSend
+                visible: sheet.showsGiroCode
                 text: qsTr("Fertig"); highlighted: true
                 onClicked: sheet.close_()
             }
             Button {
-                visible: sheet.confirming && sheet.canSend
+                visible: sheet.showsReview
                 text: sheet.isBunq ? qsTr("In der bunq-App freigeben") : qsTr("Jetzt mit TAN freigeben")
                 highlighted: true
                 enabled: !AppModel.transferBusy
                 onClicked: AppModel.startTransfer()
+            }
+            // nothing is sent, so no PIN is needed
+            Button {
+                visible: !sheet.confirming && sheet.canSend
+                text: qsTr("Als GiroCode anzeigen")
+                enabled: sheet.canReview && sheet.giroCodePayload !== ""
+                onClicked: { sheet.giroCodeChosen = true; sheet.goToReview() }
             }
             Button {
                 id: nextButton
@@ -615,7 +713,7 @@ Sheet {
         enabled: sheet.visible && !templateName.visible && !deleteConfirm.visible
         onActivated: {
             if (!sheet.confirming) { if (nextButton.enabled) nextButton.clicked() }
-            else if (!sheet.canSend) sheet.close_()
+            else if (sheet.showsGiroCode) sheet.close_()
             else if (!AppModel.transferBusy) AppModel.startTransfer()
         }
     }
