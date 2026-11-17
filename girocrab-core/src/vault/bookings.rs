@@ -67,12 +67,9 @@ pub(crate) fn enrich(t: &mut Booking, paypal: bool, top_role: &str) {
     t.merchant_domain = Some(t.merchant.domain.clone()).filter(|d| !d.is_empty());
     t.merchant_svg_path = Some(t.merchant.svg_path.clone()).filter(|d| !d.is_empty());
     t.merchant_hex_color = t.merchant.color_hex.clone();
-    // Imported categories carry no role; their path ("Finanzen/Investments -> Kauf") still classifies (#614).
-    let role = if top_role.is_empty() {
-        t.category_path.as_str()
-    } else {
-        top_role
-    };
+    // Only the category role classifies: a custom category named like a built-in has no role
+    // and must not be treated as an investment by its name.
+    let role = top_role;
     t.flow = classify(
         t.amount_cents,
         &t.counterparty,

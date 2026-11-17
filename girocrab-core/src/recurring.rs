@@ -1375,7 +1375,7 @@ mod tests {
         // exact quarterly
         assert_eq!(
             pro_rate_splits_monthly(&[(1, -3_000), (2, -600)], 3),
-            vec![(1, -750), (2, -150)]
+            vec![(1, -1_000), (2, -200)]
         );
         // non-accrual interval and empty input
         assert_eq!(pro_rate_splits_monthly(&splits, 1), splits.to_vec());

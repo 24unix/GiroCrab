@@ -92,7 +92,7 @@ pub fn mirror_pdf(
     create_private_dir(&dir)?;
 
     let mut name = sanitize_component(file_name)
-        .trim_start_matches('.')
+        .trim_start_matches(['.', '_'])
         .to_string();
     if name.is_empty() {
         name = "document".into();
@@ -148,7 +148,7 @@ mod tests {
         let d = std::env::temp_dir().join(format!(
             "girocrab-broker-docs-{tag}-{}-{}",
             std::process::id(),
-            hex::encode(Sha256::digest(tag.as_bytes()))[..8].to_string()
+            &hex::encode(Sha256::digest(tag.as_bytes()))[..8]
         ));
         let _ = fs::remove_dir_all(&d);
         d
