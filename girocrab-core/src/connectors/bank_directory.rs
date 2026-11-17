@@ -330,6 +330,12 @@ pub fn search(
         return out;
     }
 
+    // BIC ("DEUTDEFFXXX"): the FinTS banks that use it
+    let by_bic = fints_directory::search_by_bic(query, per_group_limit);
+    if !by_bic.is_empty() {
+        return by_bic.into_iter().map(fints_result).collect();
+    }
+
     let words: Vec<&str> = q.split(' ').collect();
     out.extend(
         fints_directory::search(query, per_group_limit)
@@ -659,6 +665,36 @@ mod tests {
         assert_eq!(ids(&r), vec!["fints:50010517"]);
         // valid IBAN of a bank that is not in the directory: nothing to offer
         assert!(search("DE89 3704 0044 0532 0130 00", vec![], 10).is_empty());
+    }
+
+    #[test]
+    fn deutsche_bank_is_found_by_name_bank_code_and_bic() {
+        let blzs = ["10070000", "50070010", "50070024"];
+        // name
+        let r = search("Deutsche Bank", vec![], 20);
+        for blz in blzs {
+            let b = r.iter().find(|b| b.blz == blz);
+            assert!(b.is_some(), "name: {blz}");
+            let b = b.unwrap();
+            assert_eq!(b.mode, BankAccessMode::FinTs);
+            assert_eq!(b.url, "https://fints.deutsche-bank.de/");
+        }
+        // bank code
+        for blz in blzs {
+            let r = search(blz, vec![], 10);
+            assert_eq!(ids(&r), vec![format!("fints:{blz}")], "blz {blz}");
+            assert!(r[0].name.starts_with("Deutsche Bank"));
+        }
+        // BIC, with and without branch code, any case
+        for q in ["DEUTDEFFXXX", "deutdeff", "DEUTDEFF"] {
+            let r = search(q, vec![], 500);
+            assert!(r.iter().any(|b| b.blz == "50070010"), "bic {q}");
+            assert!(r.iter().all(|b| b.name.contains("Deutsche Bank")), "bic {q}");
+        }
+        let r = search("DEUTDEDBXXX", vec![], 500);
+        assert!(r.iter().any(|b| b.blz == "50070024"), "bic DEUTDEDBXXX");
+        // a word of eight letters is no BIC
+        assert!(!search("deutsche", vec![], 5).is_empty());
     }
 
     #[test]

@@ -154,6 +154,38 @@ pub fn search(query: &str, limit: usize) -> Vec<FinTsBankInfo> {
         .collect()
 }
 
+/// Banks of the directory whose BIC (Bundesbank BLZ list) equals a typed German
+/// BIC: 8 characters or 11 with branch code (`DEUTDEFF`, `DEUTDEFFXXX`). `XXX`
+/// or a missing branch code matches every branch. Anything that does not look
+/// like a German BIC (`AAAADExx[xxx]`) gives an empty list.
+pub fn search_by_bic(query: &str, limit: usize) -> Vec<FinTsBankInfo> {
+    let q: String = query
+        .split_whitespace()
+        .collect::<String>()
+        .to_ascii_uppercase();
+    let looks_like_bic = (q.len() == 8 || q.len() == 11)
+        && q.bytes().all(|b| b.is_ascii_alphanumeric())
+        && q.bytes().take(6).all(|b| b.is_ascii_alphabetic())
+        && &q[4..6] == "DE";
+    if !looks_like_bic || limit == 0 {
+        return vec![];
+    }
+    let branch = if q.len() == 11 && &q[8..] != "XXX" {
+        Some(&q[8..])
+    } else {
+        None
+    };
+    bics()
+        .iter()
+        .filter(|(_, bic)| {
+            bic.starts_with(&q[..8]) && branch.map_or(true, |br| bic.len() == 8 || &bic[8..] == br)
+        })
+        .filter_map(|(blz, _)| find(blz))
+        .take(limit)
+        .map(info)
+        .collect()
+}
+
 /// The 8-digit BLZ of a German IBAN (`DE kk BBBBBBBB KKKKKKKKKK`, characters
 /// 5..12). Spaces and case are ignored; the IBAN checksum must be valid.
 pub fn blz_from_german_iban(iban: &str) -> Option<String> {
