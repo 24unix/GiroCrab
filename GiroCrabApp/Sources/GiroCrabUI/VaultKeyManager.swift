@@ -83,8 +83,8 @@ public final class VaultKeyManager: @unchecked Sendable {
     /// access-control flag, so the app enforces the LAContext check itself.
     public static let syncDefaultsKey = "girocrab.keySyncICloudKeychain"
     public var syncViaICloudKeychain: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.syncDefaultsKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.syncDefaultsKey) }
+        get { AppDefaults.store.bool(forKey: Self.syncDefaultsKey) }
+        set { AppDefaults.store.set(newValue, forKey: Self.syncDefaultsKey) }
     }
 
     private static func envFlag(_ name: String) -> Bool {
@@ -113,7 +113,7 @@ public final class VaultKeyManager: @unchecked Sendable {
     public static let requireBiometricsDefaultsKey = "girocrab.requireBiometrics"
     public var requireBiometrics: Bool {
         #if os(macOS)
-        UserDefaults.standard.object(forKey: Self.requireBiometricsDefaultsKey) as? Bool ?? true
+        AppDefaults.store.object(forKey: Self.requireBiometricsDefaultsKey) as? Bool ?? true
         #else
         true
         #endif
@@ -123,17 +123,17 @@ public final class VaultKeyManager: @unchecked Sendable {
     public func setRequireBiometrics(_ enabled: Bool) async throws {
         if Self.keychainBypassed {
             // Dev bypass: no stored key to re-protect, only the preference changes.
-            UserDefaults.standard.set(enabled, forKey: Self.requireBiometricsDefaultsKey)
+            AppDefaults.store.set(enabled, forKey: Self.requireBiometricsDefaultsKey)
             return
         }
         var key = try await unlock()
         defer { key.resetBytes(in: 0..<key.count) }
         let previous = requireBiometrics
-        UserDefaults.standard.set(enabled, forKey: Self.requireBiometricsDefaultsKey)
+        AppDefaults.store.set(enabled, forKey: Self.requireBiometricsDefaultsKey)
         do {
             try replaceStoredKey(with: key, previous: key, syncing: syncViaICloudKeychain)
         } catch {
-            UserDefaults.standard.set(previous, forKey: Self.requireBiometricsDefaultsKey)
+            AppDefaults.store.set(previous, forKey: Self.requireBiometricsDefaultsKey)
             throw error
         }
     }

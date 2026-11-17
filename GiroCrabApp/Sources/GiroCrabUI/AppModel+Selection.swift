@@ -8,7 +8,7 @@ extension AppModel {
     }
 
     static func storedExpandedCategories(demo: Bool) -> Set<Int64> {
-        Set(UserDefaults.standard.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
+        Set(AppDefaults.store.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
     }
 
     /// Marks the selected booking as checked after `autoReviewDelay`, unless
@@ -299,8 +299,8 @@ extension AppModel {
         let (a, b) = from <= to ? (from, to) : (to, from)
         customPeriodFrom = DateText.iso(a)
         customPeriodTo = DateText.iso(b)
-        UserDefaults.standard.set(customPeriodFrom, forKey: "period.customFrom")
-        UserDefaults.standard.set(customPeriodTo, forKey: "period.customTo")
+        AppDefaults.store.set(customPeriodFrom, forKey: "period.customFrom")
+        AppDefaults.store.set(customPeriodTo, forKey: "period.customTo")
         if period == .custom { periodDidChange() } else { period = .custom }
         rememberPeriod()
     }
@@ -309,26 +309,26 @@ extension AppModel {
 
     /// The period last chosen in the period menu (#840); `.custom` uses the saved start/end.
     static var storedPeriod: Period? {
-        UserDefaults.standard.string(forKey: lastPeriodKey).flatMap { Period(lastChoiceKey: $0) }
+        AppDefaults.store.string(forKey: lastPeriodKey).flatMap { Period(lastChoiceKey: $0) }
     }
 
     func rememberPeriod() {
-        UserDefaults.standard.set(period.lastChoiceKey(), forKey: Self.lastPeriodKey)
+        AppDefaults.store.set(period.lastChoiceKey(), forKey: Self.lastPeriodKey)
     }
 
     private static let categoryPeriodsKey = "period.byCategory"
 
     /// The period the user last chose for this category (#425); `nil` = follows the current one.
     func categoryPeriod(_ id: Int64) -> Period? {
-        let map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String]
+        let map = AppDefaults.store.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String]
         return map?[String(id)].flatMap { Period(storageKey: $0) }
     }
 
     func setCategoryPeriod(_ period: Period, for id: Int64) {
         guard let key = period.storageKey() else { return }
-        var map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String] ?? [:]
+        var map = AppDefaults.store.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String] ?? [:]
         map[String(id)] = key
-        UserDefaults.standard.set(map, forKey: Self.categoryPeriodsKey)
+        AppDefaults.store.set(map, forKey: Self.categoryPeriodsKey)
     }
 
     func periodDidChange() {

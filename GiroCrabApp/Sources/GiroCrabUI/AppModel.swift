@@ -156,8 +156,8 @@ public final class AppModel {
     }
     var period: Period = .all { didSet { periodDidChange() } }
     /// Start/end of the `.custom` period (ISO, inclusive); remembered across launches.
-    var customPeriodFrom: String = UserDefaults.standard.string(forKey: "period.customFrom") ?? AppModel.defaultCustomPeriod.from
-    var customPeriodTo: String = UserDefaults.standard.string(forKey: "period.customTo") ?? AppModel.defaultCustomPeriod.to
+    var customPeriodFrom: String = AppDefaults.store.string(forKey: "period.customFrom") ?? AppModel.defaultCustomPeriod.from
+    var customPeriodTo: String = AppDefaults.store.string(forKey: "period.customTo") ?? AppModel.defaultCustomPeriod.to
     /// Shows the start/end date dialog of the period filter.
     var showCustomPeriod = false
     /// Shows the tag filter popover of the stream header (#228).
@@ -324,7 +324,7 @@ public final class AppModel {
         }
     }
     var autoReviewDelay: AutoReviewDelay = .stored {
-        didSet { UserDefaults.standard.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey) }
+        didSet { AppDefaults.store.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey) }
     }
     @ObservationIgnored var autoReviewTask: Task<Void, Never>?
 
@@ -342,30 +342,30 @@ public final class AppModel {
     var lingeringBookingID: Booking.ID?
     /// iPhone: set by a tap on a booking row, presents the detail sheet.
     var showBookingSheet = false
-    var collapsedGroups: Set<Int64> = Set(UserDefaults.standard.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
-        didSet { UserDefaults.standard.set(Array(collapsedGroups), forKey: "sidebar.collapsedKindGroups") }
+    var collapsedGroups: Set<Int64> = Set(AppDefaults.store.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
+        didSet { AppDefaults.store.set(Array(collapsedGroups), forKey: "sidebar.collapsedKindGroups") }
     }
     /// „Alle Konten“ (the sidebar's root row) folded away with every group.
-    var allAccountsCollapsed: Bool = UserDefaults.standard.bool(forKey: AppModel.allAccountsCollapsedKey) {
-        didSet { UserDefaults.standard.set(allAccountsCollapsed, forKey: AppModel.allAccountsCollapsedKey) }
+    var allAccountsCollapsed: Bool = AppDefaults.store.bool(forKey: AppModel.allAccountsCollapsedKey) {
+        didSet { AppDefaults.store.set(allAccountsCollapsed, forKey: AppModel.allAccountsCollapsedKey) }
     }
     /// The sidebar's category tree, „Ohne Kategorie“ included, folded away under its header.
-    var categoriesCollapsed: Bool = UserDefaults.standard.bool(forKey: "sidebar.categoriesCollapsed") {
-        didSet { UserDefaults.standard.set(categoriesCollapsed, forKey: "sidebar.categoriesCollapsed") }
+    var categoriesCollapsed: Bool = AppDefaults.store.bool(forKey: "sidebar.categoriesCollapsed") {
+        didSet { AppDefaults.store.set(categoriesCollapsed, forKey: "sidebar.categoriesCollapsed") }
     }
-    var collapsedUserGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
-        didSet { UserDefaults.standard.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
+    var collapsedUserGroups: Set<String> = Set(AppDefaults.store.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
+        didSet { AppDefaults.store.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
     }
-    var collapsedBankGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedBankGroups") ?? []) {
-        didSet { UserDefaults.standard.set(Array(collapsedBankGroups), forKey: "sidebar.collapsedBankGroups") }
+    var collapsedBankGroups: Set<String> = Set(AppDefaults.store.stringArray(forKey: "sidebar.collapsedBankGroups") ?? []) {
+        didSet { AppDefaults.store.set(Array(collapsedBankGroups), forKey: "sidebar.collapsedBankGroups") }
     }
     /// Archived accounts stay in their group; this hides their sidebar rows.
-    var showArchivedAccounts: Bool = UserDefaults.standard.object(forKey: "sidebar.showArchived") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(showArchivedAccounts, forKey: "sidebar.showArchived") }
+    var showArchivedAccounts: Bool = AppDefaults.store.object(forKey: "sidebar.showArchived") as? Bool ?? true {
+        didSet { AppDefaults.store.set(showArchivedAccounts, forKey: "sidebar.showArchived") }
     }
     /// Explicit per-device choice; `nil` = "Nach Gruppe" once groups exist.
-    var accountViewChoice: AccountSidebarMode? = UserDefaults.standard.string(forKey: "sidebar.accountView").flatMap(AccountSidebarMode.init) {
-        didSet { UserDefaults.standard.set(accountViewChoice?.rawValue, forKey: "sidebar.accountView") }
+    var accountViewChoice: AccountSidebarMode? = AppDefaults.store.string(forKey: "sidebar.accountView").flatMap(AccountSidebarMode.init) {
+        didSet { AppDefaults.store.set(accountViewChoice?.rawValue, forKey: "sidebar.accountView") }
     }
     /// Settings tab on screen (set to `.groups` by "Gruppen bearbeiten …").
     var settingsTab: SettingsTab = .general
@@ -435,7 +435,7 @@ public final class AppModel {
     /// in by `demoActive`). Deleted categories are only soft-deleted, so a stale
     /// id never opens another category of the same vault.
     var expandedCategories = AppModel.storedExpandedCategories(demo: false) {
-        didSet { UserDefaults.standard.set(Array(expandedCategories), forKey: Self.expandedCategoriesKey(demo: demoActive)) }
+        didSet { AppDefaults.store.set(Array(expandedCategories), forKey: Self.expandedCategoriesKey(demo: demoActive)) }
     }
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }
@@ -685,7 +685,7 @@ public final class AppModel {
     // MARK: State used by AppModel+Documents.swift
 
     /// Folder that receives a copy of every document (nil = off). Per Mac, not per vault.
-    var documentMirrorPath: String? = UserDefaults.standard.string(forKey: "documents.mirrorDir")
+    var documentMirrorPath: String? = AppDefaults.store.string(forKey: "documents.mirrorDir")
     /// Result of the latest mirror run, for the settings.
     var documentMirrorStatus: String?
     var mirrorRunning = false
@@ -741,7 +741,7 @@ public final class AppModel {
     public init(options: LaunchOptions = .current) {
         self.options = options
         StartupClock.mark("AppModel.init begin")
-        runningBalanceObserver = UserDefaults.standard.observe(\.showRunningBalance, options: [.old, .new]) { [weak self] _, change in
+        runningBalanceObserver = AppDefaults.store.observe(\.showRunningBalance, options: [.old, .new]) { [weak self] _, change in
             guard let on = change.newValue, on != change.oldValue else { return }
             Task { @MainActor in self?.runningBalanceSettingChanged(on: on) }
         }
@@ -1218,7 +1218,7 @@ public final class AppModel {
         pendingOwnVaultAction = nil
         if isEmpty && pending == nil {
             // Nothing synced yet: show demo bookings so the UI can be judged.
-            UserDefaults.standard.set(false, forKey: Self.realDataKey)
+            AppDefaults.store.set(false, forKey: Self.realDataKey)
             await hop.value
             await openDemoVaultAsync()
             toast = String(localized: "Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
@@ -1369,7 +1369,7 @@ public final class AppModel {
         sidebarSelection = .allAccounts
         vault = v
         demoActive = false
-        UserDefaults.standard.set(true, forKey: Self.realDataKey)
+        AppDefaults.store.set(true, forKey: Self.realDataKey)
         logoCache = [:]
         // nothing of the vault shown before (demo) may appear under the new one
         page = nil; bookings = []; history = []; listBalances = ListBalances()
@@ -1397,7 +1397,7 @@ public final class AppModel {
     func useVault(_ v: Vault, demo: Bool) {
         vault = v
         demoActive = demo
-        if !demo { UserDefaults.standard.set(true, forKey: Self.realDataKey) }
+        if !demo { AppDefaults.store.set(true, forKey: Self.realDataKey) }
         vaultState = .open
         selectedBookingID = nil
         selectAllAccountsForReloadAll()
@@ -1446,7 +1446,7 @@ public final class AppModel {
     /// Real data may exist in the (encrypted, hence unreadable while locked) vault.
     /// Without a stored answer, an existing vault file counts as real data.
     nonisolated static var vaultMayHoldRealData: Bool {
-        if let v = UserDefaults.standard.object(forKey: realDataKey) as? Bool { return v }
+        if let v = AppDefaults.store.object(forKey: realDataKey) as? Bool { return v }
         return FileManager.default.fileExists(atPath: vaultURL.path)
     }
 

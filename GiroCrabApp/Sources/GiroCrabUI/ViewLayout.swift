@@ -36,7 +36,7 @@ enum ViewLayout {
     static func cardVerticalPadding(collapsed: Bool) -> CGFloat { collapsed ? collapsedCardVerticalPadding : cardPadding }
 
     /// Budgets show until switched off (Ansicht › Budgets anzeigen).
-    static func showsBudgets(_ defaults: UserDefaults = .standard) -> Bool {
+    static func showsBudgets(_ defaults: UserDefaults = AppDefaults.store) -> Bool {
         defaults.object(forKey: budgetsKey) as? Bool ?? true
     }
 
@@ -48,20 +48,20 @@ enum ViewLayout {
     }
 
     /// The header shows in full until minimised (Ansicht › Kopfbereich minimieren).
-    static func compactHeader(_ defaults: UserDefaults = .standard) -> Bool {
+    static func compactHeader(_ defaults: UserDefaults = AppDefaults.store) -> Bool {
         defaults.bool(forKey: compactHeaderKey)
     }
 
     /// Accounts that hide the category chip in booking rows (GitHub #336).
     static let hiddenCategoryChipAccountsKey = "hiddenCategoryChipAccounts"
 
-    static func showsCategoryChip(for accountID: Int64, _ defaults: UserDefaults = .standard) -> Bool {
+    static func showsCategoryChip(for accountID: Int64, _ defaults: UserDefaults = AppDefaults.store) -> Bool {
         let raw = defaults.string(forKey: hiddenCategoryChipAccountsKey) ?? ""
         let hidden = Set(raw.split(separator: ",").compactMap { Int64($0) })
         return !hidden.contains(accountID)
     }
 
-    static func setShowsCategoryChip(_ show: Bool, for accountID: Int64, _ defaults: UserDefaults = .standard) {
+    static func setShowsCategoryChip(_ show: Bool, for accountID: Int64, _ defaults: UserDefaults = AppDefaults.store) {
         let raw = defaults.string(forKey: hiddenCategoryChipAccountsKey) ?? ""
         var hidden = Set(raw.split(separator: ",").compactMap { Int64($0) })
         if show { hidden.remove(accountID) } else { hidden.insert(accountID) }

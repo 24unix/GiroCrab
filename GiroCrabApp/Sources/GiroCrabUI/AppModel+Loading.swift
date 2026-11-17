@@ -515,7 +515,7 @@ extension AppModel {
 
     /// The list shows running balances: Ansicht › Saldo anzeigen and a selection of accounts.
     var listHasBalances: Bool {
-        UserDefaults.standard.bool(forKey: ViewLayout.runningBalanceKey) && selectionHasBalances
+        AppDefaults.store.bool(forKey: ViewLayout.runningBalanceKey) && selectionHasBalances
     }
 
     /// Currency of the running balances: one account's own, else the EUR sum (as the core sums).
@@ -619,7 +619,7 @@ extension AppModel {
     /// Bar width actually used: own choice (also quarters, #634), else the global setting, else months.
     var effectiveCategoryBarUnit: BalanceBarUnit {
         if categoryBarUnit != .automatic { return categoryBarUnit }
-        let global = BalanceBarUnit(rawValue: UserDefaults.standard.string(forKey: BalanceBarUnit.defaultsKey) ?? "") ?? .automatic
+        let global = BalanceBarUnit(rawValue: AppDefaults.store.string(forKey: BalanceBarUnit.defaultsKey) ?? "") ?? .automatic
         return global == .automatic ? .month : global
     }
 

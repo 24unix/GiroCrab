@@ -33,6 +33,6 @@ enum AutoReviewDelay: String, CaseIterable, Identifiable {
 
     /// The choice stored on this device; "Nur manuell" until one is made.
     static var stored: AutoReviewDelay {
-        UserDefaults.standard.string(forKey: defaultsKey).flatMap(AutoReviewDelay.init(rawValue:)) ?? .manual
+        AppDefaults.store.string(forKey: defaultsKey).flatMap(AutoReviewDelay.init(rawValue:)) ?? .manual
     }
 }

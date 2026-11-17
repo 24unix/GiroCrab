@@ -47,7 +47,7 @@ extension AppModel {
                 try vault.setSetting(key: "enablebanking.application_id", value: app.applicationID)
                 try vault.setSetting(key: "enablebanking.private_key_pem", value: app.pem)
                 reloadSettings()
-                if !UserDefaults.standard.bool(forKey: EnableBankingKeySync.noticeSuppressedKey) {
+                if !AppDefaults.store.bool(forKey: EnableBankingKeySync.noticeSuppressedKey) {
                     let banks = connections.filter { $0.connector == .enableBanking }.map(\.displayName)
                     enableBankingAdoptNotice = EnableBankingKeySync.notice(for: app, replaced: here?.isComplete == true, banks: banks)
                 }
