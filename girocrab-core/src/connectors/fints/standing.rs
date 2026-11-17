@@ -25,7 +25,7 @@ pub(super) fn parse_hicdb(seg: &Segment, account_ref: &str) -> Option<RemoteStan
     } else {
         Some(super::fints_date(last_cell)?)
     };
-    let xml = String::from_utf8_lossy(seg.binary(3)?).into_owned();
+    let xml = crate::text::decode_xml_bytes(seg.binary(3)?);
     let pay = pain_payment(&xml)?;
     let flag = |e: usize| seg.get(e, 0) == "J";
     Some(RemoteStandingOrder {

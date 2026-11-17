@@ -655,7 +655,7 @@ fn apply_category_colors(
 fn parse_balances_blob(v: Value) -> Option<(i64, String)> {
     let text = match v {
         Value::Text(t) => t,
-        Value::Blob(b) => String::from_utf8_lossy(&b).into_owned(),
+        Value::Blob(b) => crate::text::decode_bank_bytes(&b),
         _ => return None,
     };
     let mut fields = text

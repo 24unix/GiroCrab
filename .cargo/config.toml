@@ -1,0 +1,9 @@
+
+# Verhindert 40+ GB große target/-Ordner durch riesige Debug-Symbole in hunderten Test-Binaries:
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.test]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"

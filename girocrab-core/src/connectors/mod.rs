@@ -129,7 +129,7 @@ pub(crate) async fn read_body_limited(
 /// [`read_body_limited`] with [`MAX_TEXT_BYTES`], decoded as UTF-8 (lossy).
 pub(crate) async fn read_text_limited(resp: reqwest::Response) -> CoreResult<String> {
     let b = read_body_limited(resp, MAX_TEXT_BYTES).await?;
-    Ok(String::from_utf8(b).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
+    Ok(crate::text::decode_bank_bytes(&b))
 }
 
 /// [`read_body_limited`] with [`MAX_TEXT_BYTES`], parsed as JSON; an

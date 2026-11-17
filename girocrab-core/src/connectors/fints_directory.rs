@@ -397,7 +397,9 @@ mod tests {
             .collect();
         assert!(sparda.len() >= 10);
         assert!(sparda.iter().all(|b| is_valid_fints_url(&b.url)));
-        assert!(sparda.iter().all(|b| b.url == ATRUVIA || b.url == "https://fints2.atruvia.de/cgi-bin/hbciservlet"));
+        assert!(sparda
+            .iter()
+            .all(|b| b.url == ATRUVIA || b.url == "https://fints2.atruvia.de/cgi-bin/hbciservlet"));
         assert!(!banks().iter().any(|e| e.2.contains("bankingonline.de")));
     }
 
