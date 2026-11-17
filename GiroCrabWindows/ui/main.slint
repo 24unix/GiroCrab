@@ -1371,7 +1371,7 @@ export component MainWindow inherits Window {
                     text: "Kompakt";
                     checked <=> root.compact-rows;
                 }
-                GhostButton { horizontal-stretch: 0; text: root.cards-open ? "Übersicht ausblenden ▴" : "Cashflow & " + root.budget-title + " ▾"; clicked => { root.cards-open = !root.cards-open; } }
+                GhostButton { horizontal-stretch: 0; text: root.cards-open ? "Übersicht ausblenden ▴" : "Cashflow & Budgets ▾"; clicked => { root.cards-open = !root.cards-open; } }
                 Rectangle { horizontal-stretch: 1; }
                 Text { text: root.booking-count; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
             }

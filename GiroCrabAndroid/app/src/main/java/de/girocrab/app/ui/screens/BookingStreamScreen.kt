@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AssistChip
@@ -298,7 +298,7 @@ fun BalanceHeaderCard(
             )
             HeaderPill("Abrufen", Icons.Filled.Sync, filled = true, onClick = onFetch)
             Spacer(Modifier.width(6.dp))
-            HeaderPill("Überweisen", Icons.Filled.Send, filled = false, onClick = onNewTransfer)
+            HeaderPill("Überweisen", Icons.AutoMirrored.Filled.Send, filled = false, onClick = onNewTransfer)
             if (account != null) {
                 Spacer(Modifier.width(2.dp))
                 IconButton(onClick = onAccountSettings, modifier = Modifier.size(32.dp)) {
@@ -520,43 +520,69 @@ private fun BookingRow(
 ) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .padding(start = 10.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.size(20.dp).clickable(onClick = onToggleChecked), contentAlignment = Alignment.Center) {
-            if (unchecked) Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF1E88E5)))
-        }
-        Surface(
-            modifier = Modifier.padding(end = 12.dp).size(32.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    if (masked) "••" else merchantInitials(booking.counterparty),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
+        Box(Modifier.padding(end = 8.dp).clickable(onClick = onToggleChecked)) {
+            Surface(
+                modifier = Modifier.size(32.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        if (masked) "••" else merchantInitials(booking.counterparty),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
+            if (unchecked) Box(Modifier.align(Alignment.TopEnd).size(9.dp).clip(CircleShape).background(Color(0xFF1E88E5)))
         }
         Column(Modifier.weight(1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 if (masked) "••••••" else booking.counterparty.ifBlank { "—" },
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (unchecked) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            if (booking.purpose.isNotBlank()) {
-                Text(
-                    if (masked) "••••••••••" else booking.purpose,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = if (expanded) Int.MAX_VALUE else if (compact) 1 else 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(booking.bookingDate.format(dayFmt), fontSize = 11.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (category != null) {
+                    Text(
+                        category.name,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        color = color(category.colorHex),
+                        modifier = Modifier.clip(RoundedCornerShape(50))
+                            .background(color(category.colorHex).copy(alpha = 0.15f))
+                            .padding(vertical = 1.dp, horizontal = 6.dp),
+                    )
+                }
+                if (hasDocument) Icon(Icons.Filled.AttachFile, "Dokument", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (booking.purpose.isNotBlank() && !expanded) {
+                    Text(
+                        if (masked) "••••••••••" else booking.purpose,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
             }
             if (expanded) {
+                if (booking.purpose.isNotBlank()) {
+                    Text(
+                        if (masked) "••••••••••" else booking.purpose,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Column(Modifier.padding(top = 2.dp)) {
                     Text(
                         "Valuta ${booking.valueDate.format(dayFmt)}",
@@ -572,16 +598,12 @@ private fun BookingRow(
                     }
                     TextButton(onClick = onOpen) { Text("Details öffnen") }
                 }
-            }
-            if (!compact || expanded) Row(
-                Modifier.padding(top = 4.dp).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(booking.bookingDate.format(dayFmt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (category != null) Pill(category.name, color(category.colorHex))
-                tags.forEach { Pill("#${it.name}", color(it.colorHex)) }
-                if (hasDocument) Icon(Icons.Filled.AttachFile, "Dokument", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (tags.isNotEmpty()) Row(
+                    Modifier.padding(top = 4.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    tags.forEach { Pill("#${it.name}", color(it.colorHex)) }
+                }
             }
         }
         Text(
