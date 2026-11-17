@@ -45,6 +45,7 @@ pub mod mandates;
 pub mod merchants;
 pub mod models;
 pub mod money;
+pub mod offline;
 pub mod opening_balance;
 pub mod planned;
 pub mod planning;

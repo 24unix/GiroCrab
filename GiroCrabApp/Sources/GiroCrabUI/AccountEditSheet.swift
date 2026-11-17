@@ -19,8 +19,11 @@ struct AccountEditSheet: View {
             Form {
                 TextField("Kontoname", text: $name).sensitive()
                 TextField("Name des Kontoinhabers", text: $owner).sensitive()
-                Picker("Kontoart", selection: $kind) {
-                    ForEach(AccountKind.importChoices, id: \.self) { k in Text(k.label).tag(k) }
+                // an offline account is always cash (#679)
+                if !model.isOffline(accountID) {
+                    Picker("Kontoart", selection: $kind) {
+                        ForEach(AccountKind.importChoices, id: \.self) { k in Text(k.label).tag(k) }
+                    }
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Konto-Notiz")

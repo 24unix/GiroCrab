@@ -2948,6 +2948,17 @@
         }
       }
     },
+    "Aktueller Saldo: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current balance: %@"
+          }
+        }
+      }
+    },
     "Aktueller Wert der gehaltenen Sachwerte. Verkaufte Objekte zählen nicht mit." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7280,6 +7291,72 @@
         }
       }
     },
+    "Buchung bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Booking"
+          }
+        }
+      }
+    },
+    "Buchung bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Booking…"
+          }
+        }
+      }
+    },
+    "Buchung gelöscht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Booking deleted"
+          }
+        }
+      }
+    },
+    "Buchung in „%@“ gespiegelt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Booking mirrored to “%@”"
+          }
+        }
+      }
+    },
+    "Buchung löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Booking…"
+          }
+        }
+      }
+    },
+    "Buchung löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete booking?"
+          }
+        }
+      }
+    },
     "Buchung wechseln" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8827,6 +8904,17 @@
         }
       }
     },
+    "Der Saldo stimmt bereits." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The balance already matches."
+          }
+        }
+      }
+    },
     "Der Schlüssel für den vorhandenen Tresor fehlt im Schlüsselbund. Wenn Sie den iCloud-Schlüsselbund nutzen, warten Sie, bis er synchronisiert ist, und versuchen Sie es erneut. Es wurde kein neuer Schlüssel angelegt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8966,6 +9054,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The vault key could not be saved in the keychain (error %d). The vault stays open until you quit – please do not quit GiroCrab, check the keychain (Keychain Access) and try again."
+          }
+        }
+      }
+    },
+    "Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Startsaldo …“ im Kontextmenü des Kontos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The difference is booked as a “Balance correction” dated today. You can change the starting balance with “Starting Balance…” in the account’s context menu."
           }
         }
       }
@@ -9379,6 +9478,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The bank still requires your explicit confirmation before it asks for the approval."
+          }
+        }
+      }
+    },
+    "Die Buchung wird aus dem Konto entfernt und der Saldo neu berechnet. Das lässt sich nicht widerrufen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The booking is removed from the account and the balance is recalculated. This cannot be undone."
           }
         }
       }
@@ -10766,6 +10876,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Own destination account"
+          }
+        }
+      }
+    },
+    "Ein Bargeld-Konto ohne Bankanbindung. Die Buchungen tragen Sie selbst ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A cash account without a bank connection. You enter the bookings yourself."
           }
         }
       }
@@ -15207,6 +15328,17 @@
         }
       }
     },
+    "In Offline-Konto spiegeln" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mirror to Offline Account"
+          }
+        }
+      }
+    },
     "In PostBox verschieben (Verknüpfung lösen)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18007,6 +18139,28 @@
         }
       }
     },
+    "Korrekturbuchung angelegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correction booking created"
+          }
+        }
+      }
+    },
+    "Korrigieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correct"
+          }
+        }
+      }
+    },
     "Kosten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19746,6 +19900,17 @@
         }
       }
     },
+    "Name oder Empfänger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name or Payee"
+          }
+        }
+      }
+    },
     "Name stimmt nicht überein" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19962,6 +20127,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Bank Connections"
+          }
+        }
+      }
+    },
+    "Neue Buchung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Booking"
+          }
+        }
+      }
+    },
+    "Neue Buchung (⌥⌘N)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Booking (⌥⌘N)"
+          }
+        }
+      }
+    },
+    "Neue Buchung …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Booking…"
           }
         }
       }
@@ -20435,6 +20633,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Account …"
+          }
+        }
+      }
+    },
+    "Neues Offline-Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Offline Account"
+          }
+        }
+      }
+    },
+    "Neues Offline-Konto …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Offline Account…"
           }
         }
       }
@@ -23621,6 +23841,28 @@
         }
       }
     },
+    "Saldo korrigieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correct Balance"
+          }
+        }
+      }
+    },
+    "Saldo korrigieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correct Balance…"
+          }
+        }
+      }
+    },
     "Saldo laut Import" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26077,6 +26319,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keyboard shortcuts (macOS)"
+          }
+        }
+      }
+    },
+    "Tatsächlicher Saldo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actual Balance"
           }
         }
       }

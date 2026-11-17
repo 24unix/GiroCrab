@@ -27,6 +27,8 @@ public final class AppModel {
     @ObservationIgnored let loanStore = ManualLoanStore()
     /// Sachwerte (GitHub #87), see TangibleAssetsUI.swift.
     @ObservationIgnored let assetStore = AssetStore()
+    /// Offline accounts and manual bookings (#679, #81), see OfflineAccountsUI.swift.
+    @ObservationIgnored let offlineStore = OfflineStore()
     var vaultState: VaultState = .locked {
         // The external analysis serves only while the own vault is shown (#136).
         didSet { if oldValue != vaultState { reconcileLocalApiServer() } }

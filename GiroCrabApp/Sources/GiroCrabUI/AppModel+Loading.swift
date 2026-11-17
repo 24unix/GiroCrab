@@ -905,6 +905,7 @@ extension AppModel {
     func rebuildAccountIndex() {
         reloadLoans()
         reloadAssets()
+        reloadOfflineAccounts()
         let accounts = allAccounts
         accountsByID = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         if let vault {

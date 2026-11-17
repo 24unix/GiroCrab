@@ -81,6 +81,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.isUnlocked)
                 Button("Neues Sachwerte-Konto …") { model.createTangibleAccount() }
                     .disabled(!model.isUnlocked)
+                Button("Neues Offline-Konto …") { model.runInOwnVault { model.offlineStore.showNewAccount = true } }
+                    .disabled(!model.isUnlocked)
                 Button("Neue Hauptkategorie …") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
                     .disabled(!model.isUnlocked)
             }
@@ -117,6 +119,15 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.isUnlocked)
             }
             CommandMenu("Buchung") {
+                // Offline accounts (#679, #81): typed bookings
+                Button("Neue Buchung …") { model.openManualBooking() }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
+                    .disabled(!model.canAddManualBooking)
+                Button("Buchung bearbeiten …") { if let b = model.selectedBooking { model.editManualBooking(b) } }
+                    .disabled(model.selectedBooking.map { !model.isManuallyEditable($0) } ?? true)
+                Button("Buchung löschen …") { if let b = model.selectedBooking { model.offlineStore.deleting = b } }
+                    .disabled(model.selectedBooking.map { !model.isManuallyEditable($0) } ?? true)
+                Divider()
                 // In the list, the single keys C and R do the same (kept for speed).
                 Button("Kategorisieren …") { if model.selectedBooking != nil { model.showCategorizer = true } }
                     .keyboardShortcut("c", modifiers: [.command, .control])
@@ -772,6 +783,7 @@ struct MainSplitView: View {
         .newCategoryDialog()
         .manualLoanSheets(model)
         .openingBalanceSheet(model)
+        .offlineAccountSheets(model)
         .tangibleAssetSheets(model)
         #if os(macOS)
         // AppModel.openSettings(_:), e.g. the merchant-logo tip → Settings › Händler-Logos

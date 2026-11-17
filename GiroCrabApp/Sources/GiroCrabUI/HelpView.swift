@@ -46,6 +46,7 @@ enum HelpCatalog {
         ("⌘?", "GiroCrab-Hilfe", "GiroCrab Help"),
         ("⌃⌘L", "Tresor sperren", "Lock vault"),
         ("⌘N", "Neue Überweisung", "New transfer"),
+        ("⌥⌘N", "Neue Buchung (Offline-Konto)", "New booking (offline account)"),
         ("⇧⌘N", "Neue Kontogruppe", "New account group"),
         ("⌥⌘K", "Regeln", "Rules"),
         ("C", "Kategorie wählen (in der Buchungsliste)", "Quick category (in the booking list)"),

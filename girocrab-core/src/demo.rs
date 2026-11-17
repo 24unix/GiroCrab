@@ -2630,6 +2630,34 @@ impl Vault {
              WHERE account_id = ?2 AND external_id IN ('demo-st-1001', 'demo-st-1002', 'demo-st-1003')",
             params![acc_ids["demo-giro"], acc_ids["demo-depot"]],
         )?;
+        // Offline account (#679, #81): cash kept by hand, no bank connection. Its balance is the
+        // Startsaldo plus the bookings below.
+        let cash = crate::offline::create_in(&tx, "Bargeld", AccountKind::Cash, 120_00)?;
+        for (days_ago, cents, who, purpose) in [
+            (12, 15_00, "Taschengeld", ""),
+            (9, -24_50, "Tierfutter Müller", "Katzenfutter"),
+            (6, 80_00, "Geldautomat", "Abhebung vom Girokonto"),
+            (4, -12_40, "Wochenmarkt", "Obst und Gemüse"),
+            (2, -3_80, "Bäckerei Sonnenschein", "Brötchen"),
+        ] {
+            let day = (today - Duration::days(days_ago))
+                .format("%Y-%m-%d")
+                .to_string();
+            let setup = crate::offline::ManualBookingSetup {
+                booking_date: day.clone(),
+                amount_cents: cents,
+                counterparty: who.into(),
+                purpose: purpose.into(),
+                category_id: None,
+                note: String::new(),
+            };
+            crate::offline::insert_booking(&tx, cash, &day, &setup, who, purpose, "")?;
+            n += 1;
+        }
+        crate::opening_balance::refresh(&tx, cash)?;
+        let (everyday, _) =
+            crate::user_groups::find_or_create(&tx, crate::i18n::tr("Alltag"), "person")?;
+        crate::user_groups::assign(&tx, cash, Some(&everyday), 0)?;
         Vault::apply_rules_inner(&tx, true)?;
         demo_documents(&tx, today)?;
         demo_tags(&tx)?;
@@ -2983,12 +3011,24 @@ mod tests {
     }
 
     #[test]
-    fn demo_seed_has_thirteen_accounts_and_exactly_sixty_nine_bookings() {
+    fn demo_seed_has_fourteen_accounts_and_exactly_seventy_four_bookings() {
         let dir_dir = crate::test_support::TempDir::new("girocrab-test");
         let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
-        assert_eq!(v.seed_demo_data().unwrap(), 69);
-        assert_eq!(v.account_count().unwrap(), 13);
+        assert_eq!(v.seed_demo_data().unwrap(), 74);
+        assert_eq!(v.account_count().unwrap(), 14);
+        // #679: the offline cash account takes manual bookings and keeps its computed balance
+        let cash = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "Bargeld")
+            .unwrap();
+        assert_eq!(
+            cash.balance_cents,
+            120_00 + 15_00 - 24_50 + 80_00 - 12_40 - 3_80
+        );
+        assert_eq!(v.list_offline_account_ids().unwrap(), vec![cash.id]);
         let car = v.list_manual_loans().unwrap();
         assert_eq!(car.len(), 1);
         assert_eq!(car[0].status.payment_count, 2);

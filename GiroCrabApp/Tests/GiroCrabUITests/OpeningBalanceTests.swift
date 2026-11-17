@@ -59,7 +59,9 @@ final class OpeningBalanceTests: XCTestCase {
         XCTAssertTrue(card.balanceDerived)
         XCTAssertNotNil(card.openingBalanceCents)
         XCTAssertEqual(card.balanceCents, -642_80)
-        XCTAssertEqual(accounts.filter(\.balanceDerived).map(\.id), [card.id])
+        // besides the card, only the offline cash account (#679) is computed from its bookings
+        let cash = try XCTUnwrap(accounts.first { $0.kind == .cash })
+        XCTAssertEqual(Set(accounts.filter(\.balanceDerived).map(\.id)), [card.id, cash.id])
     }
 
     func testBankBalancesAreNotOverridden() throws {

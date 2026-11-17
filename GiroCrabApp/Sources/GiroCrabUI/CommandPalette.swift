@@ -88,6 +88,14 @@ struct CommandPaletteView: View {
         })
         out.append(Item(title: String(localized: "Neues Darlehen"), subtitle: action, symbol: "car") { model.openLoanEditor(.create) })
         out.append(Item(title: String(localized: "Neues Sachwerte-Konto"), subtitle: action, symbol: "diamond") { model.createTangibleAccount() })
+        out.append(Item(title: String(localized: "Neues Offline-Konto"), subtitle: action, symbol: "banknote") {
+            model.afterPaletteDismiss = { model.runInOwnVault { model.offlineStore.showNewAccount = true } }
+        })
+        if model.canAddManualBooking {
+            out.append(Item(title: String(localized: "Neue Buchung"), subtitle: "\(action) · ⌥⌘N", symbol: "plus") {
+                model.afterPaletteDismiss = { model.openManualBooking() }
+            })
+        }
         if case .account(let id) = model.sidebarSelection, model.isTangible(id) {
             out.append(Item(title: String(localized: "Sachwert hinzufügen"), subtitle: action, symbol: "plus") { model.openAssetEditor(accountId: id) })
         }

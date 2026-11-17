@@ -199,6 +199,7 @@ struct SidebarView: View {
                 Spacer(minLength: 0)
                 Menu {
                     Button("Neues Konto …", systemImage: "building.columns") { model.showAddBank = true }
+                    Button("Neues Offline-Konto …", systemImage: "banknote") { model.runInOwnVault { model.offlineStore.showNewAccount = true } }
                     Button("Neue Kontengruppe …", systemImage: "folder.badge.plus") { model.groupDialog = .create() }
                     Divider()
                     Button("Neue Kategorie …", systemImage: "tag") { model.newCategoryRequest = NewCategoryRequest(parent: selectedCategoryID) }
@@ -466,10 +467,13 @@ struct SidebarView: View {
         Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
         CategoryChipToggle(accountID: account.id)
-        Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
-            ForEach(AccountKind.importChoices, id: \.self) { k in
-                Button { model.setAccountKind(account.id, to: k) } label: {
-                    Text(verbatim: k == account.kind ? "✓ \(k.label)" : k.label)
+        // an offline account is always cash (#679)
+        if !model.isOffline(account.id) {
+            Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
+                ForEach(AccountKind.importChoices, id: \.self) { k in
+                    Button { model.setAccountKind(account.id, to: k) } label: {
+                        Text(verbatim: k == account.kind ? "✓ \(k.label)" : k.label)
+                    }
                 }
             }
         }
@@ -479,6 +483,7 @@ struct SidebarView: View {
         Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: [account.id]) }
         ManualLoanAccountMenu(model: model, account: account)
         OpeningBalanceMenuItem(model: model, account: account)
+        OfflineAccountMenuItems(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
                 .disabled(model.bankingGate(for: conn) != nil)
@@ -755,8 +760,14 @@ struct AccountRow: View {
     }
 
     /// While searching, prefer Kontoinhaber or IBAN so the hit is obvious.
+    /// Bank name and the account note (#679), e.g. "Bargeld" without a bank shows just its note.
+    private var baseSubtitle: String {
+        let note = model.accountNote(for: account.id).replacingOccurrences(of: "\n", with: " ")
+        return [account.bankName, note].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
     private var searchAwareSubtitle: String {
-        guard model.isSidebarAccountSearching else { return account.bankName }
+        guard model.isSidebarAccountSearching else { return baseSubtitle }
         let q = model.sidebarAccountSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         let compact = q.filter { !$0.isWhitespace }.lowercased()
         if !account.owner.isEmpty {
@@ -769,7 +780,7 @@ struct AccountRow: View {
            account.compactAccountIds.contains(where: { $0.contains(compact) }) {
             return account.iban.isEmpty ? account.accountNumber : formatIBAN(account.iban)
         }
-        return account.bankName
+        return baseSubtitle
     }
 
     private var ibanSubtitle: Bool {

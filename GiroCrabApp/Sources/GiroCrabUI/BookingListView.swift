@@ -604,6 +604,7 @@ struct DayCardRow: View {
         TagsMenu(model: model, booking: b)
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
         LoanAssignMenu(model: model, booking: b, hidesWhenUnavailable: true)
+        OfflineBookingMenu(model: model, booking: b)
         Divider()
         Button("Nach „\(b.counterparty.isEmpty ? b.merchantName : b.counterparty)“ suchen", systemImage: "magnifyingglass") {
             model.searchText = b.counterparty.isEmpty ? b.merchantName : b.counterparty
@@ -1190,6 +1191,8 @@ struct MainToolbar: ViewModifier {
                 Menu {
                     Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
                         .disabled(!model.canTransfer)
+                    Button { model.openManualBooking() } label: { Label("Neue Buchung …", systemImage: "plus") }
+                        .disabled(!model.canAddManualBooking)
                     Button { model.openBookingExport() } label: { Label("Umsätze exportieren …", systemImage: "square.and.arrow.up") }
                     Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
                     Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
@@ -1229,6 +1232,11 @@ struct MainToolbar: ViewModifier {
                 Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
                     .help("Neue Überweisung (⌘N)")
                     .disabled(!model.canTransfer)
+            }
+            ToolbarItem(id: "newBooking", placement: .primaryAction) {
+                Button { model.openManualBooking() } label: { Label("Neue Buchung", systemImage: "plus") }
+                    .help("Neue Buchung (⌥⌘N)")
+                    .disabled(!model.canAddManualBooking)
             }
             ToolbarItem(id: "sync", placement: .primaryAction) {
                 Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }

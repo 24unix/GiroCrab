@@ -432,6 +432,13 @@ fn english(de: &str) -> Option<&'static str> {
         "Das Konto hat keine IBAN." => "The account has no IBAN.",
         "Bankverbindung {0}" => "bank connection {0}",
         "Konto {0}" => "account {0}",
+        // ------------------------------------------------------ offline.rs
+        "Der Text ist zu lang (höchstens {0} Zeichen)." => "The text is too long (at most {0} characters).",
+        "Manuelle Buchungen sind nur in Offline-Konten möglich." => "Manual bookings are only possible in offline accounts.",
+        "Der Betrag darf nicht 0 sein." => "The amount must not be 0.",
+        "Depots und Darlehen werden nicht als Offline-Konto angelegt." => "Depots and loans are not created as offline accounts.",
+        "Eine Buchung lässt sich nicht in ihr eigenes Konto spiegeln." => "A booking cannot be mirrored into its own account.",
+        "Saldokorrektur" => "Balance correction",
         // ------------------------------------------------------ user_groups.rs
         "Gruppe {0}" => "group {0}",
         "Ungültige Farbe: {0}" => "Invalid colour: {0}",
