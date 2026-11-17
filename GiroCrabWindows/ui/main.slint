@@ -179,13 +179,24 @@ component SideLine inherits Rectangle {
             horizontal-stretch: 1;
             alignment: center;
             spacing: 2px;
-            Text {
-                text: r.kind == 1 || r.kind == 2 ? r.label.to-uppercase() : r.label;
-                color: r.kind == 1 || r.kind == 2 ? Theme.muted : Theme.text;
-                font-size: r.kind == 1 || r.kind == 2 ? 10px : 13px;
-                font-weight: r.kind == 0 || r.kind == 1 || r.kind == 2 ? 700 : 500;
-                letter-spacing: r.kind == 1 || r.kind == 2 ? 0.8px : 0px;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    text: r.kind == 1 || r.kind == 2 ? r.label.to-uppercase() : r.label;
+                    color: r.kind == 1 || r.kind == 2 ? Theme.muted : Theme.text;
+                    font-size: r.kind == 1 || r.kind == 2 ? 10px : 13px;
+                    font-weight: r.kind == 0 || r.kind == 1 || r.kind == 2 ? 700 : 500;
+                    letter-spacing: r.kind == 1 || r.kind == 2 ? 0.8px : 0px;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                if subtitle && r.badge != "": Rectangle {
+                    width: max(row-badge-text.preferred-width + 12px, 20px);
+                    height: 16px;
+                    border-radius: 8px;
+                    background: Theme.accent.with-alpha(0.2);
+                    row-badge-text := Text { text: r.badge; color: Theme.accent; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                }
             }
             if r.progress >= 0: HorizontalLayout {
                 height: 14px;
@@ -200,9 +211,13 @@ component SideLine inherits Rectangle {
                 }
                 Text { text: r.detail; color: Theme.muted; font-size: 10px; vertical-alignment: center; }
             }
-            if subtitle: Text { text: r.detail; color: Theme.muted; font-size: r.progress >= 0 ? 10px : 11px; overflow: elide; }
+            if subtitle: HorizontalLayout {
+                spacing: 6px;
+                Text { text: r.detail; color: Theme.muted; font-size: 11px; horizontal-stretch: 1; overflow: elide; }
+                if r.amount != "": Text { text: r.amount; color: r.negative ? Theme.negative : Theme.muted; font-size: 11px; font-weight: 600; horizontal-alignment: right; }
+            }
         }
-        if r.badge != "": Rectangle {
+        if r.badge != "" && !subtitle: Rectangle {
             width: max(badge-text.preferred-width + 12px, 20px);
             height: 18px;
             y: (parent.height - self.height) / 2;
@@ -210,7 +225,7 @@ component SideLine inherits Rectangle {
             background: Theme.accent.with-alpha(0.2);
             badge-text := Text { text: r.badge; color: Theme.accent; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
         }
-        if r.amount != "": Text {
+        if r.amount != "" && !subtitle: Text {
             text: r.amount;
             color: r.negative ? Theme.negative : Theme.muted;
             font-size: 11px;
@@ -1058,7 +1073,7 @@ export component MainWindow inherits Window {
             }
         }
         // ---- project announcement banner (announcements.rs)
-        if SettingsImportState.banner-title != "": Rectangle {
+        if SettingsImportState.banner-title != "" && !root.demo-active: Rectangle {
             height: 30px;
             background: SettingsImportState.banner-important ? Theme.warning-bg : Theme.bar;
             HorizontalLayout {

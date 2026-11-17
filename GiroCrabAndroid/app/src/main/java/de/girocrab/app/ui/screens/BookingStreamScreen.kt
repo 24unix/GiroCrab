@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +40,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -301,11 +304,11 @@ private fun FilterBar(
     onAnalytics: (Boolean) -> Unit,
     count: Int,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(
             value = search,
             onValueChange = onSearch,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             singleLine = true,
             placeholder = { Text("Suchen") },
             leadingIcon = { Icon(Icons.Filled.Search, null) },
@@ -314,34 +317,39 @@ private fun FilterBar(
             },
             keyboardOptions = KeyboardOptions.Default,
         )
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            DropdownChip(range.label, TimeRange.entries.map { it.label to { onRange(it) } }, selected = range != TimeRange.All)
-            DropdownChip(flow.label, FlowFilter.entries.map { it.label to { onFlow(it) } }, selected = flow != FlowFilter.All)
-            val cat = categories.firstOrNull { it.id == categoryId }
-            DropdownChip(
-                cat?.name ?: "Kategorie",
-                listOf("Alle Kategorien" to { onCategory(null) }) + categories.map { c -> c.name to { onCategory(c.id) } },
-                selected = cat != null,
-            )
-            tags.forEach { t ->
+            item { DropdownChip(range.label, TimeRange.entries.map { it.label to { onRange(it) } }, selected = range != TimeRange.All) }
+            item { DropdownChip(flow.label, FlowFilter.entries.map { it.label to { onFlow(it) } }, selected = flow != FlowFilter.All) }
+            item {
+                val cat = categories.firstOrNull { it.id == categoryId }
+                DropdownChip(
+                    cat?.name ?: "Kategorie",
+                    listOf("Alle Kategorien" to { onCategory(null) }) + categories.map { c -> c.name to { onCategory(c.id) } },
+                    selected = cat != null,
+                )
+            }
+            items(tags, key = { it.id }) { t ->
                 FilterChip(
                     selected = tagId == t.id,
                     onClick = { onTag(if (tagId == t.id) null else t.id) },
                     label = { Text("#${t.name}") },
                 )
             }
-            FilterChip(
-                selected = docsOnly,
-                onClick = { onDocs(!docsOnly) },
-                label = { Text("Dokumente") },
-                leadingIcon = { Icon(Icons.Filled.AttachFile, null, Modifier.size(16.dp)) },
-            )
+            item {
+                FilterChip(
+                    selected = docsOnly,
+                    onClick = { onDocs(!docsOnly) },
+                    label = { Text("Dokumente") },
+                    leadingIcon = { Icon(Icons.Filled.AttachFile, null, Modifier.size(16.dp)) },
+                )
+            }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             FilterChip(
                 selected = analytics,
                 onClick = { onAnalytics(!analytics) },
@@ -451,8 +459,21 @@ private fun BookingRow(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.size(32.dp).clickable(onClick = onToggleChecked), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(20.dp).clickable(onClick = onToggleChecked), contentAlignment = Alignment.Center) {
             if (unchecked) Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF1E88E5)))
+        }
+        Surface(
+            modifier = Modifier.padding(end = 12.dp).size(38.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    if (masked) "••" else merchantInitials(booking.counterparty),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
         }
         Column(Modifier.weight(1f).padding(end = 8.dp)) {
             Text(
@@ -488,6 +509,17 @@ private fun BookingRow(
             softWrap = false,
         )
     }
+}
+
+/** Two-letter initials of a merchant name, e.g. "LI" for LIDL, "RE" for REWE. */
+private fun merchantInitials(name: String): String {
+    val words = name.trim().split(Regex("\\s+")).filter { w -> w.any { it.isLetterOrDigit() } }
+    val letters = when {
+        words.isEmpty() -> return "—"
+        words.size == 1 -> words[0].filter { it.isLetterOrDigit() }.take(2)
+        else -> words.take(2).map { w -> w.first { it.isLetterOrDigit() } }.joinToString("")
+    }
+    return letters.uppercase()
 }
 
 @Composable

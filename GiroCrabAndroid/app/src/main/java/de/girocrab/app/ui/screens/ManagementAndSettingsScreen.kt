@@ -441,6 +441,7 @@ fun SettingsScreen(
     onOpenTags: () -> Unit,
     onOpenCategories: () -> Unit,
     onAddBank: () -> Unit,
+    onOpenPortfolio: () -> Unit = {},
     verifiedAnnouncements: List<Announcement> = state.data.announcements,
     modifier: Modifier = Modifier,
 ) {
@@ -448,6 +449,7 @@ fun SettingsScreen(
         AnnouncementsBanner(verifiedAnnouncements)
 
         SettingsSection("Verwalten") {
+            ListItem(headlineContent = { Text("Depot / Vermögen") }, modifier = Modifier.clickable(onClick = onOpenPortfolio))
             ListItem(headlineContent = { Text("Bank hinzufügen") }, modifier = Modifier.clickable(onClick = onAddBank))
             ListItem(headlineContent = { Text("Regeln (${state.data.rules.size})") }, modifier = Modifier.clickable(onClick = onOpenRules))
             ListItem(headlineContent = { Text("Kategorien (${state.data.categories.size})") }, modifier = Modifier.clickable(onClick = onOpenCategories))

@@ -29,6 +29,7 @@ import de.girocrab.app.ui.screens.TagManagerDialog
 import java.io.File
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +45,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -73,6 +77,21 @@ enum class MainTab(val label: String, val icon: ImageVector) {
     Payments("Zahlungen", Icons.Default.Payments),
     Portfolio("Depot", Icons.Default.Savings),
     More("Mehr", Icons.Default.MoreHoriz),
+}
+
+/** Prominent segmented toggle at the top of Konten: accounts vs. Depot / Vermögen. */
+@androidx.compose.runtime.Composable
+private fun AccountsWealthToggle(portfolio: Boolean, onSelect: (portfolio: Boolean) -> Unit) {
+    val labels = listOf("Konten", "Depot / Vermögen")
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        labels.forEachIndexed { i, label ->
+            SegmentedButton(
+                selected = (i == 1) == portfolio,
+                onClick = { onSelect(i == 1) },
+                shape = SegmentedButtonDefaults.itemShape(index = i, count = labels.size),
+            ) { Text(label, maxLines = 1) }
+        }
+    }
 }
 
 /** FragmentActivity (not ComponentActivity) because BiometricPrompt requires it. */
@@ -165,9 +184,9 @@ fun GiroCrabRoot(
     Scaffold(
         bottomBar = {
             NavigationBar {
-                MainTab.entries.forEach { t ->
+                MainTab.entries.filter { it != MainTab.Portfolio }.forEach { t ->
                     NavigationBarItem(
-                        selected = tab == t,
+                        selected = tab == t || (t == MainTab.Accounts && tab == MainTab.Portfolio),
                         onClick = { tab = t },
                         icon = { Icon(t.icon, contentDescription = t.label) },
                         label = { Text(t.label, fontSize = 11.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
@@ -204,7 +223,10 @@ fun GiroCrabRoot(
                             onOpenBooking = { detail = it },
                             onToggleChecked = vm::toggleBookingChecked,
                         )
-                        MainTab.Accounts -> AccountsAndWealthScreen(
+                        MainTab.Accounts -> Column(Modifier.fillMaxSize()) {
+                          AccountsWealthToggle(portfolio = false, onSelect = { tab = if (it) MainTab.Portfolio else MainTab.Accounts })
+                          AccountsAndWealthScreen(
+                            modifier = Modifier.weight(1f),
                             state = state,
                             badges = AccountsBadges(
                                 unreadBookings = state.data.bookings.count { !it.checked },
@@ -214,16 +236,20 @@ fun GiroCrabRoot(
                             ),
                             onSelectGroup = { vm.selectGroup(it); tab = MainTab.Bookings },
                             onSelectAccount = { vm.selectAccount(it); tab = MainTab.Bookings },
-                        )
+                          )
+                        }
                         MainTab.Analytics -> AnalyticsScreen(state, vm, onShowBookings = { tab = MainTab.Bookings })
                         MainTab.Payments -> PaymentsScreen(state = state, onSubmitTransfer = vm::submitTransfer)
-                        MainTab.Portfolio -> PortfolioAndAssetsScreen(
+                        MainTab.Portfolio -> Column(Modifier.fillMaxSize()) {
+                          AccountsWealthToggle(portfolio = true, onSelect = { tab = if (it) MainTab.Portfolio else MainTab.Accounts })
+                          PortfolioAndAssetsScreen(
                             state = state,
                             onUpsertLoan = vm::upsertLoan,
                             onDeleteLoan = vm::deleteLoan,
                             onUpsertAsset = vm::upsertAsset,
                             onDeleteAsset = vm::deleteAsset,
-                        )
+                          )
+                        }
                         MainTab.More -> SettingsScreen(
                             state = state,
                             onLanguage = { vm.setLanguage(it); onLanguage(it) },
@@ -236,6 +262,7 @@ fun GiroCrabRoot(
                             onOpenTags = { dialog = ManagementDialog.Tags },
                             onOpenCategories = { dialog = ManagementDialog.Categories },
                             onAddBank = { dialog = ManagementDialog.AddBank },
+                            onOpenPortfolio = { tab = MainTab.Portfolio },
                         )
                     }
                 }
