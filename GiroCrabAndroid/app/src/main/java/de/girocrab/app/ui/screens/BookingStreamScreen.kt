@@ -583,6 +583,18 @@ private fun BookingRow(
                             .padding(vertical = 1.dp, horizontal = 6.dp),
                     )
                 }
+                if (booking.splits.isNotEmpty()) {
+                    Text(
+                        "⑂ ${booking.splits.size} Teile",
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
+                            .clickable(onClick = onOpen)
+                            .padding(vertical = 1.dp, horizontal = 6.dp),
+                    )
+                }
                 if (hasDocument) Icon(Icons.Filled.AttachFile, "Dokument", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (booking.purpose.isNotBlank() && !expanded) {
                     Text(

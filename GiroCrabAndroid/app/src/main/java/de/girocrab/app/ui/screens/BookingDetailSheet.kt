@@ -8,6 +8,12 @@ import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -151,6 +157,17 @@ fun BookingDetailSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             // Header
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (masked) "•" else booking.counterparty.trim().take(1).uppercase().ifBlank { "?" },
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             Column {
                 Text(
                     if (masked) "••••••" else booking.counterparty.ifBlank { "Unbekannt" },
@@ -170,6 +187,18 @@ fun BookingDetailSheet(
                     )
                 }
             }
+            }
+
+            // Geprüft + Wiederkehrend (#253)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = booking.checked,
+                    onClick = { vm.toggleBookingChecked(booking.id) },
+                    label = { Text(if (booking.checked) "Geprüft" else "Als geprüft markieren") },
+                    leadingIcon = { Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) },
+                )
+            }
+            RecurringSection(booking.id)
 
             if (transferTarget != null || transferByText) {
                 TransferBanner(
@@ -199,8 +228,21 @@ fun BookingDetailSheet(
                             }
                         }
                     }
+                    if (booking.counterpartyIban.isNotBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("IBAN (Gegenkonto)", style = MaterialTheme.typography.labelSmall)
+                                Text(if (masked) "•••• •••• ••••" else formatIban(booking.counterpartyIban), style = MaterialTheme.typography.bodyMedium)
+                            }
+                            if (!masked) {
+                                IconButton(onClick = { copyToClipboard(ctx, "IBAN", booking.counterpartyIban.replace(" ", "")) }) {
+                                    Icon(Icons.Filled.ContentCopy, contentDescription = "Gegenkonto-IBAN kopieren")
+                                }
+                            }
+                        }
+                    }
                     DetailRow("Buchungsdatum", booking.bookingDate.format(LongDate))
-                    DetailRow("Wertstellung", booking.valueDate.format(LongDate))
+                    DetailRow("Valuta", booking.valueDate.format(LongDate))
                     DetailRow("Buchungsart", if (booking.amountCents >= 0) "Gutschrift" else "Lastschrift / Zahlung")
                     (sepa.endToEnd ?: booking.reference)?.let { DetailRow("End-to-End-Referenz", it, masked) }
                     sepa.mandate?.let { DetailRow("Mandatsreferenz", it, masked) }
@@ -217,6 +259,8 @@ fun BookingDetailSheet(
             }
 
             HorizontalDivider()
+
+            CategorySuggestion(booking, state) { vm.setCategory(booking.id, it) }
 
             CategorySelector(
                 categories = state.data.categories,
@@ -246,6 +290,59 @@ fun BookingDetailSheet(
 
             Spacer(Modifier.size(16.dp))
         }
+    }
+}
+
+/** #253: recurrence marker (UI state only; interval + "auf 12 Monate umlegen"). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RecurringSection(bookingId: String) {
+    var interval by rememberSaveable(bookingId) { mutableStateOf<String?>(null) }
+    var spread by rememberSaveable(bookingId) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SectionLabel("Wiederkehrend")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Monatlich", "Vierteljährlich", "Jährlich").forEach { l ->
+                FilterChip(
+                    selected = interval == l,
+                    onClick = { interval = if (interval == l) null else l; if (interval == null) spread = false },
+                    label = { Text(l) },
+                )
+            }
+        }
+        if (interval != null) {
+            FilterChip(
+                selected = spread,
+                onClick = { spread = !spread },
+                label = { Text("Auf 12 Monate umlegen") },
+            )
+        }
+    }
+}
+
+/** #832: suggest a category from earlier bookings of the same merchant / similar text. */
+@Composable
+private fun CategorySuggestion(booking: Booking, state: AppUiState, onApply: (String) -> Unit) {
+    if (booking.categoryId != null) return
+    val all = state.data.bookings
+    val cp = booking.counterparty.trim().lowercase()
+    val sameMerchant = if (cp.isEmpty()) emptyList() else
+        all.filter { it.id != booking.id && it.categoryId != null && it.counterparty.trim().lowercase() == cp }
+    val (pool, reason) = if (sameMerchant.isNotEmpty()) {
+        sameMerchant to "Wie ${sameMerchant.size} frühere Buchungen dieses Händlers"
+    } else {
+        val words = booking.purpose.lowercase().split(Regex("\\W+")).filter { it.length >= 4 }.toSet()
+        val similar = if (words.isEmpty()) emptyList() else all.filter { o ->
+            o.id != booking.id && o.categoryId != null &&
+                o.purpose.lowercase().split(Regex("\\W+")).any { it in words }
+        }
+        similar to "Wie ${similar.size} Buchungen mit ähnlichem Text"
+    }
+    val best = pool.groupingBy { it.categoryId!! }.eachCount().maxByOrNull { it.value }?.key ?: return
+    val name = state.data.categories.firstOrNull { it.id == best }?.name ?: return
+    Column {
+        AssistChip(onClick = { onApply(best) }, label = { Text("⟲ Vorschlag übernehmen: $name") })
+        Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -414,6 +511,24 @@ private fun DocumentSection(bookingId: String) {
             Icon(Icons.Filled.Add, null)
             Spacer(Modifier.size(6.dp))
             Text("Beleg hinzufügen")
+        }
+        var link by remember { mutableStateOf("") }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = link,
+                onValueChange = { link = it },
+                singleLine = true,
+                label = { Text("Link (z. B. paperless-ngx)") },
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                enabled = link.startsWith("http"),
+                onClick = {
+                    val u = Uri.parse(link.trim())
+                    docs.add(u to (u.host ?: "Link"))
+                    link = ""
+                },
+            ) { Icon(Icons.Filled.Add, contentDescription = "Link hinzufügen") }
         }
     }
 }
