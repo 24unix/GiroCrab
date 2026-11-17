@@ -222,7 +222,8 @@ struct BankSetupSheet: View {
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 // HIG: the default button stays off until every required field has a value.
-                .disabled(request.keys.contains { (values[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty })
+                // The FinTS product ID is an optional override and never blocks the button.
+                .disabled(request.keys.contains { $0 != "fints.product_id" && (values[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty })
             }
         }
     }

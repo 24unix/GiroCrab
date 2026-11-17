@@ -149,7 +149,7 @@ struct AddBankSheet: View {
         let kind = s.connector ?? (s.mode == .finTs ? .finTsGeneric : .enableBanking)
         guard let d = bankCatalog().first(where: { $0.kind == kind }) else { return [] }
         return d.requiredSettings.filter { key in
-            if key == "fints.product_id", !model.fintsProductIDSource.isEmpty || model.fintsBuiltinAvailable { return false }
+            if key == "fints.product_id" { return false }  // optional override, never required
             return !(model.settingEntry(key)?.hasValue ?? false)
         }
     }

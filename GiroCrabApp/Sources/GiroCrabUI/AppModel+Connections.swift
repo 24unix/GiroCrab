@@ -148,8 +148,9 @@ extension AppModel {
         if Self.isMagicDemoLogin(connection.loginName) { return [] }
         guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }
         return d.requiredSettings.filter { key in
-            // A usable FinTS registration (GiroCrab's or the user's) satisfies this one.
-            if key == "fints.product_id", !fintsProductIDSource.isEmpty { return false }
+            // A custom FinTS product ID is an optional override (GiroCrab ships its own), so an empty
+            // one is never "missing". A value entered once is a global setting and covers every bank.
+            if key == "fints.product_id" { return false }
             return !(settings.first { $0.key == key }?.hasValue ?? false)
         }
     }
