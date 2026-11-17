@@ -64,6 +64,16 @@ final class VaultBackupTests: XCTestCase {
         XCTAssertEqual(Int(try other.accountCount()), model.allAccounts.count)
     }
 
+    /// Restoring must not sync while iCloud Sync is off: `syncNow` starts
+    /// nothing then (restoring called it unconditionally).
+    func testSyncNowDoesNothingWhileSyncIsOff() {
+        let sync = CloudSyncManager.shared
+        let was = sync.isEnabled
+        defer { if sync.isEnabled != was { sync.isEnabled = was } }
+        if sync.isEnabled { sync.isEnabled = false }
+        XCTAssertFalse(model.syncNow())
+    }
+
     func testPasswordRules() {
         XCTAssertFalse(VaultBackup.acceptable("kurz", repeated: "kurz"))
         XCTAssertFalse(VaultBackup.acceptable("lang genug", repeated: "lang genug!"))

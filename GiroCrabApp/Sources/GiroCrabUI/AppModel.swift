@@ -1173,9 +1173,13 @@ public final class AppModel {
 
     /// Merges the other devices' snapshots and writes this device's one.
     /// The open vault does this with its own key: no biometric prompt.
-    func syncNow() {
-        guard let v = ownVault else { return }
+    /// Returns whether a sync started: never while iCloud Sync is off (a
+    /// restore used to sync anyway, into the folder from an earlier setting).
+    @discardableResult
+    func syncNow() -> Bool {
+        guard let v = ownVault, CloudSyncManager.shared.isEnabled else { return false }
         Task { await self.performSyncOrAutoAdopt(vault: v) }
+        return true
     }
 
     /// Secondary device: the user pasted the vault key of the iCloud snapshot.
