@@ -1,0 +1,127 @@
+From f1367c914b5d0ecb4af576aa2a409cb829e086b6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 17 Nov 2026 10:57:12 +0100
+Subject: [PATCH] feat: Volkswagen-Bank-Connector meldet sich per logout ab
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+POST AuthenticationService/logout mit leerem JSON-Objekt, Ablauf nach
+HAR-Mitschnitt vom 17.11.2026. Best effort, Fehler werden ignoriert.
+Nach dem Abmelden werden Token, Schlüssel und der Client (Cookies)
+verworfen. Doku (Ablauf und Checkliste) angepasst.
+
+Härtung nach Security-Check:
+- Client ohne Redirects (Passwort im Body von authentication/check),
+  3xx-Antworten gelten als unerwartete Antwort
+- Betrag credit - debit mit checked_sub, Test für den Überlauf
+
+AI-Orchestrator: Claude
+AI-Model: Claude Sonnet 5.5
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KSsx2oDAUqtmDzkK4mem35
+---
+ docs/volkswagen-bank-connector.md             |  6 ++--
+ .../src/connectors/volkswagen_bank.rs         | 31 ++++++++++++++++---
+ 2 files changed, 30 insertions(+), 7 deletions(-)
+
+diff --git a/docs/volkswagen-bank-connector.md b/docs/volkswagen-bank-connector.md
+index 16d038b..d6103ee 100644
+--- a/docs/volkswagen-bank-connector.md
++++ b/docs/volkswagen-bank-connector.md
+@@ -22,6 +22,7 @@ Portal: `https://banking.volkswagenbank.de/#/login` (React-Single-Page-App) übe
+ | 4 | `POST AuthenticationService/authentication/execute` (Header `X-REQUEST-KEY`, leerer Body) | `Status: Success` |
+ | 5 | `GET AccountListService/accountlist` | Konten mit IBAN, Kontonummer, Saldo, `Features.CashFlow` |
+ | 6 | `POST CashFlowService/cashflow/list/get` `{accountNumber, dateFrom, dateTo}` (`YYYY-MM-DDZ`) | `CashflowList` mit `CreditAmount`/`DebitAmount`, `PaymentNotes`, `ReferenceAccount` |
++| 7 | `POST AuthenticationService/logout` `{}` (Bearer-Token wie bei den anderen Aufrufen) | `Status: Success` |
+ 
+ - Jede Antwort enthält einen neuen Header `Authorization: bearer …`; der jeweils neueste wird beim
+   nächsten Aufruf zurückgeschickt. **Annahme:** Der Mitschnitt zeigt keine Anfrage-Header mit
+@@ -44,7 +45,7 @@ Portal: `https://banking.volkswagenbank.de/#/login` (React-Single-Page-App) übe
+       `X-CHALLENGES.PhotoTan.ImageCreationChallenge` (die Portal-JavaScript baut sie)
+ - [ ] Statuswerte bei falschen Zugangsdaten, abgelehnter oder abgelaufener pushTAN (bisher nur
+       `AuthorizationPending` und `TransactionConfirmed` belegt; alles andere gilt als Ablehnung)
+-- [ ] Abmelden (im Mitschnitt nicht enthalten, der Connector meldet sich nicht ab)
++- [x] Abmelden: Mitschnitt vom 17.11.2026 ausgewertet, der Connector meldet sich nach dem Abruf ab (noch nicht live getestet)
+ - [ ] Weitere Kontoarten (Girokonto, Kreditkarte, Darlehen), Konten ohne `CashFlow`
+ - [ ] Kontoauszüge: `MailboxService/archivedocumentinfos` liefert die Liste, der Download-Aufruf fehlt
+ - [ ] Danach: `Status` in `BANK_MATRIX` auf `TestingWanted`/`Verified` setzen und die README-Matrix
+@@ -60,5 +61,4 @@ Anführungszeichen verlieren).
+ 
+ 1. Anmeldung mit photoTAN, inklusive Code-Eingabe und der Anfrage, die das Bild liefert.
+ 2. Falsche TAN, falsches Passwort und abgelaufene pushTAN (je ein Mitschnitt).
+-3. Abmelden.
+-4. Ein Kontoauszug als PDF herunterladen.
++3. Ein Kontoauszug als PDF herunterladen.
+diff --git a/girocrab-core/src/connectors/volkswagen_bank.rs b/girocrab-core/src/connectors/volkswagen_bank.rs
+index c185263..4440d7b 100644
+--- a/girocrab-core/src/connectors/volkswagen_bank.rs
++++ b/girocrab-core/src/connectors/volkswagen_bank.rs
+@@ -35,8 +35,8 @@ use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE, ORIGIN, RE
+ use serde_json::{json, Value};
+ 
+ use super::{
+-    http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
+-    FetchResult, Phase, RemoteAccount, RemoteTransaction,
++    http_client_no_redirect, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
++    ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction,
+ };
+ use crate::{
+     error::{CoreError, CoreResult},
+@@ -119,7 +119,8 @@ struct HttpPortal {
+ impl HttpPortal {
+     fn client(&mut self) -> CoreResult<reqwest::Client> {
+         if self.client.is_none() {
+-            self.client = Some(http_client()?);
++            // Never follow redirects: the sign-in body carries the password.
++            self.client = Some(http_client_no_redirect()?);
+         }
+         self.client.clone().ok_or_else(bad_response)
+     }
+@@ -326,6 +327,22 @@ impl Portal for HttpPortal {
+         }
+         Ok(out)
+     }
++
++    /// `POST AuthenticationService/logout` with an empty JSON object; the
++    /// portal answers `{"Status":"Success"}`. Best effort: without a session
++    /// nothing is sent, and errors are ignored because the sync is over.
++    async fn logout(&mut self) {
++        if self.token.is_some() || self.request_key.is_some() {
++            let _ = self
++                .call(true, "AuthenticationService/logout", Some(json!({})), None)
++                .await;
++        }
++        self.token = None;
++        self.request_key = None;
++        self.push_key = None;
++        // Drops the cookie jar with the session cookies.
++        self.client = None;
++    }
+ }
+ 
+ struct PortalAccount {
+@@ -439,7 +456,7 @@ fn parse_cashflow(v: &Value, account_ref: &str) -> CoreResult<Vec<RemoteTransact
+             external_id: String::new(),
+             booking_date: posting.to_string(),
+             value_date: value.to_string(),
+-            amount_cents: credit - debit,
++            amount_cents: credit.checked_sub(debit).ok_or_else(bad_response)?,
+             currency: match text(it, "Currency").trim() {
+                 "" => "EUR".to_string(),
+                 c => c.to_string(),
+@@ -984,5 +1001,11 @@ mod tests {
+         assert!(parse_cashflow(&bad_amount, "x").is_err());
+         let no_date = json!({"Status": "Success", "CashflowList": [{"CreditAmount": "1.00"}]});
+         assert!(parse_cashflow(&no_date, "x").is_err());
++        // credit - debit must not overflow
++        let overflow = json!({"Status": "Success", "CashflowList": [
++            {"PostingDate": "2026-02-10T23:00:00Z",
++             "CreditAmount": "-92233720368547758.00",
++             "DebitAmount": "92233720368547758.00"}]});
++        assert!(parse_cashflow(&overflow, "x").is_err());
+     }
+ }
+-- 
+2.43.0
+

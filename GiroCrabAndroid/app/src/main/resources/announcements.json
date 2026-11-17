@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "sequence": 0,
+  "announcements": [
+    {
+      "id": "fints-registration-rollout-2026-11",
+      "severity": "important",
+      "until": "2026-12-15",
+      "minVersion": "0.7.5",
+      "title": {
+        "de": "FinTS-Produktregistrierung: Freischaltung bei Bank-Rechenzentren läuft",
+        "en": "FinTS Product Registration: Bank Data Center Rollout in Progress"
+      },
+      "summary": {
+        "de": "Einige Banken wie Sparkassen, GLS/Atruvia und Comdirect schalten unsere neue FinTS-Registrierungsnummer erst in den nächsten Tagen frei. Bitte dazu kein GitHub-Issue erstellen, sondern bei Bedarf vorübergehend eine eigene FinTS-ID in den Einstellungen nutzen.",
+        "en": "Some banks such as Sparkasse, GLS/Atruvia, and Comdirect will enable our new FinTS registration ID over the next few days. Please do not open a GitHub issue and temporarily use your own FinTS ID in Settings if needed."
+      },
+      "body": {
+        "de": "Seit **v0.8.0** bringt GiroCrab eine eigene offizielle **FinTS-Produktregistrierungsnummer** der Deutschen Kreditwirtschaft mit.\n\nDa Bank-Rechenzentren (Finanz Informatik / Sparkassen, Atruvia / Volks- und Raiffeisenbanken / GLS sowie Comdirect) neue Produktregistrierungen erst mit ihren regulären Wartungsfenstern in die HBCI/FinTS-Server einspielen, kann es je nach Bank **einige Tage dauern**, bis die neue Kennung überall akzeptiert wird.\n\n- **Bitte eröffnet dazu kein GitHub-Issue** – wir haben auf die Freischaltgeschwindigkeit der einzelnen Bank-Rechenzentren keinen Einfluss.\n- **Sofort-Lösung bei Ablehnung:** Falls ihr bereits eine eigene kostenlose FinTS-Produktregistrierungs-ID besitzt, könnt ihr diese jederzeit unter **Einstellungen › Banken / FinTS** auf *„Eigene Produktregistrierung verwenden“* umstellen.",
+        "en": "Starting with **v0.8.0**, GiroCrab ships with its own official **FinTS product registration ID** from the Deutsche Kreditwirtschaft.\n\nBecause bank data centers (Sparkasse, Atruvia/GLS, and Comdirect) roll out newly issued registration IDs during scheduled maintenance windows, it can take **a few days** until every bank server accepts the built-in ID.\n\n- **Please do not open a GitHub issue** if your bank temporarily rejects the registration ID.\n- **Immediate workaround:** If you already have your own FinTS product ID, you can switch to *“Use own product registration”* in **Settings › Banks / FinTS** at any time."
+      },
+      "link": "https://github.com/GiroCrab/GiroCrab/issues/73"
+    }
+  ]
+}
