@@ -53,6 +53,11 @@ struct StreamHeaderCard: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
     @State private var showDocuments = false
+    @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
+    private var isOverviewSelection: Bool {
+        if case .allAccounts? = model.sidebarSelection { return true }
+        return false
+    }
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
     @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader: Bool = false
     @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
@@ -363,6 +368,20 @@ struct StreamHeaderCard: View {
                     }
                     .buttonStyle(.borderless)
                     .capturableSheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
+                }
+                if showStatistics, !isOverviewSelection, model.scope != .investments, !model.allAccounts.isEmpty {
+                    Button {
+                        withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { showAnalytics.toggle() }
+                    } label: {
+                        Label("Analysen", systemImage: "chart.bar.xaxis")
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            #if os(iOS)
+                            .labelStyle(.iconOnly)
+                            #endif
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(showAnalytics ? Color.accentColor : Theme.secondary)
+                    .help("Cashflow und Budgets für dieses Konto ein-/ausblenden")
                 }
                 Spacer()
                 #if os(iOS)

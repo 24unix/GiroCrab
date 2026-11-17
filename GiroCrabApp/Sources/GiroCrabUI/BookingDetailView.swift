@@ -147,6 +147,23 @@ struct ReceiptCard: View {
             }
             .appFont(.caption)
             .foregroundStyle(Theme.secondary)
+            if booking.flow == .transfer {
+                // #574: why this booking counts as an internal transfer
+                let ownIban = !booking.counterpartyIban.isEmpty && model.accountsByID.values.contains {
+                    $0.iban.replacingOccurrences(of: " ", with: "").caseInsensitiveCompare(booking.counterpartyIban.replacingOccurrences(of: " ", with: "")) == .orderedSame
+                }
+                let reason: LocalizedStringKey = if ownIban {
+                    "Umbuchung erkannt: Die Gegenkonto-IBAN gehört zu einem eigenen Konto."
+                } else if booking.categoryName == "Umbuchungen" || booking.categoryPath.hasPrefix("Umbuchungen") {
+                    "Umbuchung erkannt: Die Buchung hat die Kategorie „Umbuchungen“."
+                } else {
+                    "Umbuchung erkannt: Der Buchungstext deutet auf eine Übertragung zwischen eigenen Konten oder eine Abrechnung hin."
+                }
+                Label(reason, systemImage: "arrow.left.arrow.right")
+                    .appFont(.caption)
+                    .foregroundStyle(Theme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let ref = AmazonOrderRef.parse(purpose: booking.purpose, merchantDomain: booking.merchantDomain, bookingText: booking.bookingText, itemRefs: booking.itemRefs), !ref.itemList.isEmpty {
                 // Amazon order: one item per line instead of the ";" purpose run;
                 // an item with a stored ASIN opens its product page (#354)

@@ -145,8 +145,6 @@ struct SidebarView: View {
             // a plain row styled like the group headers (not a List section
             // header, whose small caption style can't match them)
             CategoriesHeader()
-                .padding(.top, 10)
-                .listRowInsets(Self.rowInsets)
             if !model.categoriesCollapsed, let note = model.categorySumNote {
                 Text(note)
                     .appFont(.caption)
@@ -999,7 +997,7 @@ private struct CategoriesHeader: View {
     var body: some View {
         let open = !model.categoriesCollapsed
         let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.categoriesCollapsed.toggle() } }
-        HStack(spacing: 5) {
+        HStack(spacing: DisclosureChevron.gap) {
             // folds the category tree away (rarely used, takes room)
             Button(action: toggle) {
                 DisclosureChevron(open: open)
@@ -1013,9 +1011,12 @@ private struct CategoriesHeader: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer()
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Theme.secondary)
+        .padding(.top, 10)
         .contentShape(Rectangle())
         .onTapGesture(perform: toggle)
+        .listRowInsets(SidebarView.captionInsets)
+        .selectionDisabled()
     }
 }
 

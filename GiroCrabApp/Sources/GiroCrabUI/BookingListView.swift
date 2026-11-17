@@ -281,22 +281,6 @@ struct BookingStreamView: View {
                     #endif
                     if !emptyVault {
                         StreamHeaderCard()
-                        if showStatistics && !isOverview && model.scope != .investments && !model.allAccounts.isEmpty {
-                            HStack {
-                                Button {
-                                    withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { showAnalytics.toggle() }
-                                } label: {
-                                    Label("Analysen", systemImage: "chart.bar.xaxis")
-                                        .appFont(.caption, weight: .medium)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 4)
-                                        .background(showAnalytics ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12), in: Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                .help("Cashflow und Budgets für dieses Konto ein-/ausblenden")
-                                Spacer()
-                            }
-                        }
                     }
                 }
                 #if os(iOS)
