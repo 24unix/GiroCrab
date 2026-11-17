@@ -44,9 +44,13 @@ final class KeyAdoptionTests: XCTestCase {
 
     func test_invalid_key_fails_inline_without_leaving_the_sheet_state() {
         let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        model.showSettings = true
         XCTAssertEqual(model.keyAdoption, .idle)
         model.adoptSyncKey("kein schluessel")
         guard case .failed = model.keyAdoption else { return XCTFail("expected .failed, got \(model.keyAdoption)") }
+        XCTAssertTrue(model.showSettings)
+        XCTAssertTrue(model.demoActive)
+        XCTAssertEqual(model.vaultState, .open)
     }
 
     func test_paste_in_demo_without_own_vault_opens_own_vault_and_defers_adoption() {

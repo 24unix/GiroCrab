@@ -8,6 +8,7 @@ import AppKit
 /// (im verschlüsselten SQLCipher-Tresor), Händler-Logos, Sicherheit.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @State private var showKeySheet = false
 
     var body: some View {
         @Bindable var model = model
@@ -28,7 +29,7 @@ struct SettingsView: View {
                 .tabItem { Label("Dokumente", systemImage: "doc.on.doc") }
                 .tag(SettingsTab.documents)
             #endif
-            SecuritySettings()
+            SecuritySettings(showKeySheet: $showKeySheet)
                 .settingsPane(height: 760)   // incl. "Sicherheitssperre für Bankverbindungen"
                 .disabled(!model.isUnlocked)
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
@@ -444,6 +445,7 @@ struct SecuritySettings: View {
     /// Read once per vault: the core call takes the vault mutex, so not in `body`.
     @State private var vaultPath = "–"
     @State private var confirmReset = false
+    @Binding var showKeySheet: Bool
 
     var body: some View {
         Form {
@@ -471,7 +473,7 @@ struct SecuritySettings: View {
                     .textSelection(.enabled)
             } header: { Text("Tresor").appSectionHeader() }
             if model.hasOwnVault { VaultBackupSection() }
-            ICloudSyncSection()
+            ICloudSyncSection(showKeySheet: $showKeySheet)
             BankingPolicySection()
             Section {
                 Text("GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server und kein Tracking. Nur wenn Sie den iCloud-Sync oben einschalten, liegt der verschlüsselte Tresor in Ihrem iCloud Drive. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht.")
@@ -490,6 +492,12 @@ struct SecuritySettings: View {
             } header: { Text("Zurücksetzen").appSectionHeader() }
         }
         .formStyle(.grouped)
+        // Present from the stable Form, not a Section that iOS distributes
+        // across its rows. Otherwise opening this nested sheet can tear down
+        // the Settings sheet as well (#768).
+        .capturableSheet(isPresented: $showKeySheet) {
+            KeyPasteSheet().environment(model)
+        }
         .task(id: model.isDemo) { vaultPath = model.vaultFilePath ?? "–" }
         .confirmationDialog("GiroCrab zurücksetzen?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Alles löschen", role: .destructive) { Task { await model.resetApp() } }
@@ -610,7 +618,7 @@ struct ICloudSyncSection: View {
     @State private var pendingFolder: URL?
     @State private var wrongFolderHint: String?
     @State private var keychainSync = VaultKeyManager.shared.syncViaICloudKeychain
-    @State private var showKeySheet = false
+    @Binding var showKeySheet: Bool
     @State private var keyCopied = false
 
     var body: some View {
@@ -709,9 +717,6 @@ struct ICloudSyncSection: View {
                 .appFont(.caption).foregroundStyle(.secondary)
         } header: { Text("iCloud Sync").appSectionHeader() }
         .onChange(of: sync.keyMismatch) { _, bad in if bad { showKeySheet = true } }
-        .capturableSheet(isPresented: $showKeySheet) {
-            KeyPasteSheet().environment(model)
-        }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in
             if case .success(let url) = r {
                 Task {
@@ -800,6 +805,7 @@ struct KeyPasteSheet: View {
             SecureField("Schlüssel (Base64 oder Hex)", text: $text)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
+                .sensitive()
                 .disabled(working)
             if case .failed(let message) = model.keyAdoption {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -818,6 +824,7 @@ struct KeyPasteSheet: View {
         }
         .padding(24)
         .macFrame(minWidth: 420)
+        .interactiveDismissDisabled(working)
         .onAppear { model.keyAdoption = .idle }
         .onChange(of: model.keyAdoption) { _, state in
             if state == .done { text = ""; dismiss() }
