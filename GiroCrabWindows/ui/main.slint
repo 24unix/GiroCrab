@@ -141,11 +141,11 @@ component SideLine inherits Rectangle {
     border-radius: 4px;
     border-width: all-card ? 1px : 0px;
     border-color: Theme.border;
-    background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
+    background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && !ta.pressed && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
     ta := TouchArea { clicked => { root.clicked(); } }
     if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: #0067c0; }
     HorizontalLayout {
-        padding-left: all-card ? 10px : 6px + max(r.depth - 1, 0) * 14px;
+        padding-left: all-card ? 10px : 6px + max(r.depth - 1, 0) * 22px;
         padding-right: all-card ? 10px : 8px;
         padding-top: all-card ? 6px : 0px;
         padding-bottom: all-card ? 6px : 0px;
@@ -155,7 +155,7 @@ component SideLine inherits Rectangle {
             Chevron { expanded: r.fold != 2; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
             if r.kind == 4: TouchArea { clicked => { root.fold(); } }
         }
-        if r.fold == 0 && (r.kind == 3 || r.kind == 4): Rectangle {
+        if r.fold == 0 && (r.kind == 4 || (r.kind == 3 && r.depth <= 1)): Rectangle {
             width: 16px;
         }
         if r.fold == 0 && r.kind == 3: Rectangle {

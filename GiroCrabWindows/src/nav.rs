@@ -357,7 +357,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
     let total: i64 = input
         .accounts
         .iter()
-        .filter(|a| a.in_total && a.currency == "EUR")
+        .filter(|a| a.in_total && a.currency == "EUR" && a.archived_unix.is_none())
         .map(|a| a.balance_cents)
         .sum();
     wealth.amount = hide(money(total, "EUR"));
