@@ -786,6 +786,50 @@ impl Vault {
     }
 }
 
+/// Monthly accrual share (cents) of a payment made every `interval_months` months
+/// (annual `12` → 1/12, semi-annual `6` → 1/6, quarterly `3` → 1/4 … i.e. 1/`interval_months`).
+/// For analytics/budgets only; real account balances are never touched. Rounds half away
+/// from zero. Other intervals (0, 1, 2, …) are returned unchanged (no accrual).
+pub fn monthly_accrual_share_cents(amount_cents: i64, interval_months: u8) -> i64 {
+    if !matches!(interval_months, 3 | 6 | 12) {
+        return amount_cents;
+    }
+    let n = i128::from(interval_months);
+    let a = i128::from(amount_cents);
+    let half = n / 2;
+    let q = if a >= 0 {
+        (a + half) / n
+    } else {
+        (a - half) / n
+    };
+    q as i64
+}
+
+/// Spreads category splits `(category_id, amount_cents)` of one payment into their monthly
+/// shares. The shares add up exactly to `monthly_accrual_share_cents` of the split total:
+/// the rounding remainder goes to the split with the largest absolute amount (first on ties).
+pub fn pro_rate_splits_monthly(splits: &[(i64, i64)], interval_months: u8) -> Vec<(i64, i64)> {
+    let mut out: Vec<(i64, i64)> = splits
+        .iter()
+        .map(|&(cat, cents)| (cat, monthly_accrual_share_cents(cents, interval_months)))
+        .collect();
+    if !matches!(interval_months, 3 | 6 | 12) || out.is_empty() {
+        return out;
+    }
+    let total: i64 = splits.iter().map(|s| s.1).sum();
+    let diff = monthly_accrual_share_cents(total, interval_months) - out.iter().map(|s| s.1).sum::<i64>();
+    if diff != 0 {
+        let mut idx = 0;
+        for (i, s) in splits.iter().enumerate() {
+            if s.1.abs() > splits[idx].1.abs() {
+                idx = i;
+            }
+        }
+        out[idx].1 += diff;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1141,6 +1185,47 @@ mod tests {
         let dec = month_items(&s, &v, 2026, 12);
         assert_eq!(dec.open_expense_cents, 96_299);
         assert!(dec.items.iter().all(|i| !i.booked));
+    }
+
+    #[test]
+    fn accrual_share_by_interval() {
+        assert_eq!(monthly_accrual_share_cents(-120_000, 12), -10_000);
+        assert_eq!(monthly_accrual_share_cents(-60_000, 6), -10_000);
+        assert_eq!(monthly_accrual_share_cents(-30_000, 3), -10_000);
+        assert_eq!(monthly_accrual_share_cents(10_000, 12), 833); // 833.33
+        assert_eq!(monthly_accrual_share_cents(-10_000, 12), -833);
+        assert_eq!(monthly_accrual_share_cents(600, 12), 50);
+        assert_eq!(monthly_accrual_share_cents(900, 12), 75);
+        assert_eq!(monthly_accrual_share_cents(7, 12), 1); // 0.58 rounds up
+        assert_eq!(monthly_accrual_share_cents(-7, 12), -1);
+        // not an accrual interval: unchanged
+        assert_eq!(monthly_accrual_share_cents(-1_999, 1), -1_999);
+        assert_eq!(monthly_accrual_share_cents(-1_999, 0), -1_999);
+        assert_eq!(monthly_accrual_share_cents(-1_999, 2), -1_999);
+    }
+
+    #[test]
+    fn pro_rate_splits_sum_matches_total_share() {
+        let splits = [(1, -5_000), (2, -3_000), (3, -2_000)];
+        let out = pro_rate_splits_monthly(&splits, 12);
+        assert_eq!(out.iter().map(|s| s.0).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert_eq!(
+            out.iter().map(|s| s.1).sum::<i64>(),
+            monthly_accrual_share_cents(-10_000, 12)
+        );
+        // rounding remainder lands on the largest split
+        let splits = [(1, 100), (2, 100), (3, 100)];
+        let out = pro_rate_splits_monthly(&splits, 12); // each 8.33 -> 8, total 25
+        assert_eq!(out.iter().map(|s| s.1).sum::<i64>(), 25);
+        assert_eq!(out, vec![(1, 9), (2, 8), (3, 8)]);
+        // exact quarterly
+        assert_eq!(
+            pro_rate_splits_monthly(&[(1, -3_000), (2, -600)], 3),
+            vec![(1, -750), (2, -150)]
+        );
+        // non-accrual interval and empty input
+        assert_eq!(pro_rate_splits_monthly(&splits, 1), splits.to_vec());
+        assert!(pro_rate_splits_monthly(&[], 12).is_empty());
     }
 }
 
