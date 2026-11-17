@@ -2047,102 +2047,8 @@ fn main() -> Result<(), slint::PlatformError> {
     win.run()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn transfer_url_is_parsed() {
-        let p = parse_transfer_url(
-            "girocrab://transfer?recipient=Max%20Mustermann&iban=DE89%203704%200044%200532%200130%2000&amount=12,50&purpose=Rechnung+42%20%26%20Co",
-        )
-        .unwrap();
-        assert_eq!(p.recipient, "Max Mustermann");
-        assert_eq!(p.iban, "DE89370400440532013000");
-        assert_eq!(p.amount, "12,50");
-        assert_eq!(p.purpose, "Rechnung 42 & Co");
-        assert_eq!(
-            parse_transfer_url("girocrab://transfer"),
-            Some(TransferPrefill::default())
-        );
-        assert!(parse_transfer_url("girocrab://other?iban=x").is_none());
-        assert!(parse_transfer_url("https://transfer?iban=x").is_none());
-        // Bad escapes and UTF-8 survive.
-        assert_eq!(percent_decode("100%"), "100%");
-        assert_eq!(percent_decode("%C3%A4%zz"), "ä%zz");
-    }
-
-    #[test]
-    fn transfer_url_from_cli_args() {
-        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        let p =
-            transfer_prefill_from_args(args(&["--transfer-url", "girocrab://transfer?iban=DE1"]))
-                .unwrap();
-        assert_eq!(p.iban, "DE1");
-        assert!(
-            transfer_prefill_from_args(args(&["--transfer-url=girocrab://transfer?amount=5"]))
-                .is_some()
-        );
-        assert!(transfer_prefill_from_args(args(&["girocrab://transfer?amount=5"])).is_some());
-        assert!(transfer_prefill_from_args(args(&["--demo"])).is_none());
-    }
-
-    #[test]
-    fn demo_vault_has_accounts_and_bookings() {
-        let path =
-            std::env::temp_dir().join(format!("girocrab-win-demo-{}.sqlite", std::process::id()));
-        let vault = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
-        vault.seed_demo_data().unwrap();
-        let (rows, _) = account_rows(&vault, false).unwrap();
-        assert!(!rows.is_empty());
-        let first = Target::Account(rows[0].id as i64);
-        assert!(!load_rows(&vault, first).unwrap().is_empty());
-        // All accounts (scope 0) holds at least as many rows as one account.
-        assert!(
-            load_rows(&vault, Target::AllAccounts).unwrap().len()
-                >= load_rows(&vault, first).unwrap().len()
-        );
-        // Privacy hides balances and the IBAN tail.
-        let (hidden, total) = account_rows(&vault, true).unwrap();
-        assert!(hidden
-            .iter()
-            .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000"));
-        assert_eq!(total, daily::MASK);
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn amounts_use_euro_sign_and_german_separators() {
-        assert_eq!(money(428050, "EUR"), "4.280,50 €");
-        assert_eq!(money(-3999, "EUR"), "-39,99 €");
-        assert_eq!(money(-64280, "EUR"), "-642,80 €");
-        assert_eq!(money(5, "EUR"), "0,05 €");
-        assert_eq!(money(-123456789, "EUR"), "-1.234.567,89 €");
-        assert_eq!(money(100, "CHF"), "1,00 CHF");
-    }
-
-    #[test]
-    fn dates_are_german() {
-        assert_eq!(german_date("2026-11-13"), "13.11.2026");
-        assert_eq!(german_date("2026-11-13T10:00:00"), "13.11.2026");
-        assert_eq!(german_date("13.11.2026"), "13.11.2026");
-        assert_eq!(german_date(""), "");
-    }
-
-    #[test]
-    fn monograms() {
-        assert_eq!(monogram("Musterbank Girokonto"), "MG");
-        assert_eq!(monogram("Einzeltitel-Depot"), "ED");
-        assert_eq!(monogram("Bargeld"), "BA");
-        assert_eq!(monogram(""), "•");
-    }
-
-    #[test]
-    fn iban_is_masked() {
-        assert_eq!(mask_iban("DE89 3704 0044 0532 0130 00", ""), "•••• 3000");
-        assert_eq!(mask_iban("", ""), "");
-    }
-}
+type VaultEdit = Box<dyn Fn(&Vault, &[i64]) -> Result<(), String>>;
 
 /// Multi-select and batch actions of the booking list.
 fn wire_batch_actions(win: &MainWindow, vault: Arc<Mutex<Option<Arc<Vault>>>>) {
@@ -2181,7 +2087,7 @@ fn wire_batch_actions(win: &MainWindow, vault: Arc<Mutex<Option<Arc<Vault>>>>) {
         let (weak, vault) = (win.as_weak(), vault.clone());
         Arc::new(
             move |ids: Vec<i64>,
-                  f: Box<dyn Fn(&Vault, &[i64]) -> Result<(), String>>,
+                  f: VaultEdit,
                   apply: Box<dyn Fn(&mut Row)>| {
                 let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
                     return;
@@ -2349,5 +2255,220 @@ fn wire_batch_actions(win: &MainWindow, vault: Arc<Mutex<Option<Arc<Vault>>>>) {
                 Err(e) => win.set_sync_status(format!("Export fehlgeschlagen: {e}").into()),
             }
         });
+    }
+    wire_export_statements(win, vault);
+}
+
+/// "Umsätze exportieren" card: format 0 = PDF, 1 = CSV, 2 = CAMT.053; range 0 = month, 1 = year, 2 = all.
+fn wire_export_statements(win: &MainWindow, vault: Arc<Mutex<Option<Arc<Vault>>>>) {
+    let weak = win.as_weak();
+    win.on_export_statements(move |format, range, iban, tags| {
+        let Some(win) = weak.upgrade() else { return };
+        let Some(v) = vault.lock().unwrap().clone() else {
+            return;
+        };
+        let today = portfolio::today_iso();
+        let date_from = match range {
+            0 => Some(format!("{}-01", &today[..7])),
+            1 => Some(format!("{}-01-01", &today[..4])),
+            _ => None,
+        };
+        let account = with_state(|st| match st.target {
+            Target::Account(id) => Some(id),
+            _ => None,
+        });
+        let base = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let dir = if base.join("Downloads").is_dir() {
+            base.join("Downloads")
+        } else {
+            base
+        };
+        let result: Result<(String, String), String> = match format {
+            1 => {
+                let filter = girocrab_core::BookingFilter {
+                    account_ids: account.into_iter().collect(),
+                    date_from,
+                    ..Default::default()
+                };
+                v.export_bookings_csv(filter)
+                    .map(|csv| {
+                        // The core CSV always has the IBAN and Tags columns; drop them when not wanted.
+                        (
+                            if iban && tags {
+                                csv
+                            } else {
+                                strip_csv_columns(&csv, iban, tags)
+                            },
+                            "GiroCrab-Umsaetze.csv".to_string(),
+                        )
+                    })
+                    .map_err(|e| e.to_string())
+            }
+            2 => match account {
+                None => Err("CAMT.053: bitte zuerst ein Konto auswählen.".to_string()),
+                Some(account_id) => v
+                    .camt053_export(girocrab_core::export::Camt053Request {
+                        account_id,
+                        date_from,
+                        date_to: None,
+                        booking_ids: None,
+                        version: girocrab_core::export::CamtVersion::V08,
+                        created_at: format!("{today}T00:00:00+00:00"),
+                    })
+                    .map(|xml| (xml, "GiroCrab-Kontoauszug.xml".to_string()))
+                    .map_err(|e| e.to_string()),
+            },
+            _ => Err("PDF-Export ist unter Windows noch nicht verfügbar; bitte CSV oder CAMT.053 wählen.".to_string()),
+        };
+        match result {
+            Ok((content, name)) => {
+                let path = dir.join(name);
+                match std::fs::write(&path, content) {
+                    Ok(()) => win.set_sync_status(format!("Exportiert: {}", path.display()).into()),
+                    Err(e) => win.set_sync_status(format!("Export fehlgeschlagen: {e}").into()),
+                }
+            }
+            Err(e) => win.set_sync_status(format!("Export fehlgeschlagen: {e}").into()),
+        }
+    });
+}
+
+/// Removes the IBAN and/or Tags column from the core's bookings CSV (`;`-separated, CRLF).
+/// Fields are quoted only when needed, so a header-index based cut is applied row by row
+/// through a small quote-aware splitter.
+fn strip_csv_columns(csv: &str, keep_iban: bool, keep_tags: bool) -> String {
+    fn split(line: &str) -> Vec<String> {
+        let (mut out, mut cur, mut q) = (Vec::new(), String::new(), false);
+        let mut it = line.chars().peekable();
+        while let Some(c) = it.next() {
+            match c {
+                '"' if q && it.peek() == Some(&'"') => {
+                    cur.push_str("\"\"");
+                    it.next();
+                }
+                '"' => {
+                    q = !q;
+                    cur.push(c);
+                }
+                ';' if !q => out.push(std::mem::take(&mut cur)),
+                _ => cur.push(c),
+            }
+        }
+        out.push(cur);
+        out
+    }
+    let body = csv.trim_start_matches('\u{FEFF}');
+    let mut out = String::from("\u{FEFF}");
+    for line in body.split("\r\n").filter(|l| !l.is_empty()) {
+        let cols = split(line);
+        let kept: Vec<&str> = cols
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !(*i == 3 && !keep_iban) && !(*i == 8 && !keep_tags))
+            .map(|(_, c)| c.as_str())
+            .collect();
+        out.push_str(&kept.join(";"));
+        out.push_str("\r\n");
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transfer_url_is_parsed() {
+        let p = parse_transfer_url(
+            "girocrab://transfer?recipient=Max%20Mustermann&iban=DE89%203704%200044%200532%200130%2000&amount=12,50&purpose=Rechnung+42%20%26%20Co",
+        )
+        .unwrap();
+        assert_eq!(p.recipient, "Max Mustermann");
+        assert_eq!(p.iban, "DE89370400440532013000");
+        assert_eq!(p.amount, "12,50");
+        assert_eq!(p.purpose, "Rechnung 42 & Co");
+        assert_eq!(
+            parse_transfer_url("girocrab://transfer"),
+            Some(TransferPrefill::default())
+        );
+        assert!(parse_transfer_url("girocrab://other?iban=x").is_none());
+        assert!(parse_transfer_url("https://transfer?iban=x").is_none());
+        // Bad escapes and UTF-8 survive.
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%C3%A4%zz"), "ä%zz");
+    }
+
+    #[test]
+    fn transfer_url_from_cli_args() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let p =
+            transfer_prefill_from_args(args(&["--transfer-url", "girocrab://transfer?iban=DE1"]))
+                .unwrap();
+        assert_eq!(p.iban, "DE1");
+        assert!(
+            transfer_prefill_from_args(args(&["--transfer-url=girocrab://transfer?amount=5"]))
+                .is_some()
+        );
+        assert!(transfer_prefill_from_args(args(&["girocrab://transfer?amount=5"])).is_some());
+        assert!(transfer_prefill_from_args(args(&["--demo"])).is_none());
+    }
+
+    #[test]
+    fn demo_vault_has_accounts_and_bookings() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-win-demo-{}.sqlite", std::process::id()));
+        let vault = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
+        vault.seed_demo_data().unwrap();
+        let (rows, _) = account_rows(&vault, false).unwrap();
+        assert!(!rows.is_empty());
+        let first = Target::Account(rows[0].id as i64);
+        assert!(!load_rows(&vault, first).unwrap().is_empty());
+        // All accounts (scope 0) holds at least as many rows as one account.
+        assert!(
+            load_rows(&vault, Target::AllAccounts).unwrap().len()
+                >= load_rows(&vault, first).unwrap().len()
+        );
+        // Privacy hides balances and the IBAN tail.
+        let (hidden, total) = account_rows(&vault, true).unwrap();
+        assert!(hidden
+            .iter()
+            .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000"));
+        assert_eq!(total, daily::MASK);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn amounts_use_euro_sign_and_german_separators() {
+        assert_eq!(money(428050, "EUR"), "4.280,50 €");
+        assert_eq!(money(-3999, "EUR"), "-39,99 €");
+        assert_eq!(money(-64280, "EUR"), "-642,80 €");
+        assert_eq!(money(5, "EUR"), "0,05 €");
+        assert_eq!(money(-123456789, "EUR"), "-1.234.567,89 €");
+        assert_eq!(money(100, "CHF"), "1,00 CHF");
+    }
+
+    #[test]
+    fn dates_are_german() {
+        assert_eq!(german_date("2026-11-13"), "13.11.2026");
+        assert_eq!(german_date("2026-11-13T10:00:00"), "13.11.2026");
+        assert_eq!(german_date("13.11.2026"), "13.11.2026");
+        assert_eq!(german_date(""), "");
+    }
+
+    #[test]
+    fn monograms() {
+        assert_eq!(monogram("Musterbank Girokonto"), "MG");
+        assert_eq!(monogram("Einzeltitel-Depot"), "ED");
+        assert_eq!(monogram("Bargeld"), "BA");
+        assert_eq!(monogram(""), "•");
+    }
+
+    #[test]
+    fn iban_is_masked() {
+        assert_eq!(mask_iban("DE89 3704 0044 0532 0130 00", ""), "•••• 3000");
+        assert_eq!(mask_iban("", ""), "");
     }
 }
