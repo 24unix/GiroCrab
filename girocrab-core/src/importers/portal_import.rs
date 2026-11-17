@@ -1062,6 +1062,133 @@ fn merchant_key(text: &str) -> Option<String> {
     (word.chars().count() >= 3).then_some(word)
 }
 
+/// The Amex booking reference in an imported purpose ("… EREF: AT2625100450…").
+fn eref_of(purpose: &str) -> Option<&str> {
+    let rest = &purpose[purpose.find("EREF: ")? + "EREF: ".len()..];
+    let r = rest.split(|c: char| c.is_whitespace() || c == ',').next()?;
+    (r.len() >= 10 && r.chars().all(|c| c.is_ascii_alphanumeric())).then_some(r)
+}
+
+/// Amex (#871): the database import brings a split booking over as its parts, each a
+/// booking of its own carrying the Amex reference (`EREF: <ref>`). The portal then
+/// delivers the whole booking (`id:<ref>---…`), which matches no single part. When at
+/// least two imported parts carry the reference of exactly one portal booking and add
+/// up to it exactly, the portal booking becomes a split booking (`transaction_splits`:
+/// the parts' categories, amounts and notes; tags carried over; checked when all parts
+/// were) and the parts are deleted (tombstones, iCloud-safe). Its own category goes
+/// unless set by hand: a split booking is shown by the categories of its parts.
+/// Parts with splits or documents and parts that don't add up stay as they are.
+/// Idempotent; returns the number of merged bookings.
+pub(crate) fn merge_imported_split_parts(
+    db: &rusqlite::Connection,
+    account_id: i64,
+) -> Result<u32, CoreError> {
+    // (id, amount, category, note, checked) of imported parts, by reference
+    type Part = (i64, i64, Option<i64>, String, bool);
+    let mut by_ref: std::collections::BTreeMap<String, Vec<Part>> = Default::default();
+    {
+        let mut q = db.prepare(
+            "SELECT t.id, t.purpose, t.amount_cents, t.category_id, t.note, t.checked FROM transactions t
+              WHERE t.account_id = ?1 AND t.deleted_ms IS NULL AND t.external_id LIKE 'mm-%'
+                AND t.purpose LIKE '%EREF: %'
+                AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
+                AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = t.id)
+              ORDER BY t.id",
+        )?;
+        let rows = q.query_map([account_id], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, bool>(5)?,
+            ))
+        })?;
+        for row in rows {
+            let (id, purpose, cents, cat, note, checked) = row?;
+            if let Some(r) = eref_of(&purpose) {
+                by_ref
+                    .entry(r.to_string())
+                    .or_default()
+                    .push((id, cents, cat, note, checked));
+            }
+        }
+    }
+    let now = crate::dates::now_ms();
+    let mut merged = 0u32;
+    for (reference, parts) in by_ref {
+        if parts.len() < 2 || parts.iter().any(|p| p.1 == 0) {
+            continue;
+        }
+        // the portal booking with this reference (exactly one, not split yet)
+        let bank: Vec<(i64, i64, bool, String)> = {
+            let mut q = db.prepare(
+                "SELECT t.id, t.amount_cents, t.checked, t.category_source FROM transactions t
+                  WHERE t.account_id = ?1 AND t.deleted_ms IS NULL AND substr(t.external_id, 1, ?3) = ?2
+                    AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)",
+            )?;
+            let prefix = format!("id:{reference}---");
+            let rows = q.query_map(params![account_id, prefix, prefix.len() as i64], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let [(bank_id, bank_cents, bank_checked, ref source)] = bank[..] else {
+            continue;
+        };
+        if parts.iter().map(|p| p.1).sum::<i64>() != bank_cents {
+            continue;
+        }
+        for (_, cents, cat, note, _) in &parts {
+            db.execute(
+                "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents, note) VALUES (?1, ?2, ?3, ?4)",
+                params![bank_id, cat, cents, note.trim()],
+            )?;
+        }
+        db.execute(
+            "UPDATE transactions SET splits_ms = ?2 WHERE id = ?1",
+            params![bank_id, now],
+        )?;
+        if source != "manual" {
+            db.execute(
+                "UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL, category_ms = ?2
+                  WHERE id = ?1 AND category_id IS NOT NULL",
+                params![bank_id, now],
+            )?;
+        }
+        if !bank_checked && parts.iter().all(|p| p.4) {
+            db.execute(
+                "UPDATE transactions SET checked = 1, checked_ms = ?2 WHERE id = ?1",
+                params![bank_id, now],
+            )?;
+        }
+        let ids = parts
+            .iter()
+            .map(|p| p.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let tagged = db.execute(
+            &format!(
+                "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
+                 SELECT ?1, tag_id FROM transaction_tags WHERE transaction_id IN ({ids})"
+            ),
+            [bank_id],
+        )?;
+        if tagged > 0 {
+            db.execute(
+                "UPDATE transactions SET tags_ms = ?2 WHERE id = ?1",
+                params![bank_id, now],
+            )?;
+        }
+        for (id, ..) in &parts {
+            crate::sync_merge::soft_delete_booking(db, *id)?;
+        }
+        merged += 1;
+    }
+    Ok(merged)
+}
+
 /// Moves category, note and check mark from `from` to `to` where `to` has none,
 /// then deletes `from` (tombstone, so other devices drop it too).
 fn hand_over(db: &rusqlite::Connection, from: i64, to: i64) -> Result<(), CoreError> {
@@ -1143,9 +1270,19 @@ impl Vault {
             let db = self.db()?;
             let tx = db.unchecked_transaction()?;
             let n = resolve_holds(&tx, account, kind == ConnectorKind::AmericanExpress)?;
+            let merged = if kind == ConnectorKind::AmericanExpress {
+                merge_imported_split_parts(&tx, account)?
+            } else {
+                0
+            };
             tx.commit()?;
             if n > 0 {
                 crate::depot_debug::log(&format!("portal import: settled {n} pending charge(s)"));
+            }
+            if merged > 0 {
+                crate::depot_debug::log(&format!(
+                    "portal import: merged {merged} imported split booking(s)"
+                ));
             }
         }
         // Fold the import into the main file; best effort, it is committed.
@@ -1798,6 +1935,108 @@ mod hold_tests {
 
     fn sql(v: &Vault, sql: &str) {
         v.db().unwrap().execute_batch(sql).unwrap();
+    }
+
+    /// Two parts of an imported split booking (#871), as the database import stores them.
+    fn imported_parts(v: &Vault, reference: &str, a: i64, b: i64, checked: bool) {
+        sql(
+            v,
+            &format!(
+                "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                        currency, counterparty, counterparty_iban, purpose, booking_text, note, checked, category_id)
+                 SELECT a.id, 'mm-' || x.k, '2026-01-05', '2026-01-05', x.c, 'EUR', 'SHOP', '',
+                        'SHOP, CITY EREF: {reference}', '', x.n, {checked},
+                        (SELECT min(id) FROM categories WHERE deleted_ms IS NULL)
+                   FROM accounts a, (SELECT 'aaaa' k, {a} c, 'Teil eins' n UNION ALL SELECT 'bbbb', {b}, '') x",
+                checked = i64::from(checked)
+            ),
+        );
+    }
+
+    fn split_lines(v: &Vault, external_id: &str) -> Vec<(i64, String)> {
+        let db = v.db().unwrap();
+        let mut q = db
+            .prepare(
+                "SELECT s.amount_cents, s.note FROM transaction_splits s JOIN transactions t ON t.id = s.transaction_id
+                  WHERE t.external_id = ?1 ORDER BY s.id",
+            )
+            .unwrap();
+        q.query_map([external_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn imported_split_parts_become_a_split_booking() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        sync(&v, conn, &body(std::slice::from_ref(&old), None)).unwrap();
+        imported_parts(&v, "AT260000000000000000001", -4996, -3999, true);
+        let whole = posted(
+            "AT260000000000000000001---0005---20260105",
+            "2026-01-05",
+            "89,95",
+            "SHOP   CITY",
+        );
+        let b = body(&[old, whole], None);
+        sync(&v, conn, &b).unwrap();
+        let bank = "id:AT260000000000000000001---0005---20260105";
+        assert_eq!(
+            ids(&v),
+            ["id:R1", bank],
+            "the parts are gone, the booking is there once"
+        );
+        assert_eq!(
+            split_lines(&v, bank),
+            [(-4996, "Teil eins".to_string()), (-3999, String::new())]
+        );
+        let (cat, checked): (Option<i64>, bool) = v
+            .db()
+            .unwrap()
+            .query_row(
+                "SELECT category_id, checked FROM transactions WHERE external_id = ?1",
+                [bank],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (cat, checked),
+            (None, true),
+            "shown by its parts, checked like them"
+        );
+        // idempotent: a further sync changes nothing
+        sync(&v, conn, &b).unwrap();
+        assert_eq!(split_lines(&v, bank).len(), 2);
+    }
+
+    #[test]
+    fn imported_parts_that_do_not_add_up_stay() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        sync(&v, conn, &body(std::slice::from_ref(&old), None)).unwrap();
+        imported_parts(&v, "AT260000000000000000001", -5000, -3999, false);
+        let whole = posted(
+            "AT260000000000000000001---0005---20260105",
+            "2026-01-05",
+            "89,95",
+            "SHOP   CITY",
+        );
+        sync(&v, conn, &body(&[old, whole], None)).unwrap();
+        assert_eq!(ids(&v).len(), 4, "not certain: nothing merged");
+        assert!(split_lines(&v, "id:AT260000000000000000001---0005---20260105").is_empty());
+    }
+
+    #[test]
+    fn eref_references() {
+        assert_eq!(
+            eref_of("HM.COM E-COMMERCE, HAMBURG EREF: AT262510045000010029820"),
+            Some("AT262510045000010029820")
+        );
+        assert_eq!(eref_of("X EREF: AT2600000001, MORE"), Some("AT2600000001"));
+        assert_eq!(eref_of("EREF: NOTPROVIDED"), Some("NOTPROVIDED"));
+        assert_eq!(eref_of("EREF: 123"), None);
+        assert_eq!(eref_of("no reference"), None);
     }
 
     #[test]
