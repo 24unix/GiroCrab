@@ -177,6 +177,62 @@ pub(crate) fn attach_tags(
     Ok(())
 }
 
+/// A split booking has no category of its own (#654): its row names the categories of its
+/// parts instead of reading "Ohne Kategorie". One query per 500 rows, only for bookings
+/// without a category.
+pub(crate) fn attach_split_categories(
+    db: &rusqlite::Connection,
+    bookings: &mut [Booking],
+) -> Result<(), CoreError> {
+    for chunk in bookings.chunks_mut(500) {
+        let ids: Vec<String> = chunk
+            .iter()
+            .filter(|b| b.category_id.is_none())
+            .map(|b| b.id.to_string())
+            .collect();
+        if ids.is_empty() {
+            continue;
+        }
+        let mut st = db.prepare(&format!(
+            "SELECT sp.transaction_id, c.name, c.color_hex, c.sf_symbol
+               FROM transaction_splits sp JOIN categories c ON c.id = sp.category_id
+              WHERE c.deleted_ms IS NULL AND sp.transaction_id IN ({}) ORDER BY sp.id",
+            ids.join(",")
+        ))?;
+        let mut names: HashMap<i64, (Vec<String>, String, String)> = HashMap::new();
+        let rows = st.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+            ))
+        })?;
+        for row in rows {
+            let (tx, name, color, symbol) = row?;
+            let e = names.entry(tx).or_default();
+            if !e.0.contains(&name) {
+                e.0.push(name);
+            }
+            if e.1.is_empty() {
+                e.1 = color;
+            }
+            if e.2.is_empty() {
+                e.2 = symbol;
+            }
+        }
+        for b in chunk.iter_mut().filter(|b| b.category_id.is_none()) {
+            if let Some((list, color, symbol)) = names.remove(&b.id) {
+                b.category_name = list.join(", ");
+                b.category_path = b.category_name.clone();
+                b.category_color_hex = color;
+                b.category_symbol = symbol;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Everything a raw booking row needs to read like the booking list: category
 /// names, merchant, flow (salary, own transfers, loans), domain overrides.
 /// Only depends on the vault's data, so `ListCache` keeps it between calls.
@@ -671,6 +727,7 @@ impl Vault {
             })
             .collect::<Result<Vec<_>, CoreError>>()?;
         attach_tags(db, &mut out)?;
+        attach_split_categories(db, &mut out)?;
         Ok(out)
     }
 }
@@ -1092,6 +1149,7 @@ impl Vault {
         })?;
         // only the returned page carries its tags
         attach_tags(db, &mut txs)?;
+        attach_split_categories(db, &mut txs)?;
         Ok(BookingPage {
             transactions: txs,
             total_count: total as u32,
@@ -1216,6 +1274,7 @@ impl Vault {
         let db = self.db()?;
         let mut bookings = self.collect_bookings(&db, &filter)?;
         attach_tags(&db, &mut bookings)?;
+        attach_split_categories(&db, &mut bookings)?;
         for b in &bookings {
             let row = [
                 csv_field(&b.booking_date, false),
