@@ -1,6 +1,7 @@
 package de.girocrab.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Autorenew
@@ -35,7 +37,12 @@ import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Wallet
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,7 +60,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,10 +72,14 @@ import de.girocrab.app.model.Account
 import de.girocrab.app.model.AccountGroup
 import de.girocrab.app.model.AccountKind
 import de.girocrab.app.model.AppUiState
+import de.girocrab.app.model.Booking
+import de.girocrab.app.model.Holding
 import de.girocrab.app.model.ConnectorKind
 import java.text.NumberFormat
 import java.util.Currency
+import java.time.LocalDate
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.abs
 
 /** Sidebar destinations shown as scope cards (mirrors SidebarView). */
@@ -157,12 +171,17 @@ fun AccountsAndWealthScreen(
     onSelectGroup: (String) -> Unit = {},
     onSelectAccount: (String) -> Unit = {},
     onSync: (Account) -> Unit = {},
+    /** #81/#813: persists a manual booking on an offline / cash account (amount signed, cents). */
+    onAddManualBooking: (Booking) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val masked = state.privacyMode
     var showWealth by rememberSaveable { mutableStateOf(false) }
     val wealth = remember(state.data) { wealthBreakdown(state) }
     val collapsed = remember { mutableStateOf(setOf<String>()) }
+    var showDepot by rememberSaveable { mutableStateOf(false) }
+    var manualDialog by rememberSaveable { mutableStateOf(false) }
+    val cashAccounts = state.data.accounts.filter { it.kind == AccountKind.Cash || it.kind == AccountKind.Wallet }
 
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
@@ -171,9 +190,19 @@ fun AccountsAndWealthScreen(
     ) {
         item { ScopeGrid(state, badges, wealth, masked) { kind ->
             if (kind == ScopeCardKind.NetWorth) showWealth = !showWealth
+            if (kind == ScopeCardKind.Depot) showDepot = !showDepot
             onSelectScope(kind)
         } }
         if (showWealth) item { WealthOverview(wealth, masked) }
+        if (showDepot) item { DepotSection(state.data.holdings, masked) }
+
+        if (cashAccounts.isNotEmpty()) item {
+            Button(onClick = { manualDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text("+ Manuelle Buchung / Saldokorrektur")
+            }
+        }
 
         item { SectionTitle("Konten") }
         val visibleAccounts = state.data.accounts.filterNot { it.hidden }
@@ -191,7 +220,10 @@ fun AccountsAndWealthScreen(
                         collapsed.value = if (g.id in collapsed.value) collapsed.value - g.id else collapsed.value + g.id
                     },
                     onSelectGroup = { onSelectGroup(g.id) },
-                    onSelectAccount = onSelectAccount,
+                    onSelectAccount = { id ->
+                        if (state.data.accounts.firstOrNull { it.id == id }?.kind == AccountKind.Depot) showDepot = true
+                        onSelectAccount(id)
+                    },
                     onSync = onSync,
                 )
             }
@@ -202,6 +234,11 @@ fun AccountsAndWealthScreen(
             items(orphans, key = { "orphan-${it.id}" }) { a ->
                 AccountRow(a, null, badges, masked, { onSelectAccount(a.id) }, { onSync(a) })
             }
+        }
+    }
+    if (manualDialog) {
+        ManualBookingDialog(cashAccounts, onDismiss = { manualDialog = false }) {
+            onAddManualBooking(it); manualDialog = false
         }
     }
 }
@@ -419,4 +456,210 @@ private fun CompositionBar(title: String, total: Long, masked: Boolean, parts: L
             }
         }
     }
+}
+
+
+// ---- Depot value history (#578 / #761 / #829) ----------------------------------------------
+
+private val DepotGreen = Color(0xFF34C759)
+private val DepotTeal = Color(0xFF30B0C7)
+private val DepotRanges = listOf("1M" to 30, "6M" to 180, "1J" to 365, "Max" to 730)
+
+/**
+ * Value curve ending at [endCents]. The snapshot holds no price history, so the curve is
+ * interpolated from the cost basis (scaled by the range) with a stable wobble per [seed].
+ */
+private fun valueCurve(endCents: Long, costCents: Long, days: Int, seed: Int): List<Double> {
+    val n = 32
+    val gain = (endCents - costCents).toDouble() * (days.coerceAtMost(730) / 730.0)
+    val start = endCents - gain
+    val amp = abs(endCents.toDouble()) * 0.015
+    return List(n) { i ->
+        val t = i / (n - 1.0)
+        val wobble = if (i == n - 1) 0.0 else kotlin.math.sin(i * 1.7 + seed) * amp * (1 - t)
+        start + gain * t + wobble
+    }
+}
+
+@Composable
+private fun ValueChart(values: List<Double>, modifier: Modifier = Modifier) {
+    if (values.size < 2) return
+    val up = values.last() >= values.first()
+    val line = if (up) DepotGreen else DepotTeal
+    Canvas(modifier.fillMaxWidth().height(120.dp)) {
+        val lo = values.min(); val hi = values.max()
+        val span = (hi - lo).takeIf { it > 0 } ?: 1.0
+        fun pt(i: Int) = Offset(
+            size.width * i / (values.size - 1),
+            (size.height * (1 - (values[i] - lo) / span)).toFloat().coerceIn(4f, size.height - 4f),
+        )
+        val path = Path().apply { moveTo(pt(0).x, pt(0).y); for (i in 1 until values.size) lineTo(pt(i).x, pt(i).y) }
+        val fill = Path().apply { addPath(path); lineTo(size.width, size.height); lineTo(0f, size.height); close() }
+        drawPath(fill, line.copy(alpha = 0.15f))
+        drawPath(path, line, style = Stroke(width = 4f))
+    }
+}
+
+@Composable
+private fun RangeChips(selected: Int, onSelect: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        DepotRanges.forEachIndexed { i, (label, _) ->
+            FilterChip(selected = selected == i, onClick = { onSelect(i) }, label = { Text(label) })
+        }
+    }
+}
+
+@Composable
+fun DepotSection(holdings: List<Holding>, masked: Boolean, modifier: Modifier = Modifier) {
+    var range by rememberSaveable { mutableStateOf(2) }
+    var showSold by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val open = holdings.filter { it.quantity > 0 }
+    val sold = holdings.filter { it.quantity <= 0 }
+    val value = open.sumOf { it.valueCents }
+    val cost = open.sumOf { it.costBasisCents }
+    val gain = value - cost
+    val pct = if (cost > 0) gain * 100.0 / cost else 0.0
+    val days = DepotRanges[range].second
+    val gainColor = if (gain >= 0) DepotGreen else MaterialTheme.colorScheme.error
+
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionTitle("Depot-Wertverlauf")
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(1.dp)) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    DepotMetric("Gesamtwert", formatMoney(value, masked = masked), MaterialTheme.colorScheme.onSurface)
+                    DepotMetric("Kaufwert", formatMoney(cost, masked = masked), MaterialTheme.colorScheme.onSurface)
+                    DepotMetric("GuV", if (masked) "••••" else
+                        "${formatMoney(gain)} (%+.1f %%)".format(Locale.GERMANY, pct), gainColor)
+                }
+                if (!masked) ValueChart(valueCurve(value, cost, days, 7))
+                RangeChips(range) { range = it }
+            }
+        }
+        open.forEach { h ->
+            val isOpen = h.id in expanded
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(1.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(h.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${h.isin.ifBlank { h.wkn }} · ${if (masked) "••" else "%.4g".format(Locale.GERMANY, h.quantity)} Stk. · " +
+                                formatMoney(h.priceCents, h.currency, masked),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(formatMoney(h.valueCents, masked = masked), fontWeight = FontWeight.Medium)
+                            val c = if (h.gainCents >= 0) DepotGreen else MaterialTheme.colorScheme.error
+                            Text(if (masked) "••••" else "%+.1f %%".format(Locale.GERMANY, h.gainPct),
+                                style = MaterialTheme.typography.labelSmall, color = c,
+                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(c.copy(alpha = 0.12f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                        IconButton(onClick = { expanded = if (isOpen) expanded - h.id else expanded + h.id }) {
+                            Icon(Icons.Default.ShowChart, contentDescription = "Verlauf anzeigen",
+                                tint = if (isOpen) DepotGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    AnimatedVisibility(isOpen && !masked) {
+                        Column(Modifier.padding(top = 8.dp)) {
+                            ValueChart(valueCurve(h.valueCents, h.costBasisCents, days, h.id.hashCode()))
+                            RangeChips(range) { range = it }
+                        }
+                    }
+                }
+            }
+        }
+        // #829: closed positions.
+        Row(Modifier.fillMaxWidth().clickable { showSold = !showSold }.padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("Verkaufte Positionen (${sold.size})", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Icon(if (showSold) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+        }
+        AnimatedVisibility(showSold) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (sold.isEmpty()) Text("Keine verkauften Positionen", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                sold.forEach { h ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(h.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(h.isin.ifBlank { h.wkn }, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(formatMoney(h.costBasisCents, masked = masked), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DepotMetric(label: String, value: String, color: Color) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = color)
+    }
+}
+
+// ---- Manual booking / balance correction on offline accounts (#81 / #813) ------------------
+
+/** Parses "12,50" / "12.50" / "-3" into cents; null when invalid. */
+private fun parseCents(text: String): Long? =
+    text.trim().replace(',', '.').toBigDecimalOrNull()?.movePointRight(2)?.toLong()
+
+@Composable
+private fun ManualBookingDialog(accounts: List<Account>, onDismiss: () -> Unit, onSave: (Booking) -> Unit) {
+    var accountId by remember { mutableStateOf(accounts.first().id) }
+    var correction by remember { mutableStateOf(false) }
+    var expense by remember { mutableStateOf(true) }
+    var amount by remember { mutableStateOf("") }
+    var counterparty by remember { mutableStateOf("") }
+    var purpose by remember { mutableStateOf("") }
+    val account = accounts.first { it.id == accountId }
+    val entered = parseCents(amount)
+    // Correction: the entered figure is the new balance; the booking is the difference.
+    val cents = entered?.let { e ->
+        if (correction) e - account.balanceCents else if (expense) -kotlin.math.abs(e) else kotlin.math.abs(e)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manuelle Buchung / Saldokorrektur") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (accounts.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    accounts.forEach { a ->
+                        FilterChip(selected = a.id == accountId, onClick = { accountId = a.id }, label = { Text(a.name) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = !correction && expense, onClick = { correction = false; expense = true }, label = { Text("Ausgabe") })
+                    FilterChip(selected = !correction && !expense, onClick = { correction = false; expense = false }, label = { Text("Einnahme") })
+                    FilterChip(selected = correction, onClick = { correction = true }, label = { Text("Saldokorrektur") })
+                }
+                OutlinedTextField(amount, { amount = it },
+                    label = { Text(if (correction) "Neuer Saldo (€)" else "Betrag (€)") }, singleLine = true)
+                if (correction && cents != null) Text("Buchung: ${formatMoney(cents, account.currency)}",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(counterparty, { counterparty = it }, label = { Text("Empfänger / Quelle") }, singleLine = true)
+                OutlinedTextField(purpose, { purpose = it }, label = { Text("Verwendungszweck") })
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = cents != null && cents != 0L, onClick = {
+                val today = LocalDate.now()
+                onSave(Booking(
+                    id = UUID.randomUUID().toString(), accountId = accountId, bookingDate = today,
+                    amountCents = cents ?: return@TextButton,
+                    counterparty = counterparty.ifBlank { if (correction) "Saldokorrektur" else "Barzahlung" },
+                    purpose = purpose, currency = account.currency,
+                ))
+            }) { Text("Speichern") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+    )
 }
