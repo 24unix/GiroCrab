@@ -9,8 +9,8 @@ use crate::iban::{normalize_iban, validate_iban};
 pub const PAIN_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
 pub const PAIN_09_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09";
 
-/// pain.001 schema version. `.09` is what most banks expect for SEPA Instant
-/// (HKIPZ); `.03` is the long-standing format for regular transfers (HKCCS).
+/// pain.001 schema version. `.09` is the current format and preferred whenever
+/// a bank offers it; `.03` only for banks that offer nothing else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PainVersion {
     V03,

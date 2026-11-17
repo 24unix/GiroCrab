@@ -2632,6 +2632,13 @@ impl FinTsConnector {
         })
     }
 
+    /// A clear rejection: the bank did not execute the order, so the session
+    /// reports the bank's error instead of "status unclear".
+    fn rejected(&mut self, reply: &BankReply) -> CoreResult<()> {
+        self.order_submitted = false;
+        reply.check_transfer()
+    }
+
     /// Classifies the reply to the order message. `Some(phase)` ends the
     /// transfer (declined / unknown); `None` = accepted, go on. Rejections
     /// are returned as errors.
@@ -2640,7 +2647,7 @@ impl FinTsConnector {
         match classify_submit_reply(reply, instant, self.order_seg_no) {
             OrderReply::Accepted => Ok(None),
             OrderReply::Rejected => {
-                reply.check_transfer()?;
+                self.rejected(reply)?;
                 unreachable!("Rejected implies errors")
             }
             OrderReply::InstantDeclined(reason) => {
@@ -2698,7 +2705,7 @@ impl FinTsConnector {
                 self.result = TransferResult::Executed { instant };
             }
             OrderReply::Rejected => {
-                reply.check_transfer()?;
+                self.rejected(&reply)?;
                 unreachable!("Rejected implies errors")
             }
             OrderReply::InstantDeclined(reason) => {
@@ -2784,8 +2791,10 @@ impl FinTsConnector {
         if code == "HKIPZ" {
             return sepa::PainVersion::pick(formats.map(Vec::as_slice).unwrap_or(&[]));
         }
+        // .09 whenever offered: banks that still list .03 may refuse it
+        // (comdirect: "Sepa-Format nicht mehr gültig").
         let has = |suffix: &str| formats.is_some_and(|l| l.iter().any(|f| f.ends_with(suffix)));
-        Some(if !has(".001.03") && has(".001.09") {
+        Some(if has(".001.09") {
             sepa::PainVersion::V09
         } else {
             sepa::PainVersion::V03
@@ -4900,6 +4909,38 @@ mod tests {
         };
         assert_ne!(account_label(&mk("01")), account_label(&mk("02")));
         assert_eq!(account_label(&mk("")), "0098765400");
+    }
+
+    #[test]
+    fn transfers_use_pain_09_whenever_the_bank_offers_it() {
+        // comdirect offers both and rejects .03 ("Sepa-Format nicht mehr gültig").
+        let mut c = FinTsConnector::new("20041111");
+        let both = vec![
+            sepa::PAIN_DESCRIPTOR.to_string(),
+            sepa::PAIN_09_DESCRIPTOR.to_string(),
+        ];
+        c.st.pain_formats.insert("HKCCS".into(), both);
+        assert_eq!(c.pain_version("HKCCS"), Some(sepa::PainVersion::V09));
+        c.st.pain_formats
+            .insert("HKCCS".into(), vec![sepa::PAIN_DESCRIPTOR.to_string()]);
+        assert_eq!(c.pain_version("HKCCS"), Some(sepa::PainVersion::V03));
+        c.st.pain_formats.remove("HKCCS");
+        assert_eq!(c.pain_version("HKCCS"), Some(sepa::PainVersion::V03));
+    }
+
+    #[test]
+    fn a_clearly_rejected_order_is_not_left_as_submitted() {
+        // comdirect's reply to HKVPP + HKCCS + HKTAN with an outdated format:
+        // the order was refused before any approval, so the session must
+        // report the error, not "status unclear".
+        let mut c = FinTsConnector::new("20041111");
+        c.order_submitted = true;
+        let r = reply(
+            b"HIRMG:2:2+9050::Die Nachricht enthaelt Fehler.'HIRMS:3:2:3+9210::VOP-Auftrag ungueltig.'HIRMS:4:2:4+9210::Sepa-Format nicht mehr g\xfcltig.'",
+        );
+        let err = c.reject_or_stop(&r).unwrap_err();
+        assert!(matches!(err, CoreError::Bank { .. }));
+        assert!(!c.order_submitted());
     }
 }
 
