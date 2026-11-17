@@ -159,19 +159,17 @@ pub fn payloads(width: usize, height: usize, pixels: &[u8]) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// A QR code of `payload` as a grey image: `scale` pixels per module, 4 modules quiet zone.
+    /// A QR code of `payload` as a grey image: `scale` pixels per module (quiet zone included).
     fn qr_image(payload: &str, scale: usize) -> (usize, Vec<u8>) {
-        use qrcode::{Color, EcLevel, QrCode};
-        let code = QrCode::with_error_correction_level(payload.as_bytes(), EcLevel::M).unwrap();
-        let modules = code.width();
-        let colors = code.to_colors();
-        let side = (modules + 8) * scale;
+        let code = girocrab_core::payment_input::girocode_matrix(payload.to_owned()).unwrap();
+        let modules = code.width as usize;
+        let side = modules * scale;
         let mut px = vec![255u8; side * side];
-        for (i, c) in colors.iter().enumerate() {
-            if *c != Color::Dark {
+        for (i, &dark) in code.modules.iter().enumerate() {
+            if !dark {
                 continue;
             }
-            let (mx, my) = (i % modules + 4, i / modules + 4);
+            let (mx, my) = (i % modules, i / modules);
             for y in my * scale..(my + 1) * scale {
                 px[y * side + mx * scale..y * side + (mx + 1) * scale].fill(0);
             }

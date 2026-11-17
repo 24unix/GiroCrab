@@ -162,17 +162,7 @@ pub fn validate_creditor_id(id: &str) -> bool {
         return false;
     }
     // national part + country + check digits, letters A=10 … Z=35
-    let rearranged: String = id[7..].chars().chain(id[..4].chars()).collect();
-    let mut rem: u32 = 0;
-    for c in rearranged.chars() {
-        let v = c.to_digit(36).unwrap_or(0);
-        rem = if v >= 10 {
-            (rem * 100 + v) % 97
-        } else {
-            (rem * 10 + v) % 97
-        };
-    }
-    rem == 1
+    super::sepa::mod97(id[7..].chars().chain(id[..4].chars())) == 1
 }
 
 /// Sum of all collections in cents; `None` on overflow.

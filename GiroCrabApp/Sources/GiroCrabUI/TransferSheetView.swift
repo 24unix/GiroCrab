@@ -60,7 +60,9 @@ struct TransferSheetView: View {
     }
     /// The account can send from GiroCrab (FinTS / bunq); otherwise the form
     /// ends with a GiroCode for the bank's app.
-    private var canSend: Bool { model.canSendTransfer(from: account?.id) }
+    private var canSend: Bool {
+        model.options.demoSheetName != "transfer-girocode" && model.canSendTransfer(from: account?.id) // screenshots
+    }
     private var giroCodePayload: String? {
         guard let cents else { return nil }
         let d = model.transferDraft
@@ -124,7 +126,9 @@ struct TransferSheetView: View {
             buttons.padding(14)
         }
         .macFrame(width: 560, height: 700)
-        .task { if model.options.demoSheetName == "transfer-confirm" { confirming = true } } // screenshots
+        .task { // screenshots
+            if ["transfer-confirm", "transfer-girocode"].contains(model.options.demoSheetName) { confirming = true }
+        }
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6]))

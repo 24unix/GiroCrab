@@ -13,6 +13,7 @@ use crate::connectors::fints_presets::FinTsPreset;
 use crate::export::{ExportCsvBalanceLine, ExportCsvColumns, ExportCsvRow};
 use crate::mandates::MandateCsvImport;
 use crate::models::{ConnectorKind, Holding};
+use crate::payment_input::{GiroCodeMatrix, PaymentDetails};
 use crate::{BankDescriptor, CoreError};
 
 #[uniffi::export]
@@ -102,6 +103,37 @@ fn bic_for_iban(iban: String) -> Option<String> {
 #[uniffi::export]
 fn validate_iban(iban: String) -> bool {
     crate::connectors::validate_iban(iban)
+}
+
+#[uniffi::export]
+fn parse_payment_text(text: String) -> PaymentDetails {
+    crate::payment_input::parse_payment_text(text)
+}
+
+#[uniffi::export]
+fn parse_epc_payload(payload: String) -> Option<PaymentDetails> {
+    crate::payment_input::parse_epc_payload(payload)
+}
+
+#[uniffi::export]
+fn parse_amount_loose(text: String) -> Option<i64> {
+    crate::payment_input::parse_amount_loose(text)
+}
+
+#[uniffi::export]
+fn girocode_payload(
+    name: String,
+    iban: String,
+    bic: String,
+    amount_cents: i64,
+    purpose: String,
+) -> Option<String> {
+    crate::payment_input::girocode_payload(name, iban, bic, amount_cents, purpose)
+}
+
+#[uniffi::export]
+fn girocode_matrix(payload: String) -> Option<GiroCodeMatrix> {
+    crate::payment_input::girocode_matrix(payload)
 }
 
 #[uniffi::export]

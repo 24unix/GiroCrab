@@ -24,125 +24,28 @@ struct ParsedPayment: Equatable {
     }
 }
 
+extension ParsedPayment {
+    init(_ d: PaymentDetails) {
+        self.init(name: d.name, iban: d.iban, bic: d.bic, amountText: d.amountCents.map(Money.plain), purpose: d.purpose)
+    }
+}
+
 enum PaymentParser {
-    // MARK: free text (transfer from clipboard)
+    // MARK: free text (transfer from clipboard) – parsed by the core (`payment_input.rs`)
 
     static func parseText(_ text: String) -> ParsedPayment {
-        var p = ParsedPayment()
-        let lines = text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-
-        // IBAN: first candidate with a valid checksum.
-        let ibanRx = try! NSRegularExpression(pattern: #"\b[A-Za-z]{2}\d{2}(?:[ \t]?[A-Za-z0-9]{4}){2,7}(?:[ \t]?[A-Za-z0-9]{1,3})?\b"#)
-        let ns = text as NSString
-        for m in ibanRx.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            let cand = ns.substring(with: m.range).uppercased().filter { !$0.isWhitespace }
-            if validateIban(iban: cand) { p.iban = cand; break }
-        }
-
-        // BIC (labelled only, to avoid matching random words).
-        if let v = labelled(lines, ["BIC", "SWIFT"]), TransferSheetView.looksLikeBIC(v) { p.bic = v.uppercased() }
-
-        // Amount: prefer labelled / currency-marked numbers.
-        p.amountText = amount(in: text, lines: lines)
-
-        // Name.
-        p.name = labelled(lines, ["Empfänger", "Zahlungsempfänger", "Kontoinhaber", "Begünstigter", "Name", "Beneficiary", "Recipient", "Payee"])
-        // Purpose.
-        p.purpose = labelled(lines, ["Verwendungszweck", "Zahlungsreferenz", "Rechnungsnummer", "Rechnung Nr.", "Rechnungs-Nr.", "Referenz", "Reference", "Betreff", "Purpose"])
-        if p.name == nil {
-            // First line that is neither IBAN, amount, nor a "label: value" pair.
-            p.name = lines.first { l in
-                !l.contains(":") && validIbanIn(l) == nil && amountIn(l) == nil
-                    && l.rangeOfCharacter(from: .letters) != nil && l.count <= 70
-            }
-        }
-        if p.purpose == nil, let rn = firstMatch(#"(?i)\b(?:Rechnung(?:s)?(?:nummer|-?nr\.?)?|Invoice(?: No\.?)?|RE)\s*[:#]?\s*([A-Z0-9][A-Z0-9\-/\.]{2,})"#, in: text) {
-            p.purpose = "Rechnung \(rn)"
-        }
-        return p
-    }
-
-    private static func labelled(_ lines: [String], _ labels: [String]) -> String? {
-        for l in lines {
-            for label in labels {
-                let pat = "^(?i)" + NSRegularExpression.escapedPattern(for: label) + #"\s*[:=]\s*(.+)$"#
-                if let v = firstMatch(pat, in: l)?.trimmingCharacters(in: .whitespaces), !v.isEmpty { return v }
-            }
-        }
-        return nil
-    }
-
-    private static func firstMatch(_ pattern: String, in s: String) -> String? {
-        guard let rx = try? NSRegularExpression(pattern: pattern),
-              let m = rx.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)),
-              m.numberOfRanges > 1, m.range(at: 1).location != NSNotFound else { return nil }
-        return (s as NSString).substring(with: m.range(at: 1))
-    }
-
-    private static let amountPattern = #"(?<![\d.,])(\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,3}(?:,\d{3})+\.\d{2}|\d+[.,]\d{2})(?![\d])"#
-
-    private static func amountIn(_ s: String) -> String? { firstMatch(amountPattern, in: s) }
-
-    private static func validIbanIn(_ s: String) -> String? {
-        let rx = try! NSRegularExpression(pattern: #"\b[A-Za-z]{2}\d{2}(?:[ \t]?[A-Za-z0-9]{4}){2,7}(?:[ \t]?[A-Za-z0-9]{1,3})?\b"#)
-        let ns = s as NSString
-        for m in rx.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
-            let c = ns.substring(with: m.range).uppercased().filter { !$0.isWhitespace }
-            if validateIban(iban: c) { return c }
-        }
-        return nil
-    }
-
-    private static func amount(in text: String, lines: [String]) -> String? {
-        // 1. Currency-marked ("123,45 €", "EUR 123.45").
-        if let v = firstMatch(#"(?i)(?:EUR|€)\s*(\d[\d.,]*\d)"#, in: text) ?? firstMatch(#"(?i)(\d[\d.,]*\d)\s*(?:EUR|€)"#, in: text) {
-            return normalizeAmount(v)
-        }
-        // 2. Labelled.
-        for l in lines {
-            if l.range(of: #"(?i)betrag|summe|total|amount|zu zahlen|gesamt"#, options: .regularExpression) != nil, let v = amountIn(l) {
-                return normalizeAmount(v)
-            }
-        }
-        // 3. Any decimal number outside IBAN lines.
-        for l in lines where validIbanIn(l) == nil {
-            if let v = amountIn(l) { return normalizeAmount(v) }
-        }
-        return nil
+        ParsedPayment(parsePaymentText(text: text))
     }
 
     /// "1.234,56" / "1,234.56" / "1234.56" -> locale-independent "1234.56" text accepted by the core parser.
     static func normalizeAmount(_ raw: String) -> String? {
-        var s = raw.trimmingCharacters(in: .whitespaces)
-        if let c = s.lastIndex(of: ","), let d = s.lastIndex(of: ".") {
-            let decimal = c > d ? Character(",") : Character(".")
-            let group = decimal == "," ? Character(".") : Character(",")
-            s = s.filter { $0 != group }.replacingOccurrences(of: String(decimal), with: ".")
-        } else if s.contains(",") {
-            s = s.replacingOccurrences(of: ",", with: ".")
-        }
-        guard let dec = Decimal(string: s, locale: Locale(identifier: "en_US")), dec > 0,
-              let cents = try? parseAmountToCents(text: s) else { return nil }
-        return Money.plain(cents)
+        parseAmountLoose(text: raw).map(Money.plain)
     }
 
     // MARK: EPC QR (GiroCode)
 
     static func parseEPC(_ payload: String) -> ParsedPayment? {
-        let l = payload.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
-        guard l.count >= 7, l[0] == "BCD" else { return nil }
-        var p = ParsedPayment()
-        if !l[4].isEmpty { p.bic = l[4] }
-        if !l[5].isEmpty { p.name = l[5] }
-        let iban = l[6].uppercased().filter { !$0.isWhitespace }
-        if !iban.isEmpty { p.iban = iban }
-        if l.count > 7, l[7].uppercased().hasPrefix("EUR") { p.amountText = normalizeAmount(String(l[7].dropFirst(3))) }
-        let remittance = l.count > 10 ? l[10] : ""
-        let reference = l.count > 9 ? l[9] : ""
-        let purpose = remittance.isEmpty ? reference : remittance
-        if !purpose.isEmpty { p.purpose = purpose }
-        return p
+        parseEpcPayload(payload: payload).map(ParsedPayment.init)
     }
 
     // MARK: ZUGFeRD / Factur-X XML

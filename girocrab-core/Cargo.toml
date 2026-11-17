@@ -48,6 +48,8 @@ uuid = { version = "1", features = ["v4", "v5"] }
 url = "2"
 simpleicons-rs = "16"
 miniz_oxide = "0.9.1"
+# GiroCode (EPC QR) matrix for every front end (#663).
+qrcode = { version = "0.14", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

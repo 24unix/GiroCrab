@@ -7,21 +7,8 @@ import QtQuick
 // QR codes inside dropped images/PDFs: Qt renders the page, rqrr decodes the
 // code (read_invoice › src/qr_scan.rs, instead of Vision).
 QtObject {
-    /// CharacterSet.newlines (U+000A–U+000D, U+0085, U+2028, U+2029).
-    readonly property var newlines: /\r\n|[\n\v\f\r\u0085\u2028\u2029]/
-    /// CharacterSet.letters; QV4 without Unicode property escapes falls back to "has a case".
-    readonly property var letterRx: { try { return new RegExp("\\p{L}", "u") } catch (e) { return null } }
-    function hasLetter(s) {
-        if (letterRx) return letterRx.test(s)
-        for (const ch of s) if (ch.toUpperCase() !== ch.toLowerCase()) return true
-        return false
-    }
     /// String.prefix(n) without cutting a surrogate pair.
     function prefix(s, n) { const a = Array.from(s || ""); return a.length <= n ? (s || "") : a.slice(0, n).join("") }
-
-    readonly property var ibanPattern: /\b[A-Za-z]{2}\d{2}(?:[ \t]?[A-Za-z0-9]{4}){2,7}(?:[ \t]?[A-Za-z0-9]{1,3})?\b/g
-    // (?<![\d.,]) of the Swift pattern as a consumed prefix: the amount is group 1.
-    readonly property var amountPattern: /(?:^|[^\d.,])(\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,3}(?:,\d{3})+\.\d{2}|\d+[.,]\d{2})(?!\d)/
 
     function isEmpty(p) { return !p || (p.name === undefined && p.iban === undefined && p.bic === undefined && p.amountText === undefined && p.purpose === undefined) }
 
@@ -36,114 +23,37 @@ QtObject {
         return d
     }
 
-    // MARK: free text (Sm@rtPaste)
-
-    function parseText(text) {
+    /// The core's PaymentDetails (cents, null = not found) as a ParsedPayment.
+    function fromDetails(d) {
         const p = {}
-        const lines = text.split(newlines).map(l => l.trim()).filter(l => l !== "")
-
-        // IBAN: first candidate with a valid checksum.
-        const iban = validIbanIn(text)
-        if (iban) p.iban = iban
-
-        // BIC (labelled only, to avoid matching random words).
-        const bic = labelled(lines, ["BIC", "SWIFT"])
-        if (bic && AppModel.looksLikeBIC(bic)) p.bic = bic.toUpperCase()
-
-        // Amount: prefer labelled / currency-marked numbers.
-        const amount = amountOf(text, lines)
-        if (amount) p.amountText = amount
-
-        const name = labelled(lines, ["Empfänger", "Zahlungsempfänger", "Kontoinhaber", "Begünstigter", "Name", "Beneficiary", "Recipient", "Payee"])
-        if (name) p.name = name
-        const purpose = labelled(lines, ["Verwendungszweck", "Zahlungsreferenz", "Rechnungsnummer", "Rechnung Nr.", "Rechnungs-Nr.", "Referenz", "Reference", "Betreff", "Purpose"])
-        if (purpose) p.purpose = purpose
-        if (p.name === undefined) {
-            // First line that is neither IBAN, amount, nor a "label: value" pair.
-            const l = lines.find(l => l.indexOf(":") < 0 && validIbanIn(l) === null && amountIn(l) === null
-                                 && hasLetter(l) && Array.from(l).length <= 70)
-            if (l) p.name = l
-        }
-        if (p.purpose === undefined) {
-            const m = /\b(?:Rechnung(?:s)?(?:nummer|-?nr\.?)?|Invoice(?: No\.?)?|RE)\s*[:#]?\s*([A-Z0-9][A-Z0-9\-/.]{2,})/i.exec(text)
-            if (m) p.purpose = "Rechnung " + m[1]
-        }
+        if (!d) return p
+        if (d.name !== null) p.name = d.name
+        if (d.iban !== null) p.iban = d.iban
+        if (d.bic !== null) p.bic = d.bic
+        if (d.amount_cents !== null) p.amountText = Fmt.plain(d.amount_cents)
+        if (d.purpose !== null) p.purpose = d.purpose
         return p
     }
 
-    function escapeRx(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
+    // MARK: free text (Sm@rtPaste)
 
-    function labelled(lines, labels) {
-        for (const l of lines) {
-            for (const label of labels) {
-                const m = new RegExp("^" + escapeRx(label) + "\\s*[:=]\\s*(.+)$", "i").exec(l)
-                if (m && m[1].trim() !== "") return m[1].trim()
-            }
-        }
-        return null
+    /// IBAN with a valid checksum, labelled BIC, amount, name and purpose (core: parse_payment_text).
+    function parseText(text) {
+        return fromDetails(AppModel.coreOrNull("parse_payment_text", { text: text }))
     }
 
-    function amountIn(s) { const m = amountPattern.exec(s); return m ? m[1] : null }
-
-    function validIbanIn(s) {
-        const rx = new RegExp(ibanPattern.source, "g")
-        let m
-        while ((m = rx.exec(s)) !== null) {
-            const c = m[0].toUpperCase().replace(/\s/g, "")
-            if (AppModel.validateIban(c)) return c
-        }
-        return null
-    }
-
-    function amountOf(text, lines) {
-        // 1. Currency-marked ("123,45 €", "EUR 123.45").
-        const cur = /(?:EUR|€)\s*(\d[\d.,]*\d)/i.exec(text) || /(\d[\d.,]*\d)\s*(?:EUR|€)/i.exec(text)
-        if (cur) return normalizeAmount(cur[1])
-        // 2. Labelled.
-        for (const l of lines) {
-            const v = /betrag|summe|total|amount|zu zahlen|gesamt/i.test(l) ? amountIn(l) : null
-            if (v) return normalizeAmount(v)
-        }
-        // 3. Any decimal number outside IBAN lines.
-        for (const l of lines) {
-            if (validIbanIn(l) !== null) continue
-            const v = amountIn(l)
-            if (v) return normalizeAmount(v)
-        }
-        return null
-    }
-
-    /// "1.234,56" / "1,234.56" / "1234.56" -> the plain amount text of the form.
+    /// "1.234,56" / "1,234.56" / "1234.56" -> the plain amount text of the form, null when no amount > 0.
     function normalizeAmount(raw) {
-        let s = raw.trim()
-        const c = s.lastIndexOf(","), d = s.lastIndexOf(".")
-        if (c >= 0 && d >= 0) {
-            const decimal = c > d ? "," : "."
-            const group = decimal === "," ? "." : ","
-            s = s.split(group).join("").split(decimal).join(".")
-        } else if (c >= 0) {
-            s = s.split(",").join(".")
-        }
-        const cents = AppModel.parseCents(s)
-        return cents !== null && cents > 0 ? Fmt.plain(cents) : null
+        const cents = AppModel.coreOrNull("parse_amount_loose", { text: raw })
+        return cents !== null ? Fmt.plain(cents) : null
     }
 
     // MARK: EPC QR (GiroCode)
 
+    /// null when the payload is no SEPA credit transfer GiroCode (core: parse_epc_payload).
     function parseEPC(payload) {
-        const l = payload.split(newlines).map(x => x.trim())
-        if (l.length < 7 || l[0] !== "BCD") return null
-        const p = {}
-        if (l[4] !== "") p.bic = l[4]
-        if (l[5] !== "") p.name = l[5]
-        const iban = l[6].toUpperCase().replace(/\s/g, "")
-        if (iban !== "") p.iban = iban
-        if (l.length > 7 && l[7].toUpperCase().startsWith("EUR")) { const a = normalizeAmount(l[7].slice(3)); if (a) p.amountText = a }
-        const remittance = l.length > 10 ? l[10] : ""
-        const reference = l.length > 9 ? l[9] : ""
-        const purpose = remittance === "" ? reference : remittance
-        if (purpose !== "") p.purpose = purpose
-        return p
+        const d = AppModel.coreOrNull("parse_epc_payload", { payload: payload })
+        return d ? fromDetails(d) : null
     }
 
     // MARK: ZUGFeRD / Factur-X XML

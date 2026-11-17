@@ -74,17 +74,21 @@ pub fn validate_iban(iban: &str) -> bool {
     if iban_length(&s[..2]) != Some(s.len()) {
         return false;
     }
-    // Move the first four characters to the end, letters -> 10..35.
-    let mut rem: u32 = 0;
-    for c in s[4..].chars().chain(s[..4].chars()) {
+    // Move the first four characters to the end.
+    mod97(s[4..].chars().chain(s[..4].chars())) == 1
+}
+
+/// ISO 7064 MOD 97-10 remainder of alphanumerics, letters A=10 … Z=35
+/// (IBAN, creditor ID, ISO 11649 creditor reference: valid when it is 1).
+pub(crate) fn mod97(chars: impl Iterator<Item = char>) -> u32 {
+    chars.fold(0, |rem, c| {
         let v = c.to_digit(36).unwrap_or(0);
-        rem = if v >= 10 {
+        if v >= 10 {
             (rem * 100 + v) % 97
         } else {
             (rem * 10 + v) % 97
-        };
-    }
-    rem == 1
+        }
+    })
 }
 
 /// ISO 20022 IBAN2007Identifier: `[A-Z]{2}[0-9]{2}[a-zA-Z0-9]{1,30}`. Shape

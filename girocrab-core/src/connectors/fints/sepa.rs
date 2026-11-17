@@ -39,6 +39,8 @@ impl PainVersion {
     }
 }
 
+pub(crate) use crate::iban::mod97;
+
 /// BIC: 8 or 11 characters (4 letters bank, 2 letters country, 2 alnum
 /// location, optional 3 alnum branch).
 pub fn validate_bic(bic: &str) -> bool {

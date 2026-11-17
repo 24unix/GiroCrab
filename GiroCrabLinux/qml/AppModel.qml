@@ -16,6 +16,10 @@ QtObject {
         if (r.err !== undefined) throw new Error(r.err)
         return r.ok
     }
+    /// `core`, null when the call fails.
+    function coreOrNull(method, args) {
+        try { return core(method, args) } catch (e) { return null }
+    }
     /// `offMain` / `vaultOffMain`: runs on a worker thread, `done(result)` on the GUI thread.
     property var pendingCalls: ({})
     property Connections coreReplies: Connections {

@@ -24,6 +24,7 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 | **`miniz_oxide`** | `0.9.1` | `MIT OR Zlib OR Apache-2.0` | [https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) |
 | **`p256`** | `0.14.0` | `Apache-2.0 OR MIT` | [https://github.com/RustCrypto/elliptic-curves](https://github.com/RustCrypto/elliptic-curves/tree/master/p256) |
 | **`pbkdf2`** | `0.13.0` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/password-hashes](https://github.com/RustCrypto/password-hashes) |
+| **`qrcode`** (GiroCode / EPC QR matrix, #663) | `0.14.1` | `MIT OR Apache-2.0` | [https://github.com/kennytm/qrcode-rust](https://github.com/kennytm/qrcode-rust) |
 | **`rand`** | `0.9.5` | `MIT OR Apache-2.0` | [https://github.com/rust-random/rand](https://github.com/rust-random/rand) |
 | **`rand`** | `0.10.3` | `MIT OR Apache-2.0` | [https://github.com/rust-random/rand](https://github.com/rust-random/rand) |
 | **`regex`** | `1.13.1` | `MIT OR Apache-2.0` | [https://github.com/rust-lang/regex](https://github.com/rust-lang/regex) |
@@ -61,7 +62,6 @@ The Linux interface (Qt 6 / QML) uses these crates in addition to the core. Crat
 | **`cxx-qt-build`** (build only) | `0.10.0` | `MIT OR Apache-2.0` | [https://github.com/KDAB/cxx-qt](https://github.com/KDAB/cxx-qt) |
 | **`keyring`** (Secret Service) | `3.6.3` | `MIT OR Apache-2.0` | [https://github.com/hwchen/keyring-rs](https://github.com/hwchen/keyring-rs) |
 | **`ed25519-dalek`** | `2.2.0` | `BSD-3-Clause` | [https://github.com/dalek-cryptography/curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek) |
-| **`qrcode`** | `0.14.1` | `MIT OR Apache-2.0` | [https://github.com/kennytm/qrcode-rust](https://github.com/kennytm/qrcode-rust) |
 | **`rqrr`** (GiroCode in dropped invoices) | `0.11.0` | `(MIT OR Apache-2.0) AND ISC` | [https://github.com/WanzenBug/rqrr](https://github.com/WanzenBug/rqrr) |
 
 ### Linux System Libraries and Programs (dynamically linked or called, not bundled)

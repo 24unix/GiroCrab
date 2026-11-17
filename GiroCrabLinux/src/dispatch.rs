@@ -837,7 +837,25 @@ fn call(method: &str, a: &Value) -> R {
         }
         // --- transfer ---
         "validate_iban" => ok(girocrab_core::connectors::validate_iban(arg(a, "iban")?)),
-        "girocode_matrix" => girocode_matrix(a),
+        "parse_payment_text" => ok(girocrab_core::payment_input::parse_payment_text(arg(
+            a, "text",
+        )?)),
+        "parse_epc_payload" => ok(girocrab_core::payment_input::parse_epc_payload(arg(
+            a, "payload",
+        )?)),
+        "parse_amount_loose" => ok(girocrab_core::payment_input::parse_amount_loose(arg(
+            a, "text",
+        )?)),
+        "girocode_payload" => ok(girocrab_core::payment_input::girocode_payload(
+            arg(a, "name")?,
+            arg(a, "iban")?,
+            arg(a, "bic")?,
+            arg(a, "amount_cents")?,
+            arg(a, "purpose")?,
+        )),
+        "girocode_matrix" => ok(girocrab_core::payment_input::girocode_matrix(arg(
+            a, "payload",
+        )?)),
         "read_invoice" => read_invoice(a),
         // --- Sachwerte --- (gold prices over the network: called with Core.callAsync)
         "asset_weight_presets" => ok(girocrab_core::assets::asset_weight_presets()),
@@ -1282,26 +1300,6 @@ fn open_demo() -> R {
     v.seed_demo_data().map_err(|e| e.to_string())?;
     *VAULT.lock().unwrap() = Some(v);
     ok(())
-}
-
-/// GiroCode.swift › image(for:): EPC QR code (error correction "M") as module
-/// rows ("1" = dark) for a QML Canvas.
-fn girocode_matrix(a: &Value) -> R {
-    use qrcode::{Color, EcLevel, QrCode};
-    let payload: String = arg(a, "payload")?;
-    let code = QrCode::with_error_correction_level(payload.as_bytes(), EcLevel::M)
-        .map_err(|e| e.to_string())?;
-    let w = code.width();
-    let rows: Vec<String> = code
-        .to_colors()
-        .chunks(w)
-        .map(|r| {
-            r.iter()
-                .map(|c| if *c == Color::Dark { '1' } else { '0' })
-                .collect()
-        })
-        .collect();
-    ok(json!({ "width": w, "rows": rows }))
 }
 
 fn find_bytes(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
@@ -2095,27 +2093,40 @@ mod tests {
             call_ok("parse_amount_to_cents", json!({ "text": "1.234,56" })),
             json!(123456)
         );
-        let m = call_ok(
-            "girocode_matrix",
-            json!({ "payload": "BCD\n002\n1\nSCT\n\nTest\nDE89370400440532013000\nEUR1.00\n\n\nx" }),
+        // payment_input (#663): the wiring of each core call; the rules are tested in the core
+        let p = call_ok(
+            "parse_payment_text",
+            json!({ "text": "Empfänger: Max Müller\nIBAN DE89 3704 0044 0532 0130 00\nBetrag: 1.234,56 EUR" }),
         );
+        assert_eq!(p["name"], json!("Max Müller"), "{p}");
+        assert_eq!(p["amount_cents"], json!(123456), "{p}");
+        assert_eq!(p["bic"], Value::Null, "{p}");
+        let payload = call_ok(
+            "girocode_payload",
+            json!({ "name": "Test", "iban": "DE89 3704 0044 0532 0130 00", "bic": "",
+                    "amount_cents": 100, "purpose": "x" }),
+        );
+        assert_eq!(
+            payload,
+            json!("BCD\n002\n1\nSCT\n\nTest\nDE89370400440532013000\nEUR1.00\n\n\nx")
+        );
+        let epc = call_ok("parse_epc_payload", json!({ "payload": payload }));
+        assert_eq!(epc["amount_cents"], json!(100), "{epc}");
+        assert_eq!(
+            call_ok("parse_amount_loose", json!({ "text": "1,234.56" })),
+            json!(123456)
+        );
+        let m = call_ok("girocode_matrix", json!({ "payload": payload }));
         let w = m["width"].as_u64().unwrap() as usize;
-        assert!(w >= 21);
-        assert_eq!(m["rows"].as_array().unwrap().len(), w);
-        // … and back: that GiroCode as a dropped image (PGM, 4 px per module, quiet zone)
-        // comes out of read_invoice as `epc`, without OCR text
-        let side = (w + 8) * 4;
+        let modules = m["modules"].as_array().unwrap();
+        assert_eq!(modules.len(), w * w);
+        // … and back: that GiroCode as a dropped image (PGM, 4 px per module, quiet
+        // zone included) comes out of read_invoice as `epc`, without OCR text
+        let side = w * 4;
         let mut pgm = format!("P5\n{side} {side}\n255\n").into_bytes();
-        let rows: Vec<&str> = m["rows"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| r.as_str().unwrap())
-            .collect();
         for y in 0..side {
             for x in 0..side {
-                let (mx, my) = ((x / 4).wrapping_sub(4), (y / 4).wrapping_sub(4));
-                let dark = my < w && mx < w && rows[my].as_bytes()[mx] == b'1';
+                let dark = modules[(y / 4) * w + x / 4] == json!(true);
                 pgm.push(if dark { 0 } else { 255 });
             }
         }
