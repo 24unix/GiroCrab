@@ -149,7 +149,7 @@ Popup {
                 text: row.total ? Fmt.money(row.total.sum_cents) : "–"
                 font.pixelSize: Theme.callout; font.features: { "tnum": 1 }
                 color: row.total && row.total.booking_count > 0 ? Theme.text : Theme.tertiary
-                Sensitive {}
+                Sensitive { amounts: true }
             }
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: row.toggled() }
