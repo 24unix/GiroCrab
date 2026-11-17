@@ -576,7 +576,7 @@ impl Vault {
         let after = p.cursor.as_deref().map(parse_cursor).transpose()?;
         let limit = p.limit.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
         // One extra row tells whether another page follows.
-        let mut rows = Vault::booking_page_after(
+        let mut rows = self.booking_page_after(
             &db,
             &filter,
             &accounts,
@@ -626,7 +626,7 @@ impl Vault {
             ..Default::default()
         };
         let mut totals: BTreeMap<String, ApiCurrencyTotals> = BTreeMap::new();
-        for t in Vault::booking_page_after(&db, &filter, &accounts, &shared, None, 0)? {
+        for t in self.booking_page_after(&db, &filter, &accounts, &shared, None, 0)? {
             let e = totals
                 .entry(t.currency.clone())
                 .or_insert_with(|| ApiCurrencyTotals {

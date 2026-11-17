@@ -232,16 +232,16 @@ impl Vault {
         ))?;
         let n = limit.max(1) as usize;
         let mut ids = Vec::new();
-        for row in stmt.query_map([], RuleRow::read)? {
-            let row = row?;
-            if compiled.matches(&row.input()) {
-                ids.push(row.id);
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            if compiled.matches(&RuleRow::borrowed_input(row)?) {
+                ids.push(row.get(0)?);
                 if ids.len() == n {
                     break;
                 }
             }
         }
-        Self::bookings_by_ids(&db, &ids)
+        self.bookings_by_ids(&db, &ids)
     }
 
     /// Runs all rules. `only_uncategorized = false` also re-evaluates

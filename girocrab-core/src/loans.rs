@@ -664,7 +664,7 @@ impl Vault {
         }
         Ok(LoanPreview {
             status: compute_status(&setup, &pairs),
-            matches: Self::bookings_by_ids(&db, &shown)?,
+            matches: self.bookings_by_ids(&db, &shown)?,
             match_count: pairs.len() as u32,
         })
     }

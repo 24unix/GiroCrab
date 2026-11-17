@@ -9,14 +9,14 @@ use rusqlite::{params, OptionalExtension};
 use crate::error::CoreError;
 use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
-use crate::vault::Vault;
+use crate::vault::{sql_int_list, Vault, LIVE_BOOKINGS_SQL};
 
 fn all_bookings(v: &Vault, scope: BookingScope) -> Result<Vec<Booking>, CoreError> {
     let filter = BookingFilter {
         scope,
         ..Default::default()
     };
-    Vault::collect_bookings(&*v.db()?, &filter)
+    v.collect_bookings(&*v.db()?, &filter)
 }
 
 fn month_key(date: &str) -> String {
@@ -331,22 +331,36 @@ impl Vault {
     /// bookings `list_transactions` shows for that account (a loan's linked
     /// bookings included). The merchant is no SQL column, so this reads every
     /// booking once, but only the columns `MerchantResolver` needs: no full
-    /// enrichment, no `BookingFinisher`, no tags (#591).
+    /// enrichment, no `BookingFinisher`, no tags (#591). When the list's booking
+    /// classes are cached, only the merchant's own bookings are read.
     fn merchant_history_for(
         &self,
         merchant_key: &str,
         account_id: Option<i64>,
     ) -> Result<(MerchantStats, Option<MerchantStats>), CoreError> {
         let db = self.db()?;
+        let ids: Option<String> = self.cached_booking_classes(&db).map(|classes| {
+            let ids: Vec<i64> = classes
+                .iter()
+                .filter(|(_, c)| &*c.merchant == merchant_key)
+                .map(|(id, _)| *id)
+                .collect();
+            format!("[{}]", sql_int_list(&ids))
+        });
+        let only_ids = if ids.is_some() {
+            " AND t.id IN (SELECT value FROM json_each(?1))"
+        } else {
+            ""
+        };
         // (id, booking_date, amount_cents, merchant name) of the merchant's bookings
         let mut matches: Vec<(i64, String, i64, String)> = Vec::new();
         {
-            let mut stmt = db.prepare(
+            let mut stmt = db.prepare(&format!(
                 "SELECT t.id, t.booking_date, t.amount_cents, t.counterparty, t.purpose \
                  FROM transactions t JOIN accounts a ON a.id = t.account_id \
-                 WHERE t.deleted_ms IS NULL AND a.deleted_ms IS NULL",
-            )?;
-            let mut rows = stmt.query([])?;
+                 WHERE {LIVE_BOOKINGS_SQL}{only_ids}"
+            ))?;
+            let mut rows = stmt.query(rusqlite::params_from_iter(&ids))?;
             while let Some(r) = rows.next()? {
                 let (counterparty, purpose): (String, String) = (r.get(3)?, r.get(4)?);
                 let m = MerchantResolver::resolve(&counterparty, &purpose);
@@ -697,6 +711,15 @@ mod logo_tests {
                 let want_own = own.get(key).cloned().unwrap_or_else(|| empty(key));
                 assert_eq!(got(&h.account), want_own, "{key} in {id}");
             }
+        }
+        // after a write the booking classes are gone: every booking is resolved again
+        v.db()
+            .unwrap()
+            .execute("UPDATE transactions SET note = note", [])
+            .unwrap();
+        for (key, want) in &total {
+            assert!(v.cached_booking_classes(&v.db().unwrap()).is_none());
+            assert_eq!(&got(&v.merchant_stats(key.clone()).unwrap()), want, "{key}");
         }
     }
 

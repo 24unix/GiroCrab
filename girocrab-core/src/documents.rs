@@ -465,7 +465,7 @@ impl Vault {
         if ors.is_empty() {
             return Ok(Vec::new());
         }
-        Self::bookings_where(&*self.db()?, &ors.join(" OR "), [])
+        self.bookings_where(&*self.db()?, &ors.join(" OR "), [])
     }
 }
 

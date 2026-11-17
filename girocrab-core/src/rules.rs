@@ -49,19 +49,37 @@ impl RuleRow {
         t.category_id, t.rule_id";
 
     pub(crate) fn read(r: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        let input = Self::borrowed_input(r)?;
         Ok(Self {
             id: r.get(0)?,
-            account_id: r.get(1)?,
-            amount_cents: r.get(2)?,
-            counterparty: r.get(3)?,
-            counterparty_iban: r.get(4)?,
-            purpose: r.get(5)?,
-            booking_text: r.get(6)?,
-            note: r.get(7)?,
-            currency: r.get(8)?,
-            account_iban: r.get(9)?,
+            account_id: input.account_id,
+            amount_cents: input.amount_cents,
+            counterparty: input.counterparty.into(),
+            counterparty_iban: input.counterparty_iban.into(),
+            purpose: input.purpose.into(),
+            booking_text: input.booking_text.into(),
+            note: input.note.into(),
+            currency: input.currency.into(),
+            account_iban: input.account_iban.into(),
             category_id: r.get(10)?,
             rule_id: r.get(11)?,
+        })
+    }
+
+    /// The `RuleInput` of a `COLUMNS` row, borrowing its texts (`read` copies
+    /// them): scans that keep only a few rows skip the copies (`preview_rule`).
+    pub(crate) fn borrowed_input<'r>(r: &'r rusqlite::Row<'_>) -> rusqlite::Result<RuleInput<'r>> {
+        let text = |i| r.get_ref(i)?.as_str().map_err(rusqlite::Error::from);
+        Ok(RuleInput {
+            account_id: r.get(1)?,
+            amount_cents: r.get(2)?,
+            counterparty: text(3)?,
+            counterparty_iban: text(4)?,
+            purpose: text(5)?,
+            booking_text: text(6)?,
+            note: text(7)?,
+            currency: text(8)?,
+            account_iban: text(9)?,
         })
     }
 

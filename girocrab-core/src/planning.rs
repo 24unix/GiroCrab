@@ -438,7 +438,7 @@ pub(crate) fn cashflow_for(
         ..Default::default()
     };
     let mut acc: HashMap<String, (i64, i64)> = HashMap::new();
-    Vault::visit_bookings(&*v.db()?, &filter, |_, b| {
+    v.visit_bookings(&*v.db()?, &filter, |_, b| {
         let (date, amt) = (&b.booking_date, b.amount_cents);
         // Non-ASCII / malformed dates are skipped instead of panicking on a slice.
         let key = match granularity {

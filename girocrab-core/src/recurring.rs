@@ -646,7 +646,7 @@ impl Vault {
             date_from: Some(fmt(today - Duration::days(LOOKBACK_DAYS))),
             ..Default::default()
         };
-        Ok((Self::collect_bookings(&*self.db()?, &filter)?, today))
+        Ok((self.collect_bookings(&*self.db()?, &filter)?, today))
     }
 }
 
@@ -777,7 +777,8 @@ impl Vault {
 
 impl Vault {
     fn booking_series_key(&self, booking_id: i64) -> CoreResult<String> {
-        let key = Self::bookings_by_ids(&*self.db()?, &[booking_id])?
+        let key = self
+            .bookings_by_ids(&*self.db()?, &[booking_id])?
             .pop()
             .ok_or_else(|| CoreError::NotFound {
                 what: tr("Buchung").into(),

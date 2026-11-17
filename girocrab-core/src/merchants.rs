@@ -14,21 +14,28 @@
 //! plans, Saveback and Round up never count as consumption ("Konsumausgaben").
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::models::AccountKind;
 
 /// Entries kept by the merchant cache of [`MerchantResolver::resolve`].
 const RESOLVE_CACHE_MAX: usize = 200_000;
 
-/// Counterparty/purpose → merchant, see [`MerchantResolver::resolve`].
-static RESOLVE_CACHE: OnceLock<Mutex<HashMap<(String, String), MerchantInfo>>> = OnceLock::new();
+/// Counterparty → purpose → merchant, see [`MerchantResolver::resolve`]. Nested
+/// so a lookup borrows both texts instead of building an owned key per booking.
+#[derive(Default)]
+struct ResolveCache {
+    len: usize,
+    by_counterparty: HashMap<String, HashMap<String, Arc<MerchantInfo>>>,
+}
+
+static RESOLVE_CACHE: OnceLock<Mutex<ResolveCache>> = OnceLock::new();
 
 /// Forgets every remembered merchant. Its keys are booking texts in plain
 /// text, so the last vault to close calls this (#267).
 pub(crate) fn clear_resolve_cache() {
     if let Some(c) = RESOLVE_CACHE.get() {
-        c.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        *c.lock().unwrap_or_else(|e| e.into_inner()) = ResolveCache::default();
     }
 }
 
@@ -886,19 +893,32 @@ impl MerchantResolver {
     /// per reload; a remembered one is a hash lookup).
     pub fn resolve(counterparty: &str, purpose: &str) -> MerchantInfo {
         let cache = RESOLVE_CACHE.get_or_init(Default::default);
-        let key = (counterparty.to_string(), purpose.to_string());
-        if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
-            return hit;
+        // The clone happens after the lock is released (an SVG path can be kilobytes).
+        let hit = cache
+            .lock()
+            .ok()
+            .and_then(|c| c.by_counterparty.get(counterparty)?.get(purpose).cloned());
+        if let Some(hit) = hit {
+            return MerchantInfo::clone(&hit);
         }
-        let info = Self::resolve_uncached(counterparty, purpose);
+        let info = Arc::new(Self::resolve_uncached(counterparty, purpose));
         if let Ok(mut c) = cache.lock() {
             // bounded: far above any real booking count, cleared rather than evicted
-            if c.len() >= RESOLVE_CACHE_MAX {
-                c.clear();
+            if c.len >= RESOLVE_CACHE_MAX {
+                *c = ResolveCache::default();
             }
-            c.insert(key, info.clone());
+            let by_purpose = c
+                .by_counterparty
+                .entry(counterparty.to_string())
+                .or_default();
+            if by_purpose
+                .insert(purpose.to_string(), info.clone())
+                .is_none()
+            {
+                c.len += 1;
+            }
         }
-        info
+        Arc::unwrap_or_clone(info)
     }
 
     /// Empty merchant for a booking that is enriched right afterwards.

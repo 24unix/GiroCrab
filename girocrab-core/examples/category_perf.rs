@@ -24,6 +24,11 @@
 //!   category selection, period "all" 102 ms (was 446), list_categories_filtered with the
 //!   expense filter 32 ms (was 336: `tx_amount_date` range scan). The first list after any
 //!   write still enriches every booking once (~155 ms) to refill the cache.
+//! After caching the `BookingFinisher` and each booking's merchant key (`ListCache`,
+//! 2026-11-17, COPIES=600 STEP_DAYS=7 PAYPAL=2000, 43,469 bookings): local_api page 1.5 ms
+//! (was 5.3), preview_rule with hits 0.7 ms (4.2), count_transactions(uncategorized)
+//! 18 ms (58), merchant_history 1.4 ms (33; the first one after a write still resolves
+//! every booking). investment_dashboard still finishes every booking (~220 ms).
 //! OUT=<file> writes the vault with the app's demo key and stops (open it with
 //! GIROCRAB_DEMO_VAULT=<file> .build/debug/GiroCrabMac --demo-seed).
 //! RULE_INDEX=1 creates the covering indexes by hand on a vault that lacks them.
