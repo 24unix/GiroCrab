@@ -50,6 +50,7 @@ pub mod models;
 pub mod money;
 pub mod offline;
 pub mod opening_balance;
+pub mod payday_periods;
 pub mod planned;
 pub mod planning;
 pub mod recurring;
