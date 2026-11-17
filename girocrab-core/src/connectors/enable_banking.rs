@@ -458,9 +458,21 @@ fn is_revolut(name: &str) -> bool {
     name.to_lowercase().contains("revolut")
 }
 
+/// Spuerkeess (BCEE, via LUXHUB) lists 180 days but refuses the authorisation
+/// with `invalid_request`: ask for 90 days and send no `language`.
+fn is_spuerkeess(name: &str) -> bool {
+    let n = name.to_lowercase();
+    n.contains("spuerkeess") || n.contains("bcee")
+}
+
+/// Banks that want the leanest request: 90 days at most, no `language`.
+fn needs_lean_request(name: &str) -> bool {
+    is_revolut(name) || is_spuerkeess(name)
+}
+
 fn effective_max_secs(name: &str, max: Option<i64>) -> Option<i64> {
     let cap = 90 * 86_400;
-    if is_revolut(name) {
+    if needs_lean_request(name) {
         Some(max.map_or(cap, |m| m.min(cap)))
     } else {
         max
@@ -1245,8 +1257,8 @@ impl BankConnector for EnableBankingConnector {
                     "redirect_url": ctx.setting("enablebanking.redirect_url")?,
                     "psu_type": psu_type_for(&aspsp_list, name),
                 });
-                // Revolut's OAuth server gets the leanest request: no language.
-                if !is_revolut(name) {
+                // Revolut's OAuth server and Spuerkeess get the leanest request: no language.
+                if !needs_lean_request(name) {
                     body["language"] = json!(language);
                 }
                 body
@@ -2469,6 +2481,13 @@ mod tests {
             Some(90 * 86_400)
         );
         assert_eq!(effective_max_secs("N26", None), None);
+        // Spuerkeess lists 180 days but only accepts 90 (and no language)
+        assert_eq!(
+            effective_max_secs("Spuerkeess", Some(15_552_000)),
+            Some(90 * 86_400)
+        );
+        assert!(needs_lean_request("Spuerkeess") && needs_lean_request("BCEE"));
+        assert!(!needs_lean_request("N26"));
     }
 
     #[test]
