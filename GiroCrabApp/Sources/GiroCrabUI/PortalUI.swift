@@ -12,7 +12,7 @@ extension AppModel {
     /// PSD2 banks such as C24 and must not move the cards off the web login.
     func usesPortal(_ c: BankConnection) -> Bool {
         if Self.isMagicDemoLogin(c.loginName) { return false }
-        if !isDemo, [.amazonOrders, .fnz, .quirion, .schwaebischHall].contains(c.connector) { return true }
+        if !isDemo, [.amazonOrders, .fnz, .quirion, .schwaebischHall, .equatePlus].contains(c.connector) { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
         return !Self.cardUsesEnableBanking(
             optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
@@ -110,6 +110,7 @@ extension ConnectorKind {
         // Amazon Visa customer portal (Open Bank / Zinia); www.openbank.de is
         // Open Bank's general site without the card login.
         case .amazonVisa: return URL(string: "https://kunden.openbankpay.com/amazon/login")
+        case .equatePlus: return URL(string: "https://www.equateplus.com/EquatePlusParticipant2/?login")
         case .quirion: return URL(string: "https://banking.quirion.de/login/")
         case .schwaebischHall: return SchwaebischHallScripts.loginURL
         case .fnz: return URL(string: "https://portal.fnz.de/")
@@ -134,6 +135,7 @@ extension ConnectorKind {
         case .amazonVisa: return ["openbankpay.com", "openbank.de", "openbank.com", "zinia.de", "zinia.com"]
         case .amazonOrders: return ["amazon.de", "amazon.com"]
         case .fnz: return ["portal.fnz.de"]
+        case .equatePlus: return ["www.equateplus.com", "www.emea.equateplus.com", "www.na.equateplus.com"]
         case .quirion: return ["banking.quirion.de"]
         case .schwaebischHall: return ["www.schwaebisch-hall.de", "login.schwaebisch-hall.de"]
         default: return []

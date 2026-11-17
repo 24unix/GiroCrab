@@ -385,6 +385,17 @@
         }
       }
     },
+    "%@ – EquatePlus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ – EquatePlus"
+          }
+        }
+      }
+    },
     "%@ – FNZ Bank" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -896,6 +907,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld items"
+          }
+        }
+      }
+    },
+    "%lld PDFs nicht abrufbar%@. Ein erneuter Abruf lädt nur fehlende Dokumente." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld PDFs could not be fetched%2$@. Fetching again only loads missing documents."
           }
         }
       }
@@ -2673,13 +2695,24 @@
         }
       }
     },
-    "Abrufen: Konto, Umsätze und Dokumente werden über diesen Zugang importiert. Überspringen: nichts davon, bereits gespeicherte Daten bleiben erhalten." : {
+    "Abrufen: Konto, Umsätze und Dokumente werden über diesen Zugang importiert. Überspringen: nichts davon; das Konto wird archiviert (abgeblendet, nicht in der Summe) und behält seine gespeicherten Daten." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fetch: the account, its transactions and documents are imported through this login. Skip: none of that; data already stored is kept."
+            "value" : "Fetch: the account, bookings and documents are imported through this login. Skip: none of that; the account is archived (dimmed, not in the total) and keeps its stored data."
+          }
+        }
+      }
+    },
+    "Abrufen: Konto, Umsätze und Dokumente werden über diesen Zugang importiert. Überspringen: nichts davon; das Konto wird archiviert und ausgeblendet und behält seine gespeicherten Daten. Das Archiv-Symbol in der Seitenleiste zeigt archivierte Konten wieder an." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch: the account, bookings and documents are imported through this login. Skip: none of that; the account is archived and hidden and keeps its stored data. The archive icon in the sidebar shows archived accounts again."
           }
         }
       }
@@ -3918,6 +3951,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Signed in – taking over the session…"
+          }
+        }
+      }
+    },
+    "Angemeldet – verfügbare und gesperrte Bestände können abgerufen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signed in – available and restricted holdings can be fetched."
           }
         }
       }
@@ -10043,6 +10087,39 @@
         }
       }
     },
+    "Dokumente laden …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load documents …"
+          }
+        }
+      }
+    },
+    "Dokumente werden unter „Belege & PostBox“ abgelegt (Suche: equateplus) und nicht automatisch Umsätzen oder Aktivitäten zugeordnet. Nur wenn der Programmname im Dokument zu einem Programm passt, steht es auch bei dessen Konto." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documents are kept under “Belege & PostBox” (search: equateplus) and are not assigned to bookings or activities automatically. Only if the plan name in the document matches a plan does it also appear with that plan’s account."
+          }
+        }
+      }
+    },
+    "Dokumentenliste abrufen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching the document list …"
+          }
+        }
+      }
+    },
     "Dokumentenordner" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11228,6 +11305,72 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unlocking cancelled."
+          }
+        }
+      }
+    },
+    "EquatePlus: %lld Programme aktualisiert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EquatePlus: %lld plans updated."
+          }
+        }
+      }
+    },
+    "EquatePlus: %lld neue PDFs in „Belege & PostBox“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EquatePlus: %lld new PDFs in “Belege & PostBox”."
+          }
+        }
+      }
+    },
+    "EquatePlus: Der Datenabruf ist fehlgeschlagen. Bitte erneut versuchen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EquatePlus: Fetching data failed. Please try again."
+          }
+        }
+      }
+    },
+    "EquatePlus: Der Dokumentenabruf ist fehlgeschlagen. Bitte erneut versuchen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EquatePlus: Fetching the documents failed. Please try again."
+          }
+        }
+      }
+    },
+    "EquatePlus: Die gelieferten Bestandsdaten konnten nicht verarbeitet werden. Die bisherigen Bestände bleiben erhalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EquatePlus: The holdings data could not be processed. Existing holdings are kept."
+          }
+        }
+      }
+    },
+    "EquatePlus: Keine neuen Dokumente." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EquatePlus: No new documents."
           }
         }
       }
@@ -17077,6 +17220,17 @@
         }
       }
     },
+    "Kontenauswahl nicht gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account selection not saved"
+          }
+        }
+      }
+    },
     "Konto" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18205,6 +18359,17 @@
         }
       }
     },
+    "Lädt die PDFs der Bibliothek (Bestätigungen, Auszüge, Steuerbescheinigungen). Bereits gespeicherte Dokumente werden übersprungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloads the PDFs of the library (confirmations, statements, tax certificates). Documents that are already stored are skipped."
+          }
+        }
+      }
+    },
     "Lädt einen Wegwerf-Tresor mit fiktiven Konten bei sieben Banken. „Alle abrufen“, TAN-Dialoge und Überweisungen laufen simuliert, ohne Netzwerk. Ihre eigenen Daten bleiben unberührt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18498,6 +18663,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sign in to Amazon (password, captcha, 2FA as usual)."
+          }
+        }
+      }
+    },
+    "Melden Sie sich bei EquatePlus an und bestätigen Sie mit EquateAccess oder der angebotenen Alternative." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to EquatePlus and confirm with EquateAccess or the alternative offered."
           }
         }
       }
@@ -22185,6 +22361,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Programs using the previous access key stop receiving data immediately. For new access, create a new key."
+          }
+        }
+      }
+    },
+    "Programme und Bestände abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch plans and holdings"
+          }
+        }
+      }
+    },
+    "Programme und Bestände abrufen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching plans and holdings …"
           }
         }
       }
@@ -28485,6 +28683,17 @@
         }
       }
     },
+    "Zeitüberschreitung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "timeout"
+          }
+        }
+      }
+    },
     "Ziehe Rechtecke über Stellen, die zusätzlich schwarz übermalt werden sollen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29334,6 +29543,17 @@
         }
       }
     },
+    "kein PDF" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "not a PDF"
+          }
+        }
+      }
+    },
     "keine Domain" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29396,6 +29616,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "new transactions"
+          }
+        }
+      }
+    },
+    "nicht angemeldet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "not signed in"
           }
         }
       }
@@ -29539,6 +29770,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "and %lld more"
+          }
+        }
+      }
+    },
+    "unlesbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "unreadable"
           }
         }
       }
@@ -29803,6 +30045,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "e.g. enbw.com"
+          }
+        }
+      }
+    },
+    "zu groß" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "too large"
           }
         }
       }

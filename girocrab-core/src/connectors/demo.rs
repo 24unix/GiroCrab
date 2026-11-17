@@ -111,6 +111,7 @@ impl BankConnector for DemoConnector {
             ConnectorKind::AmericanExpress
             | ConnectorKind::AmazonVisa
             | ConnectorKind::AmazonOrders
+            | ConnectorKind::EquatePlus
             | ConnectorKind::Quirion
             | ConnectorKind::SchwaebischHall
             | ConnectorKind::Fnz

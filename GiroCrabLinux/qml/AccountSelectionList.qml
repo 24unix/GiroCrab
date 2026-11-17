@@ -92,7 +92,7 @@ ColumnLayout {
     Text {
         visible: list.loaded && list.choices.length > 0
         Layout.fillWidth: true; wrapMode: Text.WordWrap
-        text: qsTr("Abrufen: Konto, Umsätze und Dokumente werden über diesen Zugang importiert. Überspringen: nichts davon, bereits gespeicherte Daten bleiben erhalten.")
+        text: qsTr("Abrufen: Konto, Umsätze und Dokumente werden über diesen Zugang importiert. Überspringen: nichts davon; das Konto wird archiviert (abgeblendet, nicht in der Summe) und behält seine gespeicherten Daten.")
         font.pixelSize: Theme.caption; color: Theme.secondary
     }
     Text {

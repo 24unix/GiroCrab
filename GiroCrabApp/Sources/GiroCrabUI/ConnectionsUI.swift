@@ -137,6 +137,7 @@ struct ConnectionEditSheet: View {
     @State private var importingKey = false
     @State private var status: ConnectionStatus?
     @State private var confirmRemove: BankConnection?
+    @State private var selection = AccountSelectionDraft()
     @State private var confirmClear: SessionClear?
 
     /// Session data whose deletion is being confirmed.
@@ -167,7 +168,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus: return []
         }
     }
 
@@ -335,7 +336,8 @@ struct ConnectionEditSheet: View {
                     }
                 }
                 Section {
-                    AccountSelectionList(connection: connection)
+                    // saved by the sheet's own Speichern, so there is a single place to confirm
+                    AccountSelectionList(connection: connection, showsSaveButton: false, draft: selection)
                 } header: { Text("Kontenauswahl").appSectionHeader() }
                 Section {
                     if let st = status {
@@ -507,15 +509,27 @@ struct ConnectionEditSheet: View {
         Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
     }
     private var saveBtn: some View {
-        Button("Speichern") { save(); dismiss() }
+        Button("Speichern") { saveAll() }
             .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
     }
     private var fetchBtn: some View {
-        Button("Speichern & abrufen") {
-            save()
-            dismiss()
-            if let c = model.connections.first(where: { $0.id == connection.id }) { model.requestSync(c) }
+        Button("Speichern & abrufen") { saveAll(thenSync: true) }
+    }
+
+    /// The login's settings and the account selection, saved together; a fetch only starts after
+    /// the selection is stored (a switched-off account must not be fetched).
+    private func saveAll(thenSync: Bool = false) {
+        save()
+        let id = connection.id
+        let draft = selection
+        Task { @MainActor in
+            if await draft.saveIfChanged(model: model, connectionId: id) {
+                if thenSync, let c = model.connections.first(where: { $0.id == id }) { model.requestSync(c) }
+            } else if let message = draft.error {
+                model.showError(String(localized: "Kontenauswahl nicht gespeichert"), message)
+            }
         }
+        dismiss()
     }
 
     private func load() {

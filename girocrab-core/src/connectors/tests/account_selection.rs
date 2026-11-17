@@ -272,3 +272,101 @@ fn skipped_refs_name_switched_off_and_archived_accounts() {
         vec!["B".to_string(), "C".to_string()]
     );
 }
+
+fn archived_of(v: &Vault, name: &str) -> bool {
+    v.list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == name)
+        .unwrap()
+        .archived_unix
+        .is_some()
+}
+
+#[test]
+fn switching_an_account_off_archives_it_and_on_reactivates_it() {
+    let (_d, v) = open("girocrab-accsel-archive");
+    let a = login(&v, "fnz", "Login");
+    store_fetch(
+        &v,
+        ConnectorKind::Fnz,
+        a,
+        fetch(vec![acc("A", "", "1"), acc("B", "", "2")]),
+    )
+    .unwrap();
+    assert!(!archived_of(&v, "Konto A") && !archived_of(&v, "Konto B"));
+
+    // off: the account is archived (hidden from the total, no longer fetched), its data stays
+    v.clone()
+        .set_connection_account_choices(a, vec!["A".into()])
+        .unwrap();
+    assert!(!archived_of(&v, "Konto A"));
+    assert!(archived_of(&v, "Konto B"));
+    assert_eq!(count(&v), 2);
+    let choices = v.connection_account_choices(a).unwrap();
+    assert!(
+        choices
+            .iter()
+            .find(|c| c.account_ref == "A")
+            .unwrap()
+            .enabled
+    );
+    assert!(
+        !choices
+            .iter()
+            .find(|c| c.account_ref == "B")
+            .unwrap()
+            .enabled
+    );
+
+    // saving an unchanged selection changes nothing
+    v.clone()
+        .set_connection_account_choices(a, vec!["A".into()])
+        .unwrap();
+    assert!(archived_of(&v, "Konto B"));
+
+    // on again: reactivated
+    v.clone()
+        .set_connection_account_choices(a, vec!["A".into(), "B".into()])
+        .unwrap();
+    assert!(!archived_of(&v, "Konto B"));
+}
+
+#[test]
+fn an_account_archived_by_hand_shows_as_off_and_stays_archived() {
+    let (_d, v) = open("girocrab-accsel-archive-hand");
+    let a = login(&v, "fnz", "Login");
+    store_fetch(
+        &v,
+        ConnectorKind::Fnz,
+        a,
+        fetch(vec![acc("A", "", "1"), acc("B", "", "2")]),
+    )
+    .unwrap();
+    let b = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|x| x.name == "Konto B")
+        .unwrap()
+        .id;
+    v.set_account_archived(b, true).unwrap();
+    // the list shows it as switched off, so saving what the list shows keeps it archived
+    let choices = v.connection_account_choices(a).unwrap();
+    assert!(
+        !choices
+            .iter()
+            .find(|c| c.account_ref == "B")
+            .unwrap()
+            .enabled
+    );
+    let enabled: Vec<String> = choices
+        .iter()
+        .filter(|c| c.enabled)
+        .map(|c| c.account_ref.clone())
+        .collect();
+    v.clone()
+        .set_connection_account_choices(a, enabled)
+        .unwrap();
+    assert!(archived_of(&v, "Konto B"));
+}

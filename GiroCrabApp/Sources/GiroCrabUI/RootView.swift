@@ -868,6 +868,7 @@ struct MainSplitView: View {
                 if c.connector == .tradeRepublic { WebLoginSheet(connection: c) }
                 else if c.connector == .amazonOrders { AmazonWebSheet(connection: c) }
                 else if c.connector == .fnz { FnzWebSheet(connection: c) }
+                else if c.connector == .equatePlus { EquatePlusWebSheet(connection: c) }
                 else if c.connector == .quirion { QuirionWebSheet(connection: c) }
                 else if c.connector == .schwaebischHall { SchwaebischHallWebSheet(connection: c) }
                 else { PortalWebSheet(connection: c) }

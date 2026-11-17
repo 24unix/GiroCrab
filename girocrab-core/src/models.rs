@@ -51,6 +51,8 @@ pub enum ConnectorKind {
     /// Bausparkasse Schwäbisch Hall (Bausparverträge, postbox PDFs) via the
     /// "Mein Konto" portal, authenticated inside the embedded browser (#290).
     SchwaebischHall,
+    /// Employee share plans via authenticated EquatePlus browser session.
+    EquatePlus,
 }
 
 impl ConnectorKind {
@@ -76,6 +78,7 @@ impl ConnectorKind {
             ConnectorKind::VolkswagenBank => "volkswagenbank",
             ConnectorKind::Uberspace => "uberspace",
             ConnectorKind::SchwaebischHall => "schwaebischhall",
+            ConnectorKind::EquatePlus => "equateplus",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -130,6 +133,7 @@ impl ConnectorKind {
             ConnectorKind::VolkswagenBank,
             ConnectorKind::Uberspace,
             ConnectorKind::SchwaebischHall,
+            ConnectorKind::EquatePlus,
         ]
     }
 }

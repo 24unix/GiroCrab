@@ -164,6 +164,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "alte leipziger alh bausparvertrag bauspar fin4u",
         ),
         (
+            ConnectorKind::EquatePlus,
+            "EquatePlus",
+            "equateplus equate plus equatex mitarbeiteraktien aktienprogramme rsu sap",
+        ),
+        (
             ConnectorKind::Quirion,
             "quirion",
             "quirion quirin privatbank depot",
@@ -713,6 +718,26 @@ mod tests {
                 && bank.country == "DE"
                 && bank.connector.is_none()
         }));
+    }
+
+    #[test]
+    fn equateplus_routes_employee_plan_searches_to_browser() {
+        for query in [
+            "EquatePlus",
+            "equate plus",
+            "equatex",
+            "mitarbeiteraktien",
+            "rsu",
+        ] {
+            let result = search(query, vec![], 20);
+            assert!(
+                result
+                    .iter()
+                    .any(|r| r.id == "api:equateplus"
+                        && r.connector == Some(ConnectorKind::EquatePlus)),
+                "{query}"
+            );
+        }
     }
 
     #[test]

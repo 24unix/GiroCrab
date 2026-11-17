@@ -168,6 +168,7 @@ public struct BankingGate: Equatable, Sendable {
         case "amazon-orders": base = "Amazon"
         case "fnz": base = "FNZ Bank"
         case "ibkr": base = "Interactive Brokers"
+        case "equateplus": base = "EquatePlus"
         case "quirion": base = "quirion"
         case "easybank": base = "easybank"
         case "fin4u": base = "Alte Leipziger"

@@ -211,6 +211,18 @@ impl Vault {
                 rows.push(a);
             }
         }
+        // An archived account is not fetched, so the list shows it as switched off.
+        let mut archived = db.prepare(
+            "SELECT external_ref FROM accounts WHERE connection_id=?1 AND deleted_ms IS NULL AND archived_unix IS NOT NULL",
+        )?;
+        let archived: HashSet<String> = archived
+            .query_map([connection_id], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for c in &mut rows {
+            if archived.contains(&c.account_ref) {
+                c.enabled = false;
+            }
+        }
         Ok(rows)
     }
     pub fn set_connection_account_choices(
@@ -231,9 +243,37 @@ impl Vault {
             c.enabled = enabled_refs.contains(&c.account_ref);
             c.pending = false;
         }
-        {
+        // Switching an account off archives it (dimmed, not fetched, not in the total, rules skip
+        // it; the sidebar can hide archived accounts); switching it on reactivates it. All data
+        // stays. Accounts that are not stored yet (held back for a choice) have no row to archive.
+        let changes: Vec<(i64, bool)> = {
             let db = self.db()?;
             save(&db, connection_id, &rows)?;
+            let mut q = db.prepare(
+                "SELECT id, external_ref, archived_unix IS NOT NULL FROM accounts WHERE connection_id=?1 AND deleted_ms IS NULL",
+            )?;
+            let stored = q
+                .query_map([connection_id], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, bool>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            stored
+                .into_iter()
+                .filter_map(|(id, account_ref, archived)| {
+                    let wanted = rows
+                        .iter()
+                        .find(|c| c.account_ref == account_ref)
+                        .map(|c| !c.enabled)?;
+                    (wanted != archived).then_some((id, wanted))
+                })
+                .collect()
+        };
+        for (id, archive) in changes {
+            self.set_account_archived(id, archive)?;
         }
         // Never hold the cache lock while importing (store_fetch also uses it).
         let deferred = self
