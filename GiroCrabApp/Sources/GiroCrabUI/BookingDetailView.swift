@@ -634,6 +634,8 @@ struct CategorySuggestionBox: View {
         case (.merchant, true): return Text("Wie alle \(n) Buchungen bei diesem Händler")
         case (.iban, false): return Text("Wie \(n) von \(of) Buchungen an diese IBAN; zeitnahe zählen mehr, Regel-Buchungen weniger")
         case (.merchant, false): return Text("Wie \(n) von \(of) Buchungen bei diesem Händler; zeitnahe zählen mehr, Regel-Buchungen weniger")
+        case (.similar, true): return Text("Wie alle \(n) Buchungen mit ähnlichem Text")
+        case (.similar, false): return Text("Wie \(n) von \(of) Buchungen mit ähnlichem Text; ähnlichere und zeitnahe zählen mehr")
         }
     }
 }

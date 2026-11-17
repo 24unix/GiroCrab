@@ -1333,6 +1333,7 @@ public final class AppModel {
         selectedBookingID = bookings.first?.id
         startAutoSync()
         reconcileEnableBankingKey()
+        writeSuggestionEvalIfAsked()
     }
 
     func useVault(_ v: Vault, demo: Bool) {
@@ -1347,6 +1348,18 @@ public final class AppModel {
         selectedBookingID = bookings.first?.id
         if demo { stopAutoSync() } else { startAutoSync() }
         if !demo { reconcileEnableBankingKey() }
+        if !demo { writeSuggestionEvalIfAsked() }
+    }
+
+    /// (developer) `--eval-suggestions <file>`: the accuracy report of the own vault (#664).
+    func writeSuggestionEvalIfAsked() {
+        guard let path = options.evalSuggestions else { return }
+        Task { [weak self] in
+            let report = (try? await self?.vaultOffMain { try $0.evaluateSuggestions() }) ?? nil
+            let text = report ?? "evaluate_suggestions failed or the vault was locked\n"
+            try? text.write(toFile: path, atomically: true, encoding: .utf8)
+            print(text)
+        }
     }
 
     /// Switch to the demo data (own vault stays unlocked in the background).

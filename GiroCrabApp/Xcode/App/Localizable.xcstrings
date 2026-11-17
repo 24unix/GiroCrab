@@ -28867,6 +28867,17 @@
         }
       }
     },
+    "Wie %lld von %lld Buchungen mit ähnlichem Text; ähnlichere und zeitnahe zählen mehr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Like %1$lld of %2$lld bookings with similar text; more similar and closer in time count more"
+          }
+        }
+      }
+    },
     "Wie GiroCrab die Umsätze abruft. PIN und TAN fragt GiroCrab erst beim ersten Abruf ab." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28907,6 +28918,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Like all %lld bookings at this merchant"
+          }
+        }
+      }
+    },
+    "Wie alle %lld Buchungen mit ähnlichem Text" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Like all %lld bookings with similar text"
           }
         }
       }

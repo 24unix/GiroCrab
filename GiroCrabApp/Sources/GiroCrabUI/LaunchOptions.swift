@@ -70,6 +70,9 @@ public struct LaunchOptions: Sendable {
     public var keepFreshVault: Bool
     /// (developer) show developer-only buttons
     public var developer: Bool
+    /// (developer) `--eval-suggestions <file>`: after unlocking the own vault, write the
+    /// accuracy report of the category suggestions (#664, counts only) to this file
+    public var evalSuggestions: String?
     public var tryAddBank: String?
     /// (demo) preselect the account whose name contains this text
     public var selectAccount: String?
@@ -137,6 +140,7 @@ public struct LaunchOptions: Sendable {
             pickBooking = nil
         }
         merchantList = arguments.contains("--merchant-list")
+        evalSuggestions = arguments.firstIndex(of: "--eval-suggestions").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
         inspectorEdit = arguments.contains("--demo-inspector-edit")
         if let i = arguments.firstIndex(of: "--demo-sheet"), i + 1 < arguments.count {
             demoSheet = arguments[i + 1].lowercased()

@@ -495,3 +495,86 @@ fn the_history_is_read_again_only_after_a_change() {
     assert_eq!(f.suggest(id), None, "the new bookings count at once");
     assert!(!std::sync::Arc::ptr_eq(&first, &cached()));
 }
+
+#[test]
+fn words_leave_out_numbers_short_words_and_bank_wording() {
+    let w = super::similar::words(&[
+        "SEPA-Lastschrift",
+        "Abschlag Fernwärme 11/2026 KD 4711 EREF+AB12",
+    ]);
+    assert_eq!(w, vec!["abschlag", "fernwärme"]);
+}
+
+#[test]
+fn similar_text_helps_a_merchant_without_history() {
+    let f = vault();
+    f.add_n(
+        3,
+        b("Stadtwerke Nord", -80_00)
+            .purpose("Abschlag Fernwärme Nord")
+            .manual("Energie"),
+    );
+    f.add_n(
+        3,
+        b("Buchladen Seite", -15_00)
+            .purpose("Roman Taschenbuch")
+            .manual("Bücher"),
+    );
+    let new_payee = f.add(b("Fernwärme Nord GmbH", -80_00).purpose("Abschlag"));
+    let s = f.suggest(new_payee).unwrap();
+    assert_eq!(s.category_id, f.category("Energie"));
+    assert_eq!(
+        (s.basis, s.support, s.considered),
+        (SuggestionBasis::Similar, 3, 3)
+    );
+    // a refund does not take the purchases' category
+    let refund = f.add(b("Fernwärme Nord GmbH", 80_00).purpose("Abschlag"));
+    assert_eq!(f.suggest(refund), None);
+}
+
+#[test]
+fn similar_text_needs_two_close_bookings() {
+    let f = vault();
+    f.add(
+        b("Stadtwerke Nord", -80_00)
+            .purpose("Abschlag Fernwärme Nord")
+            .manual("Energie"),
+    );
+    let id = f.add(b("Fernwärme Nord GmbH", -80_00).purpose("Abschlag"));
+    assert_eq!(f.suggest(id), None, "one similar booking is not enough");
+    f.add(
+        b("Pizzeria Nord", -20_00)
+            .purpose("Lieferung")
+            .manual("Restaurant"),
+    );
+    f.add(
+        b("Stadtwerke Nord", -80_00)
+            .purpose("Abschlag Fernwärme Nord")
+            .manual("Energie"),
+    );
+    assert!(f.suggest(id).is_some());
+}
+
+#[test]
+fn similar_text_never_overrides_a_mixed_merchant() {
+    let f = vault();
+    f.add_n(
+        3,
+        b("Stadtwerke Nord", -80_00)
+            .purpose("Abschlag Fernwärme Nord")
+            .manual("Energie"),
+    );
+    // the merchant itself has history, only too mixed: no stage 3
+    f.add(
+        b("Fernwärme Nord GmbH", -80_00)
+            .purpose("Abschlag")
+            .manual("Wohnen"),
+    );
+    f.add(
+        b("Fernwärme Nord GmbH", -80_00)
+            .purpose("Abschlag")
+            .manual("Energie"),
+    );
+    let id = f.add(b("Fernwärme Nord GmbH", -80_00).purpose("Abschlag"));
+    assert_eq!(f.suggest(id), None);
+}

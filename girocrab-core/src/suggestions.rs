@@ -23,7 +23,9 @@
 //!     name apart. An IBAN never decides on its own, since payment services
 //!     collect for many merchants through one account;
 //!  2. same merchant (`MerchantResolver` key, any IBAN, also card payments),
-//!     unless an earlier booking to the same IBAN had another category.
+//!     unless an earlier booking to the same IBAN had another category;
+//!  3. only for a merchant without any history: the most similar bookings by
+//!     their words (`similar.rs`), with stricter limits.
 //!
 //! Votes only come from bookings in the same direction (a refund never votes
 //! for a purchase) and fade with the distance in time, so a category the user
@@ -46,6 +48,8 @@ use crate::merchants::{FlowKind, MerchantInfo, MerchantKind, MerchantResolver};
 use crate::models::{CategorySource, MatchKind, Rule};
 use crate::vault::Vault;
 
+mod eval;
+mod similar;
 #[cfg(test)]
 mod tests;
 
@@ -58,6 +62,31 @@ const HALF_LIFE_DAYS: f64 = 730.0;
 /// Weight of a checked rule booking (a manual one counts 1).
 const RULE_WEIGHT: f64 = 0.5;
 
+/// How sure a stage must be; [`Limits::DEFAULT`] in the app.
+#[derive(Clone, Copy)]
+struct Limits {
+    min_support: u32,
+    min_share: f64,
+    /// Stage 3: neighbours looked at (0 = stage off), their least similarity,
+    /// and the bookings that must back the category.
+    similar_k: usize,
+    min_similarity: f64,
+    similar_support: u32,
+}
+
+impl Limits {
+    const DEFAULT: Limits = Limits {
+        min_support: MIN_SUPPORT,
+        min_share: MIN_SHARE,
+        similar_k: 7,
+        // measured on a real vault (8805 bookings, only earlier ones as history):
+        // stage 3 right in 90.6 % of its suggestions, for 5.7 % of the bookings
+        // whose merchant had no history
+        min_similarity: 0.6,
+        similar_support: 2,
+    };
+}
+
 /// What a suggestion is based on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -66,6 +95,8 @@ pub enum SuggestionBasis {
     Iban,
     /// Earlier bookings at the same merchant.
     Merchant,
+    /// Earlier bookings with similar text (the merchant has no history).
+    Similar,
 }
 
 /// Category suggested for an uncategorised booking.
@@ -90,12 +121,15 @@ struct Target {
     day: Option<i32>,
     iban: String,
     merchant: String,
+    /// Words of counterparty, purpose and booking text (stage 3).
+    words: Vec<String>,
 }
 
 /// One earlier booking's vote: by hand (`rule_id` none, weight 1) or by that
 /// rule (weight [`RULE_WEIGHT`]).
 #[derive(Clone, Copy)]
 struct Vote {
+    booking_id: i64,
     category_id: i64,
     day: Option<i32>,
     rule_id: Option<i64>,
@@ -103,11 +137,13 @@ struct Vote {
 
 /// A history row as read under the vault lock; `rule_id` as in [`Vote`].
 struct Row {
+    id: i64,
     date: String,
     amount_cents: i64,
     counterparty: String,
     iban: String,
     purpose: String,
+    booking_text: String,
     category_id: i64,
     rule_id: Option<i64>,
 }
@@ -117,6 +153,7 @@ pub(crate) struct History {
     changes: u64,
     by_merchant: HashMap<(bool, String), Vec<Vote>>,
     by_iban: HashMap<(bool, String, String), Vec<Vote>>,
+    text: similar::TextIndex,
     /// Keyword and regex rules by id (their limits decide which votes count).
     rules: HashMap<i64, Rule>,
 }
@@ -180,6 +217,7 @@ fn load_targets(vault: &Vault, conn: &Connection, ids: &[i64]) -> CoreResult<Vec
                 day: day_number(&b.booking_date),
                 iban: normalize_iban(&b.counterparty_iban),
                 merchant,
+                words: similar::words(&[&b.counterparty, &b.purpose, &b.booking_text]),
             });
         }
     }
@@ -189,7 +227,8 @@ fn load_targets(vault: &Vault, conn: &Connection, ids: &[i64]) -> CoreResult<Vec
 fn read_rows(conn: &Connection) -> CoreResult<Vec<Row>> {
     let mut stmt = conn.prepare(
         "SELECT t.booking_date, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose,
-                t.category_id, CASE WHEN t.category_source = 'rule' THEN t.rule_id END
+                t.category_id, CASE WHEN t.category_source = 'rule' THEN t.rule_id END, t.id,
+                t.booking_text
          FROM transactions t
          JOIN accounts a ON a.id = t.account_id
          JOIN categories c ON c.id = t.category_id
@@ -208,6 +247,8 @@ fn read_rows(conn: &Connection) -> CoreResult<Vec<Row>> {
                 purpose: r.get(4)?,
                 category_id: r.get(5)?,
                 rule_id: r.get(6)?,
+                id: r.get(7)?,
+                booking_text: r.get(8)?,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -223,21 +264,25 @@ impl History {
     ) -> Self {
         let mut by_merchant: HashMap<(bool, String), Vec<Vote>> = HashMap::new();
         let mut by_iban: HashMap<(bool, String, String), Vec<Vote>> = HashMap::new();
+        let mut texts = Vec::with_capacity(rows.len());
         for row in rows {
-            let Some(merchant) =
-                merchant_key(&MerchantResolver::resolve(&row.counterparty, &row.purpose))
-            else {
-                continue;
-            };
             let iban = normalize_iban(&row.iban);
             if own_ibans.contains(&iban) {
                 continue;
             }
             let income = row.amount_cents > 0;
             let vote = Vote {
+                booking_id: row.id,
                 category_id: row.category_id,
                 day: day_number(&row.date),
                 rule_id: row.rule_id,
+            };
+            let words = similar::words(&[&row.counterparty, &row.purpose, &row.booking_text]);
+            texts.push((vote, income, words));
+            let Some(merchant) =
+                merchant_key(&MerchantResolver::resolve(&row.counterparty, &row.purpose))
+            else {
+                continue;
             };
             if !iban.is_empty() {
                 by_iban
@@ -254,17 +299,29 @@ impl History {
             changes,
             by_merchant,
             by_iban,
+            text: similar::TextIndex::build(texts),
             rules,
         }
     }
 
     fn suggest(&self, t: &Target) -> Option<CategorySuggestion> {
+        self.suggest_with(t, Limits::DEFAULT, |_| false)
+    }
+
+    /// `suggest` with other limits, leaving out the votes `skip` names.
+    fn suggest_with(
+        &self,
+        t: &Target,
+        limits: Limits,
+        skip: impl Fn(&Vote) -> bool,
+    ) -> Option<CategorySuggestion> {
         let admit = |v: &&Vote| {
-            v.rule_id.is_none_or(|id| {
-                self.rules
-                    .get(&id)
-                    .is_some_and(|r| r.admits(t.account_id, t.amount_cents))
-            })
+            !skip(v)
+                && v.rule_id.is_none_or(|id| {
+                    self.rules
+                        .get(&id)
+                        .is_some_and(|r| r.admits(t.account_id, t.amount_cents))
+                })
         };
         let income = t.amount_cents > 0;
         let iban_votes: Vec<&Vote> = self
@@ -272,11 +329,45 @@ impl History {
             .get(&(income, t.iban.clone(), t.merchant.clone()))
             .map(|v| v.iter().filter(admit).collect())
             .unwrap_or_default();
-        if let Some(s) = decide(iban_votes.iter().copied(), t, SuggestionBasis::Iban) {
+        let (support, share) = (limits.min_support, limits.min_share);
+        if let Some(s) = decide(
+            iban_votes.iter().map(|v| (*v, 1.0)),
+            t,
+            SuggestionBasis::Iban,
+            support,
+            share,
+        ) {
             return Some(s);
         }
-        let votes = self.by_merchant.get(&(income, t.merchant.clone()))?;
-        let s = decide(votes.iter().filter(admit), t, SuggestionBasis::Merchant)?;
+        let votes: Vec<&Vote> = self
+            .by_merchant
+            .get(&(income, t.merchant.clone()))
+            .map(|v| v.iter().filter(admit).collect())
+            .unwrap_or_default();
+        if votes.is_empty() {
+            // a merchant without history: bookings with similar words, weighted by similarity
+            let near = self.text.nearest(
+                &t.words,
+                income,
+                limits.similar_k,
+                limits.min_similarity,
+                |v| admit(&v),
+            );
+            return decide(
+                near.into_iter(),
+                t,
+                SuggestionBasis::Similar,
+                limits.similar_support,
+                share,
+            );
+        }
+        let s = decide(
+            votes.iter().map(|v| (*v, 1.0)),
+            t,
+            SuggestionBasis::Merchant,
+            support,
+            share,
+        )?;
         // a booking to this very IBAN with another category outweighs the name
         iban_votes
             .iter()
@@ -286,19 +377,23 @@ impl History {
 }
 
 /// The category the votes agree on for `t`; `None` when too few or too mixed.
+/// Each vote comes with a factor (stage 3: its similarity, else 1).
 fn decide<'a>(
-    votes: impl Iterator<Item = &'a Vote>,
+    votes: impl Iterator<Item = (&'a Vote, f64)>,
     t: &Target,
     basis: SuggestionBasis,
+    min_support: u32,
+    min_share: f64,
 ) -> Option<CategorySuggestion> {
     let mut tally: HashMap<i64, (f64, u32)> = HashMap::new();
     let (mut total, mut considered) = (0.0, 0u32);
-    for v in votes {
+    for (v, factor) in votes {
         let fade = match (t.day, v.day) {
             (Some(a), Some(b)) => 0.5f64.powf(f64::from((a - b).abs()) / HALF_LIFE_DAYS),
             _ => 1.0,
         };
-        let w = fade
+        let w = factor
+            * fade
             * if v.rule_id.is_some() {
                 RULE_WEIGHT
             } else {
@@ -317,7 +412,7 @@ fn decide<'a>(
             .then(a.1 .1.cmp(&b.1 .1))
             .then(b.0.cmp(&a.0))
     })?;
-    (support >= MIN_SUPPORT && total > 0.0 && weight / total >= MIN_SHARE).then_some(
+    (support >= min_support && total > 0.0 && weight / total >= min_share).then_some(
         CategorySuggestion {
             booking_id: t.id,
             category_id,
