@@ -28,7 +28,28 @@ extension AppModel {
     func switchToSingleTransfer() {
         showBatchSheet = false
         transferError = nil
-        Task { @MainActor in openTransfer() }
+        Task { @MainActor in presentTransfer() } // keeps the draft (Umbuchung chosen in the batch sheet)
+    }
+
+    /// Any own account other than a sender can receive an Umbuchung.
+    var hasOwnTransferTargets: Bool {
+        allAccounts.filter { !$0.iban.isEmpty && !$0.isArchived }.count > 1
+    }
+
+    /// The kind switch of both transfer sheets.
+    func switchTransferKind(to kind: TransferKind, fromBatch: Bool) {
+        if kind == .batch {
+            if !fromBatch { switchToBatchTransfer() }
+            return
+        }
+        if transferDraft.ownTransfer && kind == .single {
+            // back from Umbuchung: the own account is not this recipient
+            transferDraft.name = ""
+            transferDraft.iban = ""
+            transferDraft.bic = ""
+        }
+        transferDraft.ownTransfer = kind == .own
+        if fromBatch { switchToSingleTransfer() }
     }
 
     /// Segmented control of the single form: on to the batch sheet.

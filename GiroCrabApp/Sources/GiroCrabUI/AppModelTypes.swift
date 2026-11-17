@@ -373,8 +373,14 @@ struct CSVFileDocument: FileDocument {
     func fileWrapper(configuration: WriteConfiguration) -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }
 
+/// What the transfer sheets do: one transfer, an Umbuchung between own
+/// accounts, or a batch.
+enum TransferKind: Hashable { case single, own, batch }
+
 struct TransferDraft {
     var accountID: Int64?
+    /// Umbuchung: name and IBAN come from an own account.
+    var ownTransfer = false
     var name = ""
     var iban = ""
     var bic = ""

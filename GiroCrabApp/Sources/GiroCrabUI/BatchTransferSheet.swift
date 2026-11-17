@@ -30,7 +30,7 @@ struct BatchTransferSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if !reviewing { TransferKindPicker(batch: true).padding(.bottom, 10) }
+            if !reviewing { TransferKindPicker(batch: true, offersOwn: model.hasOwnTransferTargets).padding(.bottom, 10) }
             Divider()
             if reviewing { review } else { editor }
             if let e = model.transferError {
@@ -315,21 +315,22 @@ struct BatchTransferSheet: View {
     }
 }
 
-/// "Einzeln | Sammelüberweisung" under the title of both transfer sheets.
+/// "Überweisung | Umbuchung | Sammelüberweisung" under the title of both
+/// transfer sheets (#881): one switch instead of two stacked ones.
 struct TransferKindPicker: View {
     @Environment(AppModel.self) private var model
     let batch: Bool
+    /// Umbuchung needs another own account with an IBAN.
+    let offersOwn: Bool
 
     var body: some View {
         Picker("Art", selection: Binding(
-            get: { batch ? 1 : 0 },
-            set: { new in
-                if new == 1 && !batch { model.switchToBatchTransfer() }
-                if new == 0 && batch { model.switchToSingleTransfer() }
-            })
+            get: { batch ? TransferKind.batch : (model.transferDraft.ownTransfer ? .own : .single) },
+            set: { model.switchTransferKind(to: $0, fromBatch: batch) })
         ) {
-            Text("Einzeln").tag(0)
-            Text("Sammelüberweisung").tag(1)
+            Text("Überweisung").tag(TransferKind.single)
+            if offersOwn { Text("Umbuchung").tag(TransferKind.own) }
+            if model.canBatchTransfer { Text("Sammelüberweisung").tag(TransferKind.batch) }
         }
         .pickerStyle(.segmented).labelsHidden().fixedSize()
         .frame(maxWidth: .infinity)

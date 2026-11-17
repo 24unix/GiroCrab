@@ -52,11 +52,9 @@ extension AppModel {
     }
 
     func applyTransferTemplate(_ t: TransferTemplate) {
-        transferDraft.name = t.recipientName
-        transferDraft.iban = TransferSheetView.groupedIBAN(t.recipientIban)
-        transferDraft.bic = t.recipientBic
-        transferDraft.amountText = t.defaultAmountCents.map { Money.plain($0) } ?? ""
-        transferDraft.purpose = String(t.defaultPurpose.prefix(140))
+        fillTransferDraft(ParsedPayment(name: t.recipientName, iban: t.recipientIban, bic: t.recipientBic,
+                                        amountText: t.defaultAmountCents.map { Money.plain($0) } ?? "",
+                                        purpose: t.defaultPurpose))
     }
 
     func deleteTransferTemplate(_ id: Int64) {

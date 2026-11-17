@@ -2731,6 +2731,21 @@ impl Vault {
                 ],
             )?;
             n += 1;
+            // Recipient IBANs on the outgoing transfers, so the transfer form has
+            // known recipients to suggest (#881). Same bookings, same balances.
+            for (name, iban) in [
+                ("Max Mustermann", "DE83100100100532013018"),
+                ("Lukas Weber", "DE13200411330811234567"),
+                ("Tim Hoffmann", "DE24430609674011223344"),
+                ("Hausverwaltung Nord GmbH", "DE17500105175407324932"),
+                ("Hausverwaltung Nord", "DE17500105175407324932"),
+            ] {
+                tx.execute(
+                    "UPDATE transactions SET counterparty_iban = ?2
+                     WHERE counterparty = ?1 AND amount_cents < 0 AND counterparty_iban = ''",
+                    params![name, iban],
+                )?;
+            }
         }
         // Startsaldo (#212): the card reports no balance; it is computed from the
         // bookings, starting with the statement balance at the start of the

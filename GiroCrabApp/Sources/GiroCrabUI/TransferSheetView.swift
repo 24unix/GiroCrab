@@ -15,16 +15,22 @@ struct TransferSheetView: View {
     @State private var exportingGiroCode: PNGFileDocument?
     @State private var suggestions: [KnownRecipient] = []
     @FocusState private var nameFocused: Bool
+    @FocusState private var amountFocused: Bool
+    /// Row of the recipient list chosen with the arrow keys.
+    @State private var highlighted: Int?
+    /// Name just taken from the list: typing it must not reopen the list.
+    @State private var pickedName: String?
     @State private var dropTargeted = false
     @State private var importNote: String?
-    /// "Umbuchung": the recipient is one of the user's own accounts.
-    @State private var ownTransfer = false
     @State private var ownTargetID: Int64?
     /// Measured form and sheet heights: the sheet takes what the form needs (#879).
     @State private var formFit = FormFit()
     /// Opt-in clipboard check (#663): what the banner offers.
     @State private var clipboardOffer: ClipboardPaymentCheck.Offer?
     @AppStorage(ClipboardPaymentCheck.enabledKey) private var clipboardCheck = ClipboardPaymentCheck.enabledDefault
+    /// Highest fitted height of the current step: the sheet grows, never shrinks,
+    /// so Überweisung ⇄ Umbuchung does not resize it and scroll it on the way back (#881).
+    @State private var heightFloor: CGFloat = 0
 
     private let maxPurpose = 140
 
@@ -49,8 +55,16 @@ struct TransferSheetView: View {
         suggestions = []
     }
 
+    /// "Umbuchung": the recipient is one of the user's own accounts. Kept in the
+    /// draft so the batch sheet's switch can open the form in this mode.
+    private var ownTransfer: Bool { model.transferDraft.ownTransfer }
+
     private func setOwnTransfer(_ on: Bool) {
-        ownTransfer = on
+        model.transferDraft.ownTransfer = on
+        applyOwnTransfer(on)
+    }
+
+    private func applyOwnTransfer(_ on: Bool) {
         if on {
             if !ownTargets.contains(where: { $0.id == ownTargetID }) { ownTargetID = ownTargets.first?.id }
             applyOwnTarget(ownTargetID)
@@ -106,10 +120,22 @@ struct TransferSheetView: View {
 
     /// The height the form needs (#879), at most what the screen offers;
     /// `nil` (fixed 700 pt) until measured or before macOS 15.
+    /// The fitted sheet shows the whole form: no scroll bars, also not for the
+    /// moment the form has grown and the sheet not yet (#881).
+    private var formFitsSheet: Bool {
+        #if os(macOS)
+        let screen = NSScreen.main?.visibleFrame.height ?? 900
+        guard let h = formFit.height(min: 0, max: .infinity) else { return false }
+        return h <= screen - 120
+        #else
+        return false
+        #endif
+    }
+
     private var fittedHeight: CGFloat? {
         #if os(macOS)
         let screen = NSScreen.main?.visibleFrame.height ?? 900
-        return formFit.height(min: 420, max: screen - 120)
+        return formFit.height(min: 420, max: screen - 120).map { max($0, heightFloor) }
         #else
         return nil
         #endif
@@ -119,8 +145,9 @@ struct TransferSheetView: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             header
-            if step == .form && model.canBatchTransfer {
-                TransferKindPicker(batch: false).padding(.bottom, 10)
+            // Tagesgeld: only Umbuchung, said in the form; no switch.
+            if step == .form && !internalOnly && (model.canBatchTransfer || !ownTargets.isEmpty || ownTransfer) {
+                TransferKindPicker(batch: false, offersOwn: !ownTargets.isEmpty || ownTransfer).padding(.bottom, 10)
             }
             if step == .form, let offer = clipboardOffer {
                 ClipboardPaymentBanner(offer: offer, apply: { acceptClipboard($0) }, ignore: { clipboardOffer = nil })
@@ -128,7 +155,9 @@ struct TransferSheetView: View {
             }
             Divider()
             switch step {
-            case .form: form(draft: $model.transferDraft)
+            case .form:
+                form(draft: $model.transferDraft)
+                demoHint($model.transferDraft)
             case .review: sendConfirmation
             case .giroCode: giroCodeView
             }
@@ -153,7 +182,8 @@ struct TransferSheetView: View {
         .frame(height: fittedHeight)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { formFit.total = $0 }
         // The GiroCode view does not scroll: back to the fixed height.
-        .onChange(of: step) { formFit = FormFit(total: formFit.total) }
+        .onChange(of: step) { formFit = FormFit(total: formFit.total); heightFloor = 0 }
+        .onChange(of: fittedHeight) { _, h in if let h, h > heightFloor { heightFloor = h } }
         .task { // screenshots
             switch model.options.demoSheetName {
             case "transfer-confirm": step = .review
@@ -189,7 +219,14 @@ struct TransferSheetView: View {
 #if os(macOS)
         .onPasteCommand(of: [.plainText]) { _ in pasteFromClipboard() }
 #endif
-        .onAppear { if internalOnly && !ownTransfer { setOwnTransfer(true) } }
+        .onAppear {
+            if internalOnly && !ownTransfer { setOwnTransfer(true) }
+            // Opened as Umbuchung from the batch sheet's switch.
+            else if ownTransfer { setOwnTransfer(!ownTargets.isEmpty) }
+        }
+        // Switched on from outside (the kind switch); switching off is done by
+        // whoever switches off, so a template or paste keeps its fields.
+        .onChange(of: model.transferDraft.ownTransfer) { _, on in if on { applyOwnTransfer(true) } }
         .onChange(of: model.transferDraft.accountID) { _, _ in
             if internalOnly && !ownTransfer { setOwnTransfer(true); return }
             if !internalOnly && ownTransfer && ownTargets.isEmpty { setOwnTransfer(false); return }
@@ -205,10 +242,12 @@ struct TransferSheetView: View {
             if new.count > maxPurpose { model.transferDraft.purpose = String(new.prefix(maxPurpose)) }
         }
         .onChange(of: model.transferDraft.name) { _, new in
-            suggestions = nameFocused ? model.suggestRecipients(new) : []
+            if new == pickedName { suggestions = []; return }
+            pickedName = nil
+            suggestions = nameFocused ? recipients(new) : []
         }
         .onChange(of: nameFocused) { _, f in
-            suggestions = f ? model.suggestRecipients(model.transferDraft.name) : []
+            suggestions = f && model.transferDraft.name != pickedName ? recipients(model.transferDraft.name) : []
         }
     }
 
@@ -245,7 +284,7 @@ struct TransferSheetView: View {
     private func form(draft: Binding<TransferDraft>) -> some View {
         Form {
             Section {
-                LabeledContent("Von Konto") {
+                LabeledContent("Von") {
                     SourceAccountPicker(selection: draft.accountID, accounts: model.transferFormAccounts)
                 }
             } footer: {
@@ -257,176 +296,232 @@ struct TransferSheetView: View {
                     Label("Vom Tagesgeldkonto sind nur Umbuchungen auf eigene Girokonten möglich.", systemImage: "arrow.left.arrow.right")
                         .appFont(.callout)
                 }
-            } else if !ownTargets.isEmpty || ownTransfer {
-                Section {
-                    Picker("Art der Zahlung", selection: Binding(get: { ownTransfer }, set: { setOwnTransfer($0) })) {
-                        Text("Überweisung").tag(false)
-                        Text("Umbuchung").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
             }
 
-            if ownTransfer {
-                Section {
+            Section {
+                if ownTransfer {
                     Picker("Zielkonto", selection: Binding(get: { ownTargetID }, set: { ownTargetID = $0; applyOwnTarget($0) })) {
                         ForEach(ownTargets) { a in
                             Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id)).sensitive()
                         }
                     }
-                    LabeledContent("Name") {
+                    LabeledContent("Empfänger") {
                         Text(draft.wrappedValue.name).appFont(.body).sensitive()
                     }
+                } else {
+                    LabeledContent("Empfänger") {
+                        TextField("Empfänger", text: draft.name)
+                            .transferField()
+                            .focused($nameFocused)
+                            .onKeyPress(.downArrow) { moveHighlight(1) }
+                            .onKeyPress(.upArrow) { moveHighlight(-1) }
+                            .onKeyPress(.return) {
+                                guard let h = highlighted, suggestions.indices.contains(h) else { return .ignored }
+                                pick(suggestions[h])
+                                return .handled
+                            }
+                            .onKeyPress(.escape) {
+                                guard !suggestions.isEmpty else { return .ignored }
+                                suggestions = []
+                                return .handled
+                            }
+                            .sensitive()
+                            .anchorPreference(key: NameFieldBounds.self, value: .bounds) { $0 }
+                    }
                     LabeledContent("IBAN") {
-                        Text(formatIBAN(draft.wrappedValue.iban)).appFont(.body, design: .monospaced).sensitive()
+                        HStack(spacing: 8) {
+                            TextField("IBAN", text: draft.iban, prompt: Text("DE00 0000 0000 0000 0000 00"))
+                                .transferField()
+                                .appFont(.body, design: .monospaced)
+                                .autocorrectionDisabled()
+                                .sensitive()
+                            validity(draft.wrappedValue.iban.isEmpty ? nil : ibanValid,
+                                     valid: "Prüfsumme korrekt", invalid: "IBAN ungültig (Prüfsumme/Länge)")
+                        }
                     }
-                } header: {
-                    Text("Eigenes Zielkonto").appSectionHeader()
-                } footer: {
-                    Text("Name und IBAN werden aus dem gewählten Konto übernommen.")
-                }
-            } else {
-            Section {
-                TextField("Name", text: draft.name, prompt: Text("Name des Empfängers"))
-                    .multilineTextAlignment(.trailing)
-                    .focused($nameFocused)
-                    .sensitive()
-                if !suggestions.isEmpty { suggestionRow }
-                LabeledContent("IBAN") {
-                    HStack(spacing: 8) {
-                        TextField("IBAN", text: draft.iban, prompt: Text("DE00 0000 0000 0000 0000 00"))
-                            .labelsHidden()
-                            .multilineTextAlignment(.trailing)
-                            .appFont(.body, design: .monospaced)
-                            .autocorrectionDisabled()
-                            .sensitive()
-                        if !draft.wrappedValue.iban.isEmpty {
-                            Image(systemName: ibanValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(ibanValid ? Theme.inflow : Theme.negative)
-                                .help(ibanValid ? "Prüfsumme korrekt" : "IBAN ungültig (Prüfsumme/Länge)")
-                                .accessibilityLabel(ibanValid ? "Prüfsumme korrekt" : "IBAN ungültig (Prüfsumme/Länge)")
+                    LabeledContent("BIC") {
+                        HStack(spacing: 8) {
+                            TextField("BIC", text: draft.bic, prompt: Text("optional"))
+                                .transferField()
+                                .appFont(.body, design: .monospaced)
+                                .autocorrectionDisabled()
+                                // 8 or 11 characters: as wide as the amount (HIG: size fits the input)
+                                .frame(maxWidth: 160 * textScale)
+                                .sensitive()
+                            validity(bicText.isEmpty ? nil : bicValid, valid: "BIC gültig", invalid: "BIC ungültig")
+                            Spacer(minLength: 0)
                         }
                     }
                 }
-                LabeledContent("BIC (optional)") {
-                    HStack(spacing: 8) {
-                        TextField("BIC", text: draft.bic, prompt: Text("z. B. GENODEF1KS2"))
-                            .labelsHidden()
-                            .multilineTextAlignment(.trailing)
-                            .appFont(.body, design: .monospaced)
-                            .autocorrectionDisabled()
-                            .sensitive()
-                        if !bicText.isEmpty {
-                            Image(systemName: bicValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(bicValid ? Theme.inflow : Theme.negative)
-                                .help(bicValid ? "BIC gültig" : "BIC ungültig")
-                                .accessibilityLabel(bicValid ? "BIC gültig" : "BIC ungültig")
-                        }
-                    }
-                }
-            } header: {
-                Text("Empfänger").appSectionHeader()
             } footer: {
-                Text(importNote ?? String(localized: "Oder Rechnung hierher ziehen"))
-            }
+                if let importNote { Text(importNote) }
             }
 
             Section {
                 LabeledContent("Betrag") {
                     HStack(spacing: 6) {
                         TextField("Betrag", text: draft.amountText, prompt: Text(Money.plain(0)))
-                            .labelsHidden()
-                            .multilineTextAlignment(.trailing)
+                            .transferField(alignment: .trailing)
                             .appFont(.body, monospacedDigit: true)
+                            .focused($amountFocused)
+                            .frame(maxWidth: 160 * textScale)
                             .sensitive(.amounts)
                         Text("€").foregroundStyle(Theme.secondary)
+                        Spacer(minLength: 0)
                     }
                 }
-                TextField("Verwendungszweck", text: draft.purpose, prompt: Text("Verwendungszweck"), axis: .vertical)
-                    .lineLimit(1...3)
-                    .sensitive()
-            } header: {
-                Text("Zahlung").appSectionHeader()
-            } footer: {
-                HStack {
-                    if !draft.wrappedValue.amountText.isEmpty && cents == nil {
-                        Text("Betrag > 0 eingeben").foregroundStyle(Theme.negative)
-                    }
-                    Spacer()
-                    Text("\(draft.wrappedValue.purpose.count)/\(maxPurpose)")
-                        .monospacedDigit()
-                        .foregroundStyle(draft.wrappedValue.purpose.count >= maxPurpose ? Theme.negative : Theme.tertiary)
+                LabeledContent("Verwendungszweck") {
+                    TextField("Verwendungszweck", text: draft.purpose, prompt: Text("optional"), axis: .vertical)
+                        .transferField()
+                        .lineLimit(1...3)
+                        .sensitive()
                 }
-            }
-
-            if canSend && account?.connector?.offersInstantChoice == true {
-                Section {
-                    // Mutually exclusive choices: one radio group (HIG), not
-                    // two checkboxes where one disables the other.
-                    Picker("Art", selection: executionMode(draft)) {
+                if canSend && account?.connector?.offersInstantChoice == true {
+                    // Mutually exclusive choices in one pop-up (HIG): one row
+                    // instead of a radio group of three.
+                    Picker("Ausführung", selection: executionMode(draft)) {
                         Text("Normale Überweisung").tag(ExecutionMode.regular)
                         Text("Terminüberweisung").tag(ExecutionMode.scheduled)
                         Text("Echtzeitüberweisung (SEPA Instant)").tag(ExecutionMode.instant)
                     }
-                    #if os(macOS)
-                    .pickerStyle(.radioGroup)
-                    #else
                     .pickerStyle(.menu)
-                    #endif
-                    .labelsHidden()
                     if draft.wrappedValue.executionMode == .scheduled {
                         DatePicker("Ausführungsdatum", selection: draft.executionDate,
                                    in: (Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())...,
                                    displayedComponents: .date)
                     }
-                } header: {
-                    Text("Ausführung").appSectionHeader()
-                } footer: {
-                    if draft.wrappedValue.executionMode == .instant { instantNote }
                 }
+            } footer: {
+                paymentFooter(draft.wrappedValue)
             }
 
-            if canSend && (model.isDemo || isMagicDemoAccount) {
-                Section {
-                    DemoHintBanner(style: .pinAndTan, buttonTitle: "PIN 12345 einfügen") { draft.pin.wrappedValue = "12345" }
-                }
-            }
             if canSend && !pinStored {
                 Section {
-                    SecureField(isBunq ? "bunq-API-Schlüssel" : "Banking-PIN", text: draft.pin,
-                                prompt: Text(isBunq ? "wird nicht gespeichert" : "wird nicht gespeichert"))
-                        .multilineTextAlignment(.trailing)
-                } footer: {
-                    Text(isBunq ? "Der API-Schlüssel wird nicht gespeichert." : "Die PIN wird nicht gespeichert.")
+                    LabeledContent(isBunq ? "bunq-API-Schlüssel" : "Banking-PIN") {
+                        SecureField(isBunq ? "bunq-API-Schlüssel" : "Banking-PIN", text: draft.pin,
+                                    prompt: Text("wird nicht gespeichert"))
+                            .transferField()
+                    }
                 }
             }
         }
         .formStyle(.grouped)
-        .reportsFormFit($formFit)
-    }
-
-    private var suggestionRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(suggestions, id: \.iban) { r in
-                    Button {
-                        model.transferDraft.name = r.name
-                        model.transferDraft.iban = r.iban
-                        suggestions = []
-                    } label: {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(r.name).appFont(.callout).lineLimit(1)
-                            Text(formatIBAN(r.iban)).appFont(.caption2, design: .monospaced).foregroundStyle(Theme.secondary)
-                        }
-                        .sensitive() // known recipients: name and IBAN
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.selection))
-                    }
-                    .buttonStyle(.plain)
+        // The list floats over the form below the name field (a row would clip
+        // it), so the sheet keeps its size while typing (#881).
+        .overlayPreferenceValue(NameFieldBounds.self) { anchor in
+            GeometryReader { g in
+                if let anchor, !suggestions.isEmpty {
+                    let field = g[anchor]
+                    suggestionList
+                        .frame(width: field.width)
+                        .offset(x: field.minX, y: field.maxY + 4)
                 }
             }
         }
+        .scrollIndicators(formFitsSheet ? .never : .automatic)
+        .reportsFormFit($formFit)
+    }
+
+    /// Demo PIN under the form, outside it: inside a section it would be a box
+    /// in a box (HIG), in a footer macOS makes it narrower than the sections.
+    /// Same 20 pt margins as the sections and the error lines below.
+    @ViewBuilder private func demoHint(_ draft: Binding<TransferDraft>) -> some View {
+        if canSend && (model.isDemo || isMagicDemoAccount) {
+            DemoHintBanner(style: .pinAndTan, buttonTitle: "PIN 12345 einfügen") { draft.pin.wrappedValue = "12345" }
+                .padding(.horizontal, 20).padding(.bottom, 12)
+        }
+    }
+
+    /// Check mark or cross after a field that has a value.
+    @ViewBuilder private func validity(_ ok: Bool?, valid: LocalizedStringKey, invalid: LocalizedStringKey) -> some View {
+        if let ok {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(ok ? Theme.inflow : Theme.negative)
+                .help(ok ? valid : invalid)
+                .accessibilityLabel(ok ? valid : invalid)
+        }
+    }
+
+    /// Not while the bank's refusal is shown below the form: that box says it all.
+    private func showsInstantNote(_ d: TransferDraft) -> Bool {
+        d.executionMode == .instant && canSend && account?.connector?.offersInstantChoice == true
+            && model.transferInstantDeclined == nil
+    }
+
+    /// Only what needs attention: an invalid amount, the purpose limit once it
+    /// is close, the instant-transfer note.
+    @ViewBuilder private func paymentFooter(_ d: TransferDraft) -> some View {
+        let amountInvalid = !d.amountText.isEmpty && cents == nil
+        let nearLimit = d.purpose.count >= maxPurpose - 20
+        if amountInvalid || nearLimit || showsInstantNote(d) {
+            VStack(alignment: .leading, spacing: 6) {
+                if amountInvalid || nearLimit {
+                    HStack {
+                        if amountInvalid { Text("Betrag > 0 eingeben").foregroundStyle(Theme.negative) }
+                        Spacer()
+                        if nearLimit {
+                            Text("\(d.purpose.count)/\(maxPurpose)")
+                                .monospacedDigit()
+                                .foregroundStyle(d.purpose.count >= maxPurpose ? Theme.negative : Theme.tertiary)
+                        }
+                    }
+                }
+                if showsInstantNote(d) { instantNote }
+            }
+        }
+    }
+
+    /// Known recipients as a drop-down under the name (#881): one row each,
+    /// pick with the mouse or ↑/↓ and Return; Esc closes it.
+    private var suggestionList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(suggestions.enumerated()), id: \.element.iban) { i, r in
+                Button { pick(r) } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.name).appFont(.body).lineLimit(1)
+                        Text(formatIBAN(r.iban)).appFont(.caption, design: .monospaced)
+                            .foregroundStyle(Theme.secondary).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .background(RoundedRectangle(cornerRadius: 6).fill(i == highlighted ? Theme.selection : .clear))
+                }
+                .buttonStyle(.plain)
+                .onHover { if $0 { highlighted = i } }
+                .accessibilityAddTraits(i == highlighted ? .isSelected : [])
+                .sensitive()
+            }
+        }
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.card))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+        .onChange(of: suggestions.map(\.iban)) { _, _ in highlighted = nil }
+    }
+
+    /// Known recipients for what was typed: only once something is typed, one
+    /// row per IBAN (the most used spelling), at most five.
+    private func recipients(_ query: String) -> [KnownRecipient] {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        var seen = Set<String>()
+        return model.suggestRecipients(query).filter { seen.insert($0.iban).inserted }.prefix(5).map { $0 }
+    }
+
+    private func moveHighlight(_ step: Int) -> KeyPress.Result {
+        guard !suggestions.isEmpty else { return .ignored }
+        highlighted = min(max((highlighted ?? -1) + step, 0), suggestions.count - 1)
+        return .handled
+    }
+
+    /// Takes name and IBAN, closes the list and goes on to the amount.
+    private func pick(_ r: KnownRecipient) {
+        pickedName = r.name
+        model.transferDraft.name = r.name
+        model.transferDraft.iban = r.iban
+        suggestions = []
+        highlighted = nil
+        amountFocused = true
     }
 
     /// Why this account ends in a GiroCode instead of a direct transfer.
@@ -546,22 +641,21 @@ struct TransferSheetView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 6)
             }
+            // Same rows and labels as the form, without headings (#881).
             Section {
-                reviewRow("Name", d.name)
+                reviewRow("Von", account.map { "\($0.name) · \(formatIBAN($0.iban))" } ?? "–")
+            }
+            Section {
+                reviewRow("Empfänger", d.name)
                 reviewRow("IBAN", d.iban, monospaced: true)
                 if !bicText.isEmpty { reviewRow("BIC", bicText.uppercased(), monospaced: true) }
-            } header: {
-                Text("Empfänger").appSectionHeader()
             }
             Section {
                 reviewRow("Verwendungszweck", d.purpose.isEmpty ? "–" : d.purpose)
-                reviewRow("Von Konto", account.map { "\($0.name) · \(formatIBAN($0.iban))" } ?? "–")
                 reviewRow("Ausführung", sendsInstant
                     ? String(localized: "Sofort (Echtzeitüberweisung)")
                     : d.executionDateISO.map { String(format: String(localized: "Am %@ (Terminüberweisung)"), $0) }
                         ?? String(localized: "Heute (SEPA-Überweisung)"), hides: [])
-            } header: {
-                Text("Zahlung").appSectionHeader()
             } footer: {
                 Label("Bitte Empfänger und IBAN genau prüfen. Eine freigegebene Überweisung lässt sich meist nicht mehr zurückholen.", systemImage: "exclamationmark.shield")
             }
@@ -621,10 +715,11 @@ struct TransferSheetView: View {
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             case .review:
-                Button("Abbrechen", role: .cancel) { dismiss() }
+                // Back and the approval only: HIG, never Cancel, Back and Done
+                // together. Esc goes back to the form; it closes from there.
+                Button("Zurück") { step = .form }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Zurück") { step = .form }
                 Button(isBunq ? "In der bunq-App freigeben" : "Jetzt mit TAN freigeben") { model.startTransfer() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
@@ -668,7 +763,7 @@ struct TransferSheetView: View {
 
     private func report(_ p: ParsedPayment, onlyEmpty: Bool = false) {
         guard !p.isEmpty else { importNote = String(localized: "Nichts Erkennbares gefunden"); return }
-        p.apply(to: &model.transferDraft, onlyEmpty: onlyEmpty)
+        model.fillTransferDraft(p, onlyEmpty: onlyEmpty)
         importNote = String(localized: "Felder ausgefüllt – bitte prüfen")
     }
 
@@ -719,5 +814,25 @@ struct SourceAccountPicker: View {
         }
         .labelsHidden()
         .sensitive()
+    }
+}
+
+private extension View {
+    /// A text field of the transfer form. macOS: bezeled, so an empty field
+    /// reads as a field (#881); iOS keeps the inline trailing style.
+    func transferField(alignment: TextAlignment = .leading) -> some View {
+        #if os(macOS)
+        labelsHidden().textFieldStyle(.roundedBorder).multilineTextAlignment(alignment)
+        #else
+        labelsHidden().multilineTextAlignment(.trailing)
+        #endif
+    }
+}
+
+/// Where the recipient name field is, for the suggestion list over the form.
+private struct NameFieldBounds: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
     }
 }

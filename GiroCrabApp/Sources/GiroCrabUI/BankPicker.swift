@@ -53,7 +53,6 @@ struct KindAddForm: View {
     var body: some View {
         if let d = bankCatalog().first(where: { $0.kind == kind }) {
             Section {
-                if model.demoActive { DemoHintBanner(style: .credentials) { login = "demo" } }
                 TextField(d.loginLabel, text: $login, prompt: loginRequired ? nil : Text("Optional"))
                     .autocorrectionDisabled()
                     .onChange(of: canAdd, initial: true) { _, ok in submit?.update(ok, commit) }
@@ -68,10 +67,14 @@ struct KindAddForm: View {
                 Text("Zugang").appSectionHeader()
             } footer: {
                 let missing = model.userRequiredKeys(for: d).filter { key in !(model.settings.first { $0.key == key }?.hasValue ?? false) }
-                AddFormFooter(lines: [d.note] + (missing.isEmpty || submit != nil ? [] :
-                    [String(localized: "Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))")]),
-                              // in the assistant the link sits under the credential fields ("Einrichten")
-                              link: submit == nil ? Self.credentialsLink(kind) : nil)
+                VStack(alignment: .leading, spacing: 8) {
+                    // in the footer, not as a row: a card inside the section's box would be a box in a box (HIG)
+                    if model.demoActive { DemoHintBanner(style: .credentials) { login = "demo" } }
+                    AddFormFooter(lines: [d.note] + (missing.isEmpty || submit != nil ? [] :
+                        [String(localized: "Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))")]),
+                                  // in the assistant the link sits under the credential fields ("Einrichten")
+                                  link: submit == nil ? Self.credentialsLink(kind) : nil)
+                }
             }
         }
     }
@@ -122,7 +125,6 @@ struct Psd2AddForm: View {
         Section {
             LabeledContent("Land", value: Locale.current.localizedString(forRegionCode: bank.country) ?? bank.country)
             LabeledContent("Verfahren", value: String(localized: "PSD2 über Enable Banking"))
-            if model.demoActive { DemoHintBanner(style: .credentials) { label = "demo" } }
             TextField("Bezeichnung", text: $label, prompt: Text("Optional"))
                 .autocorrectionDisabled()
                 .onAppear { submit?.update(true, commit) }
@@ -133,11 +135,15 @@ struct Psd2AddForm: View {
         } header: {
             Text("Zugang").appSectionHeader()
         } footer: {
-            AddFormFooter(lines: [
-                bank.tested,
-                String(localized: "Sie melden sich in einem GiroCrab-Fenster direkt bei Ihrer Bank an. Dafür brauchen Sie eine kostenlose eigene Anwendung auf enablebanking.com – die Einrichtung führt Sie Schritt für Schritt hindurch."),
-            ] + (missing.isEmpty || submit != nil ? [] :
-                [String(localized: "Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))")]))
+            VStack(alignment: .leading, spacing: 8) {
+                // in the footer, not as a row: no box in a box (HIG)
+                if model.demoActive { DemoHintBanner(style: .credentials) { label = "demo" } }
+                AddFormFooter(lines: [
+                    bank.tested,
+                    String(localized: "Sie melden sich in einem GiroCrab-Fenster direkt bei Ihrer Bank an. Dafür brauchen Sie eine kostenlose eigene Anwendung auf enablebanking.com – die Einrichtung führt Sie Schritt für Schritt hindurch."),
+                ] + (missing.isEmpty || submit != nil ? [] :
+                    [String(localized: "Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))")]))
+            }
         }
     }
 }

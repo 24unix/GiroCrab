@@ -96,7 +96,6 @@ struct FinTsAddForm: View {
         .onChange(of: canAdd, initial: true) { _, ok in submit?.update(ok, commit) }
 
         Section {
-            if model.demoActive || blz == "99999999" { DemoHintBanner(style: .credentials) { login = "demo" } }
             TextField("Anmeldename", text: $login, prompt: Text(isPostbank ? "Postbank ID" : isMilesAndMore ? "Deutsche Bank ID" : isConsors ? "Kontonummer (10-stellig) + 001" : "z. B. VR-NetKey oder Kontonummer"))
                 .autocorrectionDisabled()
             TextField("TAN-Medium", text: $tanMedium, prompt: Text(isMilesAndMore ? "Gerätename aus BestSign" : "Optional"))
@@ -109,14 +108,18 @@ struct FinTsAddForm: View {
         } header: {
             Text("Anmeldung").appSectionHeader()
         } footer: {
-            AddFormFooter(lines: [
-                isConsors ? String(localized: "Consorsbank: Als Anmeldename die 10-stellige Kontonummer des Verrechnungskontos (mit führenden Nullen) gefolgt von 001 verwenden, z. B. 0001234567001 – nicht den Anmeldenamen der Website. Ein falscher Anmeldename wird als „PIN ungültig“ gemeldet.") : "",
-                isMilesAndMore ? String(localized: "Miles & More: Mit der Deutsche Bank ID und dem Passwort der Kreditkarte anmelden. Als TAN-Medium den Gerätenamen aus der BestSign-Verwaltung eintragen – ohne ihn lehnt die Bank die Anmeldung ab.") : "",
-                isPostbank ? String(localized: "Postbank: Als Anmeldename die Postbank ID verwenden, nicht die Kontonummer.") : "",
-                isMilesAndMore ? "" : needsMediumHint
-                    ? String(localized: "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein.")
-                    : String(localized: "Das TAN-Medium brauchen Sie nur, wenn die Bank danach fragt."),
-            ])
+            VStack(alignment: .leading, spacing: 8) {
+                // in the footer, not as a row: no box in a box (HIG)
+                if model.demoActive || blz == "99999999" { DemoHintBanner(style: .credentials) { login = "demo" } }
+                AddFormFooter(lines: [
+                    isConsors ? String(localized: "Consorsbank: Als Anmeldename die 10-stellige Kontonummer des Verrechnungskontos (mit führenden Nullen) gefolgt von 001 verwenden, z. B. 0001234567001 – nicht den Anmeldenamen der Website. Ein falscher Anmeldename wird als „PIN ungültig“ gemeldet.") : "",
+                    isMilesAndMore ? String(localized: "Miles & More: Mit der Deutsche Bank ID und dem Passwort der Kreditkarte anmelden. Als TAN-Medium den Gerätenamen aus der BestSign-Verwaltung eintragen – ohne ihn lehnt die Bank die Anmeldung ab.") : "",
+                    isPostbank ? String(localized: "Postbank: Als Anmeldename die Postbank ID verwenden, nicht die Kontonummer.") : "",
+                    isMilesAndMore ? "" : needsMediumHint
+                        ? String(localized: "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein.")
+                        : String(localized: "Das TAN-Medium brauchen Sie nur, wenn die Bank danach fragt."),
+                ])
+            }
         }
 
         if known {

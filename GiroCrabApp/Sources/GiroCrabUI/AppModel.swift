@@ -1523,7 +1523,8 @@ public final class AppModel {
         activeTransferIsDebit = false
         activeTransferIsStanding = false
         debitRun = nil
-        transferDraft.pin = ""
+        // the whole draft: name, IBAN and amount are personal too (#881)
+        transferDraft = TransferDraft()
         batchDraft.pin = ""
         standingDraft = StandingDraft()
         standingOrders = []

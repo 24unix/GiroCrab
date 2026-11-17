@@ -57,8 +57,17 @@ extension AppModel {
 
     var canTransfer: Bool { vault != nil && !transferFormAccounts.isEmpty && syncingConnectionID == nil && activeTransfer == nil }
 
-    /// Pre-selects the sidebar account if it is offered in the form, else the first one.
+    /// "Neue Überweisung": an empty form, only the account is kept (#881). The
+    /// sheet's own reopenings (bank error, declined instant, name check) keep
+    /// the draft; they set `showTransferSheet` directly.
     func openTransfer() {
+        guard canTransfer else { return }
+        transferDraft = TransferDraft(accountID: transferDraft.accountID)
+        presentTransfer()
+    }
+
+    /// Pre-selects the sidebar account if it is offered in the form, else the first one.
+    func presentTransfer() {
         guard canTransfer else { return }
         let offered = transferFormAccounts
         var selected: Int64?
@@ -85,12 +94,32 @@ extension AppModel {
     /// Context menu: new transfer pre-filled from a booking.
     func openTransfer(from b: Booking) {
         guard canTransfer else { return }
+        transferDraft = TransferDraft(accountID: transferDraft.accountID)
         transferDraft.name = b.counterparty.isEmpty ? b.merchantName : b.counterparty
         transferDraft.iban = TransferSheetView.groupedIBAN(b.counterpartyIban)
         transferDraft.bic = ""
         transferDraft.amountText = Money.plain(abs(b.amountCents))
         transferDraft.purpose = String(b.purpose.prefix(140))
-        openTransfer()
+        presentTransfer()
+    }
+
+    /// A template, a paste or an invoice names a recipient: that is a transfer to
+    /// someone else, so it leaves Umbuchung first (#881); the form would otherwise
+    /// show an own account while the order goes to this IBAN. A savings account
+    /// may only book to own accounts: from there only amount and purpose are taken.
+    func fillTransferDraft(_ p: ParsedPayment, onlyEmpty: Bool = false) {
+        let savings = allAccounts.first { $0.id == transferDraft.accountID }?.kind == .savings
+        if savings {
+            if let amount = p.amountText, !onlyEmpty || transferDraft.amountText.isEmpty {
+                transferDraft.amountText = amount
+            }
+            if let purpose = p.purpose, !onlyEmpty || transferDraft.purpose.isEmpty {
+                transferDraft.purpose = String(purpose.prefix(140))
+            }
+            return
+        }
+        transferDraft.ownTransfer = false
+        p.apply(to: &transferDraft, onlyEmpty: onlyEmpty)
     }
 
     func suggestRecipients(_ query: String) -> [KnownRecipient] {
