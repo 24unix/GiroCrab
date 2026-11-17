@@ -119,7 +119,11 @@ fn render(win: &MainWindow, l: Loaded, sel: &Option<Selected>) {
         &german_date,
     )));
     win.set_rc_planned_summary(view::planned_summary(&l.totals, l.badge, &eur).into());
-    win.set_rc_planned_rows(model(view::planned_lines(&l.planned, &eur, &german_date)));
+    win.set_rc_planned_rows(model(view::planned_lines_grouped(
+        &l.planned,
+        &eur,
+        &german_date,
+    )));
     win.set_rc_standing_rows(model(view::standing_lines(&l.standing, &eur, &german_date)));
     win.set_rc_salary_cycle(view::salary_cycle_text(l.cycle.as_ref(), &eur, &german_date).into());
     win.set_rc_has_series(l.series.is_some());
@@ -162,14 +166,15 @@ fn render(win: &MainWindow, l: Loaded, sel: &Option<Selected>) {
 }
 
 /// Gathers the dialog data (worker thread).
-fn gather(v: &Vault, sel: &Option<Selected>) -> Result<Loaded, String> {
+fn gather(v: &Vault, sel: &Option<Selected>, horizon: i32) -> Result<Loaded, String> {
     let e = |e: girocrab_core::CoreError| e.to_string();
     let (year, month) = crate::cockpit::current_year_month();
     let snapshot = v.recurring_snapshot(Vec::new(), year, month).map_err(e)?;
-    let planned = v.list_planned_payments(None, None, Vec::new()).map_err(e)?;
-    let totals = v
-        .planned_payment_totals(None, None, Vec::new())
+    let to = view::horizon_days(horizon).map(crate::cockpit::today_plus_days);
+    let planned = v
+        .list_planned_payments(None, to.clone(), Vec::new())
         .map_err(e)?;
+    let totals = v.planned_payment_totals(None, to, Vec::new()).map_err(e)?;
     let badge = v.count_planned_payments().map_err(e)?;
     let standing = v.list_standing_orders(Vec::new()).map_err(e)?;
     let cycle = v.salary_cycle(Vec::new()).map_err(e)?;
@@ -208,10 +213,11 @@ fn gather(v: &Vault, sel: &Option<Selected>) -> Result<Loaded, String> {
 
 fn load(win: &MainWindow, v: &Arc<Vault>, status: String) {
     let sel = selected();
+    let horizon = win.get_rc_planned_horizon();
     win.set_rc_status("Wird geladen …".into());
     let (weak, v) = (win.as_weak(), v.clone());
     std::thread::spawn(move || {
-        let result = gather(&v, &sel);
+        let result = gather(&v, &sel, horizon);
         let _ = weak.upgrade_in_event_loop(move |win| match result {
             Ok(l) => {
                 render(&win, l, &sel);

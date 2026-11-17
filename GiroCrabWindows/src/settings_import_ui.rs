@@ -20,6 +20,7 @@ use girocrab_core::sync_log::{SyncLogEntry, SyncLogFilter};
 use girocrab_core::{BookingFilter, ConnectorKind, SettingEntry, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
+use crate::announcements::{self, Announcement};
 use crate::settings_import::{self as view, Line};
 use crate::{german_date, money, privacy_on, MainWindow, SettingsImportState, SiRow};
 
@@ -45,6 +46,8 @@ struct Ui {
     restore_armed: bool,
     clear_armed: bool,
     cancel: Option<Arc<AtomicBool>>,
+    /// Announcements shown in the Mitteilungen tab (not dismissed).
+    news: Vec<Announcement>,
 }
 
 thread_local! {
@@ -227,6 +230,7 @@ pub fn wire(win: &MainWindow, slot: VaultSlot) {
     wire_backup(win);
     wire_settings(win);
     wire_log(win);
+    wire_news(win);
 }
 
 fn wire_open(win: &MainWindow) {
@@ -301,6 +305,7 @@ fn wire_open(win: &MainWindow) {
         match tab {
             3 => load_settings(&win, &v),
             4 => load_log(&win, &v),
+            5 => refresh_news(&win, &v),
             _ => {}
         }
     });
@@ -933,5 +938,129 @@ fn wire_log(win: &MainWindow) {
             },
             set_status,
         );
+    });
+}
+
+// ---- announcements ----------------------------------------------------------------------------------
+
+const DISMISSED_KEY: &str = "announcements.dismissed";
+
+/// Loads the applicable, not yet dismissed announcements into the banner and the Mitteilungen tab.
+pub fn refresh_news(win: &MainWindow, v: &Arc<Vault>) {
+    let setting = v
+        .get_setting(DISMISSED_KEY.into())
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let dismissed = announcements::dismissed_ids(&setting);
+    let list: Vec<Announcement> = announcements::current(
+        env!("CARGO_PKG_VERSION"),
+        &crate::daily::date_days_ago(0),
+        "de",
+    )
+    .into_iter()
+    .filter(|a| !dismissed.contains(&a.id))
+    .collect();
+    let gs = win.global::<SettingsImportState>();
+    let first = list.first();
+    gs.set_banner_title(first.map(|a| a.title.clone()).unwrap_or_default().into());
+    gs.set_banner_important(first.is_some_and(|a| a.important));
+    gs.set_news(rows(
+        list.iter()
+            .map(|a| Line {
+                title: a.title.clone(),
+                detail: a.summary.clone(),
+            })
+            .collect(),
+    ));
+    gs.set_sel_news(-1);
+    gs.set_news_body(SharedString::new());
+    gs.set_news_has_link(false);
+    with_ui(|u| u.news = list);
+}
+
+fn dismiss_news(win: &MainWindow, v: &Arc<Vault>, id: &str) {
+    let setting = v
+        .get_setting(DISMISSED_KEY.into())
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    match v.set_setting(
+        DISMISSED_KEY.into(),
+        announcements::with_dismissed(&setting, id),
+    ) {
+        Ok(()) => refresh_news(win, v),
+        Err(e) => set_status(win, e.to_string()),
+    }
+}
+
+fn wire_news(win: &MainWindow) {
+    let gs = win.global::<SettingsImportState>();
+
+    let weak = win.as_weak();
+    gs.on_news_select(move |i| {
+        let Some(win) = weak.upgrade() else { return };
+        let gs = win.global::<SettingsImportState>();
+        let item = usize::try_from(i)
+            .ok()
+            .and_then(|i| with_ui(|u| u.news.get(i).cloned()));
+        gs.set_sel_news(if item.is_some() { i } else { -1 });
+        gs.set_news_body(
+            item.as_ref()
+                .map(|a| announcements::plain(&a.body))
+                .unwrap_or_default()
+                .into(),
+        );
+        gs.set_news_has_link(item.is_some_and(|a| !a.link.is_empty()));
+    });
+
+    let weak = win.as_weak();
+    gs.on_news_dismiss(move || {
+        let (Some(win), Some(v)) = (weak.upgrade(), vault_now()) else {
+            return;
+        };
+        let sel = win.global::<SettingsImportState>().get_sel_news();
+        let id = usize::try_from(sel)
+            .ok()
+            .and_then(|i| with_ui(|u| u.news.get(i).map(|a| a.id.clone())));
+        if let Some(id) = id {
+            dismiss_news(&win, &v, &id);
+        }
+    });
+
+    let weak = win.as_weak();
+    gs.on_news_open_link(move || {
+        let Some(win) = weak.upgrade() else { return };
+        let sel = win.global::<SettingsImportState>().get_sel_news();
+        let link = usize::try_from(sel)
+            .ok()
+            .and_then(|i| with_ui(|u| u.news.get(i).map(|a| a.link.clone())));
+        if let Some(link) = link {
+            if let Err(e) =
+                crate::sync_flow::safe_https_url(&link).and_then(crate::sync_flow::open_in_browser)
+            {
+                set_status(&win, e);
+            }
+        }
+    });
+
+    let weak = win.as_weak();
+    gs.on_banner_dismiss(move || {
+        let (Some(win), Some(v)) = (weak.upgrade(), vault_now()) else {
+            return;
+        };
+        if let Some(id) = with_ui(|u| u.news.first().map(|a| a.id.clone())) {
+            dismiss_news(&win, &v, &id);
+        }
+    });
+
+    let weak = win.as_weak();
+    gs.on_banner_show(move || {
+        let Some(win) = weak.upgrade() else { return };
+        let gs = win.global::<SettingsImportState>();
+        gs.set_tab(5);
+        gs.set_open(true);
+        gs.invoke_tab_changed(5);
+        gs.invoke_news_select(0);
     });
 }

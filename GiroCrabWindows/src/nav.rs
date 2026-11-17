@@ -34,7 +34,11 @@ pub enum Target {
     Account(i64),
     NewBookings,
     Wealth,
+    /// Securities overview over all depots.
+    Depot,
     Planned,
+    /// Contracts & subscriptions (recurring payments).
+    Subscriptions,
     Mandates,
     Documents,
     Uncategorized,
@@ -49,6 +53,8 @@ impl Target {
             Self::Account(id) => format!("acct:{id}"),
             Self::NewBookings => "new".into(),
             Self::Wealth => "wealth".into(),
+            Self::Depot => "depot".into(),
+            Self::Subscriptions => "abos".into(),
             Self::Planned => "planned".into(),
             Self::Mandates => "mandates".into(),
             Self::Documents => "docs".into(),
@@ -62,6 +68,8 @@ impl Target {
             "all" => Self::AllAccounts,
             "new" => Self::NewBookings,
             "wealth" => Self::Wealth,
+            "depot" => Self::Depot,
+            "abos" => Self::Subscriptions,
             "planned" => Self::Planned,
             "mandates" => Self::Mandates,
             "docs" => Self::Documents,
@@ -152,6 +160,8 @@ pub struct SidebarInput<'a> {
     /// Recurring bookings found in the history.
     pub planned_count: usize,
     pub mandate_count: u32,
+    /// Documents in the vault (badge of the documents row).
+    pub document_count: u32,
     pub mode: GroupMode,
     pub query: &'a str,
     /// Keys (`toggle:…` suffixes) of folded sections, groups and categories.
@@ -354,6 +364,18 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
     wealth.icon = "pie".into();
     rows.push(wealth);
 
+    let mut depot = SideRow::new(kind::ITEM, Target::Depot.key(), "Depot / Wertpapiere");
+    depot.icon = "chart".into();
+    let brokerage = input
+        .accounts
+        .iter()
+        .filter(|a| a.kind == AccountKind::Brokerage && a.archived_unix.is_none())
+        .count();
+    if brokerage > 0 {
+        depot.badge = brokerage.to_string();
+    }
+    rows.push(depot);
+
     // ---- Konten
     let section = |id: &str, label: &str| {
         let mut r = SideRow::new(kind::SECTION, format!("toggle:{id}"), label);
@@ -431,6 +453,11 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
         planned.badge = input.planned_count.to_string();
         planned.icon = "calendar".into();
         rows.push(planned);
+        let mut subs = SideRow::new(kind::ITEM, Target::Subscriptions.key(), "Verträge & Abos");
+        subs.depth = 1;
+        subs.badge = input.planned_count.to_string();
+        subs.icon = "calendar".into();
+        rows.push(subs);
         let mut debits = SideRow::new(kind::ITEM, Target::Mandates.key(), "Lastschriften");
         debits.depth = 1;
         debits.badge = input.mandate_count.to_string();
@@ -444,6 +471,9 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
         let mut docs = SideRow::new(kind::ITEM, Target::Documents.key(), "Belege & PostBox");
         docs.depth = 1;
         docs.icon = "document".into();
+        if input.document_count > 0 {
+            docs.badge = input.document_count.to_string();
+        }
         rows.push(docs);
     }
 
@@ -481,6 +511,9 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
             r.color_hex = c.color_hex.clone();
             r.amount = hide(money(c.total_cents, "EUR"));
             r.negative = c.total_cents < 0 && !input.privacy;
+            if c.transaction_count > 0 {
+                r.badge = c.transaction_count.to_string();
+            }
             if has_children {
                 r.fold = if folded(&cid) { 2 } else { 1 };
                 if r.fold == 2 {
@@ -583,6 +616,7 @@ mod tests {
             categories,
             planned_count: 4,
             mandate_count: 2,
+            document_count: 3,
             mode,
             query,
             folded,
@@ -601,6 +635,8 @@ mod tests {
             Target::Account(7),
             Target::NewBookings,
             Target::Wealth,
+            Target::Depot,
+            Target::Subscriptions,
             Target::Planned,
             Target::Mandates,
             Target::Documents,

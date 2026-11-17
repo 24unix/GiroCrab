@@ -77,6 +77,19 @@ export global SettingsImportState {
     callback log-clear();
     callback log-export();
     callback request();
+    // ---- Mitteilungen
+    in property <[SiRow]> news;
+    in-out property <int> sel-news: -1;
+    in property <string> news-body;
+    in property <bool> news-has-link: false;
+    // banner: first applicable, not dismissed announcement
+    in property <string> banner-title;
+    in property <bool> banner-important: false;
+    callback news-select(int);
+    callback news-dismiss();
+    callback news-open-link();
+    callback banner-dismiss();
+    callback banner-show();
 }
 
 component Tab inherits Rectangle {
@@ -155,6 +168,7 @@ export component SettingsImportPanel inherits VerticalLayout {
         Tab { text: "Export"; active: SettingsImportState.tab == 1; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 1; SettingsImportState.tab-changed(1); } }
         Tab { text: "Sicherung"; active: SettingsImportState.tab == 2; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 2; SettingsImportState.tab-changed(2); } }
         Tab { text: "Einstellungen"; active: SettingsImportState.tab == 3; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 3; SettingsImportState.tab-changed(3); } }
+        Tab { text: "Mitteilungen"; active: SettingsImportState.tab == 5; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 5; SettingsImportState.tab-changed(5); } }
         Tab { text: "Abrufprotokoll"; active: SettingsImportState.tab == 4; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 4; SettingsImportState.tab-changed(4); } }
     }
 
@@ -286,6 +300,26 @@ export component SettingsImportPanel inherits VerticalLayout {
     }
 
     // ---- 4: Abrufprotokoll
+    if SettingsImportState.tab == 5: VerticalLayout {
+        spacing: 6px;
+        Rows {
+            list-height: 150px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent;
+            rows: SettingsImportState.news; empty: "Keine Mitteilungen"; selected: SettingsImportState.sel-news;
+            pick(i) => { SettingsImportState.news-select(i); }
+        }
+        if SettingsImportState.sel-news >= 0: VerticalLayout {
+            spacing: 6px;
+            Info { text: SettingsImportState.news-body; ink: root.ink; }
+            HorizontalLayout {
+                spacing: 8px;
+                Rectangle { horizontal-stretch: 1; }
+                if SettingsImportState.news-has-link: Button { text: "Mehr erfahren"; clicked => { SettingsImportState.news-open-link(); } }
+                Button { text: "Ausblenden"; clicked => { SettingsImportState.news-dismiss(); } }
+            }
+        }
+    }
+
     if SettingsImportState.tab == 4: VerticalLayout {
         spacing: 6px;
         HorizontalLayout {

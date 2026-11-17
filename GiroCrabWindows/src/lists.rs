@@ -274,6 +274,10 @@ pub struct RuleForm {
     pub field_index: i32,
     pub kind_index: i32,
     pub enabled: bool,
+    pub case_sensitive: bool,
+    /// Amount range in euros as typed ("-50", "12,5"); empty = no bound. Compared with the signed booking amount.
+    pub min_amount: String,
+    pub max_amount: String,
 }
 
 /// Turns the form into a rule for `save_rule`. `existing` is the rule being edited (its id,
@@ -318,7 +322,29 @@ pub fn validate_rule(
     rule.field = rule_field(form.field_index);
     rule.match_kind = rule_kind(form.kind_index);
     rule.enabled = form.enabled;
+    rule.case_sensitive = form.case_sensitive;
+    rule.min_amount_cents = parse_bound(&form.min_amount, "Mindestbetrag")?;
+    rule.max_amount_cents = parse_bound(&form.max_amount, "Höchstbetrag")?;
+    if let (Some(lo), Some(hi)) = (rule.min_amount_cents, rule.max_amount_cents) {
+        if lo > hi {
+            return Err("Der Mindestbetrag darf nicht über dem Höchstbetrag liegen.".into());
+        }
+    }
     Ok(rule)
+}
+
+fn parse_bound(text: &str, what: &str) -> Result<Option<i64>, String> {
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    crate::planning::parse_cents(text)
+        .map(Some)
+        .ok_or_else(|| format!("{what}: ungültiger Betrag."))
+}
+
+/// Amount bound back into the form's text field.
+pub fn bound_text(cents: Option<i64>) -> String {
+    cents.map_or_else(String::new, crate::planning::format_plain)
 }
 
 /// One list line of the rules dialog.
@@ -334,7 +360,16 @@ pub fn rule_line(rule: &Rule, categories: &[Category]) -> (String, String) {
     };
     (
         title,
-        format!("{} → {} · {} Treffer", rule.pattern, cat, rule.match_count),
+        format!(
+            "{} → {}{} · {} Treffer",
+            rule.pattern,
+            cat,
+            match (rule.min_amount_cents, rule.max_amount_cents) {
+                (None, None) => String::new(),
+                (lo, hi) => format!(" · Betrag {} … {}", bound_text(lo), bound_text(hi)),
+            },
+            rule.match_count
+        ),
     )
 }
 
@@ -515,7 +550,26 @@ mod tests {
             field_index: 1,
             kind_index: 0,
             enabled: true,
+            case_sensitive: false,
+            min_amount: String::new(),
+            max_amount: String::new(),
         }
+    }
+
+    #[test]
+    fn rule_form_amount_range() {
+        let mut f = form();
+        f.min_amount = "-50,5".into();
+        f.max_amount = "10".into();
+        let r = validate_rule(&f, None, &cats(), 0).unwrap();
+        assert_eq!(
+            (r.min_amount_cents, r.max_amount_cents),
+            (Some(-5050), Some(1000))
+        );
+        f.min_amount = "20".into();
+        assert!(validate_rule(&f, None, &cats(), 0).is_err());
+        f.min_amount = "abc".into();
+        assert!(validate_rule(&f, None, &cats(), 0).is_err());
     }
 
     #[test]

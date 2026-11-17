@@ -85,7 +85,7 @@ fn parse_date(iso: &str) -> Option<(i32, u32, u32)> {
     ((1..=12).contains(&m) && (1..=31).contains(&d)).then_some((y, m, d))
 }
 
-fn fmt_date(y: i32, m: u32, d: u32) -> String {
+pub(crate) fn fmt_date(y: i32, m: u32, d: u32) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
@@ -319,22 +319,64 @@ pub fn position_row(
 ) -> Cells {
     let _ = date;
     let pl = unrealized_pl(std::slice::from_ref(h));
-    let (pl_text, neg) = match pl {
+    let (mut pl_text, neg) = match pl {
         Some(c) => signed(c, money),
         None => ("–".into(), false),
+    };
+    if let Some(rel) = h.profit_loss_purchase_rel {
+        pl_text = format!("{pl_text} ({rel:+.1} %)").replace('.', ",");
+    }
+    // Native holding currency (#625): shown when it differs from the account currency.
+    let native = |cents: Option<i64>, fallback: i64| -> String {
+        match (cents, h.currency.is_empty()) {
+            (Some(c), false) => format!("{} {}", native_amount(c), h.currency),
+            _ => money(fallback),
+        }
+    };
+    let mut price = native(h.native_price_cents, h.current_price_cents);
+    if h.purchase_price_cents != 0 || h.native_purchase_price_cents.is_some() {
+        let buy = native(h.native_purchase_price_cents, h.purchase_price_cents);
+        price = format!("{price} (Kauf {buy})");
+    }
+    let ids = [h.isin.as_str(), h.wkn.as_str()]
+        .iter()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" / ");
+    let name = if ids.is_empty() {
+        h.name.clone()
+    } else {
+        format!("{} · {ids}", h.name)
     };
     Cells {
         id,
         cells: [
-            h.name.clone(),
+            name,
             quantity_text(h.quantity),
-            money(h.current_price_cents),
+            price,
             money(h.value_cents),
             pl_text,
             String::new(),
         ],
         negative: neg,
     }
+}
+
+/// Plain amount with German separators, without a currency symbol.
+fn native_amount(cents: i64) -> String {
+    let abs = cents.unsigned_abs();
+    let mut int = (abs / 100).to_string();
+    let mut grouped = String::new();
+    while int.len() > 3 {
+        let tail = int.split_off(int.len() - 3);
+        grouped = format!(".{tail}{grouped}");
+    }
+    format!(
+        "{}{int}{grouped},{:02}",
+        if cents < 0 { "-" } else { "" },
+        abs % 100
+    )
 }
 
 pub fn activity_row(
@@ -615,7 +657,16 @@ pub fn wealth_view(data: &WealthData, tab: WealthTab, money: &dyn Fn(i64) -> Str
                 id: a.id,
                 cells: [
                     a.name.clone(),
-                    crate::nav::kind_label(a.kind).into(),
+                    [
+                        crate::nav::kind_label(a.kind),
+                        a.bank_name.as_str(),
+                        a.owner.as_str(),
+                    ]
+                    .iter()
+                    .filter(|s| !s.is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" · "),
                     String::new(),
                     money(a.balance_cents),
                     String::new(),
@@ -887,7 +938,7 @@ mod tests {
         assert_eq!(v.composition.len(), 2);
         assert_eq!(v.composition[0].label, "Aktien");
         assert_eq!(v.positions.len(), 2);
-        assert_eq!(v.positions[0].cells[0], "Welt-ETF");
+        assert!(v.positions[0].cells[0].starts_with("Welt-ETF"));
         assert_eq!(v.positions[0].cells[1], "10");
         // Activities: newest first, a purchase is an outflow.
         assert_eq!(v.activities[0].cells[1], "Ausschüttung");

@@ -14,8 +14,8 @@ export { RecLine }
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
-export struct BookingRow { id: int, checked: bool, counterparty: string, account: string, category: string, category-color: color, detail: string, amount: string, negative: bool, monogram: string, tint: color, logo: image, has-logo: bool }
-export struct DayGroup { title: string, sum: string, negative: bool, rows: [BookingRow] }
+export struct BookingRow { id: int, checked: bool, counterparty: string, account: string, category: string, category-color: color, detail: string, amount: string, negative: bool, monogram: string, tint: color, logo: image, has-logo: bool, marked: bool, tags-text: string, has-note: bool }
+export struct DayGroup { title: string, sum: string, negative: bool, rows: [BookingRow], show-month: bool, month: string, month-income: string, month-expense: string }
 export struct BarGroup { label: string, income: float, expense: float }
 export struct BudgetLine { name: string, amount: string, progress: float, color: color, over: bool }
 export struct TileRow { index: int, name: string, color: color }
@@ -25,22 +25,25 @@ export struct KpiTile { label: string, value: string, negative: bool }
 export struct ShareBar { label: string, value: string, share: float, color: color }
 export struct RuleItem { title: string, detail: string }
 export struct BankHit { name: string, detail: string }
-export struct InspectorData { counterparty: string, iban: string, purpose: string, booking-date: string, value-date: string, account: string, amount: string, note: string, read-only: bool, monogram: string, tint: color, logo: image, has-logo: bool, subtitle: string, recurring: bool }
+export struct InspectorData { counterparty: string, iban: string, purpose: string, booking-date: string, value-date: string, account: string, amount: string, note: string, read-only: bool, monogram: string, tint: color, logo: image, has-logo: bool, subtitle: string, recurring: bool, reference: string, transfer-reason: string, booking-text: string }
 
 global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
     out property <color> window: dark ? #0f1218 : #f5f5f7;
     out property <color> surface: dark ? #161b22 : #ffffff;
     out property <color> sidebar: dark ? #161b22 : #ececf0;
-    out property <color> selected: dark ? #1f2633 : #e3e8f4;
-    out property <color> border: dark ? #262c36 : #dcdce1;
+    out property <color> selected: dark ? #1f2a3d : #dde7fb;
+    out property <color> bar: dark ? #12161d : #fafafc;
+    out property <color> warning-bg: dark ? #3a2f12 : #fff4d6;
+    out property <color> warning-text: dark ? #f5d27a : #7a5a00;
+    out property <color> border: dark ? #2b323d : #e2e2e7;
     out property <color> control-border: dark ? #2a2f3a : #d0d0d6;
     out property <color> text: dark ? #f0f4f8 : #1d1d1f;
     out property <color> amount: dark ? #e6edf3 : #1d1d1f;
     out property <color> muted: dark ? #8b949e : #6e6e73;
     out property <color> accent: #388bfd;
     out property <color> primary: #2f6feb;
-    out property <color> positive: dark ? #3fb950 : #1e8449;
+    out property <color> positive: dark ? #34d399 : #059669;
     out property <color> negative: dark ? #f47067 : #c0392b;
 }
 
@@ -352,15 +355,40 @@ component BookingLine inherits Rectangle {
     in property <BookingRow> b;
     in property <bool> active;
     callback clicked();
+    callback toggle-checked();
+    callback toggle-mark();
     height: 56px;
     background: active ? #1d3557.with-alpha(Theme.dark ? 1.0 : 0.16) : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
     border-radius: 8px;
     if active: Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: #2563eb; }
     ta := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
-        padding-left: 12px;
+        padding-left: 8px;
         padding-right: 12px;
-        spacing: 12px;
+        spacing: 10px;
+        // multi-select box
+        Rectangle {
+            width: 18px;
+            Rectangle {
+                width: 14px; height: 14px; y: (parent.height - self.height) / 2;
+                border-radius: 3px; border-width: 1.5px;
+                border-color: b.marked ? #2563eb : Theme.muted.with-alpha(0.6);
+                background: b.marked ? #2563eb : transparent;
+                Text { text: b.marked ? "✓" : ""; color: #ffffff; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            TouchArea { clicked => { root.toggle-mark(); } }
+        }
+        // unchecked dot: click toggles checked
+        Rectangle {
+            width: 16px;
+            Rectangle {
+                width: 9px; height: 9px; y: (parent.height - self.height) / 2; x: 3px;
+                border-radius: 4.5px; border-width: 1px;
+                border-color: #2563eb;
+                background: b.checked ? transparent : #2563eb;
+            }
+            TouchArea { clicked => { root.toggle-checked(); } }
+        }
         MerchantAvatar {
             y: (parent.height - self.height) / 2;
             logo: b.logo;
@@ -374,15 +402,32 @@ component BookingLine inherits Rectangle {
             spacing: 3px;
             HorizontalLayout {
                 spacing: 6px;
-                Text { text: b.checked ? "✓" : ""; color: Theme.positive; font-size: 11px; width: b.checked ? 12px : 0px; }
                 Text { text: b.counterparty; color: Theme.text; font-size: 13px; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
+                if b.has-note: Text { text: "📎"; font-size: 11px; color: Theme.muted; }
             }
             HorizontalLayout {
                 spacing: 5px;
                 alignment: start;
                 Text { text: b.account; color: Theme.muted; font-size: 11px; overflow: elide; max-width: 140px; }
                 Text { text: "·"; color: Theme.muted; font-size: 11px; }
-                Text { text: b.category; color: Theme.dark ? b.category-color.brighter(0.4) : b.category-color.darker(0.3); font-size: 11px; font-weight: 600; overflow: elide; max-width: 160px; }
+                Rectangle {
+                    background: b.category-color.with-alpha(0.18);
+                    border-radius: 8px;
+                    max-width: 170px;
+                    HorizontalLayout {
+                        padding-left: 7px; padding-right: 7px; padding-top: 1px; padding-bottom: 1px;
+                        Text { text: b.category; color: Theme.dark ? b.category-color.brighter(0.4) : b.category-color.darker(0.3); font-size: 10px; font-weight: 600; overflow: elide; }
+                    }
+                }
+                if b.tags-text != "": Rectangle {
+                    background: Theme.text.with-alpha(0.08);
+                    border-radius: 8px;
+                    max-width: 150px;
+                    HorizontalLayout {
+                        padding-left: 7px; padding-right: 7px; padding-top: 1px; padding-bottom: 1px;
+                        Text { text: b.tags-text; color: Theme.muted; font-size: 10px; overflow: elide; }
+                    }
+                }
                 if b.detail != "": Text { text: "·"; color: Theme.muted; font-size: 11px; }
                 if b.detail != "": Text { text: b.detail; color: Theme.muted; font-size: 11px; overflow: elide; horizontal-stretch: 1; }
                 if b.detail == "": Rectangle { horizontal-stretch: 1; }
@@ -404,6 +449,8 @@ component DayCard inherits Rectangle {
     in property <DayGroup> day;
     in property <int> selected-booking;
     callback select(int);
+    callback toggle-checked(int);
+    callback toggle-mark(int);
     background: Theme.surface;
     border-radius: 12px;
     border-width: 1px;
@@ -424,6 +471,8 @@ component DayCard inherits Rectangle {
             b: b;
             active: root.selected-booking == b.id;
             clicked => { root.select(b.id); }
+            toggle-checked => { root.toggle-checked(b.id); }
+            toggle-mark => { root.toggle-mark(b.id); }
         }
     }
 }
@@ -539,6 +588,53 @@ component Swatches inherits HorizontalLayout {
 
 // Zero-size helper: runs `fire` whenever `tick` changes (a LineEdit inside an `if` cannot be
 // reached by id from the window's public functions).
+
+component MenuEntry inherits Rectangle {
+    in property <string> text;
+    in property <string> hint;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 28px;
+    background: ta.has-hover && root.enabled ? Theme.selected : transparent;
+    border-radius: 4px;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 24px;
+        Text { text: root.text; color: root.enabled ? Theme.text : Theme.muted; vertical-alignment: center; horizontal-stretch: 1; }
+        Text { text: root.hint; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
+    }
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+component MenuSep inherits Rectangle {
+    height: 9px;
+    Rectangle { y: 4px; height: 1px; background: Theme.border; }
+}
+
+component MenuTitle inherits Rectangle {
+    in property <string> text;
+    in property <length> menu-width: 250px;
+    in property <length> menu-height: 200px;
+    callback open-menu();
+    width: lbl.preferred-width + 20px;
+    background: ta.has-hover ?Theme.selected : transparent;
+    border-radius: 4px;
+    lbl := Text { text: root.text; color: Theme.text; font-size: 13px; vertical-alignment: center; horizontal-alignment: center; }
+    ta := TouchArea { clicked => { pop.show(); } }
+    pop := PopupWindow {
+        x: 0px;
+        y: root.height;
+        width: root.menu-width;
+        height: root.menu-height;
+        Rectangle { background: Theme.surface; border-color: Theme.border; border-width: 1px; border-radius: 6px; }
+        VerticalLayout {
+            padding: 4px;
+            @children
+        }
+    }
+}
+
 component ChangeTrigger inherits Rectangle {
     in property <int> tick;
     callback fire();
@@ -586,6 +682,10 @@ export component MainWindow inherits Window {
     in property <[string]> cashflow-ticks;
     in-out property <int> cashflow-period: 0;
     in property <[BudgetLine]> budget-lines;
+    in property <[BudgetLine]> analytics-expense-cats;
+    in property <[BudgetLine]> analytics-income-cats;
+    in property <[BudgetLine]> analytics-tags;
+    in property <string> analytics-summary;
     in property <string> budget-title: "Monatsbudgets";
     in property <[TileRow]> category-tiles;
     callback cashflow-changed();
@@ -605,7 +705,13 @@ export component MainWindow inherits Window {
     // daily driver: filter bar, inspector, privacy, import, transfer
     in-out property <bool> privacy: false;
     in-out property <bool> uncategorized-only: false;
+    in-out property <bool> documents-only: false;
     in-out property <int> status-index: 0;
+    in-out property <int> range-index: 0;
+    in-out property <int> tag-index: 0;
+    in property <[string]> tag-labels: ["Alle Tags"];
+    in property <string> booking-count;
+    in property <string> selected-subtitle;
     in property <int> selected-booking: -1;
     in property <bool> has-inspector: false;
     in property <InspectorData> inspector;
@@ -676,6 +782,7 @@ export component MainWindow inherits Window {
     in property <string> rc-month-summary;
     in property <[RecLine]> rc-month-rows;
     in property <[RecLine]> rc-ignored-rows;
+    in-out property <int> rc-planned-horizon: 1;
     in property <string> rc-planned-summary;
     in property <[RecLine]> rc-planned-rows;
     in property <[RecLine]> rc-standing-rows;
@@ -770,12 +877,27 @@ export component MainWindow inherits Window {
     in-out property <bool> rule-enabled: true;
     in property <bool> rule-armed: false;
     in property <string> rule-status;
+    in-out property <bool> rule-case: false;
+    in-out property <string> rule-min;
+    in-out property <string> rule-max;
+    in property <string> rule-preview;
+    callback rule-preview-request();
+    callback rule-apply-scoped();
     callback rules-request();
     callback rule-select(int);
     callback rule-new();
     callback rule-save(string, string, int, int, int, bool);
     callback rule-delete();
     callback select-booking(int);
+    in property <int> marked-count: 0;
+    callback toggle-booking-checked(int);
+    callback toggle-booking-mark(int);
+    callback batch-select-all();
+    callback batch-checked(bool);
+    callback batch-category(int);
+    callback batch-tag(int, bool);
+    callback batch-export();
+    callback batch-clear();
     callback set-category(int);
     callback set-checked(bool);
     callback save-note(string);
@@ -783,7 +905,7 @@ export component MainWindow inherits Window {
     callback privacy-changed();
     callback lock();
     callback import-file();
-    callback transfer-submit(int, string, string, string, string);
+    callback transfer-submit(int, string, string, string, string, bool, string);
     callback transfer-start();
 
     // account / category management, About, keyboard shortcuts
@@ -821,6 +943,9 @@ export component MainWindow inherits Window {
 
     callback unlock();
     callback demo();
+    callback demo-switch();
+    in property <bool> demo-active: false;
+    in property <bool> has-own-vault: false;
     callback select-account(int);
     callback sync();
     callback search-changed();
@@ -840,6 +965,9 @@ export component MainWindow inherits Window {
 
     fs := FocusScope {
     capture-key-pressed(event) => {
+        if (root.unlocked && event.modifiers.control && event.modifiers.shift && (event.text == "P" || event.text == "p" || event.text == "\u{10}")) { root.privacy = !root.privacy; root.privacy-changed(); return accept; }
+        if (root.unlocked && event.modifiers.control && (event.text == "," || event.text == ";")) { SettingsImportState.request(); return accept; }
+        if (root.unlocked && !root.busy && event.modifiers.control && !event.modifiers.shift && (event.text == "e" || event.text == "\u{5}")) { SettingsImportState.request(); SettingsImportState.tab = 1; return accept; }
         if (root.shortcut(event.text, event.modifiers.control)) { return accept; }
         reject
     }
@@ -864,7 +992,82 @@ export component MainWindow inherits Window {
         Text { text: root.message; color: Theme.negative; horizontal-alignment: center; wrap: word-wrap; }
     }
 
-    if unlocked: HorizontalLayout {
+    if unlocked: VerticalLayout {
+        // ---- menu bar
+        Rectangle {
+            height: 30px;
+            background: Theme.bar;
+            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 2px;
+                MenuTitle {
+                    text: "Datei"; menu-height: 192px;
+                    MenuEntry { text: "Alle Konten abrufen"; hint: "Strg+R"; enabled: !root.busy; clicked => { root.sync(); } }
+                    MenuEntry { text: "Neue Überweisung …"; hint: "Strg+N"; enabled: !root.busy; clicked => { root.transfer-start(); } }
+                    MenuSep {}
+                    MenuEntry { text: "Vorhandene Daten importieren …"; hint: "Strg+I"; enabled: !root.busy; clicked => { root.import-file(); } }
+                    MenuEntry { text: "Umsätze exportieren …"; hint: "Strg+E"; enabled: !root.busy; clicked => { SettingsImportState.request(); SettingsImportState.tab = 1; } }
+                    MenuSep {}
+                    MenuEntry { text: "Tresor sperren"; hint: "Strg+L"; clicked => { root.lock(); } }
+                }
+                MenuTitle {
+                    text: "Ansicht"; menu-height: 262px;
+                    MenuEntry { text: "Übersicht (Alle Konten)"; clicked => { root.side-click("all"); } }
+                    MenuEntry { text: "Neue Buchungen"; clicked => { root.side-click("new"); } }
+                    MenuEntry { text: "Geplante Zahlungen"; clicked => { root.side-click("planned"); } }
+                    MenuEntry { text: "Vermögen"; clicked => { root.side-click("wealth"); } }
+                    MenuEntry { text: "Lastschriften"; clicked => { root.side-click("mandates"); } }
+                    MenuEntry { text: "Dokumente"; clicked => { root.side-click("docs"); } }
+                    MenuSep {}
+                    MenuEntry { text: root.privacy ? "Datenschutzmodus ausschalten" : "Datenschutzmodus einschalten"; hint: "Strg+Umschalt+P"; clicked => { root.privacy = !root.privacy; root.privacy-changed(); } }
+                    MenuEntry { text: root.demo-active ? "Demo-Daten beenden" : "Demo-Daten ansehen"; clicked => { root.demo-switch(); } }
+                }
+                MenuTitle {
+                    text: "Werkzeuge"; menu-height: 200px;
+                    MenuEntry { text: "Regeln …"; clicked => { root.rules-request(); } }
+                    MenuEntry { text: "Tags verwalten …"; clicked => { root.tags-request(); } }
+                    MenuEntry { text: "Kategorien …"; clicked => { root.categories-open(); } }
+                    MenuEntry { text: "Bankverbindungen …"; clicked => { root.add-open = true; } }
+                    MenuSep {}
+                    MenuEntry { text: "Einstellungen …"; hint: "Strg+,"; clicked => { SettingsImportState.request(); SettingsImportState.tab = 3; } }
+                    MenuEntry { text: "Info"; clicked => { root.about-open = true; } }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+        // ---- project announcement banner (announcements.rs)
+        if SettingsImportState.banner-title != "": Rectangle {
+            height: 34px;
+            background: SettingsImportState.banner-important ? Theme.warning-bg : Theme.bar;
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 12px;
+                Text { text: SettingsImportState.banner-title; color: SettingsImportState.banner-important ? Theme.warning-text : Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                Button { text: "Lesen"; clicked => { SettingsImportState.banner-show(); } }
+                Button { text: "Ausblenden"; clicked => { SettingsImportState.banner-dismiss(); } }
+            }
+        }
+        // ---- demo banner
+        if root.demo-active: Rectangle {
+            height: 34px;
+            background: Theme.warning-bg;
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 12px;
+                Text { text: "Demo-Daten – diese Buchungen sind frei erfunden."; color: Theme.warning-text; vertical-alignment: center; horizontal-stretch: 1; }
+                Button {
+                    text: root.has-own-vault ? "Zurück zum eigenen Tresor" : "Eigenes Konto anlegen";
+                    primary: true;
+                    clicked => { root.demo-switch(); }
+                }
+            }
+        }
+        HorizontalLayout {
+        vertical-stretch: 1;
         // ---- sidebar
         Rectangle {
             width: 260px;
@@ -1016,6 +1219,7 @@ export component MainWindow inherits Window {
                             text: root.selected-name == "" ? "Keine Konten" : root.selected-name;
                             font-size: 16px; font-weight: 700; color: Theme.text; overflow: elide;
                         }
+                        if root.selected-subtitle != "": Text { text: root.selected-subtitle; color: Theme.muted; font-size: 11px; overflow: elide; }
                         Text { text: root.selected-balance; font-size: 24px; font-weight: 700; color: Theme.text; overflow: elide; }
                     }
                     HorizontalLayout {
@@ -1023,7 +1227,13 @@ export component MainWindow inherits Window {
                         spacing: 8px;
                         GhostButton {
                             y: (parent.height - self.height) / 2;
-                            text: "Bearbeiten";
+                            text: "Neue Überweisung";
+                            enabled: root.selected > 0 && !root.busy;
+                            clicked => { root.transfer-start(); }
+                        }
+                        GhostButton {
+                            y: (parent.height - self.height) / 2;
+                            text: "Kontoeinstellungen";
                             enabled: root.selected > 0 && !root.busy;
                             visible: root.selected > 0;
                             clicked => { root.account-edit(); }
@@ -1067,10 +1277,69 @@ export component MainWindow inherits Window {
                     current-index <=> root.status-index;
                     selected => { root.search-changed(); }
                 }
+                ComboBox {
+                    preferred-width: 120px;
+                    min-width: 90px;
+                    horizontal-stretch: 0;
+                    model: ["Gesamter Zeitraum", "30 Tage", "90 Tage", "Dieses Jahr"];
+                    current-index <=> root.range-index;
+                    selected => { root.search-changed(); }
+                }
+                ComboBox {
+                    preferred-width: 110px;
+                    min-width: 80px;
+                    horizontal-stretch: 0;
+                    model: root.tag-labels;
+                    current-index <=> root.tag-index;
+                    selected => { root.search-changed(); }
+                }
                 PillToggle {
                     text: "Ohne Kategorie";
                     checked <=> root.uncategorized-only;
                     toggled => { root.search-changed(); }
+                }
+                PillToggle {
+                    text: "Dokumente";
+                    checked <=> root.documents-only;
+                    toggled => { root.search-changed(); }
+                }
+                PillToggle {
+                    text: "Analysen";
+                    checked <=> root.cards-open;
+                }
+                Text { text: root.booking-count; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
+            }
+            // batch action bar (multi-select)
+            if root.view-mode == 0 && root.marked-count > 0: Rectangle {
+                height: 44px;
+                background: #2563eb.with-alpha(Theme.dark ? 0.25 : 0.10);
+                border-radius: 10px;
+                border-width: 1px;
+                border-color: #2563eb.with-alpha(0.5);
+                HorizontalLayout {
+                    padding-left: 12px; padding-right: 10px; padding-top: 6px; padding-bottom: 6px;
+                    spacing: 8px;
+                    Text { text: root.marked-count + " ausgewählt"; color: Theme.text; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+                    GhostButton { text: "Alle"; clicked => { root.batch-select-all(); } }
+                    GhostButton { text: "Als geprüft"; clicked => { root.batch-checked(true); } }
+                    GhostButton { text: "Als neu"; clicked => { root.batch-checked(false); } }
+                    batch-cat := ComboBox {
+                        preferred-width: 130px; min-width: 90px; horizontal-stretch: 0;
+                        model: root.category-names;
+                        current-index: 0;
+                        selected => { root.batch-category(self.current-index); }
+                    }
+                    batch-tag := ComboBox {
+                        preferred-width: 100px; min-width: 70px; horizontal-stretch: 0;
+                        model: root.tag-labels;
+                        current-index: 0;
+                    }
+                    GhostButton { text: "Tag +"; clicked => { root.batch-tag(batch-tag.current-index, true); } }
+                    GhostButton { text: "Tag −"; clicked => { root.batch-tag(batch-tag.current-index, false); } }
+                    GhostButton { text: "Regeln anwenden"; clicked => { root.apply-rules(); } }
+                    GhostButton { text: "Exportieren"; clicked => { root.batch-export(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    GhostButton { text: "Aufheben"; clicked => { root.batch-clear(); } }
                 }
             }
             // dashboard cards above the bookings: cashflow chart and budgets
@@ -1101,6 +1370,26 @@ export component MainWindow inherits Window {
                     for l[i] in root.budget-lines: BudgetBar { l: l; visible: i < 4; height: i < 4 ? 30px : 0px; }
                 }
             }
+            if root.view-mode == 0 && root.cards-open: Rectangle {
+                height: 50px + (root.analytics-expense-cats.length + root.analytics-income-cats.length + root.analytics-tags.length) * 32px + (root.analytics-tags.length == 0 ? 20px : 0px) + 90px;
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 6px;
+                    Text { text: "Analysen"; color: Theme.text; font-size: 14px; font-weight: 700; }
+                    Text { text: root.analytics-summary; color: Theme.muted; font-size: 11px; overflow: elide; }
+                    Text { text: "Ausgaben nach Kategorie"; color: Theme.text; font-size: 12px; font-weight: 700; }
+                    for l in root.analytics-expense-cats: BudgetBar { l: l; height: 30px; }
+                    Text { text: "Einnahmen nach Kategorie"; color: Theme.text; font-size: 12px; font-weight: 700; }
+                    for l in root.analytics-income-cats: BudgetBar { l: l; height: 30px; }
+                    Text { text: "Auswertung nach Tags"; color: Theme.text; font-size: 12px; font-weight: 700; }
+                    if root.analytics-tags.length == 0: Text { text: "Keine getaggten Buchungen im Filter"; color: Theme.muted; font-size: 11px; }
+                    for l in root.analytics-tags: BudgetBar { l: l; height: 30px; }
+                }
+            }
             if root.view-mode == 0: Rectangle {
                 vertical-stretch: 1;
                     if root.days.length == 0: Text {
@@ -1110,10 +1399,24 @@ export component MainWindow inherits Window {
                         vertical-alignment: center;
                     }
                     ListView {
-                        for d in root.days: DayCard {
-                            day: d;
-                            selected-booking: root.selected-booking;
-                            select(id) => { root.select-booking(id); }
+                        for d in root.days: VerticalLayout {
+                            spacing: 6px;
+                            if d.show-month: HorizontalLayout {
+                                height: 34px;
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 10px;
+                                Text { text: d.month; color: Theme.text; font-size: 15px; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+                                Text { text: "Einnahmen " + d.month-income; color: Theme.positive; font-size: 11px; font-weight: 600; vertical-alignment: center; }
+                                Text { text: "Ausgaben " + d.month-expense; color: Theme.muted; font-size: 11px; font-weight: 600; vertical-alignment: center; }
+                            }
+                            DayCard {
+                                day: d;
+                                selected-booking: root.selected-booking;
+                                select(id) => { root.select-booking(id); }
+                                toggle-checked(id) => { root.toggle-booking-checked(id); }
+                                toggle-mark(id) => { root.toggle-booking-mark(id); }
+                            }
                         }
                     }
                 }
@@ -1246,7 +1549,8 @@ export component MainWindow inherits Window {
                         border-color: Theme.border;
                         Text { text: root.view-mode == 0 ? "Keine Buchung ausgewählt" : "Details zur Buchung erscheinen in der Umsatzliste"; wrap: word-wrap; color: Theme.muted.with-alpha(0.8); font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
                     }
-                    if root.view-mode == 0 && root.has-inspector: VerticalLayout {
+                    if root.view-mode == 0 && root.has-inspector: ScrollView {
+                      VerticalLayout {
                         spacing: 10px;
                         padding-right: 2px;
                         // booking header
@@ -1285,6 +1589,31 @@ export component MainWindow inherits Window {
                                         toggled => { root.set-checked(root.inspector-checked); }
                                     }
                                 }
+                            }
+                        }
+                        // details
+                        Rectangle {
+                            background: Theme.surface;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            height: dl.preferred-height + 24px;
+                            iban-copy := TextInput { text: root.inspector.iban; width: 0px; height: 0px; visible: false; }
+                            dl := VerticalLayout {
+                                padding: 12px;
+                                spacing: 4px;
+                                Text { text: "Details"; font-size: 12px; font-weight: 700; color: Theme.text; }
+                                if root.inspector.transfer-reason != "": Text { text: "⇄ " + root.inspector.transfer-reason; font-size: 11px; color: Theme.positive; wrap: word-wrap; }
+                                if root.inspector.iban != "": HorizontalLayout {
+                                    spacing: 6px;
+                                    Text { text: "IBAN: " + root.inspector.iban; font-size: 11px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; min-width: 0px; overflow: elide; }
+                                    GhostButton { text: "Kopieren"; clicked => { iban-copy.select-all(); iban-copy.copy(); } }
+                                }
+                                Text { text: "Buchungsdatum: " + root.inspector.booking-date + "  ·  Wertstellung: " + root.inspector.value-date; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                                if root.inspector.booking-text != "": Text { text: "Buchungsart: " + root.inspector.booking-text; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                                if root.inspector.reference != "": Text { text: root.inspector.reference; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                                if root.inspector.purpose != "": Text { text: "Verwendungszweck"; font-size: 11px; font-weight: 700; color: Theme.text; }
+                                if root.inspector.purpose != "": Text { text: root.inspector.purpose; font-size: 11px; color: Theme.text; wrap: word-wrap; }
                             }
                         }
                         // note
@@ -1342,6 +1671,7 @@ export component MainWindow inherits Window {
                         // category tiles
                         Rectangle {
                             vertical-stretch: 1;
+                            min-height: 260px;
                             background: Theme.surface;
                             border-radius: 12px;
                             border-width: 1px;
@@ -1379,10 +1709,12 @@ export component MainWindow inherits Window {
                                 GhostButton { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
                             }
                         }
+                      }
                     }
                 }
             }
         }
+    }
     }
 
     // ---- add bank dialog (overlay)
@@ -1469,6 +1801,15 @@ export component MainWindow inherits Window {
                 tr-iban := LineEdit { placeholder-text: "IBAN des Empfängers"; }
                 tr-amount := LineEdit { placeholder-text: "Betrag in EUR, z. B. 12,50"; }
                 tr-purpose := LineEdit { placeholder-text: "Verwendungszweck (max. 140 Zeichen)"; }
+                tr-instant := Switch { text: "Echtzeitüberweisung (sofort, rund um die Uhr)"; checked: false; }
+                tr-date := LineEdit {
+                    placeholder-text: "Ausführungstermin TT.MM.JJJJ (leer = sofort)";
+                    enabled: !tr-instant.checked;
+                }
+                if root.demo-active: Text {
+                    text: "Demo: Die Überweisung wird nur simuliert und nicht an eine Bank gesendet.";
+                    color: Theme.accent; font-size: 11px; wrap: word-wrap;
+                }
                 Text {
                     text: "PIN und TAN werden erst beim Senden abgefragt und nie gespeichert.";
                     color: Theme.muted; font-size: 11px; wrap: word-wrap;
@@ -1481,7 +1822,7 @@ export component MainWindow inherits Window {
                     Button {
                         text: "Senden";
                         primary: true;
-                        clicked => { root.transfer-submit(tr-account.current-index, tr-name.text, tr-iban.text, tr-amount.text, tr-purpose.text); }
+                        clicked => { root.transfer-submit(tr-account.current-index, tr-name.text, tr-iban.text, tr-amount.text, tr-purpose.text, tr-instant.checked, tr-instant.checked ? "" : tr-date.text); }
                     }
                 }
             }
@@ -1642,7 +1983,22 @@ export component MainWindow inherits Window {
             ComboBox { horizontal-stretch: 1; model: root.rule-field-labels; current-index <=> root.rule-field; }
             ComboBox { horizontal-stretch: 1; model: root.rule-kind-labels; current-index <=> root.rule-kind; }
         }
-        CheckBox { text: "Regel aktiv"; checked <=> root.rule-enabled; }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit { horizontal-stretch: 1; placeholder-text: "Betrag ab (€, z. B. -50)"; text <=> root.rule-min; }
+            LineEdit { horizontal-stretch: 1; placeholder-text: "Betrag bis (€)"; text <=> root.rule-max; }
+        }
+        HorizontalLayout {
+            spacing: 16px;
+            CheckBox { text: "Regel aktiv"; checked <=> root.rule-enabled; }
+            CheckBox { text: "Groß-/Kleinschreibung beachten"; checked <=> root.rule-case; }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button { text: "Vorschau"; clicked => { root.rule-preview-request(); } }
+            Button { text: "Auf unkategorisierte Treffer anwenden"; clicked => { root.rule-apply-scoped(); } }
+        }
+        if root.rule-preview != "": Text { text: root.rule-preview; color: Theme.muted; font-size: 12px; wrap: word-wrap; }
         if root.rule-status != "": Text { text: root.rule-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
         HorizontalLayout {
             spacing: 8px;
@@ -1765,7 +2121,7 @@ export component MainWindow inherits Window {
             salary-state: root.rc-salary-state; can-salary: root.rc-can-salary; has-series: root.rc-has-series;
             interval-names: root.rc-interval-names; interval-index <=> root.rc-interval; custom-dates <=> root.rc-custom-dates;
             month-summary: root.rc-month-summary; month-rows: root.rc-month-rows; ignored-rows: root.rc-ignored-rows;
-            planned-summary: root.rc-planned-summary; planned-rows: root.rc-planned-rows;
+            planned-horizon <=> root.rc-planned-horizon; planned-summary: root.rc-planned-summary; planned-rows: root.rc-planned-rows;
             standing-rows: root.rc-standing-rows; limits-text: root.rc-limits;
             tab-changed(t) => { root.rc-tab-changed(t); }
             mark(i, d) => { root.rc-mark(i, d); }

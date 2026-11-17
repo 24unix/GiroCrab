@@ -262,6 +262,58 @@ pub fn planned_lines(
         .collect()
 }
 
+/// Entries of the horizon picker of "Geplant" (like macOS `PlannedHorizon`).
+pub const HORIZON_LABELS: [&str; 4] = ["30 Tage", "90 Tage", "1 Jahr", "Alle"];
+
+/// Days ahead for a horizon index; `None` = open end.
+pub fn horizon_days(index: i32) -> Option<i64> {
+    match index {
+        0 => Some(30),
+        1 => Some(90),
+        2 => Some(365),
+        _ => None,
+    }
+}
+
+/// "November 2026" for an ISO date or `YYYY-MM` key.
+pub fn month_heading(iso: &str) -> String {
+    let (y, m) = (iso.get(..4).unwrap_or(""), iso.get(5..7).unwrap_or(""));
+    match m.parse::<usize>() {
+        Ok(n) if (1..=12).contains(&n) => format!("{} {y}", MONTHS[n - 1]),
+        _ => iso.to_string(),
+    }
+}
+
+/// Planned payments with a header line (id -1, month and its signed sum) before each month.
+pub fn planned_lines_grouped(
+    items: &[PlannedPayment],
+    money: &dyn Fn(i64) -> String,
+    date: &dyn Fn(&str) -> String,
+) -> Vec<Line> {
+    let lines = planned_lines(items, money, date);
+    let mut out = Vec::with_capacity(lines.len() + 4);
+    let mut i = 0;
+    while i < items.len() {
+        let key = items[i].date.get(..7).unwrap_or("").to_string();
+        let mut j = i;
+        let mut sum = 0;
+        while j < items.len() && items[j].date.get(..7).unwrap_or("") == key {
+            sum += items[j].amount_cents;
+            j += 1;
+        }
+        out.push(Line {
+            id: -1,
+            title: month_heading(&key),
+            detail: format!("{} Zahlungen", j - i),
+            amount: money(sum),
+            negative: sum < 0,
+        });
+        out.extend(lines[i..j].iter().cloned());
+        i = j;
+    }
+    out
+}
+
 pub fn planned_summary(t: &PlannedTotals, badge: u32, money: &dyn Fn(i64) -> String) -> String {
     format!(
         "{} geplante Zahlungen: {} ausgehend, {} eingehend · {badge} Termine/Einzüge bei der Bank",

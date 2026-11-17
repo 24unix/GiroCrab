@@ -48,6 +48,39 @@ pub struct Filter {
     pub search: String,
     pub uncategorized_only: bool,
     pub status: StatusFilter,
+    /// Earliest booking date (ISO `YYYY-MM-DD`) that still passes; empty = no time limit.
+    pub from_date: String,
+    /// Only bookings carrying a tag with this name; empty = any.
+    pub tag: String,
+    /// Only bookings with at least one attached document.
+    pub with_documents: bool,
+}
+
+/// ISO date `days` days before today (UTC), for the time range selector.
+pub fn date_days_ago(days: i64) -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let z = secs / 86_400 - days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Time range selector: 0 all, 1 last 30 days, 2 last 90 days, 3 last year.
+pub fn range_from(index: i32) -> String {
+    match index {
+        1 => date_days_ago(30),
+        2 => date_days_ago(90),
+        3 => date_days_ago(365),
+        _ => String::new(),
+    }
 }
 
 /// The booking fields the list and the inspector need (copied once per load).
@@ -84,6 +117,12 @@ pub struct Row {
     pub salary_signal: bool,
     /// The tags the booking carries.
     pub tags: Vec<girocrab_core::tags::BookingTag>,
+    /// End-to-end id, mandate and creditor id, one labelled line each (empty ones left out).
+    pub reference: String,
+    /// Classified as a transfer between own accounts / settlement (#574).
+    pub transfer: bool,
+    /// Attached documents (paperclip).
+    pub documents: u32,
 }
 
 impl From<&Booking> for Row {
@@ -123,6 +162,18 @@ impl From<&Booking> for Row {
             salary_flag: b.salary_flag,
             salary_signal: girocrab_core::salary::salary_signal(b),
             tags: b.tags.clone(),
+            reference: [
+                ("Ende-zu-Ende-Referenz", &b.end_to_end_id),
+                ("Mandatsreferenz", &b.mandate_id),
+                ("Gläubiger-ID", &b.creditor_id),
+            ]
+            .iter()
+            .filter(|(_, v)| !v.is_empty() && v.as_str() != "NOTPROVIDED")
+            .map(|(l, v)| format!("{l}: {v}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+            transfer: b.flow == girocrab_core::merchants::FlowKind::Transfer,
+            documents: b.document_count,
         }
     }
 }
@@ -130,6 +181,15 @@ impl From<&Booking> for Row {
 impl Filter {
     pub fn matches(&self, r: &Row) -> bool {
         if self.uncategorized_only && r.category_id.is_some() {
+            return false;
+        }
+        if !self.from_date.is_empty() && r.booking_date.as_str() < self.from_date.as_str() {
+            return false;
+        }
+        if self.with_documents && r.documents == 0 {
+            return false;
+        }
+        if !self.tag.is_empty() && !r.tags.iter().any(|t| t.name == self.tag) {
             return false;
         }
         let status_ok = match self.status {
@@ -186,6 +246,9 @@ pub struct Inspector {
     /// Personal data hidden: the inspector is read-only.
     pub read_only: bool,
     pub recurring: bool,
+    pub reference: String,
+    pub transfer_reason: String,
+    pub booking_text: String,
 }
 
 pub fn inspect(r: &Row, privacy: bool, money: impl Fn(i64, &str) -> String) -> Inspector {
@@ -207,7 +270,52 @@ pub fn inspect(r: &Row, privacy: bool, money: impl Fn(i64, &str) -> String) -> I
         category_id: r.category_id,
         read_only: privacy,
         recurring: r.recurring,
+        reference: mask(&r.reference, privacy),
+        transfer_reason: if r.transfer {
+            transfer_reason(r)
+        } else {
+            String::new()
+        },
+        booking_text: r.booking_text.clone(),
     }
+}
+
+/// IBAN in blocks of four ("DE02 1203 …").
+pub fn format_iban(iban: &str) -> String {
+    let c: Vec<char> = iban.chars().filter(|c| !c.is_whitespace()).collect();
+    c.chunks(4)
+        .map(|b| b.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Header subtitle of an account: bank name and formatted IBAN (IBAN masked in privacy mode).
+pub fn account_subtitle(bank: &str, iban: &str, privacy: bool) -> String {
+    let iban = if iban.trim().is_empty() {
+        String::new()
+    } else {
+        mask(&format_iban(iban), privacy)
+    };
+    [bank.trim().to_string(), iban]
+        .into_iter()
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// Why a booking counts as transfer, from its own texts.
+pub fn transfer_reason(r: &Row) -> String {
+    let t = format!("{} {} {}", r.counterparty, r.purpose, r.booking_text).to_lowercase();
+    let why = if t.contains("kreditkarte") || t.contains("abrechnung") || t.contains("visa") {
+        "Kartenabrechnung"
+    } else if t.contains("aufladung") || t.contains("paypal") {
+        "Aufladung / Zahlungsdienst"
+    } else if t.contains("depot") || t.contains("sparplan") {
+        "Übertrag auf ein Depot"
+    } else {
+        "Zahlung zwischen eigenen Konten"
+    };
+    format!("Als Umbuchung erkannt ({why}): zählt nicht als Einnahme oder Ausgabe.")
 }
 
 /// Raw form input of the transfer dialog.
@@ -218,6 +326,43 @@ pub struct TransferInput {
     pub iban: String,
     pub amount: String,
     pub purpose: String,
+    /// Echtzeitüberweisung.
+    pub instant: bool,
+    /// Wunschtermin (`TT.MM.JJJJ` or `JJJJ-MM-TT`), empty = sofort.
+    pub date: String,
+}
+
+/// Normalises a desired execution date to ISO; `Ok(None)` for empty input.
+pub fn parse_execution_date(text: &str, today: &str) -> Result<Option<String>, String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return Ok(None);
+    }
+    let bad = || "Das Datum ist ungültig (TT.MM.JJJJ).".to_string();
+    let (y, m, d) = if let Some((y, rest)) = t.split_once('-') {
+        let (m, d) = rest.split_once('-').ok_or_else(bad)?;
+        (y, m, d)
+    } else {
+        let mut it = t.split('.');
+        let (d, m, y) = (it.next(), it.next(), it.next());
+        match (d, m, y, it.next()) {
+            (Some(d), Some(m), Some(y), None) => (y, m, d),
+            _ => return Err(bad()),
+        }
+    };
+    let (y, m, d): (i32, u32, u32) = (
+        y.parse().map_err(|_| bad())?,
+        m.parse().map_err(|_| bad())?,
+        d.parse().map_err(|_| bad())?,
+    );
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) || y < 2000 {
+        return Err(bad());
+    }
+    let iso = format!("{y:04}-{m:02}-{d:02}");
+    if iso.as_str() < today {
+        return Err("Der Ausführungstermin liegt in der Vergangenheit.".into());
+    }
+    Ok(Some(iso))
 }
 
 /// Checks the form like the core does, but with messages next to the right field and without
@@ -245,6 +390,12 @@ pub fn validate_transfer(i: &TransferInput) -> Result<SepaTransferRequest, Strin
     if purpose.chars().count() > 140 {
         return Err("Der Verwendungszweck darf höchstens 140 Zeichen lang sein.".into());
     }
+    let execution_date = parse_execution_date(&i.date, &crate::portfolio::today_iso())?;
+    if i.instant && execution_date.is_some() {
+        return Err(
+            "Eine Echtzeitüberweisung wird sofort ausgeführt – bitte kein Datum angeben.".into(),
+        );
+    }
     Ok(SepaTransferRequest {
         account_id: i.account_id,
         recipient_name: name.to_string(),
@@ -252,8 +403,8 @@ pub fn validate_transfer(i: &TransferInput) -> Result<SepaTransferRequest, Strin
         recipient_bic: None,
         amount_cents: cents,
         purpose: purpose.to_string(),
-        instant: false,
-        execution_date: None,
+        instant: i.instant,
+        execution_date,
     })
 }
 
@@ -304,6 +455,9 @@ mod tests {
             salary_flag: None,
             salary_signal: false,
             tags: Vec::new(),
+            reference: String::new(),
+            transfer: false,
+            documents: 0,
         }
     }
 
@@ -414,6 +568,8 @@ mod tests {
             iban: "de89 3704 0044 0532 0130 00".into(),
             amount: "12,50".into(),
             purpose: "Miete".into(),
+            instant: false,
+            date: String::new(),
         }
     }
 
@@ -424,6 +580,17 @@ mod tests {
         assert_eq!(r.recipient_iban, "DE89370400440532013000");
         assert_eq!(r.amount_cents, 1250);
         assert!(!r.instant && r.execution_date.is_none());
+    }
+
+    #[test]
+    fn execution_date_formats() {
+        assert_eq!(parse_execution_date("", "2026-01-01"), Ok(None));
+        assert_eq!(
+            parse_execution_date("15.03.2027", "2026-01-01"),
+            Ok(Some("2027-03-15".into()))
+        );
+        assert!(parse_execution_date("2020-01-01", "2026-01-01").is_err());
+        assert!(parse_execution_date("32.13.2027", "2026-01-01").is_err());
     }
 
     #[test]

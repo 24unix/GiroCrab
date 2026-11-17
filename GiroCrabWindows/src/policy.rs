@@ -40,7 +40,7 @@ impl Block {
     }
 }
 
-fn verify(json: &[u8], sig: &[u8]) -> bool {
+pub(crate) fn verify(json: &[u8], sig: &[u8]) -> bool {
     let Ok(sig) = <[u8; 64]>::try_from(sig) else {
         return false;
     };
@@ -54,7 +54,7 @@ fn verify(json: &[u8], sig: &[u8]) -> bool {
 }
 
 /// Numeric dotted comparison; anything after the first `-` is ignored.
-fn version_lt(a: &str, b: &str) -> bool {
+pub(crate) fn version_lt(a: &str, b: &str) -> bool {
     let parts = |s: &str| -> Vec<u64> {
         s.split('-')
             .next()

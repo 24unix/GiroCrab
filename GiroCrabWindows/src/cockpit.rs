@@ -5,6 +5,7 @@
 use girocrab_core::{CategoryBudgetStatus, PeriodCashflow};
 
 use crate::daily::Row;
+use crate::portfolio::fmt_date;
 
 const WEEKDAYS: [&str; 7] = [
     "Montag",
@@ -67,6 +68,15 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
     (y, m, d)
 }
 
+/// ISO date `n` days after today (UTC).
+pub fn today_plus_days(n: i64) -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let (y, m, d) = civil_from_days(secs.div_euclid(86_400) + n);
+    fmt_date(y, m, d)
+}
+
 /// Year and month of today (UTC; a few hours' offset around midnight does not matter here).
 pub fn current_year_month() -> (i32, u32) {
     let secs = std::time::SystemTime::now()
@@ -83,6 +93,14 @@ pub fn day_title(iso: &str) -> String {
     };
     let wd = (days_from_civil(y, m, d) + 3).rem_euclid(7) as usize;
     format!("{}, {d}. {}", WEEKDAYS[wd], MONTHS[m as usize - 1])
+}
+
+/// `2026-11-13` -> "November 2026"; unparsable input is returned unchanged.
+pub fn month_title(iso: &str) -> String {
+    let Some((y, m, _)) = parse_iso(iso) else {
+        return iso.to_string();
+    };
+    format!("{} {y}", MONTHS[m as usize - 1])
 }
 
 /// One day of the booking list: the indices (into the shown rows) of its bookings and the net sum.
@@ -343,10 +361,10 @@ pub fn top_spending(rows: &[Row], year: i32, month: u32, n: usize) -> Vec<Budget
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn row(date: &str, cents: i64, cat: &str) -> Row {
+    pub(crate) fn row(date: &str, cents: i64, cat: &str) -> Row {
         Row {
             id: 1,
             account_name: "Giro".into(),
@@ -372,6 +390,9 @@ mod tests {
             salary_flag: None,
             salary_signal: false,
             tags: Vec::new(),
+            reference: String::new(),
+            transfer: false,
+            documents: 0,
         }
     }
 

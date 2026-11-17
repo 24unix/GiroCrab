@@ -84,6 +84,7 @@ export component RecurringPanel inherits VerticalLayout {
     in property <[RecLine]> month-rows;
     in property <[RecLine]> ignored-rows;
     // planned and standing orders
+    in-out property <int> planned-horizon: 1;
     in property <string> planned-summary;
     in property <[RecLine]> planned-rows;
     in property <[RecLine]> standing-rows;
@@ -158,6 +159,16 @@ export component RecurringPanel inherits VerticalLayout {
     // ---- 2: planned payments
     if root.tab == 2: VerticalLayout {
         spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: "Zeitraum"; color: root.muted; font-size: 12px; vertical-alignment: center; }
+            ComboBox {
+                horizontal-stretch: 1;
+                model: ["30 Tage", "90 Tage", "1 Jahr", "Alle"];
+                current-index <=> root.planned-horizon;
+                selected(_) => { root.refresh(); }
+            }
+        }
         Text { text: root.planned-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
         Lines {
             list-height: 250px;
