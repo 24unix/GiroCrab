@@ -577,6 +577,12 @@ pub fn apply_custom_category_order<T, F: Fn(&T) -> i64>(
     });
 }
 
+/// Left indent in pixels for a sidebar row at hierarchy `depth`, so
+/// subcategory icons align under the parent category label text start.
+pub fn sidebar_hierarchy_indent_px(depth: u32, compact_mode: bool) -> i32 {
+    depth as i32 * if compact_mode { 16 } else { 22 }
+}
+
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
@@ -623,6 +629,16 @@ mod tests {
     }
 
     use super::testing::account;
+
+    #[test]
+    fn sidebar_hierarchy_indent_scales_with_depth() {
+        assert_eq!(sidebar_hierarchy_indent_px(0, false), 0);
+        assert_eq!(sidebar_hierarchy_indent_px(0, true), 0);
+        assert_eq!(sidebar_hierarchy_indent_px(1, false), 22);
+        assert_eq!(sidebar_hierarchy_indent_px(1, true), 16);
+        assert_eq!(sidebar_hierarchy_indent_px(3, false), 66);
+        assert_eq!(sidebar_hierarchy_indent_px(3, true), 48);
+    }
 
     #[test]
     fn custom_category_order_sorts_listed_first_and_keeps_unlisted_stable() {
