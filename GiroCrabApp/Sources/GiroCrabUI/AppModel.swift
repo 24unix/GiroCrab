@@ -864,6 +864,11 @@ public final class AppModel {
             // a rule opened in the editor (#179 pattern field)
             ruleDraft = rules.first
             showRuleEditor = true
+        case "rule-tags":
+            // a rule that only adds tags (#580)
+            reloadRules()
+            ruleDraft = rules.first { $0.categoryId == 0 } ?? rules.first
+            showRuleEditor = true
         case "palette":
             showCommandPalette = true
         case "categorizer":

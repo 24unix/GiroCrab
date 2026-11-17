@@ -58,6 +58,8 @@ struct RuleEditorView: View {
     @State private var draft: Rule?
     @State private var searchText: String = ""
     @State private var ruleToDelete: Rule?
+    /// Matching bookings that carry all of a rule's tags (#580), loaded off main.
+    @State private var tagCounts: [Int64: UInt32] = [:]
 
     private var isFiltering: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -116,13 +118,14 @@ struct RuleEditorView: View {
                                 Text(rule.name).lineLimit(2).sensitive()
                                 Text("→ " + categoryName(rule.categoryId)).appFont(.caption).foregroundStyle(.secondary).lineLimit(2)
                                     .sensitive(.labels)
+                                if !rule.tagIds.isEmpty {
+                                    // tag names are always covered in a report (#228)
+                                    Text(tagNames(rule.tagIds)).appFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        .sensitive()
+                                }
                             }
                             Spacer()
-                            Text("\(rule.matchCount)")
-                                .appFont(.caption, monospacedDigit: true)
-                                .padding(.horizontal, 6).padding(.vertical, 1)
-                                .background(Capsule().fill(.quaternary))
-                                .accessibilityLabel(Text("\(Int(rule.matchCount)) Treffer"))
+                            RuleCountBadge(rule: rule, tagged: tagCounts[rule.id])
                         }
                         .tag(rule.id)
                         .contextMenu {
@@ -205,6 +208,10 @@ struct RuleEditorView: View {
             }
             model.ruleDraft = nil
         }
+        // rules saved or applied, tags set elsewhere: count again
+        .task(id: tagCountsKey) {
+            if let counts = await model.loadRuleTagCounts() { tagCounts = counts }
+        }
         .onChange(of: selection) { _, new in
             if let new, let r = model.rules.first(where: { $0.id == new }) { draft = r }
         }
@@ -227,12 +234,28 @@ struct RuleEditorView: View {
         }
     }
 
+    /// Changes whenever the tag counts may have: a rule's tags, state or hits, or a
+    /// tag's bookings.
+    private var tagCountsKey: [Int64] {
+        var key: [Int64] = []
+        for r in model.rules where !r.tagIds.isEmpty {
+            key += [r.id, r.enabled ? 1 : 0, Int64(r.matchCount)] + r.tagIds + [-1]
+        }
+        for t in model.tags { key += [t.id, Int64(t.bookingCount)] }
+        return key
+    }
+
     private func color(of rule: Rule) -> String {
         model.categories.first { $0.id == rule.categoryId }?.colorHex ?? "#8E8E93"
     }
 
     private func categoryName(_ id: Int64) -> String {
-        model.categories.first { $0.id == id }?.path ?? "?"
+        if id == 0 { return String(localized: "Nur Tags") }
+        return model.categories.first { $0.id == id }?.path ?? "?"
+    }
+
+    private func tagNames(_ ids: [Int64]) -> String {
+        model.tags.filter { ids.contains($0.id) }.map { "#" + $0.name }.joined(separator: " ")
     }
 
     private func newRule() {
@@ -271,13 +294,26 @@ struct RuleForm: View {
                 Section {
                     TextField("Name", text: $rule.name)
                     Picker("Kategorie", selection: $rule.categoryId) {
+                        // a rule may only add tags (#580)
+                        Text("Keine (nur Tags)").tag(Int64(0))
+                        Divider()
                         ForEach(model.categories) { c in
                             Text(String(repeating: "    ", count: Int(c.depth)) + c.name).tag(c.id)
                         }
                     }
                     .sensitive(.labels)
+                    RuleTagsField(tagIds: $rule.tagIds)
                     Toggle("Aktiv", isOn: $rule.enabled)
-                } header: { Text("Regel").appSectionHeader() }
+                } header: {
+                    Text("Regel").appSectionHeader()
+                } footer: {
+                    Text(rule.categoryId == 0 && rule.tagIds.isEmpty
+                         ? "Die Regel braucht eine Kategorie oder mindestens einen Tag."
+                         : "Tags werden nur hinzugefügt, nie entfernt. Jede passende Regel gibt ihre Tags dazu; die Kategorie kommt von der ersten passenden Regel mit Kategorie.")
+                        .appFont(.caption)
+                        .foregroundStyle(rule.categoryId == 0 && rule.tagIds.isEmpty ? Theme.warning : .secondary)
+                        .leadingFooter()
+                }
                 Section {
                     if rule.matchKind != .expression {
                         Picker("Suchen in", selection: $rule.field) {
@@ -348,7 +384,7 @@ struct RuleForm: View {
                                 Text(DateText.medium(b.bookingDate)).foregroundStyle(.secondary).monospacedDigit()
                                 Text(b.counterparty).lineLimit(1).sensitive()
                                 Spacer()
-                                if b.categorySource == .manual {
+                                if b.categorySource == .manual && rule.categoryId != 0 {
                                     Image(systemName: "hand.raised.fill").foregroundStyle(.secondary).help("Manuell zugeordnet – die Regel ändert das nicht")
                                 }
                                 Text(Money.format(b.amountCents)).monospacedDigit().foregroundStyle(Money.ink(b.amountCents))
@@ -371,7 +407,8 @@ struct RuleForm: View {
                 Button("Speichern & anwenden") { onSave(rule) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .disabled(rule.pattern.trimmingCharacters(in: .whitespaces).isEmpty || preview.error != nil)
+                    .disabled(rule.pattern.trimmingCharacters(in: .whitespaces).isEmpty || preview.error != nil
+                              || (rule.categoryId == 0 && rule.tagIds.isEmpty))
             }
             .padding(12)
         }
@@ -396,5 +433,51 @@ struct RuleForm: View {
 
     private func syncDirection() {
         if rule.maxAmountCents == 0 { direction = 1 } else if rule.minAmountCents == 1 { direction = 2 } else { direction = 0 }
+    }
+}
+
+/// The rule list's counts: bookings the rule categorised and, for a rule that adds
+/// tags, its matching bookings that carry all of them (#580) – "8", "1 | 3", "– | 2".
+/// Which rule gave a tag is not stored, so the second number counts every matching
+/// booking with those tags.
+private struct RuleCountBadge: View {
+    let rule: Rule
+    /// nil: no tags, paused, or not counted yet.
+    let tagged: UInt32?
+
+    private var categorised: String? {
+        rule.categoryId == 0 ? nil : "\(rule.matchCount)"
+    }
+
+    private var label: String? {
+        switch (categorised, tagged) {
+        case let (c?, t?): "\(c) | \(t)"
+        case let (c?, nil): c
+        case let (nil, t?): "– | \(t)"
+        case (nil, nil): nil
+        }
+    }
+
+    private var explanation: String {
+        var parts: [String] = []
+        if rule.categoryId != 0 {
+            parts.append(String(localized: "Von dieser Regel kategorisiert: \(Int(rule.matchCount))"))
+        }
+        if let tagged {
+            parts.append(String(localized: "Passend und mit ihren Tags: \(Int(tagged))"))
+        }
+        return parts.joined(separator: "\n")
+    }
+
+    var body: some View {
+        if let label {
+            Text(label)
+                .appFont(.caption, monospacedDigit: true)
+                .fixedSize()
+                .padding(.horizontal, 6).padding(.vertical, 1)
+                .background(Capsule().fill(.quaternary))
+                .help(explanation)
+                .accessibilityLabel(Text(explanation))
+        }
     }
 }

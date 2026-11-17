@@ -140,6 +140,7 @@ impl Fixture {
                 priority: 0,
                 enabled: true,
                 match_count: 0,
+                tag_ids: Vec::new(),
             })
             .unwrap()
     }

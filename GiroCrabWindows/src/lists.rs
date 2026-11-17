@@ -315,6 +315,7 @@ pub fn validate_rule(
         priority: next_priority,
         enabled: true,
         match_count: 0,
+        tag_ids: Vec::new(),
     });
     rule.name = name.to_string();
     rule.pattern = pattern.to_string();

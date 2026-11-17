@@ -292,6 +292,129 @@ pub(crate) fn normalize_links(conn: &Connection) -> CoreResult<()> {
     Ok(())
 }
 
+/// Every tag uuid (deleted and merged ones too) -> the id of its live tag:
+/// itself, or the survivor its merge chain leads to. Deleted tags without a
+/// survivor are missing. Rules keep their tags as uuids (#580), so a rename or
+/// a merge on any device carries over.
+pub(crate) fn live_tag_ids_by_uuid(conn: &Connection) -> CoreResult<HashMap<String, i64>> {
+    let rows: Vec<(i64, String, bool, Option<String>)> = conn
+        .prepare("SELECT id, uuid, deleted_ms IS NULL, merged_into FROM tags")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<Result<_, _>>()?;
+    let by_uuid: HashMap<&str, (i64, bool, Option<&str>)> = rows
+        .iter()
+        .map(|(id, u, live, m)| (u.as_str(), (*id, *live, m.as_deref())))
+        .collect();
+    let mut out = HashMap::new();
+    for (_, uuid, _, _) in &rows {
+        let mut cur = Some(uuid.as_str());
+        let mut seen = HashSet::new();
+        while let Some(u) = cur {
+            if !seen.insert(u) {
+                break;
+            }
+            match by_uuid.get(u) {
+                Some(&(id, true, _)) => {
+                    out.insert(uuid.clone(), id);
+                    break;
+                }
+                Some(&(_, false, next)) => cur = next,
+                None => break,
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The uuids of the live tags `ids` as a rule stores them (JSON array, sorted);
+/// an id that is no live tag is refused.
+pub(crate) fn rule_tag_uuids(conn: &Connection, ids: &[i64]) -> CoreResult<String> {
+    let mut uuids = Vec::new();
+    for id in ids {
+        let uuid: Option<String> = conn
+            .query_row(
+                "SELECT uuid FROM tags WHERE id = ?1 AND deleted_ms IS NULL",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        uuids.push(uuid.ok_or_else(|| not_found(*id))?);
+    }
+    uuids.sort();
+    uuids.dedup();
+    if uuids.is_empty() {
+        return Ok(String::new());
+    }
+    Ok(serde_json::to_string(&uuids)?)
+}
+
+/// The live tag ids of a rule's stored `tag_uuids`, sorted; tags deleted since
+/// drop out, merged ones become their survivor.
+pub(crate) fn rule_tag_ids(stored: &str, live: &HashMap<String, i64>) -> Vec<i64> {
+    let uuids: Vec<String> = serde_json::from_str(stored).unwrap_or_default();
+    let mut ids: Vec<i64> = uuids.iter().filter_map(|u| live.get(u).copied()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+/// Adds the tags of the matching rules to bookings (#580); never removes one.
+/// `all`: every live booking of an active account ("Regeln anwenden", saving a
+/// rule); otherwise only bookings whose tags nobody has touched yet
+/// (`tags_ms = 0`), so a tag removed by hand stays removed on the next fetch.
+/// `only` restricts the run to these bookings. Changed tag sets are stamped like
+/// an edit, so they sync. Returns the bookings that got a tag.
+pub(crate) fn tag_by_rules(
+    conn: &Connection,
+    set: &crate::rules::RuleSet,
+    all: bool,
+    only: Option<&HashSet<i64>>,
+) -> CoreResult<HashSet<i64>> {
+    let mut changed = HashSet::new();
+    if !set.sets_tags() {
+        return Ok(changed);
+    }
+    let scope = if all { "" } else { " AND t.tags_ms = 0" };
+    let ids_json = only.map(serde_json::to_string).transpose()?;
+    let ids_sql = if ids_json.is_some() {
+        " AND t.id IN (SELECT value FROM json_each(?1))"
+    } else {
+        ""
+    };
+    let mut have: HashMap<i64, HashSet<i64>> = HashMap::new();
+    for row in conn
+        .prepare("SELECT transaction_id, tag_id FROM transaction_tags")?
+        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+    {
+        let (b, t) = row?;
+        have.entry(b).or_default().insert(t);
+    }
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM transactions t JOIN accounts a ON a.id = t.account_id
+         WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL{scope}{ids_sql}",
+        crate::rules::RuleRow::COLUMNS
+    ))?;
+    let mut add = conn.prepare(
+        "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id) VALUES (?1, ?2)",
+    )?;
+    let mut rows = stmt.query(params_from_iter(ids_json))?;
+    while let Some(row) = rows.next()? {
+        let input = crate::rules::RuleRow::borrowed_input(row)?;
+        let id: i64 = row.get(0)?;
+        let current = have.get(&id);
+        for tag in set.tags_for(&input) {
+            if current.is_some_and(|c| c.contains(&tag)) {
+                continue;
+            }
+            add.execute(params![id, tag])?;
+            changed.insert(id);
+        }
+    }
+    let ids: Vec<i64> = changed.iter().copied().collect();
+    stamp_bookings(conn, &ids, crate::user_groups::now_ms())?;
+    Ok(changed)
+}
+
 impl Vault {
     /// The id of the live tag named `name`, created if missing; for importers
     /// and the "new tag" field of the booking detail.

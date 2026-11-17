@@ -34,6 +34,18 @@ extension AppModel {
 
     func clearTagFilter() { tagFilter = BookingTagFilter() }
 
+    /// The rules that add the tag `id` (#580), in rule order; for „Tags verwalten“.
+    func rules(addingTag id: Int64) -> [Rule] {
+        rules.filter { $0.tagIds.contains(id) }
+    }
+
+    /// Rule list (#580): per active rule that adds tags, its matching bookings that
+    /// carry all of its tags (off the main thread, ~35 ms on 40k bookings).
+    func loadRuleTagCounts() async -> [Int64: UInt32]? {
+        guard let rows = try? await vaultOffMain({ try $0.ruleTagCounts() }) else { return nil }
+        return Dictionary(rows.map { ($0.ruleId, $0.bookingCount) }, uniquingKeysWith: { a, _ in a })
+    }
+
     /// The header offers the tag filter once tags exist (or a filter is still on);
     /// not in „Neue Umsätze“, which ignores the list filters.
     var showsTagFilter: Bool {

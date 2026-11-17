@@ -234,13 +234,50 @@ impl RuleSet {
         Ok(RuleSet { rules: compiled })
     }
 
-    /// Returns (rule id, category id) of the first matching rule.
+    /// Returns (rule id, category id) of the first matching rule that sets a
+    /// category; rules that only add tags (#580) never categorise.
     pub fn categorise(&self, t: &RuleInput) -> Option<(i64, i64)> {
         let prepared = Prepared::new(expr_input(t));
         self.rules
             .iter()
+            .filter(|r| r.rule.category_id != 0)
             .find(|r| r.matches_in(t, &prepared))
             .map(|r| (r.rule.id, r.rule.category_id))
+    }
+
+    /// Whether any rule adds tags.
+    pub fn sets_tags(&self) -> bool {
+        self.rules.iter().any(|r| !r.rule.tag_ids.is_empty())
+    }
+
+    /// The rules that add tags (#580), in priority order.
+    pub fn tag_rules(&self) -> impl Iterator<Item = &Rule> {
+        self.rules
+            .iter()
+            .map(|r| &r.rule)
+            .filter(|r| !r.tag_ids.is_empty())
+    }
+
+    /// The rules that add tags and match `t`, in priority order.
+    pub fn tag_rules_matching(&self, t: &RuleInput) -> Vec<&Rule> {
+        let prepared = Prepared::new(expr_input(t));
+        self.rules
+            .iter()
+            .filter(|r| !r.rule.tag_ids.is_empty() && r.matches_in(t, &prepared))
+            .map(|r| &r.rule)
+            .collect()
+    }
+
+    /// The tags of every matching rule (#580), sorted and deduplicated.
+    pub fn tags_for(&self, t: &RuleInput) -> Vec<i64> {
+        let mut tags: Vec<i64> = self
+            .tag_rules_matching(t)
+            .into_iter()
+            .flat_map(|r| r.tag_ids.iter().copied())
+            .collect();
+        tags.sort_unstable();
+        tags.dedup();
+        tags
     }
 }
 
@@ -306,6 +343,7 @@ mod tests {
             priority: 0,
             enabled: true,
             match_count: 0,
+            tag_ids: Vec::new(),
         }
     }
 

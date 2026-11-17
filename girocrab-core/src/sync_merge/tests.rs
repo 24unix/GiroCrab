@@ -458,6 +458,7 @@ fn rule_assignment_does_not_stamp() {
         priority: 0,
         enabled: true,
         match_count: 0,
+        tag_ids: Vec::new(),
     })
     .unwrap();
     v.apply_rules(false).unwrap();
@@ -494,6 +495,7 @@ fn manual_clear_stamps_and_lets_rules_refill() {
         priority: 0,
         enabled: true,
         match_count: 0,
+        tag_ids: Vec::new(),
     })
     .unwrap();
     v.set_transaction_category(1, None).unwrap();
@@ -540,6 +542,7 @@ fn plain_rule(category_id: i64, pattern: &str) -> crate::models::Rule {
         priority: 10,
         enabled: true,
         match_count: 0,
+        tag_ids: Vec::new(),
     }
 }
 
@@ -1726,6 +1729,7 @@ fn soft_deleted_rows_appear_in_no_public_api() {
         priority: 100,
         enabled: true,
         match_count: 0,
+        tag_ids: Vec::new(),
     };
     for p in ["Autobank", "Musterbank", "a"] {
         both!(format!("preview_rule({p})"), |v| v

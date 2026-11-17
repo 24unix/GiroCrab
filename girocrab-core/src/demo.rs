@@ -178,8 +178,16 @@ const DEMO_TAGS: [DemoTag; 12] = [
     (
         "Auto",
         "#E67E22",
-        // the Autobank rates are Girokonto bookings linked to the Autokredit (#36)
-        &["Shell Station", "Aral AG", "EnBW%", "Sixt%", "Autobank AG"],
+        // the Autobank rates are Girokonto bookings linked to the Autokredit (#36);
+        // ADAC: the rule "Mitgliedschaften" gives "Auto" (#580)
+        &[
+            "Shell Station",
+            "Aral AG",
+            "EnBW%",
+            "Sixt%",
+            "Autobank AG",
+            "ADAC%",
+        ],
         &[],
     ),
     ("Urlaub", "#2E86DE", &["Sixt%"], &["ICE Ticket%"]),
@@ -255,6 +263,19 @@ fn demo_tags(conn: &Connection) -> CoreResult<()> {
         "UPDATE transactions SET tags_ms = ?1
           WHERE id IN (SELECT transaction_id FROM transaction_tags)",
         [now],
+    )?;
+    // rules that add tags (#580): two demo rules carry one, one rule only tags
+    let uuid = |name: &str| crate::sync_merge::tag_uuid_for_name(name);
+    for (rule, tag) in [("Miete", "Wohnung"), ("Mitgliedschaften", "Auto")] {
+        conn.execute(
+            "UPDATE rules SET tag_uuids = json_array(?2) WHERE name = ?1",
+            params![rule, uuid(tag)],
+        )?;
+    }
+    conn.execute(
+        "INSERT INTO rules(name, category_id, field, match_kind, pattern, priority, enabled, tag_uuids)
+         VALUES ('Mietwagen', NULL, 'counterparty', 'keyword', 'Sixt', 500, 1, json_array(?1))",
+        [uuid("Urlaub")],
     )?;
     Ok(())
 }

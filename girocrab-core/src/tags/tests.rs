@@ -632,3 +632,221 @@ fn filter_json_without_tag_fields_decodes() {
     .unwrap();
     assert!(f.tag_ids.is_empty() && !f.untagged_only);
 }
+
+fn rule(name: &str, pattern: &str, category_id: i64, tag_ids: Vec<i64>) -> crate::models::Rule {
+    crate::models::Rule {
+        id: 0,
+        name: name.into(),
+        category_id,
+        field: crate::models::RuleField::Any,
+        match_kind: crate::models::MatchKind::Keyword,
+        pattern: pattern.into(),
+        case_sensitive: false,
+        min_amount_cents: None,
+        max_amount_cents: None,
+        account_ids: Vec::new(),
+        priority: 10,
+        enabled: true,
+        match_count: 0,
+        tag_ids,
+    }
+}
+
+fn category(v: &Vault, name: &str) -> i64 {
+    let c = v.db().unwrap();
+    c.execute("INSERT INTO categories(name) VALUES (?1)", [name])
+        .unwrap();
+    c.last_insert_rowid()
+}
+
+fn source(v: &Vault, ext: &str) -> String {
+    v.db()
+        .unwrap()
+        .query_row(
+            "SELECT category_source FROM transactions WHERE external_id = ?1",
+            [ext],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+/// #580: a rule adds its tags; it never removes one, and a tag removed by hand
+/// comes back only when the rules are applied explicitly.
+#[test]
+fn rules_add_tags_and_never_remove_them() {
+    let dir = TempDir::new("tags-rules");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v, 3);
+    let food = category(&v, "Lebensmittel");
+    let trip = v.create_tag("Urlaub".into(), String::new()).unwrap().id;
+    let id = v
+        .save_rule(rule("Laden", "Laden", food, vec![trip]))
+        .unwrap();
+    v.apply_rules(false).unwrap();
+    for ext in ["T1", "T2", "T3"] {
+        assert_eq!(names(&v, ext), ["Urlaub"]);
+        assert_eq!(source(&v, ext), "rule");
+    }
+    assert_eq!(v.list_rules().unwrap()[0].tag_ids, [trip]);
+
+    // removed by hand: a fetch (only uncategorised / untouched) leaves it off …
+    v.set_booking_tags(ids[0], vec![]).unwrap();
+    Vault::apply_rules_inner(&v.db().unwrap(), true).unwrap();
+    assert!(names(&v, "T1").is_empty());
+    // … "Regeln anwenden" adds it again
+    v.apply_rules(false).unwrap();
+    assert_eq!(names(&v, "T1"), ["Urlaub"]);
+
+    // deleting the rule keeps the tags (it only ever adds)
+    v.delete_rule(id).unwrap();
+    assert_eq!(names(&v, "T2"), ["Urlaub"]);
+}
+
+/// #580: a rule without a category only adds tags; every matching rule adds its
+/// tags, the category still comes from the first rule that has one.
+#[test]
+fn tags_only_rules_leave_the_category_alone() {
+    let dir = TempDir::new("tags-rules-only");
+    let v = open(&dir, "a.db");
+    seed(&v, 2);
+    let food = category(&v, "Lebensmittel");
+    let trip = v.create_tag("Urlaub".into(), String::new()).unwrap().id;
+    let tax = v.create_tag("Steuer".into(), String::new()).unwrap().id;
+    assert!(v.save_rule(rule("leer", "Laden", 0, vec![])).is_err());
+    v.save_rule(rule("nur Tag", "Laden", 0, vec![trip]))
+        .unwrap();
+    v.apply_rules(false).unwrap();
+    assert_eq!(names(&v, "T1"), ["Urlaub"]);
+    assert_eq!(
+        source(&v, "T1"),
+        "none",
+        "no category from a tags-only rule"
+    );
+
+    let mut second = rule("Kategorie", "Laden", food, vec![tax]);
+    second.priority = 20;
+    v.save_rule(second).unwrap();
+    v.apply_rules(false).unwrap();
+    assert_eq!(names(&v, "T1"), ["Urlaub", "Steuer"]);
+    assert_eq!(source(&v, "T1"), "rule");
+    let listed = v.list_rules().unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|r| r.name == "nur Tag")
+            .unwrap()
+            .category_id,
+        0
+    );
+}
+
+/// #580: a rule keeps its tags through a rename and follows a merge; a deleted
+/// tag drops out, and a tags-only rule left without tags is hidden.
+#[test]
+fn rule_tags_follow_rename_merge_and_delete() {
+    let dir = TempDir::new("tags-rules-edit");
+    let v = open(&dir, "a.db");
+    seed(&v, 1);
+    let a = v.create_tag("Urlaub2026".into(), String::new()).unwrap().id;
+    let b = v
+        .create_tag("Urlaub 2026".into(), String::new())
+        .unwrap()
+        .id;
+    v.save_rule(rule("Reise", "Laden", 0, vec![a])).unwrap();
+    v.rename_tag(a, "Reise 2026".into()).unwrap();
+    assert_eq!(v.list_rules().unwrap()[0].tag_ids, [a]);
+    v.merge_tag_into(a, b).unwrap();
+    assert_eq!(v.list_rules().unwrap()[0].tag_ids, [b]);
+    v.delete_tag(b).unwrap();
+    assert!(v.list_rules().unwrap().is_empty());
+}
+
+/// #580: rules with tags and without a category reach the other device.
+#[test]
+fn rule_tags_merge_to_the_other_vault() {
+    let dir = TempDir::new("tags-rules-merge");
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    seed(&a, 1);
+    seed(&b, 1);
+    let trip = a.create_tag("Urlaub".into(), String::new()).unwrap().id;
+    a.save_rule(rule("Reise", "Laden", 0, vec![trip])).unwrap();
+    merge(&b, &a);
+    let rules = b.list_rules().unwrap();
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].category_id, 0);
+    assert_eq!(rules[0].tag_ids, [tag_id(&b, "Urlaub")]);
+    // merging back changes nothing
+    merge(&a, &b);
+    assert_eq!(a.list_rules().unwrap().len(), 1);
+}
+
+fn rule_tag_count(v: &Vault, id: i64) -> Option<u32> {
+    v.rule_tag_counts()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.rule_id == id)
+        .map(|c| c.booking_count)
+}
+
+/// #580: the rule list's second number counts the bookings a rule matches that
+/// carry all of its tags; other bookings with the tag, paused rules and rules
+/// without tags stay out.
+#[test]
+fn rule_tag_counts_count_matching_bookings_with_all_tags() {
+    let dir = TempDir::new("tags-rule-counts");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v, 3);
+    let food = category(&v, "Lebensmittel");
+    let trip = v.create_tag("Urlaub".into(), String::new()).unwrap().id;
+    let tax = v.create_tag("Steuer".into(), String::new()).unwrap().id;
+    assert!(v.rule_tag_counts().unwrap().is_empty(), "no rule adds tags");
+
+    let plain = v
+        .save_rule(rule("ohne Tags", "Laden", food, vec![]))
+        .unwrap();
+    let one = v.save_rule(rule("Urlaub", "Laden", 0, vec![trip])).unwrap();
+    v.apply_rules(false).unwrap();
+    assert_eq!(rule_tag_count(&v, one), Some(3));
+    assert_eq!(rule_tag_count(&v, plain), None, "a rule without tags");
+
+    // a booking the rule does not match carries the tag: not counted
+    let other = {
+        let c = v.db().unwrap();
+        c.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty) \
+             VALUES ((SELECT id FROM accounts LIMIT 1), 'X1', '2026-02-01', -5, 'Anders')",
+            [],
+        )
+        .unwrap();
+        c.last_insert_rowid()
+    };
+    v.set_booking_tags(other, vec![trip]).unwrap();
+    assert_eq!(rule_tag_count(&v, one), Some(3));
+
+    // removed by hand: no longer counted
+    v.set_booking_tags(ids[0], vec![]).unwrap();
+    assert_eq!(rule_tag_count(&v, one), Some(2));
+
+    // two tags: only bookings with both count
+    let both = v
+        .save_rule(rule("beide", "Laden", 0, vec![trip, tax]))
+        .unwrap();
+    v.apply_rules(false).unwrap();
+    assert_eq!(rule_tag_count(&v, both), Some(3));
+    v.set_booking_tags(ids[1], vec![trip]).unwrap();
+    assert_eq!(rule_tag_count(&v, both), Some(2));
+    assert_eq!(rule_tag_count(&v, one), Some(3));
+
+    // a paused rule gives no tags: not listed
+    let mut paused = v
+        .list_rules()
+        .unwrap()
+        .into_iter()
+        .find(|r| r.id == one)
+        .unwrap();
+    paused.enabled = false;
+    v.save_rule(paused).unwrap();
+    assert_eq!(rule_tag_count(&v, one), None);
+    assert_eq!(rule_tag_count(&v, both), Some(2));
+}

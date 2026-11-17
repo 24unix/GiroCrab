@@ -999,6 +999,17 @@
         }
       }
     },
+    "%lld Regeln" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld rules"
+          }
+        }
+      }
+    },
     "%lld Tage" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9754,6 +9765,17 @@
         }
       }
     },
+    "Die Regel braucht eine Kategorie oder mindestens einen Tag." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The rule needs a category or at least one tag."
+          }
+        }
+      }
+    },
     "Die Registrierung dauert meist einige Tage. Bis dahin können Sie GiroCrab mit den Demo-Daten ausprobieren." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10102,6 +10124,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "These accounts are no longer included in the consent. Their bookings are kept; delete an account yourself if you no longer need it."
+          }
+        }
+      }
+    },
+    "Diese Tags bekommt jede passende Buchung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every matching booking gets these tags"
           }
         }
       }
@@ -16546,6 +16579,17 @@
         }
       }
     },
+    "Keine (nur Tags)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None (tags only)"
+          }
+        }
+      }
+    },
     "Keine (oberste Ebene)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16865,6 +16909,17 @@
         }
       }
     },
+    "Keine Regel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No rule"
+          }
+        }
+      }
+    },
     "Keine Regel ausgewählt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16872,6 +16927,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Rule Selected"
+          }
+        }
+      }
+    },
+    "Keine Regel vergibt diesen Tag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No rule adds this tag"
           }
         }
       }
@@ -21481,6 +21547,28 @@
         }
       }
     },
+    "Nur Tags" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags only"
+          }
+        }
+      }
+    },
+    "Nur Tags zeigen, die noch keine Regel vergibt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show only tags no rule adds yet"
+          }
+        }
+      }
+    },
     "Nur automatisch bepreiste Objekte (Edelmetalle) haben einen Tagespreis; manuelle Bewertungen ändern sich nicht täglich." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21879,6 +21967,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Missing position data / valuation difference"
+          }
+        }
+      }
+    },
+    "Ohne Regel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Without rule"
           }
         }
       }
@@ -22319,6 +22418,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Parking"
+          }
+        }
+      }
+    },
+    "Passend und mit ihren Tags: %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Matching and carrying its tags: %lld"
           }
         }
       }
@@ -26331,6 +26441,17 @@
         }
       }
     },
+    "Tags werden nur hinzugefügt, nie entfernt. Jede passende Regel gibt ihre Tags dazu; die Kategorie kommt von der ersten passenden Regel mit Kategorie." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags are only added, never removed. Every matching rule adds its tags; the category comes from the first matching rule that has one."
+          }
+        }
+      }
+    },
     "Tags zusammenführen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27547,6 +27668,17 @@
         }
       }
     },
+    "Vergeben von: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added by: %@"
+          }
+        }
+      }
+    },
     "Vergrößert die Schrift in der ganzen App. Auch im Menü Ansicht mit ⌘+ / ⌘− / ⌘0." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27961,6 +28093,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab can’t send transfers from this account directly. You’ll get a GiroCode at the end to scan in your bank’s app."
+          }
+        }
+      }
+    },
+    "Von dieser Regel kategorisiert: %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categorised by this rule: %lld"
           }
         }
       }

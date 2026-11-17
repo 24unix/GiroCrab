@@ -37,6 +37,8 @@
 //!
 //! - 26: native currency of a depot position and its prices (#625): `holdings.currency`, `native_*_cents`.
 //! - 27: built-in category and account-group identities, separate from names (#678).
+//! - 28: rules that set tags (#580): `rules.tag_uuids`, and `rules.category_id` may be NULL
+//!   (a rule that only adds tags); the table is rebuilt for the dropped NOT NULL.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -80,7 +82,72 @@ const STEPS: &[Step] = &[
     Step::Sql(TX_AMOUNT_DATE),                                 // 25
     Step::Hook(holding_native_currency),                       // 26
     Step::Hook(builtin_roles),                                 // 27 (#678)
+    Step::Hook(rule_tags),                                     // 28 (#580)
 ];
+
+/// Step 28 (#580): rules may set tags (`tag_uuids`, a JSON array of tag uuids, so a
+/// rename or a merge on any device keeps them) and may leave the category out. SQLite
+/// can't drop a NOT NULL in place: the table is rebuilt from its own columns (whatever
+/// earlier steps and repairs added), with its foreign keys, indexes and triggers.
+fn rule_tags(conn: &Connection) -> CoreResult<()> {
+    let nullable: bool = conn.query_row(
+        "SELECT \"notnull\" = 0 FROM pragma_table_info('rules') WHERE name = 'category_id'",
+        [],
+        |r| r.get(0),
+    )?;
+    if !nullable {
+        let cols: Vec<(String, String, bool, Option<String>, bool)> = conn
+            .prepare("SELECT name, type, \"notnull\", dflt_value, pk FROM pragma_table_info('rules') ORDER BY cid")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get::<_, i64>(4)? > 0)))?
+            .collect::<Result<_, _>>()?;
+        let fks: Vec<(String, String, String, String)> = conn
+            .prepare("SELECT \"from\", \"table\", \"to\", on_delete FROM pragma_foreign_key_list('rules')")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<Result<_, _>>()?;
+        let others: Vec<String> = conn
+            .prepare(
+                "SELECT sql FROM sqlite_master WHERE tbl_name = 'rules'
+                 AND type IN ('index', 'trigger') AND sql IS NOT NULL",
+            )?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        let defs: Vec<String> = cols
+            .iter()
+            .map(|(name, ty, notnull, default, pk)| {
+                let mut d = format!("{name} {ty}");
+                if *pk {
+                    d.push_str(" PRIMARY KEY");
+                }
+                if *notnull && name != "category_id" {
+                    d.push_str(" NOT NULL");
+                }
+                if let Some(v) = default {
+                    d.push_str(&format!(" DEFAULT {v}"));
+                }
+                if let Some((_, table, to, on_delete)) = fks.iter().find(|f| &f.0 == name) {
+                    d.push_str(&format!(" REFERENCES {table}({to}) ON DELETE {on_delete}"));
+                }
+                d
+            })
+            .collect();
+        let names: Vec<&str> = cols.iter().map(|c| c.0.as_str()).collect();
+        conn.execute_batch(&format!(
+            "CREATE TABLE rules_v28 ({defs});
+             INSERT INTO rules_v28({names}) SELECT {names} FROM rules;
+             DROP TABLE rules;
+             ALTER TABLE rules_v28 RENAME TO rules;",
+            defs = defs.join(", "),
+            names = names.join(", ")
+        ))?;
+        for sql in others {
+            conn.execute_batch(&sql)?;
+        }
+    }
+    if !has_column(conn, "rules", "tag_uuids")? {
+        conn.execute_batch("ALTER TABLE rules ADD COLUMN tag_uuids TEXT NOT NULL DEFAULT '';")?;
+    }
+    Ok(())
+}
 
 /// Step 26 (#625): native currency of a position and its price/value in it
 /// (`NULL` / "" = same as the account). Idempotent like [`item_refs`].
@@ -833,7 +900,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 27);
+        assert_eq!(SCHEMA_VERSION, 28);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

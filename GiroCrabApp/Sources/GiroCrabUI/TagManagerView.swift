@@ -13,6 +13,8 @@ struct TagManagerView: View {
     @Environment(\.textScale) private var textScale
     @State private var selection: Set<Int64> = []
     @State private var search = ""
+    /// Only tags no rule adds yet (#580).
+    @State private var withoutRule = false
     @State private var editor: TagNameEditor.Mode?
     @State private var merging = false
     @State private var confirmDelete = false
@@ -36,10 +38,11 @@ struct TagManagerView: View {
     }
 
     private var shown: [GiroCrabCore.Tag] {
+        let base = withoutRule ? ordered.filter { model.rules(addingTag: $0.id).isEmpty } : ordered
         let q = search.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return ordered }
+        guard !q.isEmpty else { return base }
         let loose = AppModel.tagLookAlikeKey(q)
-        return ordered.filter {
+        return base.filter {
             $0.name.localizedCaseInsensitiveContains(q) || (!loose.isEmpty && AppModel.tagLookAlikeKey($0.name).contains(loose))
         }
     }
@@ -129,7 +132,11 @@ struct TagManagerView: View {
         }
         // a tag gone (merged, deleted, synced away) leaves the selection
         .onChange(of: model.tags.map(\.id)) { _, ids in selection.formIntersection(ids) }
-        .onAppear(perform: watchKeys)
+        .onAppear {
+            watchKeys()
+            // the rule column (#580); the rule list loads lazily
+            model.reloadRules()
+        }
         .onDisappear(perform: unwatchKeys)
         .defaultFocus($focus, .list)
         .task {
@@ -146,6 +153,9 @@ struct TagManagerView: View {
         HStack(spacing: 12) {
             Text("Tags verwalten").appFont(.headline)
             Spacer(minLength: 12)
+            Toggle("Ohne Regel", isOn: $withoutRule)
+                .toggleStyle(.checkbox)
+                .help("Nur Tags zeigen, die noch keine Regel vergibt")
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.secondary)
                 TextField("Tags durchsuchen", text: $search)
@@ -165,6 +175,8 @@ struct TagManagerView: View {
         HStack {
             Text("Tag")
             Spacer()
+            Text("Regeln")
+                .frame(minWidth: 56 * textScale, alignment: .trailing)
             Text("Buchungen")
         }
         .appFont(.caption, weight: .semibold)
@@ -375,9 +387,29 @@ private struct TagManagerRow: View {
                 .lineLimit(2)
                 .sensitive()
             Spacer(minLength: 8)
+            TagRuleCount(tag: tag)
             TagBookingCount(tag: tag)
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// How many rules add the tag (#580); the tooltip names them. „–“ = none yet.
+private struct TagRuleCount: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.textScale) private var textScale
+    let tag: GiroCrabCore.Tag
+
+    var body: some View {
+        let rules = model.rules(addingTag: tag.id)
+        Text(rules.isEmpty ? "–" : "\(rules.count)")
+            .appFont(.callout, monospacedDigit: true)
+            .foregroundStyle(rules.isEmpty ? Theme.tertiary : Theme.secondary)
+            .frame(minWidth: 56 * textScale, alignment: .trailing)
+            .help(rules.isEmpty
+                  ? Text("Keine Regel vergibt diesen Tag")
+                  : Text("Vergeben von: \(rules.map(\.name).joined(separator: ", "))"))
+            .accessibilityLabel(rules.isEmpty ? Text("Keine Regel") : Text("\(rules.count) Regeln"))
     }
 }
 

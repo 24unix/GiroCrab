@@ -1,6 +1,6 @@
 //! Categorisation rules (pattern and expression rules): storage, preview and application.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{params, params_from_iter, Connection};
 
@@ -21,9 +21,10 @@ impl Vault {
 
     pub(crate) fn load_rules(conn: &Connection) -> CoreResult<Vec<Rule>> {
         let mut stmt = conn.prepare(&format!(
-            "SELECT r.id, r.name, r.category_id, r.field, r.match_kind, r.pattern, r.case_sensitive,
+            "SELECT r.id, r.name, IFNULL(r.category_id, 0), r.field, r.match_kind, r.pattern, r.case_sensitive,
                     r.min_amount_cents, r.max_amount_cents, {acc}, r.priority, r.enabled,
-                    (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id AND t.deleted_ms IS NULL)
+                    (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id AND t.deleted_ms IS NULL),
+                    r.tag_uuids
              FROM rules r WHERE r.deleted_ms IS NULL
              ORDER BY r.priority, r.id",
             acc = crate::rules::ACCOUNT_SET_SQL
@@ -32,6 +33,7 @@ impl Vault {
             .prepare("SELECT id FROM accounts WHERE deleted_ms IS NULL")?
             .query_map([], |r| r.get(0))?
             .collect::<Result<_, _>>()?;
+        let tags = crate::tags::live_tag_ids_by_uuid(conn)?;
         let rows = stmt.query_map([], |r| {
             let stored = crate::rules::parse_account_ids(&r.get::<_, rusqlite::types::Value>(9)?);
             Ok((
@@ -54,6 +56,7 @@ impl Vault {
                     priority: r.get(10)?,
                     enabled: r.get::<_, i64>(11)? != 0,
                     match_count: r.get::<_, i64>(12)? as u32,
+                    tag_ids: crate::tags::rule_tag_ids(&r.get::<_, String>(13)?, &tags),
                 },
             ))
         })?;
@@ -66,39 +69,61 @@ impl Vault {
             if !stored.is_empty() && rule.account_ids.is_empty() {
                 continue;
             }
+            // a tags-only rule whose tags are all deleted does nothing: hidden too
+            if rule.category_id == 0 && rule.tag_ids.is_empty() {
+                continue;
+            }
             out.push(rule);
         }
         Ok(out)
     }
 
-    /// Re-runs rules over transactions that are not manually categorised.
+    /// Re-runs rules over transactions that are not manually categorised, and adds
+    /// the rules' tags (#580; `only_uncategorised = false` to every matching
+    /// booking, otherwise to bookings whose tags were never edited).
     /// Returns the number of transactions whose category changed.
     /// Bookings of archived accounts are left alone (GiroCrab/GiroCrab#43).
     pub(crate) fn apply_rules_inner(
         conn: &Connection,
         only_uncategorised: bool,
     ) -> CoreResult<u32> {
-        let changed = Self::categorise_by_rules(conn, only_uncategorised, None)?;
+        let (categorised, _) = Self::run_rules(conn, only_uncategorised)?;
+        Ok(categorised.len() as u32)
+    }
+
+    /// `apply_rules_inner`, returning the bookings whose category changed and
+    /// those that got a tag.
+    fn run_rules(
+        conn: &Connection,
+        only_uncategorised: bool,
+    ) -> CoreResult<(HashSet<i64>, HashSet<i64>)> {
+        let set = Self::rule_set(conn)?;
+        let changed = Self::categorise_by_rules(conn, &set, only_uncategorised, None)?;
+        let tagged = crate::tags::tag_by_rules(conn, &set, !only_uncategorised, None)?;
         // manual loans (#36): link new bookings by expression, refresh balances
         crate::loans::apply_loan_rules(conn)?;
         // opening balances (#212): balance = opening + bookings since
         crate::opening_balance::refresh_all(conn)?;
-        Ok(changed)
+        Ok((changed, tagged))
     }
 
     /// Runs the rules over the uncategorised bookings in `ids` (a merge lets
-    /// rules refill the bookings whose category it cleared).
+    /// rules refill the bookings whose category it cleared); their tags as on a fetch.
     pub(crate) fn apply_rules_to(conn: &Connection, ids: &HashSet<i64>) -> CoreResult<u32> {
-        Self::categorise_by_rules(conn, true, Some(ids))
+        let set = Self::rule_set(conn)?;
+        let changed = Self::categorise_by_rules(conn, &set, true, Some(ids))?;
+        crate::tags::tag_by_rules(conn, &set, false, Some(ids))?;
+        Ok(changed.len() as u32)
     }
 
-    /// `only`: restricts the run to these bookings.
+    /// `only`: restricts the run to these bookings. Returns the bookings whose
+    /// category changed.
     fn categorise_by_rules(
         conn: &Connection,
+        set: &RuleSet,
         only_uncategorised: bool,
         only: Option<&HashSet<i64>>,
-    ) -> CoreResult<u32> {
-        let set = Self::rule_set(conn)?;
+    ) -> CoreResult<HashSet<i64>> {
         let source_sql = if only_uncategorised {
             "t.category_source = 'none'"
         } else {
@@ -121,7 +146,7 @@ impl Vault {
         let rows: Vec<RuleRow> = stmt
             .query_map(params_from_iter(ids_json), RuleRow::read)?
             .collect::<Result<_, _>>()?;
-        let mut changed = 0u32;
+        let mut changed = HashSet::new();
         let mut upd_rule = conn.prepare("UPDATE transactions SET category_id = ?1, rule_id = ?2, category_source = 'rule' WHERE id = ?3")?;
         let mut upd_none = conn.prepare("UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none' WHERE id = ?1")?;
         for row in rows {
@@ -129,13 +154,13 @@ impl Vault {
                 Some((rule_id, cat_id)) => {
                     if row.category_id != Some(cat_id) || row.rule_id != Some(rule_id) {
                         upd_rule.execute(params![cat_id, rule_id, row.id])?;
-                        changed += 1;
+                        changed.insert(row.id);
                     }
                 }
                 None => {
                     if row.rule_id.is_some() {
                         upd_none.execute(params![row.id])?;
-                        changed += 1;
+                        changed.insert(row.id);
                     }
                 }
             }
@@ -160,7 +185,15 @@ impl Vault {
         if rule.pattern.trim().is_empty() {
             return Err(CoreError::invalid(tr("Das Suchmuster ist leer.")));
         }
+        if rule.category_id == 0 && rule.tag_ids.is_empty() {
+            return Err(CoreError::InvalidInput {
+                message: tr("Die Regel braucht eine Kategorie oder mindestens einen Tag.").into(),
+            });
+        }
         let db = self.db()?;
+        let tag_uuids = crate::tags::rule_tag_uuids(&db, &rule.tag_ids)?;
+        // 0 = no category (#580)
+        let category = (rule.category_id != 0).then_some(rule.category_id);
         let kind = match rule.match_kind {
             MatchKind::Keyword => "keyword",
             MatchKind::Regex => "regex",
@@ -172,11 +205,11 @@ impl Vault {
         };
         if rule.id == 0 {
             db.execute(
-                "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled, updated_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
+                "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled, updated_ms, tag_uuids)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![rule.name, category, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
                         rule.min_amount_cents, rule.max_amount_cents, rule.account_ids.iter().min(), rule.priority, rule.enabled as i64,
-                        crate::user_groups::now_ms()],
+                        crate::user_groups::now_ms(), tag_uuids],
             )?;
             let id = db.last_insert_rowid();
             crate::rules::store_rule_accounts(&db, id, &rule.account_ids)?;
@@ -185,10 +218,10 @@ impl Vault {
         } else {
             db.execute(
                 "UPDATE rules SET name=?1, category_id=?2, field=?3, match_kind=?4, pattern=?5, case_sensitive=?6, min_amount_cents=?7,
-                        max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11, updated_ms=?13 WHERE id=?12",
-                params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
+                        max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11, updated_ms=?13, tag_uuids=?14 WHERE id=?12",
+                params![rule.name, category, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
                         rule.min_amount_cents, rule.max_amount_cents, rule.account_ids.iter().min(), rule.priority, rule.enabled as i64, rule.id,
-                        crate::user_groups::now_ms()],
+                        crate::user_groups::now_ms(), tag_uuids],
             )?;
             crate::rules::store_rule_accounts(&db, rule.id, &rule.account_ids)?;
             Ok(rule.id)
@@ -235,14 +268,76 @@ impl Vault {
         self.bookings_by_ids(&db, &ids)
     }
 
+    /// Per active rule that adds tags: its matching live bookings that carry all
+    /// of its tags (#580; the rule list's second number). One pass over the
+    /// bookings that carry at least one of those tags.
+    pub fn rule_tag_counts(&self) -> Result<Vec<RuleTagCount>, CoreError> {
+        let db = self.db()?;
+        let set = Self::rule_set(&db)?;
+        let mut counts: Vec<(i64, u32)> = set.tag_rules().map(|r| (r.id, 0)).collect();
+        if counts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut tag_ids: Vec<i64> = set
+            .tag_rules()
+            .flat_map(|r| r.tag_ids.iter().copied())
+            .collect();
+        tag_ids.sort_unstable();
+        tag_ids.dedup();
+        let tag_list = super::sql_int_list(&tag_ids);
+        let mut have: HashMap<i64, HashSet<i64>> = HashMap::new();
+        for row in db
+            .prepare(&format!(
+                "SELECT transaction_id, tag_id FROM transaction_tags WHERE tag_id IN ({tag_list})"
+            ))?
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+        {
+            let (b, t) = row?;
+            have.entry(b).or_default().insert(t);
+        }
+        let mut stmt = db.prepare(&format!(
+            "SELECT {} FROM transactions t JOIN accounts a ON a.id = t.account_id
+             WHERE {LIVE_BOOKINGS_SQL}
+               AND t.id IN (SELECT transaction_id FROM transaction_tags WHERE tag_id IN ({tag_list}))",
+            RuleRow::COLUMNS
+        ))?;
+        let index: HashMap<i64, usize> = counts
+            .iter()
+            .enumerate()
+            .map(|(i, (id, _))| (*id, i))
+            .collect();
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let id: i64 = row.get(0)?;
+            let Some(carried) = have.get(&id) else {
+                continue;
+            };
+            for rule in set.tag_rules_matching(&RuleRow::borrowed_input(row)?) {
+                if rule.tag_ids.iter().all(|t| carried.contains(t)) {
+                    counts[index[&rule.id]].1 += 1;
+                }
+            }
+        }
+        Ok(counts
+            .into_iter()
+            .map(|(rule_id, booking_count)| RuleTagCount {
+                rule_id,
+                booking_count,
+            })
+            .collect())
+    }
+
     /// Runs all rules. `only_uncategorized = false` also re-evaluates
     /// transactions previously categorised by a rule (never manual ones).
+    /// Also adds the rules' tags (#580; with `only_uncategorized = false` to every
+    /// matching booking). Returns the bookings whose category changed or that got a tag.
     pub fn apply_rules(&self, only_uncategorized: bool) -> Result<u32, CoreError> {
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
-        let n = Self::apply_rules_inner(&tx, only_uncategorized)?;
+        let (mut changed, tagged) = Self::run_rules(&tx, only_uncategorized)?;
+        changed.extend(tagged);
         tx.commit()?;
-        Ok(n)
+        Ok(changed.len() as u32)
     }
 }
 
@@ -303,6 +398,7 @@ mod expression_rule_tests {
             priority: 0,
             enabled: true,
             match_count: 0,
+            tag_ids: Vec::new(),
         };
         let id = v.save_rule(rule.clone()).unwrap();
         let listed = v.list_rules().unwrap();
@@ -380,6 +476,7 @@ mod multi_account_rule_tests {
             priority: 0,
             enabled: true,
             match_count: 0,
+            tag_ids: Vec::new(),
         };
         let id = v.save_rule(rule).unwrap();
         let saved = v
@@ -457,6 +554,7 @@ mod preview_tests {
             priority: 0,
             enabled: false,
             match_count: 0,
+            tag_ids: Vec::new(),
         };
         // Read like the booking list, newest first.
         let expenses: Vec<String> = v

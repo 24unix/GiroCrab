@@ -45,7 +45,12 @@
 //! COPIES=600 STEP_DAYS=7 PAYPAL=3000 (2026-11-16): category selection, period "all"
 //! ~360 ms (selection_flow 175 ms of it); local_api page 6.5 ms (did not finish in
 //! 10 minutes before the `tx_amount_date` index).
-use girocrab_core::models::{BookingDirection, BookingFilter, BookingScope};
+//! Rules that add tags (#580, 2026-11-17, 41,469 bookings): apply_rules(fetch) 127 ms with one
+//! tag rule (124 without; only bookings whose tags nobody touched), apply_rules(all) 230 ms;
+//! rule_tag_counts (rule list, four tag rules, a third of the bookings tagged) 34 ms (off main).
+use girocrab_core::models::{
+    BookingDirection, BookingFilter, BookingScope, MatchKind, Rule, RuleField,
+};
 use girocrab_core::vault::Vault;
 
 fn time<T>(label: &str, mut f: impl FnMut() -> T) -> f32 {
@@ -335,6 +340,38 @@ fn main() {
             vault.tag_account_counts(tags[0].id)
         });
         time("list_tags", || vault.list_tags());
+        // Rules that add tags (#580): a fetch runs them over the bookings whose tags
+        // nobody touched, "Regeln anwenden" over all.
+        time("apply_rules(fetch), no tag rule", || {
+            vault.apply_rules(true)
+        });
+        vault
+            .save_rule(Rule {
+                id: 0,
+                name: "Tags".into(),
+                category_id: 0,
+                field: RuleField::Any,
+                match_kind: MatchKind::Keyword,
+                pattern: "REWE|Aral|Shell".into(),
+                case_sensitive: false,
+                min_amount_cents: None,
+                max_amount_cents: None,
+                account_ids: Vec::new(),
+                priority: 1000,
+                enabled: true,
+                match_count: 0,
+                tag_ids: vec![tags[0].id],
+            })
+            .unwrap();
+        time("apply_rules(fetch), one tag rule", || {
+            vault.apply_rules(true)
+        });
+        time("apply_rules(all), one tag rule", || {
+            vault.apply_rules(false)
+        });
+        time("rule_tag_counts (rule list, demo rules)", || {
+            vault.rule_tag_counts()
+        });
     }
     // Local read-only interface (#136): keyset pages enrich only their rows.
     let accounts: Vec<i64> = vault
@@ -439,6 +476,7 @@ fn small_results(vault: &Vault, all: &[girocrab_core::models::Booking]) {
         priority: 0,
         enabled: true,
         match_count: 0,
+        tag_ids: Vec::new(),
     };
     time("preview_rule(limit 20), newest bookings match", || {
         assert!(!vault.preview_rule(rule(&word), 20).unwrap().is_empty())
