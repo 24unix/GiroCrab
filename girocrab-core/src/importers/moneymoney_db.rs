@@ -2203,11 +2203,13 @@ pub(crate) fn adopt_account(
         // Prefer imported accounts without an IBAN; a connector that reports
         // none (Amazon Visa web login) may still find the card with the IBAN
         // MoneyMoney stored for it – if it is the only one of its kind here.
-        // includes soft-deleted rows: `store_fetch` revives or skips them
+        // includes soft-deleted rows: `store_fetch` revives or skips them;
+        // archived (closed in MoneyMoney) accounts are never guessed, or an old
+        // card next to the active one would block the takeover (#816)
         let single = |iban_filter: &str| -> CoreResult<Option<i64>> {
             let mut st = conn.prepare(&format!(
                 "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
-                   AND kind = ?2 {iban_filter} LIMIT 2"
+                   AND kind = ?2 AND archived_unix IS NULL {iban_filter} LIMIT 2"
             ))?;
             let ids: Vec<i64> = st
                 .query_map(params![connection_id, kind.as_str()], |r| r.get(0))?

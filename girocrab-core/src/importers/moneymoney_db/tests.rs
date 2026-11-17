@@ -3124,3 +3124,36 @@ fn a_database_without_value_history_imports_as_before() {
         .unwrap();
     assert_eq!(r.value_history_imported, 0);
 }
+
+#[test]
+fn portal_sync_adopts_the_active_card_next_to_closed_ones() {
+    // #816: two cards closed in MoneyMoney (archived on import) next to the
+    // active one under one Amex login; the first portal sync takes the active
+    // card over instead of adding a fourth account.
+    let extra = "
+INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage) VALUES
+  (30, 'DE', '', 'amex-login', '', 'GEHEIM-30', 'American Express', 'SYS', 'LS');
+INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, currency, name, owner, kind, type, sort, initial_balance, group_key, cred, cancel_tsp) VALUES
+  (30, 30, 'xxxx-11001', '', 0, '', 'EUR', 'Amex Alt 1', 'Max Mustermann', 0, 3, 30, 0, 1, 'GEHEIM', 1500000000),
+  (31, 30, 'xxxx-21002', '', 0, '', 'EUR', 'Amex Alt 2', 'Max Mustermann', 0, 3, 31, 0, 1, 'GEHEIM', 1600000000),
+  (32, 30, 'xxxx-31003', '', 0, '', 'EUR', 'Amex Aktiv', 'Max Mustermann', 0, 3, 32, 0, 1, 'GEHEIM', NULL);
+";
+    let v = vault();
+    let path = fake_db_with(false, extra);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    assert!(account_by_name(&v, "Amex Alt 1").archived_unix.is_some());
+    assert!(account_by_name(&v, "Amex Alt 2").archived_unix.is_some());
+    let active = account_by_name(&v, "Amex Aktiv");
+    let conn = active.connection_id.unwrap();
+    let before = v.list_accounts().unwrap().len();
+    let body = r#"{"summary":{"total_balance":{"amount":"50,00"}},"transactions":[{"post_date":"2026-11-01","billing_amount":"12,34","description":"Shop","reference_number":"R1"}]}"#;
+    v.clone()
+        .import_portal_capture(conn, vec![body.to_string()], "[]".into())
+        .unwrap();
+    assert_eq!(v.list_accounts().unwrap().len(), before);
+    assert_eq!(bookings(&v, active.id).len(), 1);
+}
