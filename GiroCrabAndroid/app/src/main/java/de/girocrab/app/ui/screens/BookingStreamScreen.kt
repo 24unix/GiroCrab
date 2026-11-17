@@ -79,13 +79,14 @@ import java.util.Locale
 import kotlin.math.abs
 
 enum class TimeRange(val label: String) {
-    All("Zeitraum"), Days30("30 Tage"), Days90("90 Tage"), ThisYear("Dieses Jahr");
+    All("Zeitraum"), Days30("30 Tage"), Days90("90 Tage"), ThisYear("Dieses Jahr"), PayPeriod("Gehaltsperiode (15.–14.)");
 
     fun from(today: LocalDate): LocalDate? = when (this) {
         All -> null
         Days30 -> today.minusDays(30)
         Days90 -> today.minusDays(90)
         ThisYear -> today.withDayOfYear(1)
+        PayPeriod -> if (today.dayOfMonth >= 15) today.withDayOfMonth(15) else today.minusMonths(1).withDayOfMonth(15)
     }
 }
 

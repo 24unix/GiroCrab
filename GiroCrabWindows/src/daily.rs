@@ -73,12 +73,31 @@ pub fn date_days_ago(days: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
-/// Time range selector: 0 all, 1 last 30 days, 2 last 90 days, 3 last year.
+/// Start of the current pay period (15th to 14th, #565): the most recent 15th.
+pub fn payday_period_start() -> String {
+    let today = date_days_ago(0);
+    let (y, m, d) = (
+        today[0..4].parse::<i32>().unwrap_or(1970),
+        today[5..7].parse::<i32>().unwrap_or(1),
+        today[8..10].parse::<i32>().unwrap_or(1),
+    );
+    let (y, m) = if d >= 15 {
+        (y, m)
+    } else if m == 1 {
+        (y - 1, 12)
+    } else {
+        (y, m - 1)
+    };
+    format!("{y:04}-{m:02}-15")
+}
+
+/// Time range selector: 0 all, 1 last 30 days, 2 last 90 days, 3 last year, 4 pay period.
 pub fn range_from(index: i32) -> String {
     match index {
         1 => date_days_ago(30),
         2 => date_days_ago(90),
         3 => date_days_ago(365),
+        4 => payday_period_start(),
         _ => String::new(),
     }
 }
