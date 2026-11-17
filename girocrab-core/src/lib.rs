@@ -51,6 +51,7 @@ pub mod models;
 pub mod money;
 pub mod offline;
 pub mod opening_balance;
+pub mod partner_sync;
 pub mod payday_periods;
 pub mod planned;
 pub mod planning;
