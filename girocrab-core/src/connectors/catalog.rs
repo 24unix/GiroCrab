@@ -167,6 +167,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Uberspace-Hosting: Guthaben und Buchungen aller Asteroids, die zur E-Mail-Adresse des Dashboards gehören. Inoffiziell: liest die Seiten des Dashboards, Änderungen sind möglich.").into(),
         },
+        ConnectorKind::Ffb => BankDescriptor {
+            kind,
+            name: "FFB (FIL Fondsbank)".into(),
+            protocol: tr("Web-Kundenbereich (Direkt-Login)").into(),
+            bank_code: "50021120".into(),
+            sf_symbol: "chart.pie".into(),
+            login_label: tr("Login / Benutzername").into(),
+            secret_label: tr("Passwort / PIN").into(),
+            required_settings: vec![],
+            note: tr("FFB-Fondsdepot: Fondsbestände (auch VL-Sparverträge) und Depotumsätze wie Sparplankäufe, Erträge und Entgelte. Das Abwicklungskonto wird nicht abgerufen. Nur Lesezugriff. Inoffiziell: liest die Seiten des Kundenbereichs, Änderungen sind möglich.").into(),
+        },
         ConnectorKind::SchwaebischHall => BankDescriptor {
             kind,
             name: "Schwäbisch Hall".into(),
@@ -588,6 +599,19 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "FFB (FIL Fondsbank)",
+        kind: Some(ConnectorKind::Ffb),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+        ],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "quirion",
         kind: Some(ConnectorKind::Quirion),
         interface: Interface::WebPortal,
@@ -666,6 +690,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::AlteLeipziger => Box::new(fin4u::Fin4uConnector::new()),
         ConnectorKind::VolkswagenBank => Box::new(volkswagen_bank::VolkswagenBankConnector::new()),
         ConnectorKind::Uberspace => Box::new(uberspace::UberspaceConnector::new()),
+        ConnectorKind::Ffb => Box::new(ffb::FfbConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));

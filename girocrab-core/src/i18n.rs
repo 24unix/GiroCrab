@@ -612,6 +612,18 @@ fn english(de: &str) -> Option<&'static str> {
         "Uberspace: Die Anfrage wurde abgelehnt." => "Uberspace: The request was rejected.",
         "Uberspace: E-Mail-Adresse und Passwort erforderlich." => "Uberspace: Email address and password required.",
         "Uberspace: Keine Asteroids gefunden (Dashboard geändert?)." => "Uberspace: No Asteroids found (dashboard changed?).",
+        // ------------------------------------------------------------ connectors/ffb.rs
+        "Web-Kundenbereich (Direkt-Login)" => "Web customer area (direct login)",
+        "Login / Benutzername" => "Login / user name",
+        "FFB-Fondsdepot: Fondsbestände (auch VL-Sparverträge) und Depotumsätze wie Sparplankäufe, Erträge und Entgelte. Das Abwicklungskonto wird nicht abgerufen. Nur Lesezugriff. Inoffiziell: liest die Seiten des Kundenbereichs, Änderungen sind möglich." => "FFB fund depot: fund positions (including VL savings contracts) and depot transactions such as savings plan purchases, income and fees. The settlement account is not fetched. Read-only. Unofficial: reads the pages of the customer area, changes are possible.",
+        "FFB: Anmeldeseite nicht erkannt (Webseite geändert?)." => "FFB: login page not recognised (website changed?).",
+        "FFB: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen." => "FFB: Incomplete or invalid response. No data was imported.",
+        "FFB: Anmeldung fehlgeschlagen. Bitte Login und Passwort/PIN prüfen." => "FFB: Login failed. Please check login and password/PIN.",
+        "FFB: Die Sitzung wurde beendet. Bitte den Abruf erneut starten." => "FFB: The session has ended. Please start the sync again.",
+        "FFB: Die Anfrage wurde abgelehnt." => "FFB: The request was rejected.",
+        "FFB: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen." => "FFB: Unexpected redirect to another address – aborted.",
+        "FFB: Login/Benutzername und Passwort/PIN erforderlich." => "FFB: Login/user name and password/PIN required.",
+        "FFB: Anmeldung nicht abgeschlossen. Die FFB verlangt möglicherweise eine zusätzliche Bestätigung, die GiroCrab noch nicht unterstützt." => "FFB: Login not completed. FFB may require an additional confirmation that GiroCrab does not support yet.",
         // ------------------------------------------------------------ connectors/easybank.rs (catalog)
         "Online-Banking-API (Direkt-Login)" => "Online banking API (direct login)",
         "Benutzername" => "User name",

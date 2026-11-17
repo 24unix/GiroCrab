@@ -393,6 +393,7 @@ pub fn display_name(id: &str) -> String {
         "uberspace" => "Uberspace",
         "schwaebischhall" => "Schwäbisch Hall",
         "fin4u" => "Alte Leipziger",
+        "ffb" => "FFB",
         other => other,
     };
     match tail {

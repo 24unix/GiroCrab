@@ -345,7 +345,7 @@ pub(crate) fn repair_stored_text(conn: &Connection) -> rusqlite::Result<u32> {
 }
 
 /// Decodes HTML/XML character references: the five XML entities, `&nbsp;`,
-/// `&euro;`, `&minus;` and numeric ones (`&#65;`, `&#x42;`). Anything else
+/// `&euro;`, `&minus;`, the German umlauts and `&szlig;`, and numeric ones (`&#65;`, `&#x42;`). Anything else
 /// (`&bogus;`, a bare `&`) stays as it is. Used by the web/XML connectors.
 pub(crate) fn decode_html_entities(s: &str) -> String {
     if !s.contains('&') {
@@ -367,6 +367,13 @@ pub(crate) fn decode_html_entities(s: &str) -> String {
                 "nbsp" => Some(' '),
                 "euro" => Some('€'),
                 "minus" => Some('-'),
+                "auml" => Some('ä'),
+                "ouml" => Some('ö'),
+                "uuml" => Some('ü'),
+                "Auml" => Some('Ä'),
+                "Ouml" => Some('Ö'),
+                "Uuml" => Some('Ü'),
+                "szlig" => Some('ß'),
                 _ => ent
                     .strip_prefix("#x")
                     .or_else(|| ent.strip_prefix("#X"))

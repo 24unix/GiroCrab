@@ -53,6 +53,8 @@ pub enum ConnectorKind {
     SchwaebischHall,
     /// Employee share plans via authenticated EquatePlus browser session.
     EquatePlus,
+    /// FFB (FIL Fondsbank) fund depot and settlement account via the web customer area.
+    Ffb,
 }
 
 impl ConnectorKind {
@@ -79,6 +81,7 @@ impl ConnectorKind {
             ConnectorKind::Uberspace => "uberspace",
             ConnectorKind::SchwaebischHall => "schwaebischhall",
             ConnectorKind::EquatePlus => "equateplus",
+            ConnectorKind::Ffb => "ffb",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -134,6 +137,7 @@ impl ConnectorKind {
             ConnectorKind::Uberspace,
             ConnectorKind::SchwaebischHall,
             ConnectorKind::EquatePlus,
+            ConnectorKind::Ffb,
         ]
     }
 }

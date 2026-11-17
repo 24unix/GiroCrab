@@ -41,15 +41,17 @@ static ATTR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?s)([A-Za-z_:][-A-Za-z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?"#)
         .unwrap()
 });
-static FORM: LazyLock<Regex> =
+pub(super) static FORM: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<form\b([^>]*)>(.*?)</form\s*>").unwrap());
-static INPUT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<input\b([^>]*)>").unwrap());
+pub(super) static INPUT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<input\b([^>]*)>").unwrap());
 static ROW: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<tr\b[^>]*>(.*?)</tr\s*>").unwrap());
 static CELL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<(td|th)\b[^>]*>(.*?)</(?:td|th)\s*>").unwrap());
 static ANY_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<[^>]*>").unwrap());
-static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<a\b[^>]*>.*?</a\s*>").unwrap());
+pub(super) static LINK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<a\b[^>]*>.*?</a\s*>").unwrap());
 static ASTEROID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,31}$").unwrap());
 
@@ -77,7 +79,7 @@ fn wrong_credentials() -> CoreError {
 // ------------------------------------------------------------------ HTML helpers
 
 /// Attributes of a tag body (`name="x" type=hidden checked`), names lower-case.
-fn attrs(body: &str) -> Vec<(String, String)> {
+pub(super) fn attrs(body: &str) -> Vec<(String, String)> {
     ATTR.captures_iter(body)
         .map(|c| {
             let v = c
@@ -91,12 +93,12 @@ fn attrs(body: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn attr<'a>(a: &'a [(String, String)], name: &str) -> Option<&'a str> {
+pub(super) fn attr<'a>(a: &'a [(String, String)], name: &str) -> Option<&'a str> {
     a.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
 }
 
 /// Visible text of an HTML fragment, whitespace collapsed.
-fn text(fragment: &str) -> String {
+pub(super) fn text(fragment: &str) -> String {
     let plain = ANY_TAG.replace_all(fragment, " ");
     crate::text::decode_html_entities(&plain)
         .split_whitespace()
@@ -106,7 +108,7 @@ fn text(fragment: &str) -> String {
 
 /// Inner HTML of the element with `id` (nested elements of the same tag are
 /// counted, so the matching end tag is found).
-fn element_by_id<'a>(html: &'a str, id: &str) -> Option<&'a str> {
+pub(super) fn element_by_id<'a>(html: &'a str, id: &str) -> Option<&'a str> {
     let open = TAG
         .captures_iter(html)
         .find(|c| attr(&attrs(&c[2]), "id") == Some(id))?;
@@ -155,7 +157,7 @@ fn element_by_id<'a>(html: &'a str, id: &str) -> Option<&'a str> {
 
 /// Inner HTML of the `<td>` cells of each `<tr>`; rows of only `<th>` cells
 /// come back empty.
-fn table_cells(table: &str) -> Vec<Vec<&str>> {
+pub(super) fn table_cells(table: &str) -> Vec<Vec<&str>> {
     ROW.captures_iter(table)
         .map(|r| {
             let row = r.get(1).map_or("", |m| m.as_str());
@@ -323,7 +325,7 @@ fn parse_amount(s: &str) -> Option<i64> {
 }
 
 /// `DD.MM.YYYY` anywhere in the cell → `YYYY-MM-DD`.
-fn parse_date(s: &str) -> Option<String> {
+pub(super) fn parse_date(s: &str) -> Option<String> {
     find_de_date(s).map(iso)
 }
 

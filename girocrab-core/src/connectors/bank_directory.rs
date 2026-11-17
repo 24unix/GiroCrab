@@ -153,6 +153,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
         ),
         (ConnectorKind::Fnz, "FNZ Bank", "fnz bank ebase finvesto"),
         (
+            ConnectorKind::Ffb,
+            "FFB (FIL Fondsbank)",
+            "ffb fil fondsbank fidelity fondsdepot fonds vl sparplan",
+        ),
+        (
             ConnectorKind::Uberspace,
             "Uberspace",
             "uberspace hosting asteroid webhosting",
@@ -233,6 +238,8 @@ fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
 
 /// Alte Leipziger Bauspar AG: not in the FinTS directory, reached via fin4u.
 const ALTE_LEIPZIGER_BLZ: &str = "50012800";
+/// FIL Fondsbank (FFB), no FinTS: served by its own web connector.
+const FFB_BLZ: &str = "50021120";
 const SCHWAEBISCH_HALL_BLZ: &str = "62220000";
 
 fn own_result(kind: ConnectorKind, name: &str) -> BankSearchResult {
@@ -310,6 +317,8 @@ pub fn search(
             out.push(fints_result(b));
         } else if blz == "70013000" {
             out.push(own_result(ConnectorKind::Fnz, "FNZ Bank"));
+        } else if blz == FFB_BLZ {
+            out.push(own_result(ConnectorKind::Ffb, "FFB (FIL Fondsbank)"));
         } else if blz == ALTE_LEIPZIGER_BLZ {
             out.push(own_result(ConnectorKind::AlteLeipziger, "Alte Leipziger"));
         } else if blz == SCHWAEBISCH_HALL_BLZ {

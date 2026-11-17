@@ -25,6 +25,7 @@ pub mod dpop;
 pub mod easybank;
 pub mod enable_banking;
 pub mod equateplus;
+pub mod ffb;
 pub mod fin4u;
 pub mod finpension;
 pub mod fints;

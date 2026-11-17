@@ -492,6 +492,7 @@ extension ConnectorKind {
         case .volkswagenBank: return "Volkswagen Bank"
         case .uberspace: return "Uberspace"
         case .schwaebischHall: return "Schwäbisch Hall"
+        case .ffb: return "FFB (FIL Fondsbank)"
         }
     }
 
@@ -519,6 +520,7 @@ extension ConnectorKind {
         case .volkswagenBank: return "#001E50"
         case .uberspace: return "#2C3E50"
         case .schwaebischHall: return "#004F9F"
+        case .ffb: return "#1C5A8C"
         }
     }
 
@@ -553,6 +555,7 @@ extension ConnectorKind {
         case .volkswagenBank: return "VW"
         case .uberspace: return "US"
         case .schwaebischHall: return "SH"
+        case .ffb: return "FFB"
         }
     }
 }
