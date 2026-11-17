@@ -1,0 +1,51 @@
+======================================================================
+SEITE 3 & 4 ISSUES + AUTONOMER SCREENSHOT-REVIEW (17.11.2026 13:46:18)
+======================================================================
+
+=== 1. Starte 4 parallele Claude-Worktrees (Seite 3/4 Issues + Android Platz-Optimierung) ===
+
+--- Ergebnis issue-253-360-279-sidebar-and-accrual (feat/sidebar-order-and-annual-accrual) ---
+Geänderte Dateien:
+M GiroCrabWindows/ui/main.slint
+Claude-Notiz:
+ver months).**
+- The core has no accrual flag on bookings and no per-month spread in its analytics or budget aggregates. That means a schema step and aggregate changes, plus a `serde`/UniFFI field.
+- A UI-only toggle in Windows or Android would show a checkbox that changes no numbers. I didn't add one.
+- Android: `AccountsAndWealthScreen.kt` is the file you named for #253, but a spread flag on a booking belongs with the booking inspector rather than the accounts screen. I didn't touch it.
+
+If you want, I can add the core pieces for #360 and #253 in a follow-up with the file restriction lifted.
+
+--- Ergebnis issue-337-353-order-account-and-pdfs (feat/order-account-no-double-count) ---
+Geänderte Dateien:
+M GiroCrabWindows/src/main.rs
+ M GiroCrabWindows/ui/main.slint
+Claude-Notiz:
+Error: Reached max turns (14)
+
+--- Ergebnis issue-410-multi-vault-and-sync (feat/multi-vault-and-icloud-sync) ---
+Geänderte Dateien:
+M GiroCrabAndroid/app/src/main/java/de/girocrab/app/ui/screens/ManagementAndSettingsScreen.kt
+ M GiroCrabWindows/src/main.rs
+ M GiroCrabWindows/ui/main.slint
+Claude-Notiz:
+c section (toggle, folder, the two buttons).
+- I added optional callbacks (`onVaultSwitch`, `onVaultCreate`, `onVaultDelete`, `onSyncNow`, `onCopyVaultKey`) plus `vaultNames` and `activeVault`. They default to empty, so existing callers still compile, but they do nothing until a caller wires them to real logic.
+- The sync toggle and folder are kept only in the screen's local state.
+
+On Windows, a few spots could fail to compile or render wrongly when you first build:
+- the Slint `Switch` `toggled` callback,
+- the `edited(t)` callback on the sync `LineEdit`,
+- the menu heights I raised by hand.
+
+--- Ergebnis android-compact-header-autonomous-ui (feat/android-compact-above-fold) ---
+Geänderte Dateien:
+M GiroCrabAndroid/app/src/main/java/de/girocrab/app/ui/screens/BookingStreamScreen.kt
+ M GiroCrabAndroid/app/src/main/java/de/girocrab/app/ui/screens/LockAndOnboarding.kt
+Claude-Notiz:
+rch eine schlichte Column ersetzt. Die Kontoeinstellungen sind bei einem einzelnen Konto nur noch ein Zahnrad-Icon.
+- **Suche und Filter** (`FilterBar`): Die Suche ist ein 38.dp hohes Pill-Feld. `Analysen` und `Kompakt` stehen in derselben `LazyRow` wie Zeitraum, Alle und Kategorie. Die zweite Chip-Zeile ist weg.
+
+Die Zeile mit der Anzahl („N Buchungen“) ist dabei entfallen. Der Parameter `count` und die Imports `OutlinedTextField` und `KeyboardOptions` sind jetzt ungenutzt. Das ergibt höchstens Compiler-Warnungen. Falls du die Anzahl behalten willst, kann sie in die Monatsüberschrift wandern.
+
+=== 2. Merge alle 4 Branches nach main & entferne Worktree-Ordner ===
+Löse Überschneidung beim Merge von feat/order-account-no-double-count per Claude auf...

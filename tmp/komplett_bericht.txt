@@ -1,0 +1,64 @@
+======================================================================
+KOMPLETT-BERICHT: #817/#820 MERGE, ANDROID-APK & PARALLELE FEATURES (17.11.2026 13:21:32)
+======================================================================
+
+=== 1. Merge der gestapelten PRs #817 und #820 (Top-Commit Cherry-Pick) ===
+
+--- Verarbeite gestapelten PR #817: feat(fints): Kreditkarten über DKKKU v2 abrufen (comdirect) (#807) (#817) ---
+✅ PR #817 erfolgreich auf main übernommen und geschlossen!
+
+--- Verarbeite gestapelten PR #820: feat: Kategorie-Vorschlag in der Buchungsliste (Teil 2a von #664) (#820) ---
+✅ PR #820 erfolgreich auf main übernommen und geschlossen!
+
+=== 2. Lokaler Android-Build mit JDK 17 & Emulator-Screenshots ===
+✅ LOKALER ANDROID-BUILD ERFOLGREICH: app-debug.apk (18642 KB)
+📸 Android-Screenshots gespeichert: android_startanimation.png & android_guidelines_100.png
+
+=== 3. Starte 3 parallele Claude-Worker (Worktrees) auf aktuellem main ===
+### Worker issue-235-224-compact-rows (Branch: feat/compact-rows-and-details)
+Geänderte Dateien:
+M GiroCrabAndroid/app/src/main/java/de/girocrab/app/ui/screens/BookingStreamScreen.kt
+ M GiroCrabWindows/src/main.rs
+ M GiroCrabWindows/ui/main.slint
+Zusammenfassung:
+`Valuta <date>`. The text comes from a new `expand_detail()` in `main.rs`. It is empty in privacy mode, so nothing shows then.
+
+**Android (`BookingStreamScreen.kt`)**
+- **Kompakt:** a `Kompakt` filter chip sits beside `Analysen`. It tightens the row padding, shrinks the avatar, limits the purpose to one line and hides the tag row.
+- **Expanded row:** tapping a row now expands it in place. It shows the full purpose, the value date, the IBAN (masked in privacy mode) and a `Details öffnen` button.
+
+Because a tap now expands the row, `Details öffnen` is the only way to reach the old detail screen.
+
+### Worker issue-550-818-available-liquidity (Branch: feat/available-liquidity-forecast)
+Geänderte Dateien:
+(keine)
+Zusammenfassung:
+Error: Reached max turns (10)
+
+### Worker issue-431-url-cli-transfer (Branch: feat/url-cli-transfer)
+Geänderte Dateien:
+M GiroCrabWindows/src/main.rs
+ M GiroCrabWindows/ui/main.slint
+Zusammenfassung:
+ Überweisung" now clears the pre-fill, so it opens an empty dialog.
+- **Tests:** two unit tests, `transfer_url_is_parsed` and `transfer_url_from_cli_args`, cover the parser, bad escapes and the CLI forms.
+- **Slint:** four new `transfer-pre-*` properties feed the dialog's text fields.
+
+Registering the `girocrab://` scheme in Windows (installer or registry) is not part of this change. Until that is done, only `--transfer-url` works.
+
+I haven't committed anything or run `cargo fmt` — the new test lines in `main.rs` are probably longer than rustfmt allows, so run `cargo fmt --all` before pushing.
+
+=== 4. Aktuelle letzte 10 Commits auf main ===
+708d8f4 feat: Kategorie-Vorschlag in der Buchungsliste (Teil 2a von #664) (#820)
+bd648fb feat(fints): Kreditkarten über DKKKU v2 abrufen (comdirect) (#807) (#817)
+15ffa41 feat: Offline-Konten mit manuellen Buchungen (#679, #81) (#813)
+62bec5e feat: Kategorie-Vorschläge aus der Buchungshistorie (#664) (#809)
+5bd2f34 fix(transfer): ausgeführte Aufträge nie als Fehler melden (#808)
+cac7f19 fix(fints): Depot ohne IBAN übernimmt nicht mehr die IBAN des Girokontos (#805) (#812)
+8d94c26 fix: Wiederherstellen synchronisiert nicht bei ausgeschaltetem iCloud Sync (#823)
+f2b2f29 feat(linux): Funktionsstand der Mac-App 0.7.5 (Kern 0.8.0) (#821)
+8d58b6c feat(ui): add GiroCrab startup animation on Windows & Android and enforce design guidelines
+0aa4251 feat(ui): enforce strict Fluent 2 & Material 3 design guidelines (5 bottom tabs, booking avatars, full sidebar titles)
+
+=== 5. Verbleibende offene PRs ===
+822	feat: Amex-Partnerkarten, Kartenauswahl und gespeicherte Anmeldung (#243)	felixschilling:feat/amex-karten-und-login	DRAFT	2026-11-17T11:58:37Z

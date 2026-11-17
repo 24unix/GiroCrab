@@ -1,0 +1,54 @@
+======================================================================
+LOKALER ANDROID-BUILD & SCREENSHOTS (17.11.2026 13:11:31)
+======================================================================
+
+Installiere Gradle über Homebrew...
+==> brew install gradle
+Verwende JAVA_HOME: /opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home
+Verwende ANDROID_HOME: /opt/homebrew/share/android-commandlinetools
+==> /opt/homebrew/bin/gradle wrapper --gradle-version 8.10.2
+==> /Users/andreasprinz/prinz_lokal/GiroCrab/GiroCrabAndroid/gradlew assembleDebug --console=plain
+   [Exit 1]
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+27.0.1.0.3
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 24s
+
+Behebe Kompilierfehler in GiroCrabAndroid...
+in 2.0.21 plugin can't parse that version string. That is the "27.0.1.0.3" in your error. Your script only sets `JAVA_HOME` if `openjdk@17`, `@21` or `openjdk` is installed under Homebrew. None was, so it fell back to JDK 27.
+
+I ran `brew install openjdk@17`. That is the path your script already checks first, so the next run of the script will pick it up without changes. I built with `JAVA_HOME` and `ANDROID_HOME` set to the paths from your script and the existing `./gradlew`.
+
+I didn't run the rest of your script (install on a device, screenshots, commit, push). I changed no source files.
+
+The warnings are deprecated `Icons.Filled.*` icons (`ReceiptLong`, `TrendingUp`, `ShowChart`, `Send`) and `Modifier.menuAnchor()`. They don't block anything, and I left them alone.
+
+One thing to know for later: `run_claude` in the script doesn't help with this kind of failure. It only passes the last 2500 characters of the error to a Sonnet run. Here that was one useless line about the Java version.
+==> /Users/andreasprinz/prinz_lokal/GiroCrab/GiroCrabAndroid/gradlew assembleDebug --console=plain
+   [Exit 1]
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+27.0.1.0.3
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 834ms
+
+==> git add GiroCrabWindows GiroCrabAndroid
+==> git commit -m feat(ui): add GiroCrab startup animation on Windows & Android and enforce design guidelines
+==> git push origin main

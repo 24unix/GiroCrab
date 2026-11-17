@@ -1,0 +1,1759 @@
+======================================================================
+OFFENE ISSUES – SEITE 3 & 4 (ohne YAXI | Gesamt: 79 | Seitengröße: 25)
+======================================================================
+
+######################################################################
+### SEITE 3 (25 Issues)
+######################################################################
+
+----------------------------------------------------------------------
+ISSUE #550: [Feature] Verfügbare Vermögen
+Autor: @leo-pold-123 | Erstellt: 2026-11-15 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Übersicht des verfügbaren Vermögens bis Monatsende / Quartalsende / Jahresende anhand von Gehalt und Fixkosten. 
+
+- Gesamtes verfügbares Vermögen
+- Alle noch ausstehenden Lastschriften
+- Regelmäßige Ausgaben
+- Anstehende Versicherungen und Steuern
+- Kreditraten
+- Geplante größere Anschaffungen
+- Monatliche Sparziele
+
+Sofern nicht bereits implementiert. 
+
+VG Leopold
+
+KOMMENTARE: (Keine)
+
+
+----------------------------------------------------------------------
+ISSUE #459: [Feature] Commerzbank-Zugänge mit RAH-10-Schlüsseldatei unterstützen
+Autor: @HardyLoppmann | Erstellt: 2026-11-15 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+### Wunsch
+
+Ich möchte einen bestehenden Commerzbank-Zugang mit einer HBCI-Schlüsseldatei (`.rdh` beziehungsweise `.rah10`, RDHX-Profil 10) in GiroCrab verwenden.
+
+Dazu habe ich auf dem Branch `HardyLoppmann:codex/commerzbank-rah10` einen Implementierungsentwurf vorbereitet. Der Umfang beschränkt sich zunächst auf lesende Kontoabrufe; Überweisungen sind nicht enthalten.
+
+### Bisheriger Stand
+
+- Import und Offline-Prüfung der Schlüsseldatei.
+- RAH-10-Nachrichtenschutz.
+- Abruf öffentlicher Bankschlüssel mit manueller Bestätigung anhand unabhängig bezogener Fingerabdrücke.
+- Einbindung in die Oberfläche und verschlüsselte Speicherung im Tresor.
+
+Die Offline-Prüfung einer vorhandenen Schlüsseldatei war erfolgreich: Passwort und Datei-Prüfwert stimmen, die enthaltenen privaten RSA-Schlüssel sind mathematisch konsistent.
+
+### Offene Live-Verifikation
+
+**Ein Live-Test mit der Commerzbank steht noch aus, weil dem Entwicklerbuild eine gültige FinTS-Produktregistrierung fehlt.**
+
+Eine erfolgreiche Anmeldung oder ein erfolgreicher Kontoabruf bei der Bank ist damit bislang nicht bestätigt. Die Implementierung umgeht die Registrierung nicht.
+
+Ich würde den Entwurf gerne zur Prüfung stellen und klären, wie eine Live-Verifikation mit einer dafür vorgesehenen FinTS-Produktregistrierung erfolgen kann.
+
+KOMMENTARE (2):
+  [1] @dr-prinz (2026-11-15):
+      @HardyLoppmann gerne
+
+  [2] @dr-prinz (2026-11-15):
+      Klasse Vorarbeit mit dem `codex/commerzbank-rah10`-Branch, @HardyLoppmann! 🦀
+      
+      1. **Pull Request:** Öffne sehr gerne schon jetzt einen PR (gerne auch als Draft) gegen `main`, damit wir die Kryptografie, das RDH/RAH-10-Parsing und die Tresor-Ablage gemeinsam reviewen können.
+      2. **Live-Verifikation mit der Commerzbank:** Bis unsere offizielle GiroCrab-Produktregistrierung von der Deutschen Kreditwirtschaft (DK) zugeteilt und in die Release-Builds eingebettet ist (#248), kannst du in GiroCrab unter **Einstellungen › FinTS-Registrierung** einfach eine eigene, kostenlose DK-Produktregistrierungsnummer eintragen (auf dem DK-Formular als *Privatperson* beantragen, siehe #73) – die wird vom Entwicklungsbuild direkt im `HKIDN`-Segment mitgesendet.
+      3. **Zweiter Tester:** In #148 hat sich gestern außerdem @zr867g2t79-a11y gemeldet, der ebenfalls ein Commerzbank-Konto mit `.rah10`-Schlüsseldatei nutzt und beim Testen helfen kann!
+
+
+
+----------------------------------------------------------------------
+ISSUE #431: [Feature] Anbindung anderer Programme per Apple Script, CLI, oder URL-Schema
+Autor: @nickinzon | Erstellt: 2026-11-14 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Hallo! Tolles Softwareprojekt. Ich würde mir wünschen, dass Überweisungen aus anderen Programmen heraus angetriggert werden können. Also bspw. per AppleScript-Support, ein URL-Schema (z. B. girocrab://transfer?...) oder eine CLI-Schnittstelle. 
+
+Ich kann momentan z.B. aus der Mac App Receipts Überweisungsdaten an MoneyMoney schicken, wo sich dann direkt ein Überweisungsfenster vorausgefüllt öffnet.
+
+KOMMENTARE (1):
+  [1] @dr-prinz (2026-11-15):
+      👋 Danke für dein feature, @nickinzon 
+      
+      💡 Lust, dieses Ticket (https://github.com/GiroCrab/GiroCrab/issues/431) direkt selbst mit KI-Unterstützung als Pull Request umzusetzen?
+      Wir haben dafür eine interaktive Schritt-für-Schritt-Anleitung und ein kurzes 10-Sekunden-Video gebaut – schau mal hier rein (läuft direkt im Browser inkl. Prompt-Kopierfunktion):
+      👉 [Interaktive Mitbau-Anleitung öffnen (In 4 Schritten mit KI zum eigenen PR)](https://girocrab.de/girocrab_mitbau_anleitung.html)
+      🎬 [10s Promo-Animation mit Sound ansehen](https://girocrab.de/girocrab_10s_promo_video.html)
+      
+      Kurzfassung für https://github.com/GiroCrab/GiroCrab/issues/431:
+      0. Kurz Bescheid geben: Antworte kurz hier im Issue („Ich übernehme das“), damit wir es dir zuweisen und niemand doppelt arbeitet (CONTRIBUTING.md).
+      
+      Claude Code, Cursor oder Codex öffnen und https://github.com/GiroCrab/GiroCrab.git forken & klonen.
+      Diesen Prompt in deine KI kopieren:
+      Lies CLAUDE.md und CONTRIBUTING.md und setze Issue #431 um: Prüfe zuerst die Architektur-, Privacy- (.sensitive()) und Performance-Regeln, schlage einen sauberen Plan vor und implementiere ihn danach inkl. Tests. Führe anschließend cargo test / swift test sowie alle Linter (scripts/lint-*.sh, scripts/xcstrings.py check) aus und starte die App zur Kontrolle im Demo-Modus mit GIROCRAB_DEMO_SEED=1.
+      Wenn es in der Demo-Vorschau gut aussieht, einfach eingeben:
+      Erstelle einen neuen Branch, committe die Änderungen mit den AI-Attribution-Trailern und öffne einen Pull Request für #431 inklusive des "### 🤖 AI Process Reflection"-Blocks (mit Security-Check und Perf-Check).
+      (Natürlich völlig freiwillig – allein das Melden des Issues hilft uns schon enorm weiter! 🦀 / English summary: Feel free to turn this issue into a PR using AI tools with CLAUDE.md and CONTRIBUTING.md!)
+
+
+
+----------------------------------------------------------------------
+ISSUE #416: [Bank] Saxo Bank
+Autor: @mmoole | Erstellt: 2026-11-14 | Labels: help wanted
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Bank / broker:**
+Saxo Bank via https://www.home.saxo/de-ch/accounts/individual
+
+**Available interface** (FinTS, official REST API, PSD2 via Enable Banking, other):
+
+their own REST API
+
+**Link to the public documentation:**
+- https://www.home.saxo/de-ch/platforms/api
+- https://www.developer.saxo/openapi/learn/welcome
+- https://www.developer.saxo/accounts/sim/signup simulation account signup (account lives only 20 days)
+- https://www.developer.saxo/openapi/referencedocs
+- https://www.developer.saxo/openapi/releasenotes
+- https://openapi.help.saxo/hc/en-us help center
+
+**Do you want to implement it yourself?** (see `CONTRIBUTING.md` and `connectors/template.rs`)
+
+I do not yet have an account at this bank. But the bank is recommended by a lot of users and quite popular in Switzerland as it offers good to very good features and multi currency accounts.
+
+KOMMENTARE: (Keine)
+
+
+----------------------------------------------------------------------
+ISSUE #410: [Feature] Mehrere Tresore und Tresorverwaltung
+Autor: @jacboy | Erstellt: 2026-11-14 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Aus der Diskussion in #241 (Kommentar von @NiTRoeSE): Tresorverwaltung mit mehreren Tresoren.
+
+## Wunsch
+- Mehrere Tresore anlegen, z. B. um die Konten von Kindern und die eigenen zu trennen.
+- Zwischen den Tresoren schnell wechseln, etwa über Tabs oder eine Auswahl.
+- Einen einzelnen Tresor löschen können, ohne die ganze App zurückzusetzen.
+
+## Technische Hinweise
+- Heute gibt es genau einen Tresor: `AppModel.vaultURL` ist statisch, der Schlüssel liegt als ein Eintrag im Singleton `VaultKeyManager` (Service `de.girocrab.vault`).
+- #241 („App zurücksetzen“) führt `VaultResources` ein, die Liste aller Dateien, Keychain-Einträge und Einstellungen eines Tresors. Pro Tresor eine solche Liste zu bauen ist die Grundlage für „Tresor löschen“.
+- Zu klären: Schlüssel pro Tresor (Keychain-Account je Tresor-ID), Einstellungen pro Tresor oder global, iCloud-Sync pro Tresor, Banking-Policy bleibt global, Sperrverhalten und Dock-Badge bei mehreren Tresoren, UI (Tabs, Fenster oder Auswahl in der Seitenleiste) nach Apple HIG.
+
+KOMMENTARE: (Keine)
+
+
+----------------------------------------------------------------------
+ISSUE #389: [Feature] Linux-Version (Qt 6 / QML) auf dem bestehenden Rust-Kern – Interesse an einem PR?
+Autor: @ThxGiving | Erstellt: 2026-11-14 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Hallo zusammen,
+
+ich habe GiroCrab für den Eigengebrauch nach Linux portiert und würde den Port gern beitragen, falls ihr Interesse habt. Bevor ich einen PR öffne, möchte ich wie in der CONTRIBUTING.md beschrieben fragen, ob und in welcher Form ihr das haben wollt.
+
+**Was es ist**
+- Eigener Ordner `GiroCrabLinux/` mit einer Qt-6/QML-Oberfläche, die die SwiftUI-Ansichten Datei für Datei nachbildet (gleiche Struktur, gleiche Texte, gleiche Logik im `AppModel`).
+- Sie nutzt **denselben `girocrab-core`** direkt aus Rust (über cxx-qt, ohne UniFFI). Die Mac- und iOS-App bleiben unverändert.
+- Eigener Cargo-Workspace, damit `cargo clippy --workspace` in eurer CI kein Qt braucht.
+- Linux-Gegenstücke für Plattformdienste:
+  - Secret Service (KWallet / GNOME Keyring) statt Keychain
+  - QtWebEngine für PSD2-Zustimmung und Portal-Logins
+  - QtPdf für die Belegvorschau
+  - Tesseract (optional) statt Vision für Kassenbons
+  - QPrinter statt PrintSheet
+- Umfang heute: Konten, Gruppen, Buchungsliste, Inspektor, Kategorien und Regeln, Budgets, Wiederkehrende, Belege, Depot und Darlehen, FinTS / PSD2 / Portale mit PIN und TAN, Überweisung mit Namensprüfung und GiroCode, MoneyMoney-Import, Drucken, Einstellungen, Abruf-Protokoll, Hilfe und Befehlspalette.
+- Die Banking-Richtlinie wird geprüft (Distribution `linux`), und es gibt ein `.deb`-Paket.
+
+**Was sich außerhalb von `GiroCrabLinux/` ändern würde**
+Nur ein optionales Cargo-Feature `serde` in `girocrab-core`: `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]` an den uniffi-Records und -Enums (19 Dateien, 116 Zeilen, nur Ergänzungen). Ohne das Feature kompiliert der Kern exakt wie heute, die Mac-Builds sind also nicht betroffen.
+
+**Vorschlag für die Aufteilung**
+1. Kleiner PR: das optionale `serde`-Feature im Kern.
+2. PR mit `GiroCrabLinux/` (groß, aber in sich abgeschlossen), gern auch weiter aufgeteilt, wenn euch das lieber ist.
+
+**Offene Fragen an euch**
+- Wollt ihr eine Linux-Version im Hauptrepo, oder lieber als separates Projekt?
+- Falls im Hauptrepo:
+  - Soll es offizielle Linux-Builds mit eurer FinTS-Produktregistrierung geben? Ohne sie braucht jeder Nutzer eine eigene.
+  - Würdet ihr in der Banking-Richtlinie Regeln für `linux` pflegen?
+- Wer soll die QML-Seite bei neuen SwiftUI-Funktionen nachziehen? Ich würde das übernehmen, ein Skript zeigt pro Abgleich, welche Swift-Ansichten sich geändert haben.
+
+Screenshots: siehe unten bzw. im Fork: https://github.com/ThxGiving/GiroCrab/tree/linux-qt/GiroCrabLinux. Es wurden nur Demo-Daten verwendet, keine echten Kontodaten.
+
+| Hauptfenster | Überweisung | Abruf mit S-pushTAN |
+|---|---|---|
+| ![Hauptfenster](https://github.com/ThxGiving/GiroCrab/raw/linux-qt/GiroCrabLinux/docs/images/hauptfenster.png) | ![Überweisung](https://github.com/ThxGiving/GiroCrab/raw/linux-qt/GiroCrabLinux/docs/images/ueberweisung.png) | ![Abruf](https://github.com/ThxGiving/GiroCrab/raw/linux-qt/GiroCrabLinux/docs/images/abruf-pushtan.png) |
+
+Danke für GiroCrab!
+
+KOMMENTARE (19):
+  [1] @24unix (2026-11-14):
+      Auch wenn ich schon sehr lange kein Linux mehr auf dem Desktop nutze: Coole Sache :-)
+      Und schön, dass Du Dich fur QT entschieden hast.
+      Die Fragen muss @dr-prinz Dir beantworten.
+
+  [2] @dr-prinz (2026-11-14):
+      @ThxGiving – Herzlich willkommen bei GiroCrab. 🦀🐧
+      
+      Dass du auf Basis von `girocrab-core` mit `cxx-qt` und Qt 6 / QML bereits den kompletten Funktionsumfang (inkl. Secret Service, QtWebEngine, PDF, OCR, GiroCode und S-pushTAN) auf Linux zum Laufen gebracht hast, ist der beste Beweis dafuer, dass sich unsere strikte Trennung zwischen Rust-Core und UI-Schicht gelohnt hat.
+      
+      Zu deinem Vorschlag und deinen offenen Fragen:
+      
+      1. **PR 1 (`serde`-Feature-Flag in `girocrab-core`):**
+         **Sofortiges Ja.** Die 116 Zeilen `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]` hinter einem optionalen Cargo-Feature beeinflussen die bestehenden Mac-/iOS-Builds ueberhaupt nicht und helfen uns auch an anderen Stellen. Diesen ersten PR kannst du sehr gerne sofort aufmachen (ich weise dir #389 direkt zu).
+      
+      2. **Hauptrepo (`GiroCrabLinux/`) vs. separates Repo & Synchronitaet:**
+         Ich finde die Idee, `GiroCrabLinux/` als **eigenen, isolierten Workspace** direkt mit aufzunehmen (mit eigenem `linux.yml`-CI-Workflow auf `ubuntu-latest`, der nur bei Aenderungen in `GiroCrabLinux/**` oder `girocrab-core/**` laeuft), sehr charmant – unter einer klaren Spielregel fuer unsere laufende `v1.0.0`-Phase:
+         - **SwiftUI / Core gibt das Tempo vor:** PRs fuer macOS/iOS und `girocrab-core` muessen jederzeit gemergt werden koennen, ohne dass im selben PR zwingend schon die QML-Seite angepasst werden muss.
+         - **Asynchrones Nachziehen (`Community-Maintained Port`):** Du (und weitere Linux-Contributors) zieht die QML-Ansichten und neue Core-Methoden asynchron in Folge-PRs nach – dein Abgleich-Skript dafuer klingt genial.
+      
+      3. **FinTS-Produktregistrierung & Banking-Richtlinie (`linux`):**
+         - Ja, die `banking-policy` um Regeln fuer `distribution: "linux"` zu erweitern ist absolut sinnvoll.
+         - Und sobald unsere offizielle DK-Produktregistrierungsnummer zugeteilt ist (#248), koennen wir pruefen, wie wir offizielle signierte Linux-Release-Pakete (`.deb` / Flatpak / AppImage) ueber unsere Release-Pipeline bauen, damit auch Linux-Nutzer keine eigene DK-Registrierung beantragen muessen.
+      
+      @jacboy @sebastianmattar @24unix: Was meint ihr – wollen wir nach dem kleinen `serde`-Core-PR den Ordner `GiroCrabLinux/` mit eigenem Linux-CI-Job direkt hier ins Hauptrepo nehmen?
+
+  [3] @dr-prinz (2026-11-14):
+      @ThxGiving passt perfekt hierzu :-) https://github.com/GiroCrab/GiroCrab/discussions/226
+
+  [4] @24unix (2026-11-14):
+      @dr-prinz Ich kenne mich mit der CI von GH nicht wirklich gut aus, kann der Runner X64 and Arm64?
+      Wenn ja, spricht aus einer Sicht nichts dagegen.
+
+  [5] @dr-prinz (2026-11-14):
+      @24unix Ja, GitHub Actions stellt fuer Public Repos sowohl `ubuntu-24.04` (`x86_64`) als auch `ubuntu-24.04-arm` (`arm64`) kostenlos als Standard-Runner bereit – wir koennen Linux in der CI also nativ auf beiden Architekturen bauen und testen.
+
+  [6] @jacboy (2026-11-14):
+      Hallo,
+      
+      wow, vielen dank für diese arbeit. @ThxGiving guter mann!
+      
+      > [@jacboy](https://github.com/jacboy) [@sebastianmattar](https://github.com/sebastianmattar) [@24unix](https://github.com/24unix): Was meint ihr – wollen wir nach dem kleinen `serde`-Core-PR den Ordner `GiroCrabLinux/` mit eigenem Linux-CI-Job direkt hier ins Hauptrepo nehmen?
+      
+      bin dafür. gönnen wir es ihm und schauen wir dass die Zusammenarbeit für alle so passend verläuft, dass wir es auf allen Plattformen sauber machen können.
+      
+      Würde es gut finden wenn man das in linux auch signiert bekommt und in eine gute Paketquelle. wir könnten die ja auch selbst hosten.
+
+  [7] @24unix (2026-11-14):
+      Das ist doch dann wirklich ein Killerfeature, wenn sich dann noch jemand für Windows findet (nein, ich definitiv nicht :-) ) ist die Krabbe doch schon sehr gut aufgestellt.
+
+  [8] @jacboy (2026-11-14):
+      Die Frage ist nicht, ob sich jemand dafür findet, sondern ob das dann auch dauerhaft betreut wird.
+
+  [9] @24unix (2026-11-14):
+      > Würde es gut finden wenn man das in linux auch signiert bekommt und in eine gute Paketquelle. wir könnten die ja auch selbst hosten.
+      
+      Ich baue selber inoffizielle Debian Pakete fur Gitea, Gitea-Runner und Gitea-CLI, und Gitea bietet die auch direkt als Repos an.
+      https://git.24unix.net/tracer/gitea-deb
+      Ich denke, das wird mit GH auch gehen, Gitea ist ja eigentlich "nur" ein Clone.
+
+  [10] @24unix (2026-11-14):
+      > Die Frage ist nicht, ob sich jemand dafür findet, sondern ob das dann auch dauerhaft betreut wird.
+      
+      Na ja, es gibt deutlich mehr Windows als Mac/Linux User.
+      Ich denke, da wird sich jemand, oder einige finden.
+      QT ist Crossplatform, also schon eine gute Basis, bleiben halt die Äquivalente zu KeyChain & Co.
+
+  [11] @jacboy (2026-11-14):
+      @ThxGiving wir könnten uns hier ggf. mal noch in eine Session zusammen setzen, um Signing, Verteilung und Updates zu klären. Das wird ja etwas anders funktionieren als unter macOS und iOS. Ich würde mich freuen wenn wir unter Linux dieselbe gute Experience bereitstellen können wie auf macOS.
+
+  [12] @24unix (2026-11-14):
+      Das mit der guten Experience ist bei Linux halt ein Problem :-(
+      
+      Du müsstest deb und rpm bauen, dann gibt es noch arch, Gentoo und hundert andere …
+      
+      Und so eine Krücke wie Snap oder AppImage würde ich mir nicht antun wollen.
+      
+      Linus hat vor 20 Jahren einen Fehler gemacht. Es gibt nicht DAS Linux.
+      Er bevorzugt Fedora, aber ihn interessiert eh nur der Kernel.
+      
+      Gäbe es ein Standard-Linux, könnte man das als Ziel nehmen, die 100+ anderen müssen halt selber basteln.
+      
+      Ist aber nicht so, mit einer der Gründe, warum ich weg bin, obwohl ich KDE und ein brauchbares Window-Management wirklich vermisse.
+      
+      yabai hilft, aber SIP deaktivieren habe ich mir abgewöhnt.
+
+  [13] @Moneysac90 (2026-11-14):
+      Ein debian paket wäre doch erstmal ausreichend? Damit würde es auf ganz vielen weit verbreiteten Distributionen schon laufen. Für Bastler gibt es dann noch `alien` zum Konvertieren von Paketen.
+
+  [14] @24unix (2026-11-14):
+      Und was machen die S.u.S.E. und RH/Fedora Leute?
+      
+      Ich sag ja, einfach ist das nicht.
+
+  [15] @jacboy (2026-11-14):
+      @24unix ich denke wir fangen mal mit einem Dingen an und machen das gut, und danach kann man immer noch RPM machen. Eins nach dem anderen...
+
+  [16] @24unix (2026-11-14):
+      Ich bin bei dem Thema eh keine große Hilfe, ich habe eine VM mit Debian, die ich kaum öfter als die Windows VM nutze.
+      Alles "echte" ist headless.
+      Aber helfen tue ich gerne, wenn ich kann.
+
+  [17] @ThxGiving (2026-11-14):
+      Vielen Dank euch allen für die schnelle und freundliche Rückmeldung! 🦀🐧
+      
+      **Zur Spielregel:** Einverstanden. SwiftUI und `girocrab-core` geben das Tempo vor. Mac-, iOS- und Core-PRs brauchen nie eine QML-Anpassung, ich ziehe die Linux-Seite asynchron in eigenen PRs nach. Ein Abgleich-Skript zeigt mir pro Merge, welche Swift-Ansichten sich geändert haben und welche QML-Dateien dazugehören.
+      
+      **PR 1 (`serde`-Feature):** ist da, #419. Neben den Markierungen enthält er `scripts/lint-serde-feature.sh` und einen CI-Schritt `cargo check -p girocrab-core --features serde`. So fällt ein neuer Kern-Typ ohne Markierung schon im Core-PR auf, statt erst beim Linux-Abgleich. Die CI muss für meinen ersten PR einmal freigegeben werden.
+      
+      **PR 2 (`GiroCrabLinux/` + `linux.yml`):** folgt. Geplant sind zwei Jobs, die nur bei Änderungen in `GiroCrabLinux/**` oder `girocrab-core/**` laufen:
+      - **Qt 6.6 (Mindestversion)** auf `ubuntu-24.04` über `install-qt-action`. Der Port braucht Qt 6.6 für tabellarische Ziffern (`font.features`) und geglättete Formen. Ubuntu 24.04 und Debian 12 bringen nur 6.4 mit, deshalb kommt Qt hier aus dem Installer.
+      - **Debian 13** mit Qt aus den Paketquellen, auf `ubuntu-24.04` (amd64) und `ubuntu-24.04-arm` (arm64) im Container. Der Job baut auch das `.deb` als Artefakt.
+      
+      **Verteilung:** Ich würde mit dem `.deb` anfangen. Weil es an die Qt-Version der Distribution gebunden ist, braucht es einen Build pro Distributions-Version (z. B. Debian 13, Ubuntu 26.04). Ziel wäre ein signiertes apt-Repo für amd64 und arm64 aus der CI.
+      Für Fedora, SUSE, Arch & Co. schlage ich als zweiten Schritt **Flatpak** vor: Das KDE-Runtime bringt ein aktuelles Qt mit, unabhängig von der Distribution. So brauchen wir kein eigenes rpm pro Distribution, und Flathub wäre eine naheliegende Paketquelle.
+      @jacboy Gern setzen wir uns zu Signieren, Verteilung und Updates zusammen.
+      @24unix Deine Erfahrung mit den Gitea-Paketquellen hilft da bestimmt.
+
+  [18] @ralph303 (2026-11-15):
+      Eine Linux-Version finde ich absolut genial, denn MM war für mich der einzige wirkliche Grund nicht irgendwann auf Linux wechseln zu können und dieser Tag wird leider irgendwann kommen, an dem auch MacOS zu "evil" sein wird, egal ob aus eigener Motivation von Apple heraus oder regulatorisch/politisch erzwungen.
+      
+      Mein Vorschlag wäre, wie von @ThxGiving im letzten Beitrag kurz angerissen, unbedingt eine Flatpak-Variante bereitzustellen, da es u.a. folgende Vorteile bietet:
+      
+      - Unabhängig vom System: Funktioniert auf Ubuntu, Fedora und vielen anderen Linux-Distributionen.
+      - Keine Installation ins Root-Dateisystem: Passt auch gut zu den immer beliebter werdenden, schreibgeschützten Distributionen wie etwa SteamOS.
+      - Einfache Updates: Updates können über Discover oder flatpak update erfolgen.
+      - Abhängigkeiten inklusive: Viele benötigte Bibliotheken können unabhängig von der Distribution bereitgestellt werden.
+      - Sandboxing: Die Anwendung läuft mit eingeschränkten Systemrechten.
+      
+      Das würde aus meiner Sicht geradezu ideal zu einer Finanz-App passen und man muss keine Distributions-spezifischen Installationspakete pflegen.
+
+  [19] @ThxGiving (2026-11-15):
+      Danke für den Zuspruch, @ralph303! Ein Flatpak gibt es schon: Seit der Linux-Port im Original ist, baut die CI bei jeder Änderung an `main` ein Flatpak für x86_64 und aarch64.
+      
+      **Zum Ausprobieren:** Unter https://github.com/GiroCrab/GiroCrab/actions/workflows/flatpak.yml den neuesten grünen Lauf auf `main` öffnen und unten bei „Artifacts“ `girocrab-x86_64.flatpak` bzw. `girocrab-aarch64.flatpak` herunterladen (dafür muss man bei GitHub angemeldet sein). Danach entpacken und installieren:
+      
+      ```
+      flatpak install --user girocrab.flatpak
+      flatpak run de.girocrab.GiroCrab
+      ```
+      
+      Die Laufzeitumgebung (KDE 6) holt Flatpak dabei von Flathub. Selbst bauen geht auch, die Anleitung steht in [`GiroCrabLinux/README.md`](https://github.com/GiroCrab/GiroCrab/blob/main/GiroCrabLinux/README.md#flatpak).
+      
+      Es ist ein Testbau, unsigniert und ohne Release. Wie GiroCrab für Linux offiziell verteilt wird (Flathub o. Ä.), ist noch mit den Maintainern zu klären. Für FinTS-Banken braucht der Testbau eine eigene, kostenlose FinTS-Produktregistrierung, die man in den Einstellungen einträgt. Die App verlinkt dorthin.
+
+
+
+----------------------------------------------------------------------
+ISSUE #360: [Feature] Reihenfolge der Kategorien in der linken Seitenleiste ändern
+Autor: @eriu | Erstellt: 2026-11-14 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Beschreibung:
+Ich würde mir wünschen, die Reihenfolge der Kategorien in der linken Seitenleiste selbst festlegen zu können – sowohl für Gruppen auf der ersten Ebene als auch für Einträge innerhalb einer Gruppe.
+Beispiel:
+- Gruppe 1
+  - Eintrag 1
+  - Eintrag 2
+- Gruppe 2
+So könnte ich häufig genutzte Kategorien weiter oben platzieren und die Struktur an meine Bedürfnisse anpassen.
+
+KOMMENTARE (3):
+  [1] @24unix (2026-11-14):
+      Das müsste doch sein, was Du haben willst, oder?
+      https://github.com/GiroCrab/GiroCrab/pull/230
+
+  [2] @eriu (2026-11-14):
+      ja danke das müsste das sein
+
+  [3] @eriu (2026-11-14):
+      bei mir  funktioniert #230  in v0.6.3 nicht. also das Zuordnen via drag&drop einer Buchung zu einer Kategorie oder das verschieben eines Items innerhalb einer Kategoriegruppe nach oben oder unten
+
+
+
+----------------------------------------------------------------------
+ISSUE #353: [Feature] Amazon: Rechnungs- und Gutschrift-PDFs beim Import an die Buchungen legen
+Autor: @dbrussig | Erstellt: 2026-11-14 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+## Problem
+
+Der Amazon-Connector liest Bestelldaten, lädt aber keine Dokumente. GiroCrab hat mit `booking_documents` (pdf_bytes, source_url, doc_date) bereits die perfekte Ablage — der Amazon-Import nutzt sie nicht. Rechnungen muss man sich bisher manuell über amazon.de holen.
+
+## Befunde von der echten Bestelldetailseite
+
+- Jede Detailseite hat einen „Rechnung"-Button; er öffnet ein Overlay, das das Rechnungsdokument (mit Rechnungsnummer) direkt rendert.
+- Pro Bestellung kann es **mehrere Dokumente** geben: „Rechnung 1 / Rechnung 2" (geteilte Sendungen) und „Gutschrift 1 / Gutschrift 2" (je Retouren-Vorgang — eine Bestellung kann mehrere Retouren-Contracts haben).
+- Abonnement-Bestellungen (`D01-…`) haben zusätzlich einen „Monatsabrechnung"-Link.
+- Die Dokumente liegen hinter session-authentifizierten URLs im Detailseiten-DOM (klassisches Muster `…/gp/css/summary/print.html?orderID=…` bzw. Invoice-Endpunkte) — gleicher Abrufweg wie die Bestellseiten selbst (fetch, same-origin, Cookies der eingeloggten Sitzung).
+
+## Vorschlag
+
+1. `orderDetails`-Scraper erweitert: Dokumentliste je Bestellung einsammeln (Rechnungen, Gutschriften, Monatsabrechnung) inkl. URLs.
+2. Beim Import (oder optional per Schalter „Belege mit abrufen"): Dokumente per fetch laden und als `booking_documents` an die Bestellbuchung hängen (pdf_bytes, source_url, doc_date).
+3. Robustheit: sanftes Pacing (1–2 s je Dokument), Einzelfehler überspringen und beim nächsten Abruf nachholen (idempotent über Bestellnummer), Fortschritt und Stopp wie beim Bestellabruf.
+
+Umsetzbar wie der bestehende Bestell-Abruf; Richtungs-Issue dazu: #337 (Bestellkonto = Nachweis inkl. Belege).
+
+KOMMENTARE (1):
+  [1] @dbrussig (2026-11-14):
+      Härtetest-Nachtrag von echten Seiten: (1) Der „Rechnung"-Button öffnet ein Overlay, das das Dokument direkt rendert. (2) Die klassische Druck-URL `https://www.amazon.de/gp/css/summary/print.html?orderID=<Bestellnummer>` lädt allein mit Bestellnummer + eingeloggter Session — keine zusätzlichen Tokens nötig. Bei geteilten Bestellungen zeigt sie offenbar eine Abrechnungsübersicht (inkl. „Monatsabrechnung"-Links) statt genau eines PDFs — der robuste Weg bleibt daher, die Dokument-hrefs (Rechnung 1..n, Gutschrift 1..n) direkt aus dem DOM der Bestelldetailseite einzusammeln, wie im Issue beschrieben.
+
+
+
+----------------------------------------------------------------------
+ISSUE #350: [Bank] "Hamburg Direct Bank" und "Ford Money"
+Autor: @JochenGr | Erstellt: 2026-11-14 | Labels: help wanted
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Hallo,
+
+zunächst einmal, möchte ich mich bei euch bedanken, in welcher Geschwindigkeit und Dynamik ihr dieses Projekt voran bringt. Ich bin begeistert.. 👍
+
+Mit ist bewußt, dass ihr z.Z. sehr viele Anfragen und Wünsche habt. Die meisten der von mir benötigten Banken sind bereits eingebunden. Trotzdem möchte auch ich noch zwei weitere Banken für Tages- und Festgeld ins Spiel bringen, die ich momentan auch in MoneyMoney verwalte. Beide haben wohl keine offizielle Schnittstelle:
+
+1. FordMoney:
+Diese Anbindung wurde bereits hier angefragt 
+https://github.com/GiroCrab/GiroCrab/issues/42
+
+In MoneyMoney funktioniert die Schnittstelle und in Outbank scheint es ebenfalls eine Lösung zu geben (diese hab ich allerdings nicht getestet).
+
+2. Hamburg Direct Bank (https://www.hamburg-direct-bank.de):
+Dabei handelt es sich um einen Ableger der "Hamburg Commercial Bank AG". 
+- Man bekommt auf der Übersichtsseite das eigene Tagesgeldkonto sowie Gemeinschaftskonten und berechtigte Konten angezeigt.
+- Jedes dieser Tagesgeldkonten hat eine eigene IBAN.
+- Unterhalb des jeweiligen Tagesgeldkontos werden die Festgeldkonten angezeigt, die damit verbunden sind.
+- Die Festgeldkonten haben KEINE eigene IBAN.  Sie sind der IBAN des Tagesgeldkontos zugeordnet.
+
+Hier gibt es auch in MoneyMoney keine Schnittstelle. Die dazugehörigen Konten führe ich als manuelle "Bargeld"  Konten. Aber auch das ist ja momentan in GiroCrab noch nicht möglich. In anderen Banking- Apps konnte ich allerdings auch keine Hinweise auf eine Anbindung finden. Vielleicht ist es einfach nicht möglich.  
+
+Schon einmal vielen Dank für eine Machbarkeitsprüfung ;)
+
+KOMMENTARE (5):
+  [1] @dr-prinz (2026-11-14):
+      Hallo @JochenGr und vielen Dank fuer das tolle Feedback. 🦀
+      
+      Bei Banken ohne offizielle FinTS-/PSD2-Schnittstelle (wie Ford Money und Hamburg Direct Bank) sind wir immer darauf angewiesen, dass jemand mit einem echten Konto vor Ort die Schnittstelle testen kann.
+      
+      Falls du Lust auf ein kleines Experiment hast: Viele unserer neuen Bank-Anbindungen (wie zuletzt easybank #329 oder quirion #296) wurden von Community-Mitgliedern mithilfe von KI (Claude Code / Cursor) und unserer Vorlage `girocrab-core/src/connectors/template.rs` sowie `CLAUDE.md` gebaut. Gerade fuer Ford Money gibt es ja bereits die Logik aus MoneyMoney als Orientierung. Wenn du Lust hast, dich mit KI-Unterstuetzung an einem ersten eigenen PR zu versuchen, helfen wir dir hier jederzeit gerne weiter.
+
+  [2] @JochenGr (2026-11-14):
+      Hallo @dr-prinz,
+      danke für deine Antwort. Selbstverständlich wäre ich bereit, euch zu unterstützen. Allerdings habe ich keinerlei Erfahrung mit Entwicklung und KI. Ich bräuchte hierbei schon ein wenig Hilfe...
+
+  [3] @dr-prinz (2026-11-15):
+      👋 Danke für dein Issue, @JochenGr 
+      
+      💡 Lust, dieses Ticket (https://github.com/GiroCrab/GiroCrab/issues/350) direkt selbst mit KI-Unterstützung als Pull Request umzusetzen?
+      Wir haben dafür eine interaktive Schritt-für-Schritt-Anleitung und ein kurzes 10-Sekunden-Video gebaut – schau mal hier rein (läuft direkt im Browser inkl. Prompt-Kopierfunktion):
+      👉 [Interaktive Mitbau-Anleitung öffnen (In 4 Schritten mit KI zum eigenen PR)](https://girocrab.de/girocrab_mitbau_anleitung.html)
+      🎬 [10s Promo-Animation mit Sound ansehen](https://girocrab.de/girocrab_10s_promo_video.html)
+      
+      Kurzfassung für https://github.com/GiroCrab/GiroCrab/issues/350:
+      0. Kurz Bescheid geben: Antworte kurz hier im Issue („Ich übernehme das“), damit wir es dir zuweisen und niemand doppelt arbeitet (CONTRIBUTING.md).
+      
+      Claude Code, Cursor oder Codex öffnen und https://github.com/GiroCrab/GiroCrab.git forken & klonen.
+      Diesen Prompt in deine KI kopieren:
+      Lies CLAUDE.md und CONTRIBUTING.md und setze Issue #350 um: Prüfe zuerst die Architektur-, Privacy- (.sensitive()) und Performance-Regeln, schlage einen sauberen Plan vor und implementiere ihn danach inkl. Tests. Führe anschließend cargo test / swift test sowie alle Linter (scripts/lint-*.sh, scripts/xcstrings.py check) aus und starte die App zur Kontrolle im Demo-Modus mit GIROCRAB_DEMO_SEED=1.
+      Wenn es in der Demo-Vorschau gut aussieht, einfach eingeben:
+      Erstelle einen neuen Branch, committe die Änderungen mit den AI-Attribution-Trailern und öffne einen Pull Request für #350 inklusive des "### 🤖 AI Process Reflection"-Blocks (mit Security-Check und Perf-Check).
+      (Natürlich völlig freiwillig – allein das Melden des Issues hilft uns schon enorm weiter! 🦀 / English summary: Feel free to turn this issue into a PR using AI tools with CLAUDE.md and CONTRIBUTING.md!)
+
+  [4] @JochenGr (2026-11-15):
+      Momentan verstehe ich nur Bahnhof, würde es aber trotzdem gerne mal probieren. Allerdings nur, wenn das ohne Claude-Abo möglich ist. Ich bräuchte allerdings einige Tage Zeit.
+      
+      Wäre es evtl. sinnvoll, wenn man den issue auf 2 issues (einen pro Bank) aufteilt? Oder könnte man alternativ 2 PRs mit diesem issue verbinden?
+
+  [5] @dr-prinz (2026-11-15):
+      @JochenGr Kein Stress, nimm dir gerne so viel Zeit wie du brauchst.
+      
+      1. Ohne Claude-Abo: Du kannst genauso gut kostenlose KI-Tools wie GitHub Copilot Free (in VS Code), Cursor Free, ChatGPT oder Gemini nutzen – es reicht völlig, wenn die KI unsere CLAUDE.md und girocrab-core/src/connectors/template.rs als Vorlage liest.
+      2. 1 Issue oder 2 Issues: Beides geht. Du kannst gerne jeweils einen eigenen PR pro Bank (z. B. zuerst Ford Money) mit Bezug auf #350 einreichen.
+
+
+
+----------------------------------------------------------------------
+ISSUE #337: [Feature] Bestellkonto als eigener Kontotyp — Nachweis statt Geldfluss
+Autor: @dbrussig | Erstellt: 2026-11-14 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+## Ausgangspunkt
+
+Der Amazon-Connector („Amazon Bestellungen") legt ein Konto an, das sich wie ein Girokonto verhält: Kontostand, Zählen in „Konsumausgaben", Buchungszeilen mit Zweck. Aber ein Bestellkonto ist etwas anderes: **das Geld fließt auf dem Bankkonto**, hier geht es um den Nachweis — was wurde gekauft, was wurde geliefert/retourniert/erstattet, was läuft als Abo.
+
+## Vorschlag: Kontotyp „Bestellkonto"
+
+1. **Eigene Kennzahlen im Kopfbereich** statt Saldo: Anzahl Bestellungen, Ø Bestellwert, offene Lieferungen, Rückläufe, Abo-Summe/Monat.
+2. **Optional aus Gesamtsummen herausnehmbar:** Bestellkonten nicht automatisch in „Verfügbar / Konsumausgaben" zählen (die Abbuchungen stehen bereits auf dem echten Bankkonto — sonst doppelt). Umschaltbar, wer anders denkt.
+3. **Bestell-Detail als Karte:** Artikelliste zeilenweise (Menge × Titel), Summenaufstellung inkl. Versand/Gutschein, zugehörige Erstattung als Verbund („Bezahlt 415,65 € · Erstattet 415,65 € · Netto 0,00 €"), Bestellnummer-Link, Platz für Rechnungs-PDF.
+4. **Abo-Radar:** aktive Abos (D01-/Spar-Abos) mit Summe/Monat und nächster Abbuchung — die Wiederkehr-Erkennung liefert die Basis.
+
+## Einordnung
+
+Bausteine, die in diese Richtung schon vorgeschlagen bzw. unterwegs sind: #333 (Artikeltext + Bestellnummer in der Zeile), Rechnungs-PDFs an Buchungen, Produktlinks pro Artikel. Dieses Issue soll die Richtung benennen, nicht alles auf einmal — die Einzelteile bleiben eigene, kleine PRs.
+
+KOMMENTARE (5):
+  [1] @dbrussig (2026-11-14):
+      Kleine Ergänzung zur „Farbe statt Vorzeichen"-Richtung (passend zu den badgen Beträgen auf dem Bestellkonto aus #333): Auch die **Tagessummen** könnten die Netto-Richtung farblich kodieren — rot bei Netto-Ausgaben, grün bei Netto-Einnahmen, neutral bei 0,00 € — bewusst ohne Badge, damit die Hierarchie bleibt (Badge = einzelne Buchung, Farbe = Summe). Bislang sind die Tagessummen rein sekundär formatiert.
+
+  [2] @dbrussig (2026-11-14):
+      Erstattungsdatum — Befundlage aus echten Seiten (2026-11-14): Die Bestelldetailseite formuliert nur „Deine Gutschrift wurde veranlasst" (ohne Datum). Das Rücksendezentrum (`/spr/returns/prep?orderId=…&contractId=…`) hat eine Status-Zeitleiste („Erstattung ausgestellt" → „Rückerstattung gutgeschrieben") und ein Summen-Detail mit Zahlungsweg — ein verlässliches Datum war dort weder im Accessibility-Layer noch visuell zu finden, und eine Bestellung kann mehrere Retouren-Contracts haben. Pragmatische Lesart fürs Bestellkonto-Modell: Das Amazon-Datum ist der Vorgang (Bestellung/„veranlasst"), das echte Gelddatum liegt auf dem Zahlungsmittel (Konto/Karte) und steht dort als eigene Buchung. Falls doch ein `refunded_on` gewünscht ist, wäre es nur „best effort" über das Rücksendezentrum machbar (ein zusätzlicher Fetch je Retouren-Contract, Datum im Roh-HTML prüfbar).
+
+  [3] @dr-prinz (2026-11-15):
+      Starke Gesamtlinie, @dbrussig – viele Bausteine aus diesem Richtungs-Issue sind inzwischen schon auf `main` gelandet (#333/#349 Artikeltext & Drilldown, #354 Produktlinks und eben #336 zum Ausblenden des Kategorie-Chips). 🦀
+      
+      Als nächsten Einzel-PR aus #337 wäre **Punkt 2 (Doppelzählung vermeiden)** besonders wertvoll:
+      - Bestellkonten (wie „Amazon Bestellungen“) standardmäßig aus den übergreifenden Summen (**Verfügbar / Konsumausgaben / Einnahmen**) herausnehmen, damit Abbuchungen nicht einmal auf dem Bank-/Kartenkonto und ein zweites Mal im Bestellkonto gezählt werden (optional pro Konto umschaltbar).
+      - Danach können im Kopfbereich eines Bestellkontos eigene Kennzahlen (Bestellanzahl, Ø Bestellwert, Abo-Summe/Monat) den leeren `0,00 €`-Saldo ersetzen.
+      
+      Sag gerne Bescheid, falls du dir als Nächstes einen davon vornehmen möchtest!
+
+  [4] @dbrussig (2026-11-15):
+      Sehr gern — ich übernehme **Punkt 2 (Doppelzählung vermeiden)**: Bestellkonten standardmäßig aus den übergreifenden Summen (Verfügbar / Konsumausgaben / Einnahmen) herausnehmen, pro Konto umschaltbar. Freue mich über die Zuweisung, dann geht der PR bald raus. (Teil 3, die Kopf-Kennzahlen, würde ich daraus folgen lassen.)
+
+  [5] @dr-prinz (2026-11-16):
+      Super, @dbrussig – #337 ist dir zugewiesen! 🦀 Dass Bestellkonten standardmäßig aus „Verfügbar / Konsumausgaben / Einnahmen“ herausfallen (und pro Konto optional wieder dazugeschaltet werden können), löst die Doppelzählung mit dem Bankkonto sehr sauber.
+
+
+
+----------------------------------------------------------------------
+ISSUE #303: [Bank] Cembra Money Switzerland
+Autor: @eender | Erstellt: 2026-11-13 | Labels: help wanted
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Bank / broker:**
+Cembra Money Bank – Certo! One Mastercard (Switzerland)
+
+**Available interface** (FinTS, official REST API, PSD2 via Enable Banking, other):
+Other (No public API, FinTS, or PSD2 available – web scraping via embedded browser session + CSV download trigger).
+
+**Link to the public documentation:**
+- No public API documentation available
+- Login Portal: https://eservice.cembra.ch/?login&language=de
+- Transactions URL (post-login): https://eservice.cembra.ch/banking/accounts
+- eService FAQ: https://www.cembra.ch/en/customer-center/eservice/faqs/
+
+---
+
+### Additional Technical Details for Implementation
+
+1. **Login Flow:**
+   - Open `https://eservice.cembra.ch/?login&language=de`
+   - Authentication requires scanning a QR code displayed on the page using the Cembra Mobile App and confirming the login (2FA).
+2. **Transactions & CSV Export:**
+   - After successful login, transactions are listed at `https://eservice.cembra.ch/banking/accounts`.
+   - Directly on `/banking/accounts`, there is a `.CSV` button that triggers a CSV download of the transactions via JavaScript.
+3. **HTML Snippet of the CSV Export Button:**
+   The button has no `id` or `href`, so it can be reliably targeted via its inner `<span>.CSV</span>` label (e.g., `//button[.//span[text()=".CSV"]]`):
+   ```html
+   <button class="group inline-flex items-center justify-center gap-1.5 h-10 rounded-lg px-4 select-none active:not-disabled:bg-[#92b1ca] active:not-disabled:text-white dark:active:not-disabled:bg-[#5b6b4f] cursor-pointer hover:bg-azure-100 bg-white dark:bg-gray-700 dark:hover:bg-gray-900 dark:hover:text-gray-50 text-azure dark:text-green-500" rel="" target="" to=""><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" class="text-2xl" height="1em" width="1em" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)"><path fill="none" d="M0 0h24v24H0z"></path><path d="M18 15v3H6v-3H4v3c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-3h-2zm-1-4-1.41-1.41L13 12.17V4h-2v8.17L8.41 9.59 7 11l5 5 5-5z"></path></svg><span>.CSV</span></button>
+   ```
+
+*Note: I have an active Cembra account and can provide an anonymized sample CSV (with exact headers and delimiters), inspect the underlying network request if needed, or test a prototype build.*
+
+KOMMENTARE (2):
+  [1] @jacboy (2026-11-13):
+      Probably depends on this: https://github.com/GiroCrab/GiroCrab/issues/289#issuecomment-6866654999
+      For the web scraping part, it's the same answer as before: I have to learn more about that to make it work.
+
+  [2] @dr-prinz (2026-11-14):
+      Hallo @eender, vielen Dank fuer die erstklassige technische Vorarbeit hier bei Cembra (#303) und bei Finpension (#300). 🦀
+      
+      Da du die Login-Flows, DOM-Selektoren bzw. die Lua-Referenz schon parat hast und selbst ein aktives Konto zum Testen besitzt: Hast du Lust, mithilfe von KI (z. B. Claude Code oder Cursor) einen eigenen Pull Request fuer den Connector zu probieren?
+      
+      Mit unserer Vorlage `girocrab-core/src/connectors/template.rs` und der `CLAUDE.md` im Repo kann eine KI aus deinen technischen Notizen (bzw. der bestehenden Lua-Extension bei Finpension) fast vollautomatisch einen Rust-Connector samt Unit-Tests generieren. Sag gerne Bescheid, falls du Lust drauf hast – wir weisen dir das Issue sofort zu und helfen beim Feinschliff.
+
+
+
+----------------------------------------------------------------------
+ISSUE #300: [Bank] Finpension (Switzerland)
+Autor: @eender | Erstellt: 2026-11-13 | Labels: help wanted
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Bank / broker:**
+Finpension (Switzerland)
+
+**Available interface** (FinTS, official REST API, PSD2 via Enable Banking, other):
+Other (No public API, FinTS, or PSD2 available – only internal web app endpoints via embedded web-session / scraping or CSV export).
+
+**Link to the public documentation:**
+- No public API documentation available (Website: https://finpension.ch)
+- Reference implementation (MoneyMoney Lua extension): https://github.com/ansgarscheffold/finpension-moneymoney
+
+KOMMENTARE: (Keine)
+
+
+----------------------------------------------------------------------
+ISSUE #290: [Bank] Schwäbisch Hall
+Autor: @Grashuepfer18 | Erstellt: 2026-11-13 | Labels: help wanted
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Bank / broker:**
+
+Schwäbisch Hall (Bausparkasse Schwäbisch Hall AG, Germany)
+
+**Available interface** (FinTS, official REST API, PSD2 via Enable Banking, other):
+
+Other: Private web interface endpoints using HTTPS/JSON and an OAuth2/OpenID Connect login via Microsoft Azure AD B2C.
+
+The authentication flow uses the custom policy `B2C_1A_SEAMLESSMIGRATION_SIGNUPORSIGNIN`, Authorization Code Flow with PKCE (S256), and a cookie-based web session.
+
+The following endpoints have been identified:
+
+- Contract list: `GET /bin/bshweb/accountcontracts`
+- Contract details and transaction history: `GET /content/bshweb/startseite/mein-konto/vertraege/_jcr_content/root/container/par/container/myaccount_accounts.account_details.json?vtn={vtn}`
+- Postbox messages: `GET /content/bshweb/startseite/mein-konto/nachrichten.bin.postboxmessage?command=getmessages`
+- Postbox message count: `GET /content/experience-fragments/bshweb/site/navigation/my-user-menu/master/_jcr_content/root/par/myaccount_menu.bin.postboxmessage?command=messagecount`
+- Document attachments: `GET /bin/bshweb/postbox/attachment?id={message_id}`
+
+The endpoints were discovered by inspecting the authenticated customer web portal. They are not documented public APIs and may change without notice.
+
+**Link to the public documentation:**
+
+No public API or developer documentation found.
+
+Customer portal: https://www.schwaebisch-hall.de/
+
+**Do you want to implement it yourself?** (see `CONTRIBUTING.md` and `connectors/template.rs`)
+
+No, I can provide technical findings and assist with testing, but I would appreciate a GiroCrab developer implementing and maintaining the connector.
+
+
+# Technische Übergabe: Schwäbisch Hall (mithilfe von KI)
+
+## 1. Überblick
+
+Die Schwäbisch-Hall-Webanwendung stellt nach erfolgreicher Anmeldung mehrere interne HTTPS-Endpunkte bereit. Die Antworten liegen überwiegend als JSON vor.
+
+**Beobachteter technischer Aufbau:**
+
+- HTTPS-basierte Webschnittstelle
+- JSON-Antworten
+- Anmeldung über Microsoft Azure AD B2C
+- OAuth 2.0 Authorization Code Flow mit PKCE (S256)
+- Serverseitige Verarbeitung des Authentifizierungs-Callbacks
+- Anschließende authentifizierte Requests über Cookies
+
+Es handelt sich nach aktuellem Kenntnisstand um eine **private Webschnittstelle**, nicht um eine öffentlich dokumentierte REST-API oder eine bestätigte PSD2-Schnittstelle.
+
+## 2. Authentifizierung
+
+### Beobachteter Ablauf
+
+1. Die Anmeldung wird über einen Azure-AD-B2C-Endpunkt gestartet.
+2. Verwendete Policy:  
+   `B2C_1A_SEAMLESSMIGRATION_SIGNUPORSIGNIN`
+3. Der OAuth-Aufruf verwendet unter anderem:
+   - `response_type=code`
+   - `response_mode=query`
+   - `code_challenge_method=S256`
+   - `scope=openid offline_access profile ...`
+   - `redirect_uri=https://www.schwaebisch-hall.de/bin/bshweb/authentication`
+4. Während des Login-Ablaufs wird ein `SelfAsserted`-Request an den B2C-Dienst gesendet. Die beobachtete Antwort enthält `{"status":"200"}`.
+5. Der Callback `/bin/bshweb/authentication` antwortet zunächst mit HTTP 302 und setzt beziehungsweise aktualisiert Cookies.
+6. Ein anschließender Request an `/bin/bshweb/authentication` liefert HTTP 200.
+7. Die dabei gesetzten Cookies werden bei späteren Requests an die Kontovertrags-Endpunkte mitgesendet.
+
+### Relevante Beobachtungen
+
+- Die Cookies aus dem Callback werden auch beim Abruf der Vertragsdaten verwendet.
+- Der Login-Callback scheint die Sitzung für die nachfolgenden Web-Endpunkte herzustellen.
+- Die konkrete interne Verarbeitung des Authorization Codes wurde nicht vollständig nachvollzogen.
+- Ob Refresh Tokens durch die Webanwendung verwendet oder serverseitig verwaltet werden, ist noch offen.
+- Ein zusätzlicher SMS-/TAN-Schritt für diesen konkreten Login-Ablauf ist noch nicht verifiziert.
+
+**Implementierungshinweis:** Keine Browser-Cookies, Tokens oder Zugangsdaten fest in GiroCrab hinterlegen. Der Authentifizierungsablauf muss separat und sicher implementiert werden. Die Sitzung sollte nicht durch das Kopieren persönlicher Browser-Cookies nachgebildet werden.
+
+## 3. Konten und Verträge
+
+### Endpunkt
+
+`GET /bin/bshweb/accountcontracts`
+
+Beobachtete Antwortstruktur:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "contracts": [
+      {
+        "type": "Bausparvertrag Sparphase",
+        "bsn": "217111 D 01",
+        "accountBalance": "&#43; 0,00",
+        "coreid": "217111",
+        "contractletter": "D",
+        "contractnumber": "01",
+        "vtn": "0021711100101"
+      }
+    ]
+  }
+}
+```
+
+Die Werte sind Beispielwerte aus der beobachteten Struktur und keine echten Zugangsdaten.
+
+### Feldzuordnung
+
+| Feld | Bedeutung |
+|---|---|
+| `type` | Vertragsart |
+| `bsn` | Vertragskennung in zusammengesetzter Darstellung |
+| `accountBalance` | Aktueller Vertragskontostand |
+| `coreid` | Interne Kernkennung |
+| `contractletter` | Vertragsbuchstabe |
+| `contractnumber` | Vertragsnummer innerhalb der Kennung |
+| `vtn` | Vertragskennung, die für Detailabfragen verwendet wird |
+
+**Bestätigt:** Jeder Vertrag hat eine eigene `vtn`. Der Wert wird als Parameter für den Abruf der Vertragsdetails verwendet.
+
+## 4. Vertragsdetails und Buchungen
+
+### Endpunkt
+
+`GET /content/bshweb/startseite/mein-konto/vertraege/_jcr_content/root/container/par/container/myaccount_accounts.account_details.json?vtn={vtn}`
+
+Die Antwort enthält unter anderem:
+
+- `contracttype`
+- `contractphase`
+- `coredata`
+- `subsidy`
+- `debit`
+- `contract`
+- `transactions`
+
+Die Transaktionen sind nach Jahr und Monat gruppiert. Beobachtete Buchungseinträge enthalten unter anderem:
+
+- Betrag (`amount`)
+- Buchungstext (`subject`)
+- Tag (`day`)
+
+Auf Jahresebene ist außerdem ein `saldo` vorhanden.
+
+### Einschränkungen der beobachteten Daten
+
+- Beträge liegen als formatierte Zeichenketten vor, nicht zwingend als numerische Werte.
+- Positive Beträge können HTML-Entities wie `&#43;` enthalten.
+- Die Buchungshistorie war in den untersuchten Antworten für 2024 bis 2026 sichtbar.
+- Ältere Buchungen wurden nicht beobachtet. Daraus lässt sich nicht schließen, dass sie grundsätzlich nicht verfügbar sind.
+- Eine eindeutige Transaktions-ID, ein separater Empfänger oder ein Verwendungszweck-Feld im üblichen Banking-Sinn wurden in der beobachteten Struktur nicht identifiziert.
+
+**Implementierungshinweis:** Beträge müssen normalisiert werden. Buchungen sollten nur dann mit einer stabilen ID versehen werden, wenn eine geeignete eindeutige Kennung vorhanden ist. Andernfalls wäre ein zusammengesetzter Schlüssel aus Vertragskennung, Datum, Betrag und Buchungstext allenfalls eine Fallback-Lösung.
+
+## 5. Postfach / Nachrichten
+
+### Nachrichten abrufen
+
+`GET /content/bshweb/startseite/mein-konto/nachrichten.bin.postboxmessage?command=getmessages`
+
+Die Antwort enthält eine Nachrichtenliste. Beobachtete Felder:
+
+| Feld | Bedeutung |
+|---|---|
+| `id` | Nachrichtenkennung |
+| `date` | Datum |
+| `title` | Titel |
+| `type` | Typkennung |
+| `read` | Gelesen-Status |
+| `text` | Nachrichteninhalt beziehungsweise Inhaltsfeld |
+| `deletable` | Löschbarkeit |
+| `typeName` | Anzeigename des Nachrichtentyps |
+| `nbaurl` | Next-Best-Action-URL |
+
+Beobachtete Beispiele für Nachrichtentitel waren unter anderem Jahreskontoauszug und Vertragsinformationen.
+
+### Nachrichtenanzahl
+
+`GET /content/experience-fragments/bshweb/site/navigation/my-user-menu/master/_jcr_content/root/par/myaccount_menu.bin.postboxmessage?command=messagecount`
+
+Der Endpunkt wird für die Nachrichtenanzahl verwendet. Das genaue Antwortschema sollte noch dokumentiert werden.
+
+### Anhänge herunterladen
+
+`GET /bin/bshweb/postbox/attachment?id={attachment_id}`
+
+Der Download wird über ein HTML-Formular ausgelöst:
+
+```html
+<form target="_blank" method="get" action="/bin/bshweb/postbox/attachment">
+  <input type="hidden" name="id" value="...">
+</form>
+```
+
+**Bestätigt:** Der Formularparameter `id` ist die Anhang-ID. Es ist nicht belegt, dass diese ID mit der Nachrichten-ID identisch ist.
+
+Die Antwort des Download-Endpunkts und der konkrete Dateityp sollten bei der Implementierung geprüft werden.
+
+## 6. Datenmodell für GiroCrab
+
+Vorgeschlagene Zuordnung:
+
+| GiroCrab-Datentyp | Schwäbisch-Hall-Quelle |
+|---|---|
+| Konto / Vertrag | Eintrag aus `contracts` |
+| Kontostand | `accountBalance` |
+| Vertragskennung | `vtn` |
+| Buchungen | `transactions` |
+| Buchungsdatum | Jahr, Monat und `day` |
+| Buchungsbetrag | `amount` |
+| Buchungstext | `subject` |
+| Nachrichten | Postfachantwort |
+| Dokumente | Attachment-Endpunkt |
+
+Es sollte geprüft werden, ob Bausparverträge im GiroCrab-Datenmodell als Konten, Sparprodukte oder eine eigene Vertragsart abgebildet werden müssen.
+
+## 7. Reproduzierbarkeit und Testdaten
+
+Die beschriebenen Endpunkte und Felder wurden im eingeloggten Webportal über die Browser-Netzwerkanalyse beobachtet.
+
+Für automatisierte Tests sollten anonymisierte oder synthetische JSON-Fixtures verwendet werden. Die oben gezeigten Werte sind ausschließlich illustrative Beispiele.
+
+**Status:** Die Daten-Endpunkte für Verträge, Vertragsdetails, Nachrichten und Anhänge sind identifiziert. Die Authentifizierung ist teilweise nachvollzogen. Eine vollständige, eigenständige Anmeldung ohne bestehende Browsersitzung ist noch nicht implementiert oder verifiziert.
+
+KOMMENTARE (12):
+  [1] @jacboy (2026-11-13):
+      Wow, was ein gut dokumentierter Vorschlag. Ich würde das implementieren!
+
+  [2] @dr-prinz (2026-11-15):
+      @jacboy setzt Du das noch um?
+
+  [3] @jacboy (2026-11-15):
+      > @jacboy setzt Du das noch um?
+      
+      Ja, bitte mir einmal zuweisen.
+
+  [4] @jacboy (2026-11-16):
+      @Grashuepfer18 hallo du schwäbischer Häuslesbesitzer, ich hab da was für dich 
+      
+      <img width="1912" height="1242" alt="image" src="https://github.com/user-attachments/assets/e301f05c-f9cc-4906-ae25-38612babcdc3" />
+
+  [5] @jacboy (2026-11-16):
+      @Grashuepfer18 danke nochmal für die sehr gute Übergabe! Der Connector ist jetzt als Draft-PR umgesetzt: #699 (macOS/iOS und Linux, Anmeldung im Browserfenster, Verträge, Umsätze und optional die Postfach-PDFs).
+      
+      Was uns noch fehlt, ist ein Test mit einem echten Vertrag. Drei Dinge kennen wir nur aus deiner Beschreibung:
+      
+      1. **Buchungen:** wie `transactions` in `account_details.json?vtn=…` genau verschachtelt ist (Objekte nach Jahr/Monat oder Listen, Feldnamen für Jahr und Monat)
+      2. **Postfach:** wo bei einer Nachricht mit Anhang die Anhang-ID steht (im `text`-Feld als Formular oder in eigenen Feldern) und welchen Dateityp `/bin/bshweb/postbox/attachment` liefert
+      3. **Darlehen:** falls du einen Vertrag in der Darlehensphase hast – ob `accountBalance` positiv oder negativ ist
+      
+      Am einfachsten wäre eine **anonymisierte** Kopie dieser beiden Antworten aus den Entwicklerwerkzeugen des Browsers (Netzwerk-Tab, nach der Anmeldung bei „Mein Konto“):
+      - `…myaccount_accounts.account_details.json?vtn=…`
+      - `…nachrichten.bin.postboxmessage?command=getmessages` (eine Nachricht mit Anhang reicht)
+      
+      Bitte vorher alle echten Werte ersetzen (Namen, Vertragsnummern, Beträge, IDs, Texte), aber **Struktur und Format beibehalten**: Schlüssel, Verschachtelung, Schreibweise der Beträge (z. B. `&#43; 1.234,56`) und Datumsangaben, HTML-Aufbau im `text`-Feld. Das reicht uns, um den Parser festzuzurren.
+      
+      Der Connector wird im nächsten Release enthalten sein. Über die beiden Kopien würden wir uns trotzdem sehr freuen, damit wir ihn vorher noch an die echten Antworten anpassen können.
+
+  [6] @Grashuepfer18 (2026-11-16):
+      Hallo @jacboy ,
+      
+      wow, du bist spitze!
+      
+      ich konnte die drei Punkte prüfen. Hier meine Ergebnisse:
+      
+      **1. Transactions**
+      
+      Die Struktur sieht folgendermaßen aus:
+      
+      - `transactions` ist ein Array mit den Jahren.
+      - Jedes Jahreselement enthält `year`, `saldo` und `month`.
+      - `month` ist ein Array mit `name`, `fullname` und `entries`.
+      - `entries` enthält die einzelnen Buchungen mit `amount`, `subject` und `day`.
+      
+      `{
+          "status": "success",
+          "data": {
+              "contracttype": 1,
+              "contractphase": 1,
+              "coredata": {
+                  "bsn": "D02",
+                  "vtn": "0000000000000",
+                  "role": "Vertragsinhaber\u003cbr /\u003e",
+                  "owners": [
+                      "Ich"
+                  ],
+                  "subsidycharge": "\u0026#43; 0,00"
+              },
+              "subsidy": {
+                  "sum": "0,00",
+                  "details": [
+                      {
+                          "year": 2025,
+                          "amount": "0,00"
+                      },
+                      {
+                          "year": 2024,
+                          "amount": "0,00"
+                      }
+                  ]
+              },
+              "debit": {
+                  "suggestedamount": "\u0026#43; 0,00",
+                  "showDirectDebitLink": true,
+                  "directdebits": [
+                      {
+                          "owner": "Ich",
+                          "iban": "iban",
+                          "bic": "bic",
+                          "bank": "bank",
+                          "interval": "monatlich",
+                          "amount": "0,00",
+                          "startdate": "März 2026"
+                      }
+                  ]
+              },
+              "contract": {
+                  "tarif": "tarif",
+                  "savesum": "0.000",
+                  "startdate": "20.04.2026",
+                  "chooseassignment": "0,00",
+                  "moreassignment": "0,00",
+                  "bonusamount": "0,00",
+                  "currentbalance": "\u0026#43; 0,00",
+                  "savinginterestrate": "0,00",
+                  "ratingnumber": "0,000"
+              },
+              "assignmentgoal": {
+                  "text": "Bitte wenden Sie sich an Ihren Berater!"
+              },
+              "transactions": [
+                  {
+                      "year": 2026,
+                      "saldo": "\u0026#43; 0,00",
+                      "month": [
+                          {
+                              "name": "Nov",
+                              "fullname": "November",
+                              "entries": [
+                                  {
+                                      "amount": "\u0026#43; 0,00",
+                                      "subject": "Einzug Zahlung",
+                                      "day": 3
+                                  }
+                              ]
+                          },
+                          {
+                              "name": "Okt",
+                              "fullname": "Oktober",
+                              "entries": [
+                                  {
+                                      "amount": "\u0026#43; 0,00",
+                                      "subject": "Einzug Zahlung",
+                                      "day": 2
+                                  }
+                              ]
+                          }
+                      ]
+                  }
+              ]
+          }
+      }`
+      
+      Die Buchungen sind also nach Jahr und Monat gruppiert.
+      
+      **2. Postfach / PDF-Anhänge**
+      
+      Die Nachrichtenantwort enthält unter anderem:
+      
+      - `id`
+      - `date`
+      - `title`
+      - `type`
+      - `read`
+      - `text`
+      - `deletable`
+      - `typeName`
+      - `nbaurl`
+      
+      `{
+          "status": "success",
+          "data": {
+              "messages": [            
+                  {
+                      "id": "12345678",
+                      "date": "16.01.2026",
+                      "title": "Ihr Jahreskontoauszug 2025",
+                      "type": "data",
+                      "read": true,
+                      "text": "text",
+                      "deletable": false,
+                      "typeName": "jahreskontoauszug",
+                      "nbaurl": "Url_bei_Fragen"
+                  }
+              ]
+          }
+      }`
+      
+      Beim Klick auf „Anhang herunterladen“ wird folgender Endpunkt aufgerufen:
+      
+      `/bin/bshweb/postbox/attachment?id={id}`
+      `/bin/bshweb/postbox/attachment?id=12345678`
+      
+      In meinem beobachteten Beispiel entspricht die ID im Download-Aufruf der Nachrichten-ID. Ob das generell so ist, kann ich noch nicht bestätigen.
+      
+      Die Anhang-ID konnte ich in der JSON-Antwort selbst nicht eindeutig finden. Der Download-Aufruf wurde beim Klick auf den Button ausgelöst.
+      
+      **3. Darlehen**
+      
+      Bei einem Darlehensvertrag wird der Kontostand in meinem Beispiel negativ dargestellt:
+      
+      `accountBalance: "- 1111,11"`
+      
+      Damit sind die drei Punkte aus meiner Sicht weitgehend geklärt.
+      
+      Viele Grüße
+
+  [7] @jacboy (2026-11-16):
+      @Grashuepfer18 vielen Dank, das hilft enorm! Mit deinen Beispielen haben wir drei Stellen gefunden, die wir in #699 noch anpassen: die Monate in `name`/`fullname`, die Nachrichten-ID als Anhang-ID und den negativen Saldo bei Darlehen.
+      
+      Zwei kurze Rückfragen hätten wir noch:
+      
+      1. **Vertragsart beim Darlehen:** Welcher Text steht in der Vertragsliste (`/bin/bshweb/accountcontracts`) im Feld `type` bei deinem Darlehensvertrag? Beim Sparvertrag ist es z. B. „Bausparvertrag Sparphase“. Und welche Werte haben dort `contracttype` und `contractphase` in `account_details.json`?
+      2. **Nachrichten ohne Anhang:** Gibt es im Postfach auch Nachrichten, die keinen Anhang haben (nur Text)? Falls ja: Welchen `type` bzw. `typeName` haben sie im Vergleich zu einer Nachricht mit Anhang (z. B. `"type": "data"` beim Jahreskontoauszug)?
+      
+      Wie gehabt reichen anonymisierte Werte, nur die Feldnamen und die Art der Werte (Text, Zahl) sind wichtig.
+
+  [8] @Grashuepfer18 (2026-11-16):
+      @jacboy 
+      
+      Danke für die Rückfragen! Ich habe beide Fälle überprüft.
+      
+      ### 1. Vertragsart beim Darlehen
+      
+      Bei meinem Darlehensvertrag werden folgende Werte zurückgegeben:
+      
+      - `type`: `"Tilgungsaussetzungsdarlehen"`
+      - `contracttype`: `3` (Zahl)
+      - `contractphase`: `1` (Zahl)
+      
+      ### 2. Nachrichten mit und ohne Anhang
+      
+      Ich konnte beide Varianten in meinem Postfach finden.
+      
+      **Nachricht ohne Anhang:**
+      
+      ```json
+      {
+        "type": "message",
+        "typeName": "service_wop",
+        "read": true,
+        "deletable": true,
+        "text": "text",
+        "nbaurl": "UrlAnfrage"
+      }
+      ```
+      
+      **Nachricht mit Anhang (Jahreskontoauszug):**
+      
+      ```json
+      {
+        "type": "data",
+        "typeName": "jahreskontoauszug",
+        "read": true,
+        "deletable": false,
+        "text": "text",
+        "nbaurl": "UrlAnfrage"
+      }
+      ```
+      
+      Der wesentliche Unterschied liegt offenbar in der Kombination aus `type` und `typeName`:
+      
+      - Nachricht ohne Anhang: `message` / `service_wop`
+      - Nachricht mit Anhang: `data` / `jahreskontoauszug`
+      
+      Alle Beispiele sind anonymisiert.
+      
+      Vg
+
+  [9] @jacboy (2026-11-16):
+      @Grashuepfer18 danke, damit sind beide Punkte geklärt! Monatsgruppen (`name`/`fullname`) und Anhänge bei `type: "data"` sind jetzt in #699 umgesetzt, das Tilgungsaussetzungsdarlehen wird als Darlehen erkannt.
+      
+      Zwei letzte Kleinigkeiten zum Postfach, falls du sie ohne großen Aufwand prüfen kannst:
+      
+      1. **Dateityp:** Ist der Download bei allen Nachrichten mit `type: "data"` ein PDF? Im Netzwerk-Tab zu sehen am `Content-Type` der Antwort von `/bin/bshweb/postbox/attachment?id=…` (z. B. `application/pdf`). Falls es auch andere Typen gibt (etwa Bilder oder ZIP), wäre der `Content-Type` und der zugehörige `typeName` hilfreich.
+      2. **Gelesen-Status:** Wird eine ungelesene Nachricht (`"read": false`) dadurch als gelesen markiert, dass man nur den Anhang herunterlädt, ohne die Nachricht selbst zu öffnen? Du erkennst es daran, ob `read` beim nächsten Laden des Postfachs auf `true` steht.
+      
+      Beides ist kein Hindernis: GiroCrab speichert nur PDFs; andere Dateitypen würden beim Abruf als „nicht abrufbar“ gemeldet. Wir wollen das aber richtig behandeln und in der Doku korrekt beschreiben, ob der Abruf den Gelesen-Status im Portal ändert.
+
+  [10] @Grashuepfer18 (2026-11-16):
+      @jacboy 
+      Danke! Ich habe den Download geprüft:
+      
+      **1. Dateityp**
+      
+      Der Response-Header `Content-Type` lautet:
+      
+      `application/pdf`
+      
+      Bei meinen bisher getesteten Nachrichten mit `type: "data"` wurde also ausschließlich ein PDF zurückgegeben. Andere Dateitypen konnte ich bisher nicht feststellen.
+      
+      **2. Gelesen-Status**
+      
+      Das kann ich momentan leider nicht überprüfen, da sich in meinem Postfach aktuell keine ungelesenen Nachrichten (`"read": false`) befinden.
+      
+      Ich kann daher nicht bestätigen, ob allein der Download eines Anhangs den Gelesen-Status verändert.
+
+  [11] @jacboy (2026-11-16):
+      @Grashuepfer18 vielen Dank fürs Prüfen! Dass die Anhänge als `application/pdf` kommen, passt genau zu unserer Umsetzung; das steht jetzt so in der Doku in #699.
+      
+      Zum Gelesen-Status: Kein Problem, das lassen wir als offenen Punkt stehen. Falls bei dir irgendwann eine neue, ungelesene Nachricht mit Anhang eingeht, wäre es super, wenn du kurz prüfst, ob `read` nach dem reinen Download des Anhangs (ohne die Nachricht zu öffnen) auf `true` springt, und hier Bescheid gibst.
+
+  [12] @Grashuepfer18 (2026-11-16):
+      @jacboy 
+      Vielen Dank!!
+      
+      Ich werde den Gelesen-Status beim nächstem mal gerne prüfen.
+
+
+
+----------------------------------------------------------------------
+ISSUE #287: [Bank] Zürcher Kantonalbank (ZKB)
+Autor: @eender | Erstellt: 2026-11-13 | Labels: help wanted
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Bank / broker:**
+Zürcher Kantonalbank (ZKB) – Switzerland
+
+**Available interface** (FinTS, official REST API, PSD2 via Enable Banking, other):
+Other (Official Open Banking API via SIX bLink / OpenWealth for certified B2B providers; EBICS; or embedded web-session / CAMT.053 & CSV import for retail accounts. No FinTS or EU-PSD2).
+
+**Link to the public documentation:**
+- ZKB API Developer Portal (SIX bLink / OpenWealth): https://www.zkb.ch/de/lps/unternehmen/digitales-banking/api-developer-portal.html
+- Reference implementation (MoneyMoney Lua extension via web scraping): https://github.com/ansgarscheffold/zkb-moneymoney
+
+KOMMENTARE (1):
+  [1] @jacboy (2026-11-13):
+      erst mal nicht auf meiner Prioritätsliste, weil Import nur mit Scraping sinnvoll funktioniert. Dazu brauche ich etwas mehr Erfahrung im Scraping, die ich noch sammeln muss. @eender kannst du mich in 2w noch mal erinnern?
+
+
+
+----------------------------------------------------------------------
+ISSUE #279: Seitenleiste: „Bank hinzufügen“ zu den Konten verschieben und in „Konto hinzufügen“ umbenennen?
+Autor: @andre68723 | Erstellt: 2026-11-13 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+## Beobachtung
+
+In der Seitenleiste gibt es zwei „+“-Buttons mit unterschiedlicher Logik:
+
+- **Kategorien:** Der Button „Neue Hauptkategorie …“ sitzt im Header der Sektion „Kategorien“, direkt beim Thema.
+- **Konten:** Der Button „Bank hinzufügen …“ sitzt dagegen ganz unten in der Fußleiste, neben „Verschlüsselt · zuletzt abgerufen“ (`SidebarView.swift`, `safeAreaInset(edge: .bottom)`). Er ist leicht zu übersehen und gehört optisch zu keiner Sektion.
+
+## Vorschläge
+
+**a) Position:** Sollte der Button in den Header der Sektion „Konten“ wandern, analog zu „Neue Hauptkategorie …“? Dann findet man beide Aktionen an derselben Stelle: Konto bzw. Kategorie anlegen jeweils dort, wo die Liste steht.
+
+**b) Bezeichnung:** Sollte „Bank hinzufügen“ in „Konto hinzufügen“ umbenannt werden (Button, Tooltip, Menüeintrag *Ablage › Bank hinzufügen …*, Assistent-Titel)? Begründung: Der Assistent legt nicht nur Banken an, sondern auch Konten ohne klassische Bank (z. B. PayPal, Depot, Kreditkarte, Portal-/CSV-Import, manuelle Konten). „Konto“ passt auch zur Sektion und zur Kontoliste, in der es bereits „Konto hinzufügen“ gibt.
+
+Gegenargument zu b): Bei FinTS und PSD2 legt man tatsächlich eine Bankverbindung an, aus der dann mehrere Konten entstehen. Eventuell passt „Konto oder Bank hinzufügen“ oder „Konto verbinden“ besser.
+
+Rein UI/Text, kein Core-Change.
+
+KOMMENTARE (1):
+  [1] @jacboy (2026-11-13):
+      Ich arbeite gerade daran. Melde mich später dazu mit ein paar Ideen.
+
+
+
+----------------------------------------------------------------------
+ISSUE #272: MM-Import: Unterkategorien werden nicht berücksichtigt.
+Autor: @jacboy | Erstellt: 2026-11-13 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+> Hallo, beim Import aus MoneyMoney erden Kategorien aus Unterkategorien nicht richtig übernommen. (Bin zum ersten mal auf Github geloggt..)
+>  
+
+ _Originally posted by @melzermatthias in [#166](https://github.com/GiroCrab/GiroCrab/issues/166#issuecomment-6859758673)_
+
+KOMMENTARE (2):
+  [1] @jacboy (2026-11-13):
+      Ich prüfe das.
+
+  [2] @jacboy (2026-11-14):
+      Hallo @melzermatthias, danke für die Meldung! Ich habe den Import aus der MoneyMoney-Datenbank mit mehreren Verschachtelungsebenen (3+ Ebenen, gleiche Namen unter verschiedenen Eltern) getestet. Dort kommen die Unterkategorien bei mir korrekt an, auch in der Seitenleiste.
+      
+      Damit ich den Fehler nachstellen kann, brauche ich noch ein paar Angaben:
+      
+      1. Hast du die MoneyMoney-**Datenbank** importiert oder eine exportierte **Datei** (CSV/XML)?
+      2. Welche Unterkategorie kommt falsch an? Zum Beispiel: „In MoneyMoney: Haushalt › Lebensmittel, in GiroCrab: Lebensmittel ohne Oberkategorie.“
+      3. Falls du eine Datei importiert hast: Wie steht die Kategorie in der Spalte „Kategorie“ der Export-Datei? Eine Zeile mit geschwärzten Beträgen und Namen reicht. Steht dort nur „Lebensmittel“ oder der ganze Pfad, etwa „Haushalt\Lebensmittel“?
+      4. Welche GiroCrab-Version nutzt du?
+      
+      Mit einem Beispiel kann ich den Fall als Test nachbauen und beheben.
+
+
+
+----------------------------------------------------------------------
+ISSUE #253: [Feature] Splitbuchung von jährlichen Zahlungen auf Monate für Auswertung
+Autor: @oli792dev | Erstellt: 2026-11-13 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Problem / use case:**
+in Moneymoney kann man relativ einfach Splitbuchungen auf Kategorien verteilen oder manuell auch zeitlich verteilen, indem man die Splitbuchung umdatiert. Es ist aber ein relativ hoher manueller Aufwand.
+**Proposed solution:**
+Automatisiertes Splitbuchen auf eine konfigurierbare Zeitperiode für die Auswertung
+**Alternatives considered:**
+
+> ⚠️ Do **not** attach real bank data, screenshots with real bookings or credentials.
+
+KOMMENTARE (3):
+  [1] @jacboy (2026-11-13):
+      Bitte beschreibe das Feature genauer, auch mit Beispeil-Screenshots und ob du die Funktionen nur aus einer Marktbegleiter-App kopieren möchtest oder auch eigene ideen noch implementiert werden sollen.
+
+  [2] @oli792dev (2026-11-13):
+      Die Marktbegleiter-App hat diese Funktion in der Form nicht :) Ich stelle mir es in etwa so vor:
+      
+      Man gibt jährlich per Einmalzahlung 600 Euro für das Fitnessstudio, KFZ-Versicherung oder whatever aus. Eigentlich ist es aber ja eine Dienstleistung, die man über das ganze Jahr konsumiert.
+      Dann wäre die Funktion so, dass man diese Einmalzahlung nicht nur per Kategorie splitten kann (bspw. von den 600 Euro insgesamt dann 500 Euro zu "Sport" und 100 Euro zu "Ernährung" wegen Getränke-Flat im Fitnessstudio), sondern auch auf das Jahr umlegen kann.
+      D.h. bei monatlicher Umlage pro Monat dann 500/12 bzw. 100/12 in der Analyse, oder quartalsweise 500/4 bzw. 100/4 etc.
+
+  [3] @dr-prinz (2026-11-13):
+      Sehr coole Idee, @oli792dev! Eine solche periodengerechte Umlage (Rechnungsabgrenzung für Jahres-/Quartalszahlungen wie KFZ-Versicherung oder Jahresabos in den Auswertungen/Budgets, ohne den realen Kontosaldo auf der Zeitachse zu verfälschen) wäre ein echtes Alleinstellungsmerkmal.
+
+
+
+----------------------------------------------------------------------
+ISSUE #252: [Feature] Erweiterung zu einer vollständigen Wealth/Asset Management Applikation
+Autor: @oli792dev | Erstellt: 2026-11-13 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Problem / use case:**
+
+**Proposed solution:**
+Gegenbuchung von bspw. Kreditzahlungen (Tilgung/Zins) ggü. einer eingefügten Immobilie oder anderen Assets, Möglichkeit zum Tracking des Asset-Werts mit Historisierung
+**Alternatives considered:**
+
+> ⚠️ Do **not** attach real bank data, screenshots with real bookings or credentials.
+
+KOMMENTARE (1):
+  [1] @jacboy (2026-11-13):
+      Gegenbuchungen haben wir auf der Roadmap.
+
+
+
+----------------------------------------------------------------------
+ISSUE #251: [Feature] Support für MoneyMoney Plugins
+Autor: @oli792dev | Erstellt: 2026-11-13 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Problem / use case:**
+Für MoneyMoney gibt es haufenweise Plugins, bspw. um den Bestand von Kryptowährungen oder Aktiendepots, die nicht direkt unterstützt werden, abzufragen.
+**Proposed solution:**
+Nativer support für .lua Plugins
+**Alternatives considered:**
+
+> ⚠️ Do **not** attach real bank data, screenshots with real bookings or credentials.
+
+KOMMENTARE (10):
+  [1] @jacboy (2026-11-13):
+      Spannend, aber aufwändig zu implementieren. Außerdem nicht klar, ob einfach so kompatibel, da wir mit Rust arbeiten. 
+      ich mache mir mal Gedanken dazu.
+
+  [2] @jacboy (2026-11-13):
+      @oli792dev gib mir mal ein paar Plugins mit denen du arbeiten magst, bitte.
+
+  [3] @oli792dev (2026-11-13):
+      Ich nutze aktiv:
+      https://github.com/VolksK/Kraken-MoneyMoney - für Kraken-Bestandsabfrage per API
+      https://github.com/gering/MoneyMoney-CoinGecko-Extension - um Bestände auf beliebigen eigenen Krypto-Adressen abzufragen
+      https://github.com/dark-m0de/EODDataPortfolio-MoneyMoney - um Bestände von Aktienportfolios bei Anbietern abzufragen, die nicht nativ unterstützt werden (bspw. ETRADE von Morgan Stanley)
+
+  [4] @dr-prinz (2026-11-13):
+      Danke für die konkreten Links, @oli792dev! Zwei deiner drei Anwendungsfälle (Self-Custody-Krypto-Bestände/Preise und externe Portfolio-Kurse) passen direkt in unsere geplante **Pluggable-Price-Source- & Sachwerte-Architektur (#87)**, und für **Kraken** ist ein nativer, schneller Rust-API-Connector deutlich sicherer und wartungsärmer als eine eingebettete Lua-Engine.
+
+  [5] @eender (2026-11-13):
+      Erstmal danke für eure Arbeit – wirklich ein sehr cooles Projekt! Ich fände folgende Integrationen super und allgemein wäre etwas mehr Support für Schweizer Banken echt genial :D
+      
+      https://github.com/krambox/moneymoney-ibkr – Interactive Brokers
+      https://github.com/ansgarscheffold/zkb-moneymoney – Zürcher Kantonalbank
+      https://github.com/dafuqwhocares/finpension-moneymoney – Finpension
+
+  [6] @jacboy (2026-11-13):
+      @eender bitte dazu ein eigenes issue machen. vorrangig Bank-eigene api, FinTS oder PSD2
+
+  [7] @jacboy (2026-11-13):
+      nachdem ich mir da bisschen den kopf drüber zerbrochen habe, bin ich dagegen, dass wir lua-extensions zulassen.
+      @oli792dev das Kraken Konto kann ich dir gern bauen, bitte mach ein separates ISsue mit ein paar Informationen wie man dort ran kommen.
+       
+      Depot und Aktien habe ich persönlich gar nicht auf dem Schirm - ich kann dazu wenig beitragen.
+      
+      https://github.com/gering/MoneyMoney-CoinGecko-Extension kann mans sicher auch für Rust bauen.
+      https://github.com/dark-m0de/EODDataPortfolio-MoneyMoney - das hier ruft einfach nur irgendwo (wo?) bestimmte Aktienkurse ab? Das seh ich eher bei einem Broker als in GiroCrab...in den letzten 5 Jahre hat sich ja auch bei den Brokern einiges getan.
+
+  [8] @24unix (2026-11-13):
+      > nachdem ich mir da bisschen den kopf drüber zerbrochen habe, bin ich dagegen, dass wir lua-extensions zulassen.
+      
+      Warum?
+      NeoVim kann lua, selbst dieser einfache Billigrouter, den viele Provider als HighTech anpreisen kann lua.
+      
+      
+      Ich habe keinen dringenden Bedarf, bin aber neugierig.
+
+  [9] @dr-prinz (2026-11-14):
+      @24unix Gute und berechtigte Frage! Technisch ließe sich ein Lua-Interpreter über `mlua` in Rust tatsächlich sehr schlank einbetten – am reinen Lua scheitert es also gar nicht.
+      
+      Die Herausforderung (und warum @jacboy für die Haupt-Anbieter erst mal native Rust-Konnektoren bevorzugt) liegt an drei praktischen Punkten:
+      
+      1. **Die MoneyMoney-Host-API (`WebBanking`, `Connection`, `HTML()`, `crypto`, `MM.*`):** Ein nackter Lua-Interpreter allein reicht nicht, um bestehende `.lua`-Extensions unverändert auszuführen. Man müsste auch die spezifische MoneyMoney-Host-Umgebung (HTTP-Session-Handling, XPath-/CSS-DOM-Parser, Keychain-Dialoge) als Kompatibilitätsschicht in `girocrab-core` nachbauen.
+      2. **iOS / iPadOS (App Store Guideline 2.5.2):** Auf macOS können wir nachgeladene Benutzerskripte problemlos erlauben; auf iOS/TestFlight ist Apple beim Nachladen externer Skripte restriktiv, während native Rust-Konnektoren automatisch auf **macOS und iOS** identisch laufen.
+      3. **`.lua` als perfekte Blaupause für Rust:** Da bestehende `.lua`-Extensions bereits alle Endpunkte, Header und Parser-Regeln im Klartext enthalten, lassen sie sich mit Claude Code und unserem `connectors/template.rs` oft in unter einer Stunde 1:1 in einen nativen Rust-Connector inkl. Unit-Tests übersetzen (genau so sind gestern z. B. schon IBKR #294 und quirion #296 entstanden).
+      
+      **Fazit – beides schließt sich gar nicht aus:**
+      - **Für häufig genutzte Anbieter (wie Kraken, CoinGecko, Schweizer Banken):** Die portieren wir anhand der `.lua`-Vorlagen direkt nach Rust, damit sie sofort auf Mac + iPhone laufen.
+      - **Für eigene Skripte & Nischen-Quellen auf macOS:** Wir wollen die Tür für Lua gar nicht dogmatisch zuschlagen – falls du oder jemand aus der Community Lust hat, als Experiment mal einen Prototyp mit `mlua` und den wichtigsten `WebBanking`/`Connection`/`HTML`-Brückenfunktionen in `girocrab-core` auszuprobieren, unterstützen wir das sehr gerne!
+
+  [10] @24unix (2026-11-14):
+      @dr-prinz danke für Deine Einschätzung.
+      
+      Wie gesagt, ich habe keinen dringenden Bedarf, und nativ in Rust wäre mir auch lieber.
+      
+      Aktuell verwende ich diese Plugins:
+      - SEPA Direct Debits (hat sich mit GiroCrab wohl eh erledigt)
+      - auxmoney auch nicht wirklich wichtig, die bedienen keinen Privatkunden mehr, da tröpfeln nur noch Centbeträge
+      - Bitcoin Das wäre nicht uninteressant
+      - bitcoin.de Schin ewig nicht mehr genutzt
+
+
+
+----------------------------------------------------------------------
+ISSUE #243: [Feature] Zweitkarten und Buchungsinhalte von American Express erfassen
+Autor: @hacs-gh-user | Erstellt: 2026-11-13 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Problem / use case:**
+Beim Abruf von American Express mittels Screen Scraping wird jede Buchung eines Hauptkartenkonto abgeholt, jedoch - im Gegensatz etwa zu MM - nicht aufgeführt, zu welchem Partnerkartenkonto die Buchung gehört. Das führt dazu, dass bei zwei oder drei Partnerkarten zu einem Hauptkartenkonto alle Buchungen gleich wirken und innerhalb von GiroCrab nicht weiter unterschieden werden können.
+
+Ebenfalls wird nicht der komplette Buchungstext angezeigt. Dieser erscheint nur sehr versteckt in den SEPA & Bank-Rohdaten. Wenn etwa eine PayPal-Buchung von American Express abgewickelt wird, wird sie geführt als "PayPal * Händler Nummer". Alles nach dem initialen PayPal wird durch GiroCrab leider in der Tabellen-Anzeige weggeschnitten, was es faktisch unmöglich macht, zu erkennen, was hier verrechnet wird. 
+
+**Proposed solution:**
+- Buchungen von Partnerkarten automatisch einem virtuellen zweiten oder dritten American Express-Konto zuschreiben (obwohl es nur über einen Hauptkartenkonto-Account abgerufen werden kann). Alternativ: In der Tabellen-Ansicht anzeigen, zu welchem Kreditkartenkonto die Buchung genau gehört.
+- Buchungstexte in der Tabellen-Ansicht genau so weitergeben, wie sie von American Express im Webinterface angezeigt werden.
+
+**Alternatives considered:**
+- Zusätzlich jeden Partnerkarten-Account anlegen mittels Screen-Scraping (führt zu unerwünschten Doppelbuchungen).
+- PayPal-Zugang zusätzlich in GiroCrab hinterlegen (funktioniert, löst das grundsätzliche Problem von schwerer Zuordnebarkeit von Buchungen bei der American Express-Abrechnung nur leider nicht).
+
+> ⚠️ Do **not** attach real bank data, screenshots with real bookings or credentials.
+
+KOMMENTARE (7):
+  [1] @jacboy (2026-11-13):
+      > * Buchungen von Partnerkarten automatisch einem virtuellen zweiten oder dritten American Express-Konto zuschreiben (obwohl es nur über einen Hauptkartenkonto-Account abgerufen werden kann). Alternativ: In der Tabellen-Ansicht anzeigen, zu welchem Kreditkartenkonto die Buchung genau gehört.
+      
+      find ich gut.
+      
+      hast du zufällig auch mehrere American Express karten (z. b. eine private grüne und eine business platinum karte) und könntest das dortige verhalten testen?
+
+  [2] @hacs-gh-user (2026-11-13):
+      Ich habe zwar mehrere Karten, die sind aber jeweils leider nur als Partnerkarten geführt also einem Hauptkartenkonto zugeordnet (grüne Hauptkarte, zwei Partnerkarten). Innerhalb dieses Settings kann ich aber gerne alles testen.
+      
+      Gerade zusätzlich gesehen, dass #224 hiermit direkt verlinkt ist in Bezug auf die Buchungsinhalte (hier am Bsp. von Amex) - da geht es ja um die "Mehranzeige" von Details in der Transaktionszeile. Der Aspekt wird also dort schon weitergeführt.
+
+  [3] @felixschilling (2026-11-14):
+      > > * Buchungen von Partnerkarten automatisch einem virtuellen zweiten oder dritten American Express-Konto zuschreiben (obwohl es nur über einen Hauptkartenkonto-Account abgerufen werden kann). Alternativ: In der Tabellen-Ansicht anzeigen, zu welchem Kreditkartenkonto die Buchung genau gehört.
+      > 
+      > find ich gut.
+      > 
+      > hast du zufällig auch mehrere American Express karten (z. b. eine private grüne und eine business platinum karte) und könntest das dortige verhalten testen?
+      
+      Hey zusammen, 
+      
+      ich habe eine private grüne Amex und mit der GmbH eine Amazon Business Prime Amex, diese werden beide über meinen privaten Account administriert und abgerufen (geht es anders?), dementsprechend habe ich dort das selbe Verhalten wie @hacs-gh-user.
+
+  [4] @dr-prinz (2026-11-14):
+      Hallo @hacs-gh-user und @felixschilling, da ihr beide das Setup mit Amex-Haupt- und Partnerkarten live im Einsatz habt: Haette einer von euch Lust, die Anpassung im Amex-Scraper (`girocrab-core/src/connectors/`) mithilfe von KI (Claude Code / Cursor) als Pull Request auszuprobieren? 🦀
+      
+      Durch unsere `CLAUDE.md` findet sich die KI im bestehenden Amex-Connector sofort zurecht, und ihr koennt direkt gegen eure echten Abrechnungsdaten pruefen, welches JSON-/DOM-Feld die Partnerkarte bzw. den ungekuerzten PayPal-Verwendungszweck liefert. Gebt gerne kurz Bescheid, falls wir das Issue einem von euch zuweisen sollen.
+
+  [5] @felixschilling (2026-11-15):
+      Hi @dr-prinz ich schaue es mir heute mal an, gerne mir zuweisen
+
+  [6] @dr-prinz (2026-11-15):
+      Super, danke dir @felixschilling – #243 ist dir zugewiesen! 🦀 Sag jederzeit Bescheid, falls du beim Amex-Scraper (`portal_import.rs`) Fragen hast.
+
+  [7] @felixschilling (2026-11-17):
+      Hi zusammen, erster Draft #822 funktioniert, muss aber noch überarbeitet werden, insbesondere was die Änderungen im allgemeinen Code angeht, welcher nicht Amex spezifisch ist.
+
+
+
+----------------------------------------------------------------------
+ISSUE #237: [Feature] MoneyMoney-Import: auch stillgelegte und nicht unterstützte Konten übernehmen
+Autor: @jacboy | Erstellt: 2026-11-13 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Aus der Diskussion https://github.com/GiroCrab/GiroCrab/discussions/158.
+
+Wer ein Konto in MoneyMoney deaktiviert hat, braucht keine Bankverbindung mehr, will aber die Umsätze behalten. Auch Konten, die nicht automatisch abrufbar sind, sollten importiert werden.
+
+## Vorschlag
+- Der Import übernimmt alle Konten, auch archivierte oder nicht unterstützte, als Offline-Konten ohne Connector (siehe #81, #86).
+- Der Dialog zeigt vorab, was importiert wird.
+
+## Hinweis
+Teilweise verhält sich der Import laut Maintainer schon so. Vor der Umsetzung gegen den aktuellen Stand prüfen. Siehe auch #94.
+
+KOMMENTARE (8):
+  [1] @jacboy (2026-11-13):
+      Ich setze das um.
+
+  [2] @24unix (2026-11-13):
+      Bei mir werden stillgelegte Konten übernommen, was fehlt?
+
+  [3] @jacboy (2026-11-13):
+      Das muss ich herausfinden :)
+
+  [4] @24unix (2026-11-13):
+      Wenn Du dabei bist, inaktive Konten wurden beim Import nicht als inaktiv markiert, das habe ich im aktuellen Ticket schon gefixed.
+
+  [5] @jacboy (2026-11-13):
+      > Wenn Du dabei bist, inaktive Konten wurden beim Import nicht als inaktiv markiert, das habe ich im aktuellen Ticket schon gefixed.
+      
+      Verlinkt das bitte mal.
+
+  [6] @24unix (2026-11-13):
+      > > Wenn Du dabei bist, inaktive Konten wurden beim Import nicht als inaktiv markiert, das habe ich im aktuellen Ticket schon gefixed.
+      > 
+      > Verlinkt das bitte mal.
+      
+      https://github.com/GiroCrab/GiroCrab/issues/229#issuecomment-6857509210
+      
+      Ich baue gerade, wie ich mir das vorstelle, und mir wurden inaktive Accounts angeboten, was nicht viel Sinn macht.
+
+  [7] @jacboy (2026-11-13):
+      ich würde hier #237 mal Zurücks stellen und warten bis du gebaut hast, ok?
+
+  [8] @24unix (2026-11-13):
+      @jacboy Müsste bald fertig sein, habe die letzte halbe Stunde erst mal Antworten auf Issue, und die MM Seite gelesen.
+
+
+
+----------------------------------------------------------------------
+ISSUE #235: [Feature] Kompakte Buchungsliste ohne Einzelkarten
+Autor: @jacboy | Erstellt: 2026-11-13 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Aus der Diskussion https://github.com/GiroCrab/GiroCrab/discussions/158.
+
+Jede Buchung wird als eigene Karte mit viel Freiraum dargestellt. Das wirkt unruhig und zeigt wenige Zeilen pro Bildschirm.
+
+## Vorschlag
+- Dichte-Modus „Kompakt“ mit schlanken Zeilen und Trennlinien statt Karten.
+- Gekoppelt an die laufende Umstellung der Liste auf den Apple-Standard (HIG).
+
+Siehe auch #131 (Transaktionsdichte) und #224.
+
+KOMMENTARE: (Keine)
+
+
+----------------------------------------------------------------------
+ISSUE #228: [Feature] Die Möglichkeit Transaktionen mit (einem) Tag(s) zu versehen
+Autor: @JavaRene | Erstellt: 2026-11-13 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Wenn man gemeinsame Konten hat, wäre es schön, wenn man einzelne Transaktionen mit Tags (Firma, Geschäftlich, Frau, Sohn, Familie, Urlaub, etc.) versehen kann. Ist sowas geplant?
+
+KOMMENTARE (13):
+  [1] @dr-prinz (2026-11-13):
+      Hallo @JavaRene, danke für den Vorschlag! Ja, **Tags / Schlagwörter** (sodass man einer Buchung zusätzlich zur Kategorie beliebig viele freie Tags wie `Urlaub`, `Steuer`, `Familie` oder `Geschäftlich` zuweisen und danach filtern/Regeln erstellen kann) passen perfekt in unser Konzept. Wir stellen aktuell in #206 noch die Datenbank-Migrationen sauber um und nehmen Tags danach mit auf die Roadmap.
+
+  [2] @ralph303 (2026-11-13):
+      Vielleicht stehe ich gerade auf dem Schlauch, aber inwiefern sollen sich Tags dann von den Kategorien unterscheiden, rein technisch gesehen?
+      Ich markiere aktuell auch solche Transaktionen, die z.B. die Kinder betreffen, wüsste jetzt aber nicht wo der Nachteil ist diese als Kategorie "Kinder" zu taggen.
+
+  [3] @dr-prinz (2026-11-13):
+      @ralph303 Sehr gute Frage! Der entscheidende Unterschied ist **1:1 (Hierarchie) vs. n:m (Querschnitts-Dimension)**:
+      - **Kategorie (genau 1 pro Buchung / Split):** Beantwortet die Frage *„Was für eine Ausgabe/Einnahme war es?“* (z. B. `Lebensmittel`, `Restaurant`, `Tanken`, `Arzt`). Damit geht die Gesamtsumme aller Kategorien immer sauber auf 100 % auf.
+      - **Tags (beliebig viele pro Buchung, quer über alle Kategorien):** Beantworten Fragen wie *„Für wen?“*, *„Welches Projekt/Ereignis?“* oder *„Steuerlich relevant?“* (z. B. `#Sohn`, `#Sommerurlaub-2026`, `#Steuer`, `#Auslage-Firma`).
+      
+      So bleibt das Eis oder das Hotel im Urlaub sauber in der Kategorie `Restaurant` bzw. `Reisen`, und gleichzeitig siehst du mit einem Klick auf `#Sommerurlaub-2026` alle Kosten des gesamten Urlaubs über sämtliche Kategorien und Konten hinweg.
+
+  [4] @JavaRene (2026-11-13):
+      Beispiel:
+      Kategorie: [Mobilität]->[Tanken]
+      Tag: Golf oder Corsa oder Frau (weil Auto der Frau), etc.
+      
+      Kategorie: [Versicherung]->[Unfallversicherung]
+      Tag: Sohn oder Tochter oder Ich oder Frau (natürlich dann mit den Namen der jeweiligen ;-) )
+
+  [5] @dr-prinz (2026-11-14):
+      Hallo @JavaRene, falls du Lust hast, auch aktiv am Projekt mitzubauen: Egal ob mit oder ohne Rust-/Swift-Vorkenntnisse – mithilfe von KI (z. B. Claude Code oder Cursor) und unserer `CLAUDE.md` im Repository entstehen hier gerade viele tolle erste Community-PRs. Falls du dich mal an einem kleineren UI-Thema (oder an #316 / #228) versuchen moechtest, gib einfach kurz Bescheid, wir unterstuetzen dich gerne beim Einstieg. 🦀
+
+  [6] @JavaRene (2026-11-14):
+      Hallo @dr-prinz 
+      Ich fürchte, da habe ich einfach zu wenig  Erfahrung. Ich habe im Studium schon mal ein Programm in Java schreiben müssen (Petrinetz Editor) und habe rudimentäre C++-Kenntnisse (Selbststudium). Von Git etc. habe ich leider keine Ahnung. Ich fürchte, ihr seid einfach auf einem anderen Level unterwegs. 
+      
+      Habe aber gerade beim Abendbrot zu meiner Frau gesagt, dass ich das total bewundere, wie ihr zusammenarbeitet. Und euch abstimmt und dieses richtig coole Programm auf die Beine gestellt habt und mit weiteren Features ausstattet.
+
+  [7] @dr-prinz (2026-11-14):
+      @JavaRene 
+      Danke. macht auch Spaß! 
+      Wir haben dafür gerade eine interaktive Schritt-für-Schritt-Anleitung und ein kurzes 10-Sekunden-Video gebaut – schau mal hier rein (läuft direkt im Browser inkl. Prompt-Kopierfunktion für #388):
+      
+      👉 **[Interaktive Mitbau-Anleitung öffnen (In 4 Schritten mit KI zum eigenen PR)](https://girocrab.de/girocrab_mitbau_anleitung.html)**
+      🎬 **[10s Promo-Animation mit Sound ansehen](https://girocrab.de/girocrab_10s_promo_video%20(1).html)**
+      
+      **Kurzfassung für #388 (Erscheinungsbild System / Hell / Dunkel):**
+      1. **Claude Code** oder **Cursor** öffnen und `https://github.com/GiroCrab/GiroCrab.git` klonen.
+      2. Diesen Prompt reinkopieren:
+         > `Lies CLAUDE.md und setze Issue #388 um: Füge in Einstellungen > Allgemein eine Auswahl „Erscheinungsbild“ (System / Hell / Dunkel) hinzu, speichere sie per UserDefaults und wende .preferredColorScheme(...) an. Führe danach swift test und alle Linter aus und starte die App im Demo-Modus mit GIROCRAB_DEMO_SEED=1.`
+      3. Wenn es in der Demo-Vorschau gut aussieht, einfach eingeben:
+         > `Erstelle einen neuen Branch, committe die Änderungen und öffne einen Pull Request für #228.`
+
+  [8] @JavaRene (2026-11-15):
+      /assign
+
+  [9] @github-actions (2026-11-15):
+      Super, @JavaRene, das Issue ist dir zugewiesen. 🚀 Mit `/unassign` gibst du es wieder frei. Details: `CONTRIBUTING.md`.
+
+  [10] @Legion87 (2026-11-15):
+      Hi,
+      
+      super, dass Tags Einzug halten! Darauf freue ich mich schon.
+      
+      Eine Ergänzung bzw. ein weiterer Wunsch dazu wäre eine zentrale Übersicht und Verwaltung aller tatsächlich verwendeten Tags. Idealerweise in der Seitenleiste oder im Menüband, ähnlich wie es bei den Regeln gelöst ist.
+      
+      Hintergrund: In MoneyMoney habe ich das Notizfeld bisher immer etwas zweckentfremdet, um solche zusätzlichen Informationen zu hinterlegen. Anschließend musste ich mit Regex über comment nach nicht kategorisierten Tags suchen, um entsprechende Buchungen wiederzufinden.
+      
+      Das hat grundsätzlich funktioniert, allerdings habe ich irgendwann den Überblick darüber verloren, welche Tags ich tatsächlich verwendet hatte.
+      
+      Eine vollständige Übersicht zu bekommen, war dann ziemlich mühsam, weil man dafür praktisch alle Kategorien manuell durchgehen und nach entsprechenden Einträgen suchen musste.
+      
+      Ich fände daher folgende Möglichkeiten sehr hilfreich:
+      
+      Zentrale Tag-Übersicht: Welche Tags existieren überhaupt und welche werden tatsächlich verwendet?
+      Anzahl der Buchungen: Wie viele Buchungen sind dem jeweiligen Tag zugeordnet?
+      Regelzuordnung: Welche Tags werden bereits in Regeln verwendet?
+      Fehlende Regelzuordnung: Welche Tags existieren zwar, kommen aber noch in keiner Regel vor?
+      Tags umbenennen: Wenn man beispielsweise zunächst nur das Tag Urlaub verwendet hat, später aber feststellt, dass eine genauere Unterscheidung wie Urlaub 2025 und Urlaub 2026 sinnvoll wäre.
+      Tags zusammenführen: Wenn versehentlich mehrere ähnliche Tags angelegt wurden, beispielsweise Urlaub2026 und Urlaub-2026, wäre es praktisch, diese zusammenführen zu können, ohne jede einzelne Buchung manuell bearbeiten zu müssen.
+      Nicht mehr verwendete Tags entfernen: Damit die Übersicht langfristig aufgeräumt bleibt.
+      
+      Gerade die Verbindung zwischen Tags, Buchungen und Regeln wäre für mich interessant. So könnte man beispielsweise auf einen Blick erkennen, welche Tags bereits systematisch über Regeln vergeben werden und bei welchen man noch nacharbeiten müsste.
+      
+      Ich denke, dass eine solche zentrale Verwaltung den Nutzen der Tags erheblich steigern würde.
+      
+      Vielen Dank für eure tolle Arbeit an GiroCrab!
+
+  [11] @dr-prinz (2026-11-16):
+      Danke für die praxisnahen Ergänzungen aus deinem Alltag, @Legion87! 🦀
+      
+      Gute Nachricht: In Teil 1 (#568, eben auf `main` gemergt) hat @JavaRene die Core-Funktionen für **Umbenennen**, **Zusammenführen (`merge_tag_into`)**, **Löschen** und die **Buchungsanzahl pro Tag** bereits im Kern angelegt. Eine zentrale Tag-Verwaltung (z. B. über Einstellungen oder Seitenleiste) passt damit perfekt als Baustein für Teil 2/3!
+
+  [12] @dr-prinz (2026-11-16):
+      Richtig gute Erweiterung, @Legion87 – gerade der Abgleich, welche Tags schon über Regeln abgedeckt sind, sowie das Umbenennen und Zusammenführen sind im Alltag Gold wert! 🦀 Ich habe das direkt als eigenes Follow-up-Issue für die zentrale Tag-Verwaltung angelegt, damit es nach dem Tag-Basisausbau nicht untergeht.
+
+  [13] @JavaRene (2026-11-17):
+      Kurzer Stand zu den Tags, mit zwei Screenshots aus der Demo (erfundene Daten). Vielleicht kommen euch beim Anschauen ja noch Ideen.
+      
+      **Seit v0.8.0 in der Mac-App:**
+      - **Tags vergeben** (#588): beliebig viele Tags je Buchung, über die Karte „Tags“ rechts, das Kontextmenü oder für mehrere Buchungen auf einmal. In der Liste stehen die Tags als kleine Marker hinter der Kategorie.
+      - **Tags verwalten** (#716): Übersicht aller Tags mit der Zahl ihrer Buchungen. Dort kann man Tags umbenennen, Farben und Reihenfolge ändern, zusammenführen und ungenutzte entfernen.
+      - **Filtern und auswerten** (Teil 3, #777, danke @dr-prinz fürs Einbauen in v0.8.0):
+        - In der Filterleiste gibt es den Knopf „Tags“. Wählt man mehrere Tags, zeigt die Liste nur Buchungen, die alle diese Tags tragen. „Ohne Tag“ findet alles, was noch keinen Tag hat.
+        - Neben jedem Tag stehen Anzahl und Summe für den gewählten Zeitraum und die übrigen Filter (Konto, Kategorie, Status). Beispiel: „Was hat der Urlaub im Sommer gekostet?“
+        - Fährt man in „Tags verwalten“ mit der Maus über die Zahl, sieht man, auf welche Konten sich die Buchungen verteilen. Ein Klick auf ein Konto zeigt sie in der Liste. Raten, die mit einem Kredit verknüpft sind, erscheinen zusätzlich als „(verknüpft)“ beim Kredit.
+      
+      **Tag-Filter** (Girokonto, „Auto“ angekreuzt):
+      
+      ![Tag-Filter in der Filterleiste](https://raw.githubusercontent.com/JavaRene/GiroCrab/7c60d87819cf5a86ad52bcbbf511117316e3ff42/tag-filter.png)
+      
+      **Buchungen nach Konten** in „Tags verwalten“:
+      
+      <img src="https://raw.githubusercontent.com/JavaRene/GiroCrab/7c60d87819cf5a86ad52bcbbf511117316e3ff42/tags-accounts.png" alt="Buchungen nach Konten in Tags verwalten" width="560">
+      
+      **Was noch kommt:**
+      - **Regeln, die Tags setzen**, zum Beispiel „Shell → Auto“. Dazu gehört in „Tags verwalten“ ein Regel-Status: Welche Tags werden schon über Regeln vergeben, welche noch nicht? Das war der Wunsch von @Legion87. Daran arbeite ich als Nächstes in #580.
+      - **iPhone/iPad:** Tags vergeben, filtern und verwalten auf iOS folgt, sobald der Mac-Teil abgeschlossen ist.
+      
+      Fehlt euch noch etwas, oder würdet ihr etwas anders machen? Schreibt es gern hier rein. 🦀
+
+
+
+----------------------------------------------------------------------
+ISSUE #224: [Feature] Show more booking details in the transaction row
+Autor: @jacboy | Erstellt: 2026-11-13 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Split from #204 (the wrong-title bug is handled there, see #222).
+
+## Idea
+When a booking is selected in the transaction list, show more of its details directly in the row, not only in the right sidebar ("SEPA & Bank-Rohdaten"). MoneyMoney does this: when a booking is selected, its row expands and shows e.g. the booking text, customer/invoice number, mandate, creditor ID and value date. The screenshot in #204 shows an example.
+
+The sidebar already has all of this data, so the question is what should be shown in the list and how.
+
+## Open questions
+- Which details are useful in the row (booking text, reference, mandate/creditor ID, value date, account)?
+- Should this be on selection only, or a setting?
+- How does it work on iOS and iPadOS, where there is no mouse hover or keyboard-driven selection? Possibly tap-to-expand, or only on iPad.
+- How does it fit the macOS look of the list (see the ongoing list changes) and the Apple HIG, without copying MoneyMoney 1:1? We want to keep our own style.
+
+## Not in scope
+The wrong merchant title (#204).
+
+KOMMENTARE (2):
+  [1] @error08 (2026-11-14):
+      Also Zusatz wäre generell auch für nicht selektierte Buchungen der Verwendungszweck analog MoneyMoney sehr hilfreich.
+      
+      z.B: nochmal als eignes Ticket, wenn nötig: #497 oder einfach schließen.
+      
+      <img width="1824" height="640" alt="image" src="https://github.com/user-attachments/assets/3e00dcde-6571-47d3-9719-43741acf91fc" />
+
+  [2] @copilot-tangy (2026-11-16):
+      Das wäre sehr zu begrüßen, zumal teilweise nichtmal der Vertragspartner sichtbar ist.
+      Das Problem habe ich unter anderem bei den Lastschriften von 1&1.
+      
+      <img width="741" height="60" alt="Bildschirmfoto 2026-11-16 um 14 22 06 v2" src="https://github.com/user-attachments/assets/4618381e-4a42-4e4f-9154-42d453e8195f" />
+
+
+
+----------------------------------------------------------------------
+ISSUE #148: [Feature] FinTS / HBCI mit Schlüsseldatei (RDH-Sicherheitsprofil)
+Autor: @dr-prinz | Erstellt: 2026-11-12 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Anfrage aus der Community:
+Neben FinTS mit PIN/TAN unterstützen einige Banken (insb. bei Geschäftskonten) weiterhin HBCI/FinTS mit lokaler kryptografischer Schlüsseldatei (RDH-Verfahren). Hier sammeln wir, welche Banken betroffen sind und ob RDH-Unterstützung in `girocrab-core` ergänzt werden kann.
+
+KOMMENTARE (1):
+  [1] @zr867g2t79-a11y (2026-11-14):
+      Ich nutze die Commerzbank mit .rah10 Schlüsseldatei, kann ich was testen oder beisteuern (außer Code)?
+
+
+
+######################################################################
+### SEITE 4 (4 Issues) – ÄLTESTE OFFENE ISSUES
+######################################################################
+
+----------------------------------------------------------------------
+ISSUE #147: [Feature] Automatischer PDF-Abruf für Broker-Abrechnungen (Trade Republic, Scalable, DKB)
+Autor: @dr-prinz | Erstellt: 2026-11-12 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+Folge-Issue zu #57 (nachdem der automatische FinTS-Kontoauszugsabruf `HKEKA` samt Ordner-Spiegelung für Time Machine in #82 und FNZ in #104 umgesetzt wurden):
+
+Viele Nutzer wünschen sich denselben automatischen PDF-Download inkl. Ordner-Spiegelung auch für **Wertpapierabrechnungen und Kontoauszüge von Brokern** (insb. Trade Republic, Scalable Capital und DKB-Postfach).
+
+KOMMENTARE: (Keine)
+
+
+----------------------------------------------------------------------
+ISSUE #131: [Feature] Customizable overview layout and transaction density
+Autor: @stallobits | Erstellt: 2026-11-12 | Labels: enhancement
+----------------------------------------------------------------------
+BESCHREIBUNG:
+In Overview → All, charts and summary panels take up much of the available space, leaving relatively few transactions visible. I’d like a more compact, list-focused layout, similar to MoneyMoney.
+
+Suggested options:
+- Transaction row density: compact, standard and spacious.
+- Independently show/hide charts, summary cards and the details panel.
+- Option to hide transaction icons entirely, including cached merchant logos and category icons, to save space.
+- Rearrange dashboard sections and resize panels.
+- Remember the chosen layout.
+
+The charts are useful; making them optional would let users switch between an analytical overview and a dense transaction list with less scrolling.
+
+Related: #27 (column width), #102 (period controls) and #33 (online logos). This request focuses on row density and configurable layout; hiding transaction icons is separate from disabling logo downloads.
+
+KOMMENTARE (4):
+  [1] @dr-prinz (2026-11-12):
+      Great UI proposal, @stallobits! Having a compact row-density toggle (Compact / Standard / Spacious), optional icon hiding, and collapsible chart/summary header panels in *Overview → All* will make working with large transaction lists much closer to MoneyMoney's information density.
+
+  [2] @dr-prinz (2026-11-14):
+      Hi @stallobits, since you framed both #131 (transaction density / collapsible overview panels) and #136 (read-only local interface / MCP) so clearly: would you be interested in trying your hand at a pull request for either of them using AI coding tools (like Claude Code or Cursor)? 🦀
+      
+      Our repository includes a comprehensive `CLAUDE.md` that guides AI assistants through both `girocrab-core` and `GiroCrabUI` (and you can test UI changes right away via `GIROCRAB_DEMO_SEED=1 swift run --package-path GiroCrabApp GiroCrabMac`). Let us know if you would like to take a crack at one of them and we will gladly assign it to you.
+
+  [3] @stallobits (2026-11-14):
+      Thanks for the invitation, @dr-prinz! I’m new to GitHub and the PR workflow, so I’d like to start small with Codex’s help.
+      
+      Could you assign me the transaction-density part of #131: Compact / Standard / Spacious, with the preference saved? I’ll follow `CLAUDE.md` and test with demo data. My first step will be getting the development build running, so I may need some guidance along the way. I’d leave #136 for a later contribution once the API direction is agreed.
+
+  [4] @dr-prinz (2026-11-14):
+      Awesome, welcome aboard @stallobits — I just assigned #131 to you. 🦀
+      
+      Starting with the **transaction row density setting (Compact / Standard / Spacious)** persisted via UserDefaults is the ideal first PR scope.
+      
+      ### Quick-Start Guide for Building Locally & Prompting Codex
+      
+      1. **Fork, clone & build the local dev app with Demo Data:**
+         First, run ./build-xcframework.sh once to build the Rust core, then launch the macOS app with demo data:
+         GIROCRAB_DEMO_SEED=1 swift run --package-path GiroCrabApp GiroCrabMac
+         (This creates an isolated sandbox vault so your real data is never touched.)
+      
+      2. **Ready-to-use Prompt for Codex:**
+         We recently added TextSizePreference in GiroCrabApp/Sources/GiroCrabUI/TextSize.swift which follows the exact same pattern. You can paste this directly into Codex:
+      
+         > Read CLAUDE.md and implement the transaction row density part of Issue #131:
+         > 1. Model a row density preference (Compact / Standard / Spacious, default Standard) persisted in UserDefaults, similar to TextSize.swift.
+         > 2. Add a picker in SettingsView.swift (General tab) to switch between Compact, Standard, and Spacious.
+         > 3. Apply the vertical row padding / spacing in BookingListView.swift based on the selected density.
+         > 4. Use .appFont(...) for any new Text views, add German + English strings to Localizable.xcstrings, add a unit test in GiroCrabApp/Tests/GiroCrabUITests/, and run swift test --package-path GiroCrabApp as well as scripts/lint-fonts.sh and scripts/xcstrings.py check.
+         > 5. Include 'AI-Agent: OpenAI Codex' and a short '### 🤖 AI Process Reflection' block (Human-Steering / AI-Agency / Review-Focus) in the PR description.
+      
+      3. **Zero Risk — Our Maintainer Safety Net:**
+         Do not worry about breaking anything or getting every detail right on the first try. Once you open a PR (even as a Draft), our automated CI suite and we as maintainers will review everything for security and stability, and we are happy to help refactor or polish the code together before merging. If you hit any build snags along the way, just drop a comment here and we will help you out right away.
+
+
+
+----------------------------------------------------------------------
+ISSUE #81: [Feature] Offline accounts with manual bookings
+Autor: @HansWurst90 | Erstellt: 2026-11-11 | Labels: keine
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Problem / use case:**
+Cash and assets/liabilities (private loans, car, …) can't be synced, so they're missing from the overview. MoneyMoney solves this with offline accounts.
+
+**Proposed solution:**
+- Create an offline account (cash / asset / liability) with a starting balance.
+- Add, edit and delete bookings manually, in offline accounts only.
+- Mirror a booking from another account into an offline account: a one-time copy with the amount reversed and no category (e.g. ATM withdrawal → Cash).
+- Fix the balance with a correction booking or by editing the starting balance.
+- Offline accounts appear in totals, groups, history and reports like any other account.
+
+**Out of scope:** recurring bookings, attachments, manual bookings in synced accounts.
+
+KOMMENTARE (2):
+  [1] @Grashuepfer18 (2026-11-17):
+      /assign
+
+  [2] @github-actions (2026-11-17):
+      Super, @Grashuepfer18, das Issue ist dir zugewiesen. 🚀 Mit `/unassign` gibst du es wieder frei. Details: `CONTRIBUTING.md`.
+
+
+
+----------------------------------------------------------------------
+ISSUE #64: [Bank] Whitebox
+Autor: @tarteflambee | Erstellt: 2026-11-11 | Labels: help wanted
+----------------------------------------------------------------------
+BESCHREIBUNG:
+**Bank / broker:**
+Whitebox (nutzt im Hintergrund FlatEx)
+
+**Available interface** (FinTS, official REST API, PSD2 via Enable Banking, other):
+siehe hier - Extension für moneymoney als OSS: https://github.com/DWegmann/moneymoney-whitebox
+
+**Link to the public documentation:**
+s.o.
+
+**Do you want to implement it yourself?** (see `CONTRIBUTING.md` and `connectors/template.rs`)
+leider kein Entwicklungs-Know-how.
+
+KOMMENTARE (6):
+  [1] @dr-prinz (2026-11-11):
+      Danke für den Hinweis und den Link zur Referenz-Extension (`moneymoney-whitebox`), @tarteflambee.
+      
+      Da wir selbst kein Whitebox-/FlatEx-Konto zum Testen haben, ist das Issue mit `help wanted` markiert – falls jemand aus der Community selbst ein Whitebox-Konto nutzt und den Connector beisteuern möchte, meldet euch gerne hier.
+
+  [2] @tarteflambee (2026-11-11):
+      Also testen könnte ich mit meinem Zugang gerne.
+
+  [3] @jacboy (2026-11-11):
+      Wenn es eine REST API gibt, implementiere ich es gern, testen muss es dann jemand anderes. Passt das?
+
+  [4] @tarteflambee (2026-11-11):
+      @jacboy hier ist ein Referenzprojekt für die moneymoney Extension. Hoffe da ist alles zu finden, um die Machbarkeit zu beurteilen:
+      https://github.com/DWegmann/moneymoney-whitebox#neue-whitebox-oberfl%C3%A4che-version-116
+
+  [5] @tarteflambee (2026-11-13):
+      > Wenn es eine REST API gibt, implementiere ich es gern, testen muss es dann jemand anderes. Passt das?
+      
+      @jacboy Ist das noch auf dem Schirm? Wie gesagt, teste gerne bei mir lokal.
+
+  [6] @jacboy (2026-11-13):
+      Ja, das Issue ist ja auch noch offen. Mein Tag hat aber auch nur eine begrenzte Anzahl an Stunden...da ich auch noch Advanzia Bank / Gebührenfrei.com ein paar andere implementieren möchte, Mache ich das gemeinsam :)
+
+
