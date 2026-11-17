@@ -178,25 +178,26 @@ fun DemoBanner(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        modifier.fillMaxWidth().height(34.dp),
         color = androidx.compose.ui.graphics.Color(0xFFFFF4CE),
         contentColor = androidx.compose.ui.graphics.Color(0xFF5C4300),
-        border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFFF0E0A0)),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Science, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Demo – alle Daten sind erfunden", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!vaultMayHoldRealData) {
-                    TextButton(onClick = onCreateOwnAccount) { Text("Eigenes Konto anlegen") }
-                } else {
-                    TextButton(onClick = onBackToOwnVault) { Text("Zurück zum eigenen Tresor") }
+        Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Science, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Demo-Daten", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            val compactPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            if (!vaultMayHoldRealData) {
+                TextButton(onClick = onCreateOwnAccount, contentPadding = compactPadding) {
+                    Text("Konto anlegen", style = MaterialTheme.typography.labelMedium)
                 }
-                TextButton(onClick = onTestLockScreen) { Text("Sperrbildschirm testen") }
+            } else {
+                TextButton(onClick = onBackToOwnVault, contentPadding = compactPadding) {
+                    Text("Eigener Tresor", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            TextButton(onClick = onTestLockScreen, contentPadding = compactPadding) {
+                Text("Sperren", style = MaterialTheme.typography.labelMedium)
             }
         }
     }

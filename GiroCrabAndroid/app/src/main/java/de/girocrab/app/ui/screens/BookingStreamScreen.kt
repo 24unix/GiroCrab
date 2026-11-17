@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -260,51 +261,66 @@ fun BalanceHeaderCard(
     val shownCents = if (showLiquid) {
         data.accounts.filter { it.id in state.scopedAccountIds && it.kind == AccountKind.Giro }.sumOf { it.balanceCents }
     } else state.totalBalanceCents
-    Card(
-        modifier.fillMaxWidth().padding(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "$title · $subtitle",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             if (state.scope == Scope.All) {
+                Spacer(Modifier.width(8.dp))
                 Surface(
                     onClick = { liquid = !liquid },
                     shape = RoundedCornerShape(50),
                     color = Color(0xFF0067C0).copy(alpha = if (showLiquid) 0.22f else 0.10f),
                 ) {
                     Text(
-                        if (showLiquid) "Verfügbar" else "Gesamtvermögen",
-                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        (if (showLiquid) "Verfügbar" else "Gesamtvermögen") + " ▾",
+                        Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 formatMoney(shownCents, masked = masked),
-                style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
+                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
                 fontFamily = tabular,
                 fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
             )
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = onFetch,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0067C0), contentColor = Color.White),
-                ) {
-                    Icon(Icons.Filled.Sync, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Jetzt abrufen")
-                }
-                FilledTonalButton(
-                    onClick = onNewTransfer,
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFE8F1FB), contentColor = Color(0xFF004E8C)),
-                ) {
-                    Icon(Icons.Filled.Send, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Neue Überweisung")
-                }
-                if (account != null) {
-                    FilledTonalButton(onClick = onAccountSettings) {
-                        Icon(Icons.Filled.Settings, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Kontoeinstellungen")
-                    }
+            HeaderPill("Abrufen", Icons.Filled.Sync, filled = true, onClick = onFetch)
+            Spacer(Modifier.width(6.dp))
+            HeaderPill("Überweisen", Icons.Filled.Send, filled = false, onClick = onNewTransfer)
+            if (account != null) {
+                Spacer(Modifier.width(2.dp))
+                IconButton(onClick = onAccountSettings, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Settings, "Kontoeinstellungen", Modifier.size(18.dp))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HeaderPill(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, filled: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (filled) Color(0xFF0067C0) else Color(0xFFE8F1FB),
+        contentColor = if (filled) Color.White else Color(0xFF004E8C),
+    ) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
         }
     }
 }
@@ -334,18 +350,31 @@ private fun FilterBar(
     onAnalytics: (Boolean) -> Unit,
     count: Int,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutlinedTextField(
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        androidx.compose.foundation.text.BasicTextField(
             value = search,
             onValueChange = onSearch,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(38.dp),
             singleLine = true,
-            placeholder = { Text("Suchen") },
-            leadingIcon = { Icon(Icons.Filled.Search, null) },
-            trailingIcon = {
-                if (search.isNotEmpty()) IconButton({ onSearch("") }) { Icon(Icons.Filled.Close, "Suche löschen") }
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { inner ->
+                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (search.isEmpty()) {
+                                Text("Suchen", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            inner()
+                        }
+                        if (search.isNotEmpty()) {
+                            IconButton({ onSearch("") }, Modifier.size(28.dp)) { Icon(Icons.Filled.Close, "Suche löschen", Modifier.size(16.dp)) }
+                        }
+                    }
+                }
             },
-            keyboardOptions = KeyboardOptions.Default,
         )
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
@@ -363,6 +392,17 @@ private fun FilterBar(
                     selected = cat != null,
                 )
             }
+            item {
+                FilterChip(
+                    selected = analytics,
+                    onClick = { onAnalytics(!analytics) },
+                    label = { Text("Analysen") },
+                    leadingIcon = { Icon(Icons.Filled.Insights, null, Modifier.size(16.dp)) },
+                )
+            }
+            item {
+                FilterChip(selected = compact, onClick = { onCompact(!compact) }, label = { Text("Kompakt") })
+            }
             items(tags, key = { it.id }) { t ->
                 FilterChip(
                     selected = tagId == t.id,
@@ -378,26 +418,6 @@ private fun FilterBar(
                     leadingIcon = { Icon(Icons.Filled.AttachFile, null, Modifier.size(16.dp)) },
                 )
             }
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilterChip(
-                selected = analytics,
-                onClick = { onAnalytics(!analytics) },
-                label = { Text("Analysen") },
-                leadingIcon = { Icon(Icons.Filled.Insights, null, Modifier.size(16.dp)) },
-            )
-            Spacer(Modifier.width(8.dp))
-            FilterChip(
-                selected = compact,
-                onClick = { onCompact(!compact) },
-                label = { Text("Kompakt") },
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                if (count == 1) "1 Buchung" else "$count Buchungen",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
