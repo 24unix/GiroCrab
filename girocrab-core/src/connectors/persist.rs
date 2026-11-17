@@ -1120,6 +1120,7 @@ impl Vault {
                     | ConnectorKind::Direkt1822
                     | ConnectorKind::Easybank
                     | ConnectorKind::FordMoney
+                    | ConnectorKind::OpelDirektbank
             )
         });
         if !supports_statements {

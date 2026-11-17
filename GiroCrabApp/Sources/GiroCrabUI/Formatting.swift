@@ -494,6 +494,7 @@ extension ConnectorKind {
         case .schwaebischHall: return "Schwäbisch Hall"
         case .ffb: return "FFB (FIL Fondsbank)"
         case .fordMoney: return "Ford Money"
+        case .opelDirektbank: return "Opel Direktbank"
         }
     }
 
@@ -523,6 +524,7 @@ extension ConnectorKind {
         case .schwaebischHall: return "#004F9F"
         case .ffb: return "#1C5A8C"
         case .fordMoney: return "#20396E"
+        case .opelDirektbank: return "#1A1A1A"
         }
     }
 
@@ -559,6 +561,7 @@ extension ConnectorKind {
         case .schwaebischHall: return "SH"
         case .ffb: return "FFB"
         case .fordMoney: return "FM"
+        case .opelDirektbank: return "OD"
         }
     }
 }

@@ -107,7 +107,7 @@ extension AppModel {
 
     func canFetchStatements(_ account: Account) -> Bool {
         guard let c = account.connector, account.kind != .loan else { return false }
-        return [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .easybank, .fordMoney].contains(c)
+        return [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .easybank, .fordMoney, .opelDirektbank].contains(c)
     }
 
     /// Explicit "Kontoauszüge abrufen": regular syncs never fetch statements (speed, no extra TAN).

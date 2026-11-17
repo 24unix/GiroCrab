@@ -58,6 +58,8 @@ pub enum ConnectorKind {
     /// Ford Money (Ford Bank) savings accounts and Postbox PDFs via the online banking
     /// (Security-App approval).
     FordMoney,
+    /// Opel Direktbank savings accounts and Postbox PDFs via the web banking (TwoVerify approval).
+    OpelDirektbank,
 }
 
 impl ConnectorKind {
@@ -86,6 +88,7 @@ impl ConnectorKind {
             ConnectorKind::EquatePlus => "equateplus",
             ConnectorKind::Ffb => "ffb",
             ConnectorKind::FordMoney => "fordmoney",
+            ConnectorKind::OpelDirektbank => "opeldirektbank",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -143,6 +146,7 @@ impl ConnectorKind {
             ConnectorKind::EquatePlus,
             ConnectorKind::Ffb,
             ConnectorKind::FordMoney,
+            ConnectorKind::OpelDirektbank,
         ]
     }
 }
