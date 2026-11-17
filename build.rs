@@ -85,6 +85,9 @@ fn main() {
         println!("cargo:rerun-if-changed={}", root.join(p).display());
     }
     println!("cargo:rerun-if-env-changed=GIROCRAB_SKIP_SWIFT");
+    // Set by `cargo clippy`; tracked so a later `cargo build` reruns this
+    // script instead of reusing the skipped clippy run.
+    println!("cargo:rerun-if-env-changed=RUSTC_WORKSPACE_WRAPPER");
 
     // Cargo reports "debug" or "release" (a custom profile reports the one it
     // inherits from); SwiftPM's configurations have the same names.
@@ -100,6 +103,11 @@ fn main() {
         || env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos")
     {
         println!("cargo:warning=skipping the SwiftUI app build (GIROCRAB_SKIP_SWIFT or non-macOS target)");
+        return;
+    }
+    // `cargo clippy --workspace` only lints: the release core build and the
+    // Swift app it would trigger take ~90 s after every core edit.
+    if env::var("RUSTC_WORKSPACE_WRAPPER").is_ok_and(|w| w.contains("clippy-driver")) {
         return;
     }
 

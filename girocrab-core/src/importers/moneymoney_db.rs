@@ -974,7 +974,10 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
             continue;
         }
         let _ = conn.query_row("PRAGMA cipher_log_level = NONE;", [], |_| Ok(()));
-        let _ = conn.query_row("PRAGMA cipher_memory_security = ON;", [], |_| Ok(()));
+        // Not in unit tests, see `Vault::apply_key`.
+        if !cfg!(test) {
+            let _ = conn.query_row("PRAGMA cipher_memory_security = ON;", [], |_| Ok(()));
+        }
         if let Some(v) = compat {
             if conn
                 .execute_batch(&format!("PRAGMA cipher_compatibility = {v};"))

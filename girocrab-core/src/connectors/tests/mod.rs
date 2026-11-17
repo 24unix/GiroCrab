@@ -1110,7 +1110,7 @@ async fn demo_code_and_redirect_flows() {
     let _ = std::fs::remove_file(path);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn demo_transfer_flow_adds_pending_booking_and_suggests_recipient() {
     let (v, path) = demo_vault();
     let acc = v

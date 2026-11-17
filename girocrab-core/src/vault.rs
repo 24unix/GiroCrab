@@ -309,8 +309,12 @@ impl Vault {
         let pragma = Zeroizing::new(format!("PRAGMA key = \"x'{}'\";", hex::encode(key)));
         conn.execute_batch(&pragma)?;
         // Best effort: lock + wipe SQLCipher's in-memory key/page buffers.
+        // Not in unit tests: the mlock/munlock on every allocation makes the
+        // parallel test threads queue in the kernel (whole suite ~15x slower).
         let _ = conn.query_row("PRAGMA cipher_log_level = NONE;", [], |_| Ok(()));
-        let _ = conn.query_row("PRAGMA cipher_memory_security = ON;", [], |_| Ok(()));
+        if !cfg!(test) {
+            let _ = conn.query_row("PRAGMA cipher_memory_security = ON;", [], |_| Ok(()));
+        }
         Ok(())
     }
 

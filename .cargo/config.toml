@@ -1,4 +1,10 @@
 
+# SQLite ohne globale Speicherstatistik (von SQLite empfohlen): sonst wartet jede Allokation aller
+# Verbindungen auf denselben Mutex, und parallele Tests stehen sich gegenseitig im Weg (~4x langsamer).
+# Wird von libsqlite3-sys beim Bauen von SQLCipher gelesen; eine gesetzte Umgebungsvariable hat Vorrang.
+[env]
+LIBSQLITE3_FLAGS = "-DSQLITE_DEFAULT_MEMSTATUS=0"
+
 # Verhindert 40+ GB große target/-Ordner durch riesige Debug-Symbole in hunderten Test-Binaries:
 [profile.dev]
 debug = "line-tables-only"

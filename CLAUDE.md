@@ -42,6 +42,8 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`.
 - Always pass `-q`/`--quiet` to `cargo check`, `cargo test`, `xcodebuild`. If output is still long, pipe through `tail -n 40`.
 - Before pushing a PR (also Swift-only ones; CI runs these on every PR): `cargo fmt --all -- --check` and `cargo clippy -q --workspace --all-targets -- -D warnings`. After pushing, check `gh pr checks`.
+  Under clippy the root `build.rs` skips the xcframework + Swift app build (~8 s instead of ~90 s after a core
+  edit); `cargo check/build --workspace` still run it, so set `GIROCRAB_SKIP_SWIFT=1` for core-only checks.
 - **CI runs the Linux jobs (`qt-minimum`, `debian`) of `ci.yml` for any change under `girocrab-core/**` (other than Markdown) or to `Localizable.xcstrings`**, not only for Linux files.
   Before pushing such a change: `python3 -I GiroCrabLinux/scripts/i18n-report.py` (every Linux UI text needs English, step
   "English UI texts") and `(cd GiroCrabLinux && cargo fmt -- --check)`. Its clippy/test steps need Qt: leave those to CI.
@@ -69,7 +71,11 @@ Internal code identifiers (module, function, test and file names) are exempt; `s
 - Swift: `cd GiroCrabApp && swift test -q --filter <Suite>`; whole suite ~30 s. `AppModel` tests
   run against a demo vault: `AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))`,
   pattern in `Tests/GiroCrabUITests/SelectionLoadTests.swift`. Run them before pushing.
-- Rust: `cargo test -q -p girocrab-core --lib <module>` for one module; whole run ~50 s.
+- Rust: `cargo test -q -p girocrab-core --lib <module>` for one module; whole `--lib` run ~10 s. It stays
+  that fast only because unit tests skip `cipher_memory_security` (`cfg!(test)` in `Vault::apply_key`) and
+  `.cargo/config.toml` builds SQLite with `SQLITE_DEFAULT_MEMSTATUS=0`: both make parallel test threads
+  wait on each other (147 s with both on, 417 s with only memory security on). Tests that wait on timers use
+  `#[tokio::test(start_paused = true)]`, never real sleeps.
 - Perf: `COPIES=600 cargo run --release -q -p girocrab-core --example category_perf` times the core
   calls behind a category change on ~31k bookings (reference numbers in the file). Measure before
   claiming a speed-up; `limit` on `list_transactions` does not reduce core work.
