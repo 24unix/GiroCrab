@@ -306,6 +306,10 @@ extension AppModel {
         reloadAll()
     }
 
+    /// Vault setting with the portal user name of a login (Amex); the password is
+    /// the login's PIN (`setConnectionPin`). `pin.` keys are stored as secrets.
+    static func portalLoginKey(_ id: Int64) -> String { "pin.conn.\(id).login" }
+
     func setConnectionPin(_ id: Int64, _ pin: String?) {
         guard let vault else { return }
         runCore { try vault.setConnectionPin(connectionId: id, pin: pin) }

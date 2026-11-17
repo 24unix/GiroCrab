@@ -62,6 +62,25 @@ pub(super) fn prepare(
     data: &FetchResult,
 ) -> CoreResult<(HashSet<String>, HashSet<String>)> {
     let mut choices = load(db, id)?;
+    // A held-back account this fetch no longer delivers and that was never
+    // stored (a card matched to another account since) is dropped.
+    let mut stale = Vec::new();
+    for c in choices.iter().filter(|c| c.pending) {
+        let stored: bool = db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM accounts WHERE connection_id=?1 AND external_ref=?2)",
+            params![id, c.account_ref],
+            |r| r.get(0),
+        )?;
+        if !stored
+            && !data
+                .accounts
+                .iter()
+                .any(|a| a.external_ref == c.account_ref)
+        {
+            stale.push(c.account_ref.clone());
+        }
+    }
+    choices.retain(|c| !stale.contains(&c.account_ref));
     let bank_code: String = db.query_row(
         "SELECT bank_code FROM bank_connections WHERE id=?1",
         [id],
@@ -118,7 +137,7 @@ pub(super) fn prepare(
                 }
             }
         }
-        let pending = !existing.is_empty();
+        let pending = !existing.is_empty() || (data.confirm_new_accounts && !already);
         choices.push(ConnectionAccountChoice {
             account_ref: a.external_ref.clone(),
             name: a.name.clone(),

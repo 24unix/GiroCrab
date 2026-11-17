@@ -88,7 +88,7 @@ struct AccountSelectionList: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(c.name).sensitive()
                             Text(detail(c)).appFont(.caption).foregroundStyle(.secondary).sensitive()
-                            if c.pending {
+                            if c.pending, !c.existingConnection.isEmpty {
                                 Label("Bereits über „\(redaction.masking(c.existingConnection))“ eingebunden", systemImage: "exclamationmark.triangle")
                                     .appFont(.caption).foregroundStyle(Theme.warning)
                             }
@@ -134,9 +134,16 @@ struct AccountSelectionPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Konten auswählen – \(redaction.masking(connection.displayName))").appFont(.title3, weight: .bold)
-                Text("Einige Konten sind bereits über einen anderen Zugang eingebunden. Wählen Sie, welche über diesen Zugang abgerufen werden sollen. Ohne Auswahl werden sie übersprungen.")
-                    .appFont(.callout).foregroundStyle(.secondary)
+                if connection.connector == .americanExpress {
+                    // several cards behind one login (#243)
+                    Text("Welche Karten sollen abgerufen werden?").appFont(.title3, weight: .bold)
+                    Text("Unter „\(redaction.masking(connection.displayName))“ gibt es mehrere Karten. Jede gewählte Karte wird ein eigenes Konto, nicht gewählte werden übersprungen.")
+                        .appFont(.callout).foregroundStyle(.secondary)
+                } else {
+                    Text("Konten auswählen – \(redaction.masking(connection.displayName))").appFont(.title3, weight: .bold)
+                    Text("Einige Konten sind bereits über einen anderen Zugang eingebunden. Wählen Sie, welche über diesen Zugang abgerufen werden sollen. Ohne Auswahl werden sie übersprungen.")
+                        .appFont(.callout).foregroundStyle(.secondary)
+                }
             }
             .padding(20)
             Divider()

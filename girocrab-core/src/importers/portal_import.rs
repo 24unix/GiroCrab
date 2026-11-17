@@ -26,12 +26,15 @@ use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind};
 use crate::vault::Vault;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Parsed {
     pub date: String,
     pub text: String,
     pub cents: i64,
     pub id: Option<String>,
+    /// Card holder the booking was made by, e.g. a partner card of the same
+    /// Amex account ("Erika Mustermann"); `None` = unknown (#243).
+    pub card: Option<String>,
 }
 
 /// Amex reports charges as positive numbers; Open Bank uses signed amounts.
@@ -326,7 +329,106 @@ fn parse_tx_object(obj: &serde_json::Map<String, Value>, kind: ConnectorKind) ->
         text,
         cents,
         id,
+        card: card_label(obj).or_else(|| card_index(obj).map(|i| format!("#{i}"))),
     })
+}
+
+// ------------------------------------------------------------------ cards (#243)
+
+/// Name on the card: Amex `embossed_name` (bookings and `card_member` entries).
+const CARD_NAME_KEYS: &[&str] = &[
+    "embossedname",
+    "cardmembername",
+    "cardholdername",
+    "cardholder",
+];
+/// Amex numbers the main card and its partner cards per account (`supplementary_index`).
+const CARD_INDEX_KEYS: &[&str] = &["supplementaryindex"];
+
+/// Prefix of a portal booking text that names the card ("Kartenumsatz · Erika Mustermann").
+pub const CARD_BOOKING_TEXT: &str = "Kartenumsatz";
+pub const CARD_SEPARATOR: &str = " · ";
+
+fn get_norm<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter().find_map(|k| {
+        obj.iter()
+            .find(|(name, v)| norm_key(name) == *k && !v.is_null())
+            .map(|(_, v)| v)
+    })
+}
+
+/// The object itself and objects nested one level below it under a card key
+/// (`card_member: {…}`, `card: {…}`).
+fn card_scopes(obj: &serde_json::Map<String, Value>) -> Vec<&serde_json::Map<String, Value>> {
+    let mut out = vec![obj];
+    for (k, v) in obj {
+        let k = norm_key(k);
+        if let (true, Some(o)) = (k.contains("card") || k.contains("member"), v.as_object()) {
+            out.push(o);
+        }
+    }
+    out
+}
+
+/// "MAX MUSTERMANN" -> "Max Mustermann"; mixed case stays as it is.
+fn title_case(s: &str) -> String {
+    let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if s.chars().any(|c| c.is_lowercase()) {
+        return s;
+    }
+    s.split(' ')
+        .map(|w| {
+            let lower = w.to_lowercase();
+            let mut c = lower.chars();
+            c.next()
+                .map(|f| f.to_uppercase().chain(c).collect())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
+/// Card holder of a booking or card-member object.
+fn card_label(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    let scopes = card_scopes(obj);
+    scopes
+        .iter()
+        .find_map(|o| get_norm(o, CARD_NAME_KEYS).and_then(Value::as_str))
+        .map(title_case)
+        .or_else(|| {
+            scopes.iter().find_map(|o| {
+                let part = |k: &str| get_norm(o, &[k]).and_then(Value::as_str).map(str::trim);
+                let full = [part("firstname"), part("lastname")]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                (!full.trim().is_empty()).then(|| title_case(&full))
+            })
+        })
+        .filter(|n| !n.is_empty())
+}
+
+fn card_index(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    card_scopes(obj)
+        .iter()
+        .find_map(|o| get_norm(o, CARD_INDEX_KEYS).and_then(value_text))
+}
+
+/// `supplementary_index` -> card label from the portal's card-member lists
+/// (`card_member_totals`, `supplementary_accounts`), for bookings that only
+/// carry the index.
+fn card_directory(v: &Value, out: &mut HashMap<String, String>) {
+    match v {
+        Value::Object(o) => {
+            if let (Some(i), Some(l)) = (card_index(o), card_label(o)) {
+                out.entry(i).or_insert(l);
+            }
+            o.values().for_each(|x| card_directory(x, out));
+        }
+        Value::Array(a) => a.iter().for_each(|x| card_directory(x, out)),
+        _ => {}
+    }
 }
 
 /// What one portal capture holds: posted bookings, pending (not yet posted)
@@ -512,13 +614,26 @@ pub fn parse_json_bodies(bodies: &[String], kind: ConnectorKind) -> (Vec<Parsed>
 
 pub(crate) fn parse_capture(bodies: &[String], kind: ConnectorKind) -> Capture {
     let mut c = Capture::default();
+    let mut cards = HashMap::new();
     for b in bodies {
         let Ok(v) = serde_json::from_str::<Value>(b) else {
             continue;
         };
         walk(&v, kind, false, &mut c);
+        card_directory(&v, &mut cards);
         if c.balance.is_none() {
             c.balance = find_balance(&v, kind);
+        }
+    }
+    // Bookings with only a card index: name them from the card-member list (#243).
+    for t in c.posted.iter_mut().chain(c.pending.iter_mut()) {
+        if let Some(i) = t.card.as_deref().and_then(|c| c.strip_prefix('#')) {
+            t.card = Some(
+                cards
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("Karte {i}")),
+            );
         }
     }
     // The portal re-sends overlapping pages; drop exact repeats of the same source id.
@@ -588,6 +703,7 @@ pub fn parse_dom_rows(rows: &[Vec<String>], kind: ConnectorKind) -> Vec<Parsed> 
             text,
             cents: if charges_positive(kind) { -raw } else { raw },
             id: None,
+            card: None,
         });
     }
     out
@@ -733,6 +849,7 @@ pub fn parse_csv(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
             text,
             cents,
             id: None,
+            card: None,
         });
     }
     out
@@ -780,6 +897,7 @@ pub fn parse_statement_text(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
             text: c[3].trim().to_string(),
             cents,
             id: None,
+            card: None,
         });
     }
     out
@@ -838,15 +956,46 @@ fn to_fetch(
     holds: Vec<Parsed>,
     balance: Option<i64>,
 ) -> FetchResult {
-    let account_ref = account_ref(kind, connection_id);
-    let today = crate::connectors::today();
+    let (account, transactions) = card_account(
+        &account_ref(kind, connection_id),
+        name,
+        "",
+        parsed,
+        holds,
+        balance,
+    );
+    FetchResult {
+        accounts: vec![account],
+        transactions,
+        state: None,
+        // no reported balance: accumulate the imported bookings instead
+        adjust_balances: balance.is_none(),
+        ..Default::default()
+    }
+}
+
+/// One card account with its bookings and (with a reported balance) its pending
+/// charges as holds.
+fn card_account(
+    account_ref: &str,
+    name: &str,
+    number: &str,
+    parsed: Vec<Parsed>,
+    holds: Vec<Parsed>,
+    balance: Option<i64>,
+) -> (RemoteAccount, Vec<RemoteTransaction>) {
     let mut transactions = Vec::new();
-    let mut push = |list: Vec<Parsed>, prefix: &str, booking_text: &str| {
+    let mut push = |list: Vec<Parsed>, prefix: &str, pending: bool| {
         let mut seen: HashMap<(String, i64, String), u32> = HashMap::new();
         let mut ids_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for p in list {
+            let booking_text = match (&p.card, pending) {
+                (_, true) => "Kartenumsatz (vorgemerkt)".to_string(),
+                (Some(card), false) => format!("{CARD_BOOKING_TEXT}{CARD_SEPARATOR}{card}"),
+                (None, false) => CARD_BOOKING_TEXT.to_string(),
+            };
             let mut t = RemoteTransaction {
-                account_ref: account_ref.clone(),
+                account_ref: account_ref.to_string(),
                 external_id: String::new(),
                 booking_date: p.date.clone(),
                 value_date: p.date.clone(),
@@ -855,7 +1004,7 @@ fn to_fetch(
                 counterparty: p.text.clone(),
                 counterparty_iban: String::new(),
                 purpose: String::new(),
-                booking_text: booking_text.into(),
+                booking_text,
                 ..Default::default()
             };
             let n = seen.entry((p.date, p.cents, p.text)).or_insert(0);
@@ -867,28 +1016,22 @@ fn to_fetch(
             transactions.push(t);
         }
     };
-    push(parsed, "", "Kartenumsatz");
+    push(parsed, "", false);
     if balance.is_some() {
-        push(holds, HOLD_PREFIX, "Kartenumsatz (vorgemerkt)");
+        push(holds, HOLD_PREFIX, true);
     }
-    FetchResult {
-        accounts: vec![RemoteAccount {
-            external_ref: account_ref,
-            name: name.to_string(),
-            owner: String::new(),
-            iban: String::new(),
-            account_number: String::new(),
-            currency: "EUR".into(),
-            kind: AccountKind::CreditCard,
-            balance_cents: balance.unwrap_or(0),
-            balance_date: today,
-        }],
-        transactions,
-        state: None,
-        // no reported balance: accumulate the imported bookings instead
-        adjust_balances: balance.is_none(),
-        ..Default::default()
-    }
+    let account = RemoteAccount {
+        external_ref: account_ref.to_string(),
+        name: name.to_string(),
+        owner: String::new(),
+        iban: String::new(),
+        account_number: number.to_string(),
+        currency: "EUR".into(),
+        kind: AccountKind::CreditCard,
+        balance_cents: balance.unwrap_or(0),
+        balance_date: crate::connectors::today(),
+    };
+    (account, transactions)
 }
 
 fn account_ref(kind: ConnectorKind, connection_id: i64) -> String {
@@ -897,6 +1040,178 @@ fn account_ref(kind: ConnectorKind, connection_id: i64) -> String {
         kind.as_str().replace(':', "-"),
         connection_id
     )
+}
+
+// ------------------------------------------------------------------ several cards (#243)
+
+/// One card of a portal login, e.g. an entry of the Amex card switcher. `key`
+/// tags the captured responses of that card (a hash of the portal's account
+/// token, never the token itself).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PortalCard {
+    pub key: String,
+    /// "Amazon Business American Express® Card"
+    pub name: String,
+    /// Last digits as the portal shows them, e.g. "12345".
+    pub number: String,
+}
+
+/// Bodies grouped by card key, in first-seen order. Bodies without a key
+/// (profile, navigation) join the first group.
+fn group_by_card(bodies: &[String], keys: &[String]) -> Vec<(String, Vec<String>)> {
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut unkeyed = Vec::new();
+    for (i, b) in bodies.iter().enumerate() {
+        let k = keys.get(i).map(|k| k.trim()).unwrap_or("");
+        if k.is_empty() {
+            unkeyed.push(b.clone());
+            continue;
+        }
+        match groups.iter_mut().find(|(g, _)| g == k) {
+            Some((_, v)) => v.push(b.clone()),
+            None => groups.push((k.to_string(), vec![b.clone()])),
+        }
+    }
+    match groups.first_mut() {
+        Some((_, first)) => first.extend(unkeyed),
+        None => groups.push((String::new(), unkeyed)),
+    }
+    groups
+}
+
+/// The capture of one card.
+struct CardCapture {
+    key: String,
+    posted: Vec<Parsed>,
+    pending: Vec<Parsed>,
+    balance: Option<i64>,
+}
+
+/// Bookings, pending charges and balance per card; only cards with any of them.
+fn parse_cards(bodies: &[String], keys: &[String], kind: ConnectorKind) -> Vec<CardCapture> {
+    group_by_card(bodies, keys)
+        .into_iter()
+        .map(|(key, group)| {
+            let c = parse_capture(&group, kind);
+            CardCapture {
+                key,
+                posted: c.posted,
+                pending: c.pending,
+                balance: c.balance.map(|(_, b)| b),
+            }
+        })
+        .filter(|c| !c.posted.is_empty() || !c.pending.is_empty() || c.balance.is_some())
+        .collect()
+}
+
+/// An account this login already has (earlier portal syncs, MoneyMoney import).
+struct StoredCard {
+    account_ref: String,
+    /// Digits of its account / card number.
+    digits: String,
+    /// External ids of its bookings.
+    ids: std::collections::HashSet<String>,
+}
+
+/// One account per card. A card goes to the stored account with the same last
+/// card digits, else to the one holding its bookings; nothing is imported
+/// twice. Several cards: the ones new to this login wait for the account
+/// selection.
+fn cards_fetch(
+    base_ref: &str,
+    name: &str,
+    cards: Vec<CardCapture>,
+    labels: &[PortalCard],
+    stored: &[StoredCard],
+) -> FetchResult {
+    let label = |key: &str| labels.iter().find(|c| c.key == key);
+    let mut target: Vec<Option<String>> = vec![None; cards.len()];
+    let mut used = std::collections::HashSet::new();
+    // 1. same card number
+    for (i, c) in cards.iter().enumerate() {
+        let number: String = label(&c.key)
+            .map(|l| l.number.chars().filter(char::is_ascii_digit).collect())
+            .unwrap_or_default();
+        if number.len() < 4 {
+            continue;
+        }
+        if let Some(s) = stored
+            .iter()
+            .find(|s| !used.contains(&s.account_ref) && s.digits.ends_with(&number))
+        {
+            used.insert(s.account_ref.clone());
+            target[i] = Some(s.account_ref.clone());
+        }
+    }
+    // 2. the account that holds the card's bookings
+    for (i, c) in cards.iter().enumerate() {
+        if target[i].is_some() {
+            continue;
+        }
+        let overlap = |s: &StoredCard| {
+            c.posted
+                .iter()
+                .filter(|p| {
+                    p.id.as_ref()
+                        .is_some_and(|id| s.ids.contains(&format!("id:{id}")))
+                })
+                .count()
+        };
+        if let Some(s) = stored
+            .iter()
+            .filter(|s| !used.contains(&s.account_ref))
+            .max_by_key(|s| overlap(s))
+            .filter(|s| overlap(s) > 0)
+        {
+            used.insert(s.account_ref.clone());
+            target[i] = Some(s.account_ref.clone());
+        }
+    }
+    // 3. the login's own account: for the first card left, unless other accounts
+    //    of this login are there that it may belong to
+    let base_free = !used.contains(base_ref)
+        && (cards.len() == 1
+            || stored.is_empty()
+            || stored.iter().any(|s| s.account_ref == base_ref));
+    if base_free {
+        if let Some(t) = target.iter_mut().find(|t| t.is_none()) {
+            *t = Some(base_ref.to_string());
+        }
+    }
+    let adjust_balances = cards.iter().all(|c| c.balance.is_none());
+    let mut out = FetchResult {
+        adjust_balances,
+        confirm_new_accounts: cards.len() > 1,
+        ..Default::default()
+    };
+    for (i, (c, t)) in cards.into_iter().zip(target).enumerate() {
+        let l = label(&c.key);
+        let number = l.map(|l| l.number.trim()).unwrap_or_default();
+        let account_ref = t.unwrap_or_else(|| format!("{base_ref}-{}", c.key));
+        // stored accounts keep their name; this one is for new ones
+        let account_name = l
+            .map(|l| l.name.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| {
+                if i == 0 {
+                    name.to_string()
+                } else {
+                    format!("{name} {}", i + 1)
+                }
+            });
+        let (account, transactions) = card_account(
+            &account_ref,
+            &account_name,
+            number,
+            c.posted,
+            c.pending,
+            c.balance,
+        );
+        out.accounts.push(account);
+        out.transactions.extend(transactions);
+    }
+    out
 }
 
 /// SQL condition for the open holds of an account (`t` = transactions). Amex syncs
@@ -1256,6 +1571,60 @@ impl Vault {
             .optional()?)
     }
 
+    /// Accounts of a login with their card digits and booking ids.
+    fn portal_stored_cards(&self, connection_id: i64) -> Result<Vec<StoredCard>, CoreError> {
+        let db = self.db()?;
+        let mut q = db.prepare(
+            "SELECT id, external_ref, IFNULL(account_number, '') FROM accounts
+              WHERE connection_id = ?1 AND deleted_ms IS NULL ORDER BY id",
+        )?;
+        let rows: Vec<(i64, String, String)> = q
+            .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        let mut ids_q = db.prepare("SELECT external_id FROM transactions WHERE account_id = ?1")?;
+        rows.into_iter()
+            .map(|(id, account_ref, number)| {
+                let ids = ids_q
+                    .query_map([id], |r| r.get::<_, String>(0))?
+                    .collect::<Result<_, _>>()?;
+                Ok(StoredCard {
+                    account_ref,
+                    digits: number.chars().filter(char::is_ascii_digit).collect(),
+                    ids,
+                })
+            })
+            .collect()
+    }
+
+    /// Settles the pending charges of the given accounts of a login (see [`resolve_holds`]).
+    fn settle_holds(
+        &self,
+        kind: ConnectorKind,
+        connection_id: i64,
+        refs: &[String],
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        let mut n = 0;
+        for r in refs {
+            let account: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND deleted_ms IS NULL",
+                    params![connection_id, r],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if let Some(a) = account {
+                n += resolve_holds(&tx, a, kind == ConnectorKind::AmericanExpress)?;
+            }
+        }
+        tx.commit()?;
+        if n > 0 {
+            crate::depot_debug::log(&format!("portal import: settled {n} pending charge(s)"));
+        }
+        Ok(())
+    }
+
     fn import_parsed(
         &self,
         connection_id: i64,
@@ -1306,7 +1675,48 @@ impl Vault {
         json_bodies: Vec<String>,
         dom_rows_json: String,
     ) -> Result<SyncSummary, CoreError> {
-        let (kind, _) = self.portal_connection(connection_id)?;
+        self.import_portal_capture_cards(connection_id, json_bodies, vec![], vec![], dom_rows_json)
+    }
+
+    /// [`Self::import_portal_capture`] for a login with several cards (#243):
+    /// `card_keys[i]` names the card `json_bodies[i]` belongs to ("" = unknown),
+    /// `cards` labels the keys. Each card becomes an account (or goes to the stored
+    /// account with its card digits / bookings); cards new to this login wait for
+    /// the account selection.
+    pub fn import_portal_capture_cards(
+        self: Arc<Self>,
+        connection_id: i64,
+        json_bodies: Vec<String>,
+        card_keys: Vec<String>,
+        cards: Vec<PortalCard>,
+        dom_rows_json: String,
+    ) -> Result<SyncSummary, CoreError> {
+        let (kind, name) = self.portal_connection(connection_id)?;
+        let mut per_card = parse_cards(&json_bodies, &card_keys, kind);
+        // a card seen only in side requests (no bookings) counts only when the
+        // card switcher named it
+        per_card.retain(|c| !c.posted.is_empty() || cards.iter().any(|l| l.key == c.key));
+        if per_card.iter().any(|c| !c.key.is_empty()) {
+            crate::depot_debug::log(&format!(
+                "portal import: {:?} cards={} named={} bodies={}",
+                kind,
+                per_card.len(),
+                cards.len(),
+                json_bodies.len()
+            ));
+            let base_ref = account_ref(kind, connection_id);
+            let stored = self.portal_stored_cards(connection_id)?;
+            let fetch = cards_fetch(&base_ref, &name, per_card, &cards, &stored);
+            let refs: Vec<String> = fetch
+                .accounts
+                .iter()
+                .map(|a| a.external_ref.clone())
+                .collect();
+            let summary = store_fetch(&self, kind, connection_id, fetch)?;
+            self.settle_holds(kind, connection_id, &refs)?;
+            let _ = self.checkpoint();
+            return Ok(summary);
+        }
         let capture = parse_capture(&json_bodies, kind);
         let balance = capture.balance.as_ref().map(|(_, c)| *c);
         match &capture.balance {
@@ -2373,5 +2783,299 @@ mod hold_tests {
             )
             .unwrap();
         assert_eq!(note, "Notiz");
+    }
+}
+
+/// Several cards and partner cards behind one portal login (#243).
+#[cfg(test)]
+mod card_tests {
+    use super::*;
+
+    #[test]
+    fn amex_partner_cards_are_named() {
+        // bookings carry `supplementary_index`; names come from the card-member list
+        let b = r#"{"card_member_totals":[
+                {"supplementary_index":"00","embossed_name":"MAX MUSTERMANN","account_number":"XXXX-XXXXXX-11111"},
+                {"supplementary_index":"01","embossed_name":"ERIKA MUSTERMANN","account_number":"XXXX-XXXXXX-22222"}],
+            "transactions":[
+                {"charge_date":"2026-11-02","amount":12.5,"description":"REWE","identifier":"T1","supplementary_index":"00"},
+                {"charge_date":"2026-11-03","amount":7,"description":"BÄCKER","identifier":"T2","supplementary_index":"01"},
+                {"charge_date":"2026-11-04","amount":3,"description":"KIOSK","identifier":"T3","supplementary_index":"02"},
+                {"charge_date":"2026-11-05","amount":4,"description":"CAFE","identifier":"T4","embossed_name":"Erika Mustermann"},
+                {"charge_date":"2026-11-06","amount":5,"description":"BAR","identifier":"T5"}]}"#;
+        let (p, _) = parse_json_bodies(&[b.to_string()], ConnectorKind::AmericanExpress);
+        let cards: Vec<Option<&str>> = p.iter().map(|t| t.card.as_deref()).collect();
+        assert_eq!(
+            cards,
+            vec![
+                Some("Max Mustermann"),
+                Some("Erika Mustermann"),
+                Some("Karte 02"),
+                Some("Erika Mustermann"),
+                None,
+            ]
+        );
+    }
+
+    #[test]
+    fn card_label_is_the_name_without_card_number() {
+        let o = serde_json::json!({"first_name":"MAX","last_name":"MUSTERMANN","display_account_number":"374912345612345"});
+        assert_eq!(
+            card_label(o.as_object().unwrap()).as_deref(),
+            Some("Max Mustermann")
+        );
+    }
+
+    #[test]
+    fn portal_import_names_card_and_backfills_old_bookings() {
+        let dir = crate::test_support::TempDir::new("girocrab-amex-cards");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![3u8; 32],
+        )
+        .unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::AmericanExpress, String::new(), "Amex".into())
+            .unwrap();
+        let body = |card: &str| {
+            format!(
+                r#"{{"transactions":[{{"charge_date":"2026-11-03","amount":19.99,"description":"PAYPAL *HAENDLER 1234567890","identifier":"T1"{card}}}]}}"#
+            )
+        };
+        // first sync: no card fields yet (as before #243)
+        v.clone()
+            .import_portal_capture(conn, vec![body("")], "[]".into())
+            .unwrap();
+        // later sync with the card: the existing row gets it, no second row
+        v.clone()
+            .import_portal_capture(
+                conn,
+                vec![body(r#","embossed_name":"ERIKA MUSTERMANN""#)],
+                "[]".into(),
+            )
+            .unwrap();
+        let rows: Vec<String> = {
+            let db = v.db().unwrap();
+            let mut st = db
+                .prepare("SELECT booking_text FROM transactions WHERE deleted_ms IS NULL AND counterparty LIKE 'PAYPAL%'")
+                .unwrap();
+            st.query_map([], |r| r.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        assert_eq!(rows, vec!["Kartenumsatz · Erika Mustermann".to_string()]);
+        assert_eq!(
+            crate::merchants::payment_method(&rows[0], "", AccountKind::CreditCard, -1999, false),
+            "Erika Mustermann"
+        );
+    }
+
+    #[test]
+    fn second_card_gets_its_own_account_after_the_choice() {
+        let dir = crate::test_support::TempDir::new("girocrab-amex-two-cards");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![3u8; 32],
+        )
+        .unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::AmericanExpress, String::new(), "Amex".into())
+            .unwrap();
+        let tx = |id: &str, text: &str| {
+            format!(
+                r#"{{"transactions":[{{"charge_date":"2026-11-03","amount":10,"description":"{text}","identifier":"{id}"}}]}}"#
+            )
+        };
+        let rows = |v: &Vault, account_ref: &str| -> Vec<String> {
+            let db = v.db().unwrap();
+            let mut q = db
+                .prepare(
+                    "SELECT t.external_id FROM transactions t JOIN accounts a ON a.id = t.account_id
+                      WHERE a.external_ref = ?1 AND t.deleted_ms IS NULL ORDER BY t.external_id",
+                )
+                .unwrap();
+            q.query_map([account_ref], |r| r.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let base = account_ref(ConnectorKind::AmericanExpress, conn);
+        // before: one card, no card keys
+        v.clone()
+            .import_portal_capture(conn, vec![tx("A1", "REWE")], "[]".into())
+            .unwrap();
+        // now both cards; the business card's responses come first
+        let cards = vec![
+            PortalCard {
+                key: "aaaa".into(),
+                name: "American Express® Card".into(),
+                number: "11111".into(),
+            },
+            PortalCard {
+                key: "bbbb".into(),
+                name: "Amazon Business American Express® Card".into(),
+                number: "22222".into(),
+            },
+        ];
+        v.clone()
+            .import_portal_capture_cards(
+                conn,
+                vec![tx("B1", "OFFICE"), tx("A1", "REWE"), tx("A2", "BAKERY")],
+                vec!["bbbb".into(), "aaaa".into(), "aaaa".into()],
+                cards.clone(),
+                "[]".into(),
+            )
+            .unwrap();
+        // the stored card keeps its account, the new card waits for the choice
+        assert_eq!(rows(&v, &base), vec!["id:A1", "id:A2"]);
+        let new_ref = format!("{base}-bbbb");
+        assert!(rows(&v, &new_ref).is_empty());
+        let choices = v.connection_account_choices(conn).unwrap();
+        let new_card = choices.iter().find(|c| c.account_ref == new_ref).unwrap();
+        assert!(new_card.pending && new_card.existing_connection.is_empty());
+        assert_eq!(
+            (new_card.name.as_str(), new_card.number.as_str()),
+            ("Amazon Business American Express® Card", "22222")
+        );
+        assert_eq!(
+            v.pending_account_selection_connections().unwrap(),
+            vec![conn]
+        );
+        // ticked: its bookings are imported into its own account
+        v.clone()
+            .set_connection_account_choices(conn, vec![base.clone(), new_ref.clone()])
+            .unwrap();
+        assert_eq!(rows(&v, &new_ref), vec!["id:B1"]);
+        assert_eq!(rows(&v, &base), vec!["id:A1", "id:A2"]);
+        // a later sync with both cards asks nothing and imports into both
+        v.clone()
+            .import_portal_capture_cards(
+                conn,
+                vec![tx("A3", "CAFE"), tx("B2", "PAPER")],
+                vec!["aaaa".into(), "bbbb".into()],
+                cards,
+                "[]".into(),
+            )
+            .unwrap();
+        assert_eq!(rows(&v, &new_ref), vec!["id:B1", "id:B2"]);
+        assert_eq!(rows(&v, &base), vec!["id:A1", "id:A2", "id:A3"]);
+        assert!(v
+            .pending_account_selection_connections()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn one_card_key_keeps_the_single_account() {
+        let groups = parse_cards(
+            &[
+                r#"{"transactions":[{"charge_date":"2026-11-03","amount":1,"description":"X","identifier":"1"}]}"#.into(),
+                r#"{"profile":{"x":1}}"#.into(),
+            ],
+            &["aaaa".into(), String::new()],
+            ConnectorKind::AmericanExpress,
+        );
+        assert_eq!(groups.len(), 1);
+    }
+
+    #[test]
+    fn cards_go_to_the_stored_accounts_with_their_digits() {
+        let dir = crate::test_support::TempDir::new("girocrab-amex-stored-cards");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![3u8; 32],
+        )
+        .unwrap();
+        let conn = v
+            .add_bank_connection(
+                ConnectorKind::AmericanExpress,
+                String::new(),
+                "American Express".into(),
+            )
+            .unwrap();
+        // two card accounts of this login from elsewhere (e.g. a MoneyMoney import)
+        let stored = |r: &str, number: &str| RemoteAccount {
+            external_ref: r.into(),
+            name: "American Express".into(),
+            owner: String::new(),
+            iban: String::new(),
+            account_number: number.into(),
+            currency: "EUR".into(),
+            kind: AccountKind::CreditCard,
+            balance_cents: 0,
+            balance_date: "2026-11-01".into(),
+        };
+        store_fetch(
+            &v,
+            ConnectorKind::AmericanExpress,
+            conn,
+            FetchResult {
+                accounts: vec![
+                    stored("mm:green", "3742-XXXXXX-11111"),
+                    stored("mm:business", "3799-XXXXXX-22222"),
+                ],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let tx = |id: &str| {
+            format!(
+                r#"{{"transactions":[{{"charge_date":"2026-11-03","amount":10,"description":"SHOP {id}","identifier":"{id}"}}]}}"#
+            )
+        };
+        let bodies = vec![tx("A1"), tx("B1")];
+        let keys = vec!["aaaa".to_string(), "bbbb".to_string()];
+        // a capture without card names cannot be placed: held back, nothing stored
+        v.clone()
+            .import_portal_capture_cards(conn, bodies.clone(), keys.clone(), vec![], "[]".into())
+            .unwrap();
+        assert_eq!(
+            v.pending_account_selection_connections().unwrap(),
+            vec![conn]
+        );
+        // with the switcher's names each card finds its account; the held-back
+        // entries of the first try disappear, no account is added
+        let cards = vec![
+            PortalCard {
+                key: "aaaa".into(),
+                name: "American Express® Card".into(),
+                number: "11111".into(),
+            },
+            PortalCard {
+                key: "bbbb".into(),
+                name: "Amazon Business American Express® Card".into(),
+                number: "22222".into(),
+            },
+        ];
+        v.clone()
+            .import_portal_capture_cards(conn, bodies, keys, cards, "[]".into())
+            .unwrap();
+        assert!(v
+            .pending_account_selection_connections()
+            .unwrap()
+            .is_empty());
+        let choices = v.connection_account_choices(conn).unwrap();
+        assert_eq!(
+            choices
+                .iter()
+                .map(|c| c.account_ref.as_str())
+                .collect::<Vec<_>>(),
+            vec!["mm:green", "mm:business"]
+        );
+        let db = v.db().unwrap();
+        let on = |id: &str| -> String {
+            db.query_row(
+                "SELECT a.external_ref FROM transactions t JOIN accounts a ON a.id = t.account_id
+                  WHERE t.external_id = ?1",
+                [format!("id:{id}")],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            (on("A1"), on("B1")),
+            ("mm:green".into(), "mm:business".into())
+        );
     }
 }

@@ -9,6 +9,7 @@ use rusqlite::{params, OptionalExtension};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::iban::{normalize_iban, validate_iban};
+use crate::importers::portal_import::{CARD_BOOKING_TEXT, CARD_SEPARATOR};
 use crate::models::{
     AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
 };
@@ -673,6 +674,16 @@ pub(crate) fn store_fetch(
                             }
                         }
                     }
+                }
+                // Portal card bookings stored before their card was known (#243).
+                if t.booking_text
+                    .starts_with(&format!("{CARD_BOOKING_TEXT}{CARD_SEPARATOR}"))
+                {
+                    tx.execute(
+                        "UPDATE transactions SET booking_text = ?1
+                          WHERE account_id = ?2 AND external_id = ?3 AND booking_text = ?4",
+                        params![t.booking_text, acc_id, t.external_id, CARD_BOOKING_TEXT],
+                    )?;
                 }
             }
         }

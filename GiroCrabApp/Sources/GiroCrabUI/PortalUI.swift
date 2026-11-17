@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import CryptoKit
 import UniformTypeIdentifiers
 import GiroCrabCore
 
@@ -30,13 +31,17 @@ extension AppModel {
 
     /// Returns true when transactions were recognised (even if all were already known).
     @discardableResult
-    func importPortalCapture(_ c: BankConnection, bodies: [String], domRowsJSON: String) -> Bool {
+    func importPortalCapture(_ c: BankConnection, bodies: [String], cardKeys: [String] = [], cards: [PortalCard] = [],
+                             domRowsJSON: String) -> Bool {
         guard let vault else { return false }
         do {
-            let s = try vault.importPortalCapture(connectionId: c.id, jsonBodies: bodies, domRowsJson: domRowsJSON)
+            let s = try vault.importPortalCaptureCards(connectionId: c.id, jsonBodies: bodies, cardKeys: cardKeys,
+                                                       cards: cards, domRowsJson: domRowsJSON)
             toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
                 + Self.skippedArchivedNote(s)
             reloadAll()
+            // several cards behind one login (#243): new ones wait for the choice
+            checkPendingAccountSelection()
             return true
         } catch {
             AppModel.debugLog("portal import failed: \(describe(error))")
@@ -197,7 +202,8 @@ private final class WeakHandler: NSObject, WKScriptMessageHandler {
               domains.allows(m.frameInfo.securityOrigin.host) else { return }
         guard let d = m.body as? [String: Any], let body = d["body"] as? String else { return }
         let url = d["url"] as? String ?? ""
-        Task { @MainActor in self.target?.captured(body, url: url) }
+        let card = d["card"] as? String ?? ""
+        Task { @MainActor in self.target?.captured(body, url: url, card: card) }
     }
 }
 
@@ -233,6 +239,15 @@ private final class PortalNavigationGuard: NSObject, WKNavigationDelegate {
 final class PortalBrowser {
     let webView: WKWebView
     private(set) var bodies: [String] = []
+    /// Card of each body (`cardKey`, "" = unknown), parallel to `bodies`.
+    private(set) var bodyCards: [String] = []
+    /// Labels of the card keys seen so far (Amex card switcher, #243).
+    private(set) var cards: [PortalCard] = []
+    /// The card the portal is being switched to, and the card shown before the switch.
+    @ObservationIgnored private var expectedCard: (name: String, number: String, previous: String?)?
+    /// Card of the latest booking-list response: the card the portal shows. Side
+    /// requests (balances, eligibility) may name other cards of the login too.
+    private(set) var listCard: String?
     private(set) var lastCapture: Date?
     private(set) var loading = true
     private(set) var currentURL: URL?
@@ -262,20 +277,34 @@ final class PortalBrowser {
     static let hook = """
     (function(){
       if (window.__gcHooked) return; window.__gcHooked = true;
-      var post = function(url, body) { try {
+      var post = function(url, body, card) { try {
         if (!body || body.length > 3000000) return;
         var t = body.trim().charAt(0); if (t !== '{' && t !== '[') return;
-        window.webkit.messageHandlers.girocrab.postMessage({url: String(url), body: body});
+        window.webkit.messageHandlers.girocrab.postMessage({url: String(url), body: body, card: card || ''});
       } catch (e) {} };
+      // Which card a request is for (Amex: an account token header, #243). The app
+      // keeps only a hash of it to group the responses per card.
+      var isCard = function(k) { return /account.?(token|key)/i.test(String(k)); };
+      var cardOf = function(h) { var c = ''; try {
+        var f = function(k, v) { if (!c && v && isCard(k)) c = String(v); };
+        if (!h || typeof h !== 'object') return '';
+        if (typeof Headers !== 'undefined' && h instanceof Headers) h.forEach(function(v, k) { f(k, v); });
+        else if (Array.isArray(h)) h.forEach(function(p) { f(p[0], p[1]); });
+        else Object.keys(h).forEach(function(k) { f(k, h[k]); });
+      } catch (e) {} return c; };
       var of = window.fetch;
       if (of) { window.fetch = function() {
         var a = arguments, p = of.apply(this, a);
-        p.then(function(r) { try { var u = (a[0] && a[0].url) || a[0]; r.clone().text().then(function(b) { post(u, b); }); } catch (e) {} }).catch(function(){});
+        var c = cardOf(a[1] && a[1].headers) || cardOf(a[0] && a[0].headers);
+        p.then(function(r) { try { var u = (a[0] && a[0].url) || a[0]; r.clone().text().then(function(b) { post(u, b, c); }); } catch (e) {} }).catch(function(){});
         return p; }; }
-      var ox = XMLHttpRequest.prototype.open;
+      var ox = XMLHttpRequest.prototype.open, oh = XMLHttpRequest.prototype.setRequestHeader;
+      XMLHttpRequest.prototype.setRequestHeader = function(k, v) {
+        try { if (isCard(k)) this.__gcc = String(v); } catch (e) {}
+        return oh.apply(this, arguments); };
       XMLHttpRequest.prototype.open = function(m, u) {
         this.__gcu = u;
-        this.addEventListener('load', function() { try { if (this.responseType === '' || this.responseType === 'text') post(this.__gcu, this.responseText); } catch (e) {} });
+        this.addEventListener('load', function() { try { if (this.responseType === '' || this.responseType === 'text') post(this.__gcu, this.responseText, this.__gcc); } catch (e) {} });
         return ox.apply(this, arguments); };
     })();
     """
@@ -332,18 +361,134 @@ final class PortalBrowser {
     /// Paths (digits masked) of every JSON response seen, for "Portal-Struktur prüfen".
     private(set) var seenPaths: [String] = []
 
-    func captured(_ body: String, url: String) {
+    /// Short hash of the portal's card token: groups responses per card, the token itself is not kept.
+    static func cardKey(_ token: String) -> String {
+        guard !token.isEmpty else { return "" }
+        return SHA256.hash(data: Data(token.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    func captured(_ body: String, url: String, card: String = "") {
         let path = Self.maskedPath(url)
         seenPaths.append(path)
         if seenPaths.count > 200 { seenPaths.removeFirst(seenPaths.count - 200) }
         let lower = url.lowercased()
         guard Self.relevantURLWords.contains(where: lower.contains),
               !Self.privateURLWords.contains(where: lower.contains) else { return }
+        let key = Self.cardKey(card)
         bodies.append(body)
+        bodyCards.append(key)
         // room for a long history paged in with "mehr anzeigen" (≈20 bookings per page)
-        if bodies.count > 300 { bodies.removeFirst(bodies.count - 300) }
+        if bodies.count > 300 {
+            bodies.removeFirst(bodies.count - 300)
+            bodyCards.removeFirst(bodyCards.count - 300)
+        }
+        if !key.isEmpty, Self.isBookingList(url) {
+            listCard = key
+            if let e = expectedCard, key != e.previous {
+                expectedCard = nil
+                if !cards.contains(where: { $0.key == key }) {
+                    cards.append(PortalCard(key: key, name: e.name, number: e.number))
+                }
+            }
+        }
         lastCapture = Date()
     }
+
+    /// Card keys seen so far.
+    var cardKeys: Set<String> { Set(bodyCards.filter { !$0.isEmpty }) }
+
+    /// The portal's booking list (not balances or summaries).
+    static func isBookingList(_ url: String) -> Bool {
+        let path = (URL(string: url)?.path ?? url).lowercased()
+        return path.hasSuffix("/transactions")
+    }
+
+    /// Names the card the booking list shows now.
+    func labelCurrentCard(name: String, number: String) {
+        guard let key = listCard, !cards.contains(where: { $0.key == key }) else { return }
+        cards.append(PortalCard(key: key, name: name, number: number))
+    }
+
+    /// Entries of the Amex card switcher ("American Express® Card••••12345").
+    struct CardList: Decodable {
+        struct Entry: Decodable { var name: String; var number: String }
+        /// Last digits of the card shown now.
+        var current = ""
+        var cards: [Entry] = []
+    }
+
+    /// Opens the Amex card switcher, reads its entries and closes it again.
+    func amexCards() async -> CardList {
+        let js = Self.amexSwitcherJS + """
+        if (!sw) return JSON.stringify({current: '', cards: []});
+        var current = txt(sw).replace(/[^0-9]/g, '');
+        sw.click(); await new Promise(function(r) { setTimeout(r, 800); });
+        var seen = {}, cards = [];
+        entries().forEach(function(m) { if (!seen[m[2]]) { seen[m[2]] = 1; cards.push({name: m[1].trim(), number: m[2]}); } });
+        sw.click();
+        return JSON.stringify({current: current, cards: cards});
+        """
+        guard let s = try? await webView.callAsyncJavaScript(js, contentWorld: .page) as? String,
+              let list = try? JSONDecoder().decode(CardList.self, from: Data(s.utf8)) else { return CardList() }
+        return list
+    }
+
+    /// Types user name and password into the visible login form (empty fields only).
+    /// Runs in an isolated script world, so the page's scripts never get the values
+    /// as arguments; does not submit.
+    func fillLogin(user: String, password: String) async -> Bool {
+        guard onPortal else { return false }
+        let js = """
+        var vis = function(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+        var pw = Array.prototype.find.call(document.querySelectorAll('input[type=password]'), vis);
+        if (!pw) return false;
+        var texts = Array.prototype.filter.call(document.querySelectorAll('input'), function(i) {
+          return vis(i) && /^(text|email|tel)?$/i.test(i.getAttribute('type') || ''); });
+        var named = texts.find(function(i) {
+          return /user|login|benutzer/i.test((i.id || '') + ' ' + (i.name || '') + ' ' + (i.getAttribute('autocomplete') || '')); });
+        var before = texts.filter(function(i) { return pw.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_PRECEDING; });
+        var u = named || before[before.length - 1];
+        if (!u) return false;
+        var set = function(el, v) {
+          if (el.value) return;
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v);
+          el.dispatchEvent(new Event('input', {bubbles: true}));
+          el.dispatchEvent(new Event('change', {bubbles: true}));
+        };
+        set(u, user); set(pw, password);
+        return true;
+        """
+        return (try? await webView.callAsyncJavaScript(js, arguments: ["user": user, "password": password],
+                                                        contentWorld: .defaultClient) as? Bool) ?? false
+    }
+
+    /// Switches the Amex portal to the card with these last digits; its responses get this label.
+    @discardableResult
+    func selectAmexCard(name: String, number: String) async -> Bool {
+        expectedCard = (name, number, listCard)
+        let js = Self.amexSwitcherJS + """
+        if (!sw) return false;
+        sw.click(); await new Promise(function(r) { setTimeout(r, 800); });
+        var hit = entries().find(function(m) { return m[2] === number; });
+        if (!hit) { sw.click(); return false; }
+        hit[0].click();
+        return true;
+        """
+        let ok = (try? await webView.callAsyncJavaScript(js, arguments: ["number": number], contentWorld: .page) as? Bool) ?? false
+        if !ok { expectedCard = nil }
+        return ok
+    }
+
+    /// Shared part of the switcher scripts: `sw` is the switcher button ("-12345"),
+    /// `entries()` lists `[button, name, digits]` of the open menu.
+    private static let amexSwitcherJS = """
+    var vis = function(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    var txt = function(e) { return (e.innerText || '').trim().replace(/\\s+/g, ' '); };
+    var buttons = function() { return Array.prototype.filter.call(document.querySelectorAll('button'), vis); };
+    var sw = buttons().find(function(b) { return /^-[0-9]{4,5}$/.test(txt(b)); });
+    var entries = function() { return buttons().map(function(b) {
+      var m = /^(.+?)\\s*•+\\s*([0-9]{4,5})$/.exec(txt(b)); return m ? [b, m[1], m[2]] : null; }).filter(Boolean); };
+    """
 
     /// Host + path without query, digits masked – no ids or card numbers.
     static func maskedPath(_ url: String) -> String {
@@ -474,6 +619,19 @@ struct PortalWebSheet: View {
     @State private var openedTransactions = false
     /// Labels logged once at the end of the list (to adapt to portal changes).
     @State private var loggedLabels = false
+    /// Amex: cards of the switcher still to open, so every card's bookings are captured
+    /// (#243); nil until the switcher was read.
+    @State private var cardQueue: [PortalBrowser.CardList.Entry]?
+    /// Amex: the card the portal is switching to right now.
+    @State private var loadingCard: String?
+    /// Amex: the stored login was filled in (or there is none): not tried again.
+    @State private var loginFilled = false
+
+    /// Amex: not every card of the switcher has been opened yet. Importing now would
+    /// take only the cards loaded so far and close the sheet, so it waits (#243).
+    private var cardsPending: Bool {
+        connection.connector == .americanExpress && (cardQueue.map { !$0.isEmpty } ?? true || loadingCard != nil)
+    }
     /// The older history (SMS code) is offered once per connection; later syncs close on their own.
     private var historyOfferedKey: String { "portal.historyOffered.\(connection.id)" }
 
@@ -503,6 +661,7 @@ struct PortalWebSheet: View {
         if importedCount > 0 && olderOffered {
             return String(localized: "\(importedCount) Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter.")
         }
+        if let card = loadingCard { return String(localized: "Umsätze der Karte „\(card)“ werden geladen …") }
         if importedCount > 0 { return String(localized: "\(importedCount) Umsätze übernommen – weitere werden geladen …") }
         if recognized == 0 { return String(localized: "Angemeldet – öffnen Sie die Umsatzübersicht, damit das Portal die Buchungen lädt.") }
         return String(localized: "\(recognized) Umsätze erkannt – Übernahme startet automatisch, sobald die Seite fertig geladen ist.")
@@ -526,6 +685,21 @@ struct PortalWebSheet: View {
             Divider()
             PortalWebView(browser: browser)
                 .macFrame(minWidth: 760, minHeight: 520)
+                .overlay {
+                    // GiroCrab switches the cards itself: the page stays hidden meanwhile,
+                    // so nobody clicks into it or imports a half-loaded card (#243).
+                    if cardsPending, recognized > 0, !browser.onLoginPage {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Karten werden geladen …").appFont(.headline)
+                            if let card = loadingCard {
+                                Text(card).appFont(.callout).foregroundStyle(Theme.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Theme.canvas)
+                    }
+                }
             Divider()
             HStack {
                 Button(importedCount > 0 ? "Fertig" : "Abbrechen", role: .cancel) { requestClose() }
@@ -547,7 +721,7 @@ struct PortalWebSheet: View {
                 Button("Umsätze übernehmen (\(recognized) erkannt)") { Task { await attempt(fromButton: true) } }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .disabled(busy || recognized == 0)
+                    .disabled(busy || recognized == 0 || cardsPending)
             }
             .padding(12)
         }
@@ -568,6 +742,10 @@ struct PortalWebSheet: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 guard !busy else { continue }
+                if connection.connector == .americanExpress, !loginFilled, browser.onLoginPage, browser.onPortal,
+                   !browser.loading {
+                    loginFilled = await fillStoredLogin()
+                }
                 let away = browser.onLoginPage || !browser.onPortal
                 let rows = away ? "[]" : await browser.domRowsJSON()
                 let n = away ? 0 : await model.previewPortalCapture(connection, bodies: browser.bodies, domRowsJSON: rows)
@@ -589,6 +767,11 @@ struct PortalWebSheet: View {
                         loggedLabels = true
                         AppModel.debugLog("portal pager: older=\(pager.older) buttons=\(pager.labels.joined(separator: " | "))")
                     }
+                }
+                // Amex: open every card of the switcher once before importing (#243).
+                if !browsingHistory, connection.connector == .americanExpress, n > 0, !away,
+                   Date().timeIntervalSince(lastChange) > 4 {
+                    if await openNextCard() { lastChange = Date(); continue }
                 }
                 if !browsingHistory, n > importedCount, !away, !pager.more, Date().timeIntervalSince(lastChange) > 4 {
                     // The automatic import closes the sheet, so it never runs while stored pending
@@ -635,7 +818,8 @@ struct PortalWebSheet: View {
         busy = true
         defer { busy = false }
         let rows = await browser.domRowsJSON()
-        let ok = model.importPortalCapture(connection, bodies: browser.bodies, domRowsJSON: rows)
+        let ok = model.importPortalCapture(connection, bodies: browser.bodies, cardKeys: browser.bodyCards,
+                                           cards: browser.cards, domRowsJSON: rows)
         guard ok else { return false }
         importedCount = max(importedCount, recognized)
         holdsToCheck = 0
@@ -663,6 +847,45 @@ struct PortalWebSheet: View {
         return String(localized: "Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden:")
             + "\n\n" + lines.joined(separator: "\n") + "\n\n"
             + String(localized: "„Vorerst behalten“ lässt sie als Vormerkung stehen; beim nächsten Abruf wird erneut gesucht.")
+    }
+
+    /// Fills the stored user name and password into the portal's login form. True once
+    /// done, or when nothing is stored; false while the form is not there yet.
+    private func fillStoredLogin() async -> Bool {
+        let id = connection.id
+        let stored = try? await model.vaultOffMain {
+            (try $0.getSetting(key: AppModel.portalLoginKey(id)) ?? "", try $0.getSetting(key: "pin.conn.\(id)") ?? "")
+        }
+        guard let (user, password) = stored, !user.isEmpty, !password.isEmpty else { return true }
+        let filled = await browser.fillLogin(user: user, password: password)
+        if filled { AppModel.debugLog("portal: stored login filled in") }
+        return filled
+    }
+
+    /// Amex: switches the portal to the next card not seen yet. Returns true while
+    /// switching (the caller waits for its bookings), false once every card was opened.
+    private func openNextCard() async -> Bool {
+        if cardQueue == nil {
+            let list = await browser.amexCards()
+            var queue = list.cards
+            if let current = list.cards.first(where: { $0.number == list.current }) {
+                browser.labelCurrentCard(name: current.name, number: current.number)
+                queue.removeAll { $0.number == current.number }
+            }
+            // A single card: nothing to switch to. Without a card key on the booking list
+            // the cards could not be told apart, and switching would mix their bookings.
+            cardQueue = list.cards.count > 1 && browser.listCard != nil ? queue : []
+            AppModel.debugLog("portal cards: \(list.cards.count)")
+        }
+        guard var queue = cardQueue, !queue.isEmpty else {
+            loadingCard = nil
+            return false
+        }
+        let next = queue.removeFirst()
+        cardQueue = queue
+        loadingCard = next.name
+        await browser.selectAmexCard(name: next.name, number: next.number)
+        return true
     }
 
     /// Keys-only structure dump (all strings/numbers masked) for debugging portal changes.

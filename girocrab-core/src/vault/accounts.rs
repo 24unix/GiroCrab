@@ -171,9 +171,10 @@ impl Vault {
                 format!("fints.rah10.bank_keys.{connection_id}")
             ],
         )?;
-        // stored secrets of this connection (PIN); the soft delete blanked the session (state_json)
+        // stored secrets of this connection (PIN, portal user name `pin.conn.<id>.login`);
+        // the soft delete blanked the session (state_json)
         db.execute(
-            "DELETE FROM settings WHERE key = ?1",
+            "DELETE FROM settings WHERE key = ?1 OR substr(key, 1, length(?1) + 1) = ?1 || '.'",
             [super::connections::pin_key(connection_id)],
         )?;
         // the account choice of this login (#346): a re-added login starts fresh

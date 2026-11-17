@@ -4642,6 +4642,17 @@
         }
       }
     },
+    "Anmeldedaten im Tresor speichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Store sign-in details in the vault"
+          }
+        }
+      }
+    },
     "Anmelden & Abrufen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6871,6 +6882,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "User ID"
+          }
+        }
+      }
+    },
+    "Benutzername" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "User name"
           }
         }
       }
@@ -14526,6 +14548,17 @@
         }
       }
     },
+    "Gespeichertes Passwort (leer = unverändert)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stored password (empty = unchanged)"
+          }
+        }
+      }
+    },
     "Gespeichertes Passwort löschen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14917,6 +14950,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab will restart briefly. You can change the language later in Settings."
+          }
+        }
+      }
+    },
+    "GiroCrab trägt beide verschlüsselt gespeichert ins Anmeldeformular ein. „Anmelden“ und den Bestätigungscode bestätigen Sie selbst." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab keeps both encrypted and fills them into the sign-in form. You confirm “Sign in” and the verification code yourself."
           }
         }
       }
@@ -17124,6 +17168,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Card"
+          }
+        }
+      }
+    },
+    "Karten werden geladen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading cards …"
           }
         }
       }
@@ -28738,6 +28793,17 @@
         }
       }
     },
+    "Umsätze der Karte „%@“ werden geladen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading the transactions of the card “%@” …"
+          }
+        }
+      }
+    },
     "Umsätze exportieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28921,6 +28987,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Insecure page blocked (%@) – only HTTPS pages are opened."
+          }
+        }
+      }
+    },
+    "Unter „%@“ gibt es mehrere Karten. Jede gewählte Karte wird ein eigenes Konto, nicht gewählte werden übersprungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” has several cards. Each card you choose becomes an account of its own; the others are skipped."
           }
         }
       }
@@ -30368,6 +30445,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Which FinTS registration should GiroCrab use?"
+          }
+        }
+      }
+    },
+    "Welche Karten sollen abgerufen werden?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Which cards should be fetched?"
           }
         }
       }

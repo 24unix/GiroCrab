@@ -264,7 +264,10 @@ fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
                 "UPDATE settings SET key = ?1 WHERE key = ?2 AND NOT EXISTS (SELECT 1 FROM settings WHERE key = ?1)",
                 params![pin_key(keep), pin_key(id)],
             )?;
-            conn.execute("DELETE FROM settings WHERE key = ?1", [pin_key(id)])?;
+            conn.execute(
+                "DELETE FROM settings WHERE key = ?1 OR substr(key, 1, length(?1) + 1) = ?1 || '.'",
+                [pin_key(id)],
+            )?;
             conn.execute("DELETE FROM bank_connections WHERE id = ?1", [id])?;
             removed += 1;
         } else {
@@ -1106,6 +1109,17 @@ mod tests {
                 [pin_key(conn)],
             )
             .unwrap();
+            // portal user name of this login, and the PIN of another one ("pin.conn.<id>0")
+            for key in [
+                format!("{}.login", pin_key(conn)),
+                format!("{}0", pin_key(conn)),
+            ] {
+                db.execute(
+                    "INSERT INTO settings(key, value, is_secret) VALUES (?1, 'x', 1)",
+                    [key],
+                )
+                .unwrap();
+            }
             for (n, sub) in [("l1", 1), ("l2", 2)] {
                 db.execute("INSERT INTO accounts(connection_id, group_id, external_ref, name, kind) VALUES (?1, ?2, ?3, 'Darlehen', 'loan')", params![conn, g, n]).unwrap();
                 let id = db.last_insert_rowid();
@@ -1149,6 +1163,18 @@ mod tests {
         assert!(
             v.get_setting(pin_key(conn)).unwrap().is_none(),
             "secret removed"
+        );
+        assert!(
+            v.get_setting(format!("{}.login", pin_key(conn)))
+                .unwrap()
+                .is_none(),
+            "portal user name removed"
+        );
+        assert!(
+            v.get_setting(format!("{}0", pin_key(conn)))
+                .unwrap()
+                .is_some(),
+            "other logins keep theirs"
         );
         let left: i64 = v
             .db()

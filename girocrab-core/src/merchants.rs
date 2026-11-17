@@ -884,6 +884,21 @@ pub fn clean_name(s: &str) -> String {
     }
 }
 
+/// Shop name after a processor's `*` ("PayPal *Haendler Gmbh 1234567890" ->
+/// "Haendler Gmbh"), without trailing reference numbers; `None` if nothing is left.
+fn behind_processor(counterparty: &str) -> Option<String> {
+    let (_, shop) = counterparty.split_once('*')?;
+    let mut words: Vec<&str> = shop.split_whitespace().collect();
+    while words
+        .last()
+        .is_some_and(|w| w.len() >= 5 && w.chars().all(|c| c.is_ascii_digit()))
+    {
+        words.pop();
+    }
+    let shop = words.join(" ");
+    shop.chars().any(char::is_alphabetic).then_some(shop)
+}
+
 impl MerchantResolver {
     /// Resolves the merchant of a booking from counterparty and purpose.
     ///
@@ -943,6 +958,11 @@ impl MerchantResolver {
                     .filter(|r| r.kind != K::PaymentService)
                 {
                     return to_info(real);
+                }
+                // "PAYPAL *HAENDLER 1234567890" on card statements (#243): a shop
+                // the dictionary doesn't know is still named right behind the `*`.
+                if let Some(shop) = behind_processor(counterparty) {
+                    return Self::resolve_uncached(&shop, purpose);
                 }
             }
             if let Some((_, subs)) = SUB_BRANDS.iter().find(|(parent, _)| *parent == entry.key) {
@@ -1135,6 +1155,14 @@ pub fn payment_method(
     amount_cents: i64,
     paypal: bool,
 ) -> String {
+    // Amex portal bookings name the (partner) card they were paid with (#243).
+    if let Some(card) = booking_text
+        .strip_prefix(crate::importers::portal_import::CARD_BOOKING_TEXT)
+        .and_then(|r| r.strip_prefix(crate::importers::portal_import::CARD_SEPARATOR))
+        .filter(|c| !c.trim().is_empty())
+    {
+        return card.trim().to_string();
+    }
     let t = normalise(&format!("{booking_text} {purpose}"));
     let m = if booking_text == "Amazon-Bestellung" {
         "Bestellung"
@@ -1349,6 +1377,16 @@ mod tests {
         assert_eq!(
             MerchantResolver::resolve("PayPal *Spotify", "").key,
             "spotify"
+        );
+        // unknown shop behind the processor (#243): its own name, not "PayPal"
+        let shop = MerchantResolver::resolve("PAYPAL *HAENDLER MUSTER 1234567890", "");
+        assert_eq!(shop.name, "Haendler Muster");
+        assert_ne!(shop.key, "paypal");
+        // no shop named: still PayPal
+        assert_eq!(MerchantResolver::resolve("PayPal *", "").key, "paypal");
+        assert_eq!(
+            MerchantResolver::resolve("PayPal Europe S.a.r.l. et Cie S.C.A", "").key,
+            "paypal"
         );
         assert_eq!(
             MerchantResolver::resolve(

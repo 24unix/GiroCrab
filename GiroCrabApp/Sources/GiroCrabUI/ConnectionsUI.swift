@@ -242,6 +242,11 @@ struct ConnectionEditSheet: View {
 
     private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .ffb, .fordMoney, .opelDirektbank].contains(connection.connector) }
     private var isTR: Bool { connection.connector == .tradeRepublic }
+    /// Amex: user name and password for the portal login, kept in the vault and
+    /// filled into the login form of the portal window.
+    private var savesPortalLogin: Bool { connection.connector == .americanExpress }
+    @State private var storePortalLogin = false
+    @State private var portalUser = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -308,6 +313,19 @@ struct ConnectionEditSheet: View {
                                     dismiss()
                                 }
                             }
+                        if savesPortalLogin {
+                            Toggle("Anmeldedaten im Tresor speichern", isOn: $storePortalLogin)
+                            if storePortalLogin {
+                                TextField("Benutzername", text: $portalUser)
+                                    .autocorrectionDisabled()
+                                    .textContentType(.username)
+                                SecureField(status?.hasPin == true ? "Gespeichertes Passwort (leer = unverändert)" : "Passwort", text: $pin)
+                                    .textContentType(.password)
+                                Text("GiroCrab trägt beide verschlüsselt gespeichert ins Anmeldeformular ein. „Anmelden“ und den Bestätigungscode bestätigen Sie selbst.")
+                                    .appFont(.caption).foregroundStyle(Theme.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                         Button("Web-Sitzung (Cookies) löschen …", role: .destructive) { confirmClear = .portal }
                     } header: { Text("Direkt-Login (Web-Session)").appSectionHeader() }
                     Section {
@@ -592,6 +610,10 @@ struct ConnectionEditSheet: View {
         storePin = status?.hasPin ?? false
         if isComdirect, connection.connector == .finTsGeneric { postbox = model.comdirectPostboxEnabled(connection.id) }
         if isFinTs { tanMedium = model.revealSetting(tanMediumKey) }
+        if savesPortalLogin {
+            portalUser = model.revealSetting(AppModel.portalLoginKey(connection.id))
+            storePortalLogin = status?.hasPin == true || !portalUser.isEmpty
+        }
         for key in keys + advancedKeys + postboxKeys {
             let e = model.settingEntry(key)
             if e?.isSecret == true {
@@ -620,6 +642,17 @@ struct ConnectionEditSheet: View {
                 model.setConnectionPin(connection.id, nil)
             } else if !pin.isEmpty {
                 model.setConnectionPin(connection.id, pin)
+            }
+        }
+        if savesPortalLogin {
+            let key = AppModel.portalLoginKey(connection.id)
+            let user = portalUser.trimmingCharacters(in: .whitespaces)
+            if !storePortalLogin {
+                model.setConnectionPin(connection.id, nil)
+                model.saveSetting(key, "")
+            } else {
+                if user != model.revealSetting(key) { model.saveSetting(key, user) }
+                if !pin.isEmpty { model.setConnectionPin(connection.id, pin) }
             }
         }
         saveSettings(keys + advancedKeys + postboxKeys)

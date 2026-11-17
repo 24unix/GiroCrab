@@ -503,6 +503,10 @@ pub struct FetchResult {
     /// `(external_ref, old automatic name, new name)`: rename accounts that
     /// still carry the old automatic name; names the user chose are kept.
     pub name_updates: Vec<(String, String, String)>,
+    /// Ask before fetching accounts this login delivers for the first time
+    /// (several cards behind one portal login, #243): they are held back
+    /// like accounts another login already delivers.
+    pub confirm_new_accounts: bool,
 }
 
 #[async_trait]
