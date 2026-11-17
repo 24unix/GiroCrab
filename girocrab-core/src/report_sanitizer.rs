@@ -32,7 +32,6 @@ const TERMS_PER_PATTERN: usize = 300;
 /// replaced case-insensitively by `[REDACTED]` where they stand as whole words
 /// (longest first; terms under three characters are ignored). Fails closed:
 /// if the terms cannot be compiled, every non-empty line becomes `[REDACTED]`.
-#[uniffi::export]
 pub fn sanitize_report_text(text: String, known_terms: Vec<String>) -> String {
     let terms = cached_terms_regexes(&known_terms);
     text.lines()

@@ -175,6 +175,8 @@ jobs:
         run: node --test scripts/test-fnz-portal.cjs scripts/test-quirion-portal.cjs scripts/test-schwaebisch-hall-portal.cjs
       - name: FFI types carry the optional serde derive (front ends without UniFFI)
         run: scripts/lint-serde-feature.sh
+      - name: Free functions are exported to UniFFI only from ffi.rs
+        run: scripts/lint-ffi-exports.sh
       - if: needs.changes.outputs.rust == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: girocrab-core builds with the optional serde feature

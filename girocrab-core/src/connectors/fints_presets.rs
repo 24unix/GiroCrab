@@ -25,7 +25,6 @@ fn p(id: &str, name: &str, blz: &str, url: &str, note: &str) -> FinTsPreset {
     }
 }
 
-#[uniffi::export]
 pub fn fints_presets() -> Vec<FinTsPreset> {
     vec![
         p("postbank", "Postbank", "10010010", "https://hbci.postbank.de/banking/hbci.do",

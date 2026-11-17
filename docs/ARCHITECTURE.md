@@ -68,6 +68,9 @@ module adds its own methods to it and reaches the database through `self.db()`.
 - A feature module has at most one `#[uniffi::export] impl Vault` (the Swift API) and one plain
   `impl Vault` (helpers taking `&Connection`, for use inside other transactions). Helpers are
   private unless another module calls them; prefer `pub(super)` inside `vault/` over `pub(crate)`.
+- Free functions for Swift are exported only from `ffi.rs`, as wrappers that forward to the
+  feature module (`scripts/lint-ffi-exports.sh`, CI). Elsewhere `#[uniffi::export]` marks only
+  `impl` blocks of exported objects and callback traits.
 - Modules under `vault/` are children of `vault`, so they see its private fields and helpers
   (`kept_key`, `migrate`). Other modules use `Vault::db()` only.
 - Tests sit in the module whose code they exercise.

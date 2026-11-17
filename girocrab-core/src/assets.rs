@@ -1026,7 +1026,6 @@ fn price_on(conn: &Connection, symbol: &str, day: &str) -> CoreResult<Option<(St
 
 /// The denominations ("Stückelung") the item editor offers, in menu order:
 /// gram weights, then ounce fractions, then the kilo bar – each lightest first.
-#[uniffi::export]
 pub fn asset_weight_presets() -> Vec<AssetWeightPreset> {
     const OZ: f64 = TROY_OUNCE_GRAMS;
     [

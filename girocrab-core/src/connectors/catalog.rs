@@ -6,7 +6,6 @@ use crate::models::ConnectorKind;
 use super::*;
 
 /// The supported institutions with their public protocol facts.
-#[uniffi::export]
 pub fn bank_catalog() -> Vec<BankDescriptor> {
     ConnectorKind::all().into_iter().map(descriptor).collect()
 }

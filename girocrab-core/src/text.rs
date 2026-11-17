@@ -282,11 +282,6 @@ pub fn clean_bank_text(s: &str) -> String {
     fix_question_marks(&fix_replacement_chars(&fix_mojibake(s)))
 }
 
-#[uniffi::export]
-pub fn repair_umlauts(text: String) -> String {
-    clean_bank_text(&text)
-}
-
 /// Startup cleanup: repairs mojibake already stored in the vault.
 /// Returns the number of changed rows.
 pub(crate) fn repair_stored_text(conn: &Connection) -> rusqlite::Result<u32> {

@@ -51,7 +51,6 @@ struct Columns {
 
 /// Parses `text` (UTF-8, optional BOM). Columns come from a header line when
 /// there is one, else the order is name, IBAN, amount, purpose.
-#[uniffi::export]
 pub fn parse_batch_csv(text: String) -> BatchCsvImport {
     let text = text.trim_start_matches('\u{feff}');
     let delim = detect_delimiter(text);

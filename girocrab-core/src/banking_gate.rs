@@ -42,7 +42,6 @@ pub fn connector_id_matches(id: &str, key: &str) -> bool {
 /// only those matched by `connector_ids`. `message` is the localised text the
 /// app shows (the same as in its banner). An empty block (`all = false`, no
 /// IDs) is the same as [`clear_banking_block`].
-#[uniffi::export]
 pub fn set_banking_block(all: bool, connector_ids: Vec<String>, message: String) {
     let ids: Vec<String> = connector_ids
         .into_iter()
@@ -62,20 +61,17 @@ pub fn set_banking_block(all: bool, connector_ids: Vec<String>, message: String)
 }
 
 /// Lifts the banking block.
-#[uniffi::export]
 pub fn clear_banking_block() {
     *BLOCK.write().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 /// Connector key of a connector kind (`ConnectorKind::as_str`), e.g. for a
 /// login that is about to be added.
-#[uniffi::export]
 pub fn connector_kind_key(kind: crate::models::ConnectorKind) -> String {
     kind.as_str().to_string()
 }
 
 /// True if the connection key `key` (e.g. `fints:50050201`) is blocked.
-#[uniffi::export]
 pub fn is_banking_blocked(key: String) -> bool {
     check_connector(&key).is_err()
 }

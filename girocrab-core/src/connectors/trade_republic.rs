@@ -48,7 +48,6 @@ const APP_ORIGIN: &str = "https://app.traderepublic.com";
 
 /// Strict E.164 for German numbers: "0171 1234567", "0049171…", "49171…",
 /// "17012345678" -> "+491711234567" / "+4917012345678".
-#[uniffi::export]
 pub fn normalize_phone_number(input: String) -> String {
     normalize_phone(&input)
 }

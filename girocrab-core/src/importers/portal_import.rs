@@ -1345,7 +1345,6 @@ impl Vault {
 }
 
 /// Sanitized keys-only structure dump of captured portal JSON (for debugging a changed portal).
-#[uniffi::export]
 pub fn portal_schema_dump(json_bodies: Vec<String>, dom_rows_json: String) -> String {
     let bodies: Vec<Value> = json_bodies
         .iter()

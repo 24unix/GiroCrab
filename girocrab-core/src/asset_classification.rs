@@ -226,7 +226,6 @@ pub(crate) fn security_key(holding: &Holding, confirmed_direct_crypto: bool) -> 
         .or_else(|| crypto_ticker(holding, confirmed_direct_crypto).map(|t| format!("crypto:{t}")))
 }
 
-#[uniffi::export]
 pub fn classify_asset(
     holding: Holding,
     imported: ClassificationValues,

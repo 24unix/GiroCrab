@@ -196,7 +196,6 @@ pub(crate) fn assign_default_colors(accounts: &mut [Account], hashes: &HashMap<i
 const DISTINCT: usize = 6;
 
 /// The palette offered in the colour picker.
-#[uniffi::export]
 pub fn account_color_palette() -> Vec<String> {
     ACCOUNT_COLOR_PALETTE
         .iter()

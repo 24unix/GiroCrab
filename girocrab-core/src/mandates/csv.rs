@@ -208,7 +208,6 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
 
 /// Parses `text` (UTF-8, optional BOM). Without a header line the order is
 /// name, IBAN, reference, date.
-#[uniffi::export]
 pub fn parse_mandate_csv(text: String) -> MandateCsvImport {
     let text = text.trim_start_matches('\u{feff}');
     let delim = detect_delimiter(text);

@@ -66,7 +66,6 @@ pub fn parse_language(code: &str) -> Lang {
 
 /// Sets the process-wide language of all core texts (BCP-47 tag, e.g.
 /// "en-US" or "de-DE"). Any `en*` tag selects English, everything else German.
-#[uniffi::export]
 pub fn set_language(code: String) {
     LANGUAGE.store(parse_language(&code).to_u8(), Ordering::Relaxed);
 }

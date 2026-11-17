@@ -1199,7 +1199,6 @@ pub fn clean_purpose(raw: &str) -> String {
 
 /// Exposed for tests / tooling: resolve without a vault. Bypasses the cache,
 /// which only the last vault to close clears.
-#[uniffi::export]
 pub fn resolve_merchant(counterparty: String, purpose: String) -> MerchantInfo {
     MerchantResolver::resolve_uncached(&counterparty, &purpose)
 }

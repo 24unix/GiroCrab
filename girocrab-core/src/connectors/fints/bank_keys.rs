@@ -169,7 +169,6 @@ pub(crate) struct SavedBankKeys {
     pub expected: Vec<String>,
 }
 
-#[uniffi::export]
 pub fn inspect_rah10_keyfile(bytes: Vec<u8>, password: String) -> CoreResult<Rah10KeyfileInfo> {
     let bytes = Zeroizing::new(bytes);
     let password = Zeroizing::new(password);

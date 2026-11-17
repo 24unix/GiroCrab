@@ -35,6 +35,7 @@ pub mod depot_debug;
 pub mod documents;
 pub mod error;
 pub mod export;
+mod ffi;
 pub mod i18n;
 pub mod importers;
 pub mod insights;
@@ -77,21 +78,18 @@ pub use money::{format_cents, parse_amount_to_cents};
 pub use vault::Vault;
 
 /// Version string of the core library (shown in the About/Settings screen).
-#[uniffi::export]
 pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
 /// True when this build carries GiroCrab's own FinTS product registration
 /// (release builds only; the ID itself is never exposed).
-#[uniffi::export]
 pub fn fints_builtin_product_id_available() -> bool {
     connectors::fints::product_id::builtin_available()
 }
 
 /// Generates 32 random bytes for a new SQLCipher master key.
 /// The Swift side stores it in the Keychain behind Face ID / Touch ID.
-#[uniffi::export]
 pub fn generate_master_key() -> Vec<u8> {
     use rand::RngCore;
     let mut key = vec![0u8; 32];

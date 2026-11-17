@@ -92,7 +92,6 @@ fn tested(mut b: Psd2Bank, note: &str) -> Psd2Bank {
 }
 
 /// Curated, searchable PSD2 catalog (works without any credentials).
-#[uniffi::export]
 pub fn psd2_catalog() -> Vec<Psd2Bank> {
     use ConnectorKind::{AmazonVisa, AmericanExpress};
     vec![
@@ -361,7 +360,6 @@ pub fn search(
 
 /// Searches the FinTS directory, the own-API banks and the PSD2 catalog
 /// (plus `live_psd2`, the live ASPSP list, if the app has loaded it).
-#[uniffi::export]
 pub fn search_banks(
     query: String,
     live_psd2: Vec<Psd2Bank>,
@@ -371,8 +369,8 @@ pub fn search_banks(
 }
 
 /// Offline PSD2 search over the curated catalog.
-#[uniffi::export]
-pub fn search_psd2_catalog(query: String) -> Vec<Psd2Bank> {
+#[cfg(test)]
+fn search_psd2_catalog(query: String) -> Vec<Psd2Bank> {
     let q = fold(&query);
     let words: Vec<&str> = q.split(' ').filter(|w| !w.is_empty()).collect();
     psd2_catalog()
@@ -517,7 +515,6 @@ pub(crate) fn match_psd2_bank(bank_name: &str, candidates: &[Psd2Bank]) -> Optio
 
 /// `match_psd2_bank` for the app: matches a MoneyMoney bank name against the
 /// live Enable Banking list (`list_enable_banking_aspsps`).
-#[uniffi::export]
 pub fn match_psd2_bank_by_name(bank_name: String, candidates: Vec<Psd2Bank>) -> Option<Psd2Bank> {
     match_psd2_bank(&bank_name, &candidates)
 }

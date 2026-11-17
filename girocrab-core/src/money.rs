@@ -8,7 +8,6 @@ use crate::i18n::{tr, trf};
 ///
 /// Rules: the *last* `,` or `.` followed by 1-2 digits is the decimal
 /// separator; every other `.`/`,`/space/apostrophe is a grouping separator.
-#[uniffi::export]
 pub fn parse_amount_to_cents(text: String) -> Result<i64, CoreError> {
     parse_cents(&text)
 }
@@ -131,7 +130,6 @@ pub fn json_number_to_cents_rounded(v: &serde_json::Value) -> CoreResult<i64> {
 }
 
 /// German-style formatting used in logs/tests: "-1.234,56 EUR".
-#[uniffi::export]
 pub fn format_cents(cents: i64, currency: String) -> String {
     let neg = cents < 0;
     let abs = cents.unsigned_abs();
