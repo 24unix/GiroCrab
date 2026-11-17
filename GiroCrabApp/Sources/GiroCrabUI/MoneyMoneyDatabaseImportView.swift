@@ -879,7 +879,7 @@ struct MoneyMoneyDatabaseImportView: View {
         panel.message = String(localized: "Ordner mit Datenbank und Kontoauszügen auswählen – oder eine einzelne Datenbank, z. B. ein Backup (.sqlite)")
         panel.prompt = String(localized: "Auswählen")
         panel.treatsFilePackagesAsDirectories = true
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        panel.directoryURL = MoneyMoneyLocations.importDirectory()
         if panel.runModal() == .OK, let url = panel.url {
             fileURL = url
             statementsURL = nil

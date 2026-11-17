@@ -63,6 +63,10 @@ struct BackupImportView: View {
         .fileImporter(isPresented: $picking, allowedContentTypes: [VaultBackup.contentType, .data]) { result in
             if case .success(let url) = result { fileURL = url; error = nil }
         }
+        #if os(macOS)
+        // always start in the home folder, not wherever the last panel of any kind ended (#779)
+        .fileDialogDefaultDirectory(FileManager.default.homeDirectoryForCurrentUser)
+        #endif
         .confirmationDialog("Tresor ersetzen?", isPresented: $confirming, titleVisibility: .visible) {
             Button("Ersetzen", role: .destructive) { restore() }
             Button("Abbrechen", role: .cancel) {}
