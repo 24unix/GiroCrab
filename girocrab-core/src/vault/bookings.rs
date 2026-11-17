@@ -480,6 +480,15 @@ impl Vault {
             BookingDirection::Income => wh.push("t.amount_cents > 0".into()),
             BookingDirection::Expense => wh.push("t.amount_cents < 0".into()),
         }
+        // amount range (#357): by the absolute amount, the direction has its own filter
+        if let Some(min) = filter.amount_min_cents {
+            args.push(Box::new(min));
+            wh.push(format!("ABS(t.amount_cents) >= ?{}", args.len()));
+        }
+        if let Some(max) = filter.amount_max_cents {
+            args.push(Box::new(max));
+            wh.push(format!("ABS(t.amount_cents) <= ?{}", args.len()));
+        }
         if let Some(q) = filter
             .search
             .as_ref()
@@ -1488,6 +1497,56 @@ mod paging_tests {
     }
 
     #[test]
+    fn amount_range_filters_by_absolute_amount() {
+        let (v, p) = demo();
+        let all = v
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions;
+        let (min, max) = (5_000, 20_000);
+        let range = |lo, hi| BookingFilter {
+            amount_min_cents: lo,
+            amount_max_cents: hi,
+            ..Default::default()
+        };
+        let expected = |keep: &dyn Fn(i64) -> bool| {
+            all.iter().filter(|b| keep(b.amount_cents.abs())).count() as u32
+        };
+        let both = v.list_transactions(range(Some(min), Some(max))).unwrap();
+        assert!(both.total_count > 0, "the demo vault has bookings in range");
+        assert_eq!(both.total_count, expected(&|a| (min..=max).contains(&a)));
+        assert!(both
+            .transactions
+            .iter()
+            .all(|b| (min..=max).contains(&b.amount_cents.abs())));
+        // the sign is ignored: income and expenses both count
+        assert!(both.transactions.iter().any(|b| b.amount_cents > 0));
+        assert!(both.transactions.iter().any(|b| b.amount_cents < 0));
+        // one-sided ranges
+        assert_eq!(
+            v.count_transactions(range(Some(min), None)).unwrap(),
+            expected(&|a| a >= min)
+        );
+        assert_eq!(
+            v.count_transactions(range(None, Some(max))).unwrap(),
+            expected(&|a| a <= max)
+        );
+        // together with the direction filter
+        let expenses = v
+            .count_transactions(BookingFilter {
+                direction: BookingDirection::Expense,
+                ..range(Some(min), Some(max))
+            })
+            .unwrap();
+        let expected_expenses = all
+            .iter()
+            .filter(|b| b.amount_cents < 0 && (min..=max).contains(&b.amount_cents.abs()))
+            .count() as u32;
+        assert_eq!(expenses, expected_expenses);
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
     fn count_matches_the_list_total() {
         let (v, p) = demo();
         let all = v
@@ -2265,5 +2324,40 @@ mod list_cache_tests {
         let after = v.list_transactions(BookingFilter::default()).unwrap();
         let b = after.transactions.iter().find(|b| b.id == target).unwrap();
         assert_eq!(b.category_id, Some(cat[3].id));
+    }
+
+    /// #357: the category sums of the sidebar follow the same amount range as the list.
+    #[test]
+    fn category_sums_follow_the_amount_range() {
+        let dir = TempDir::new("amount-filter-categories");
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let sum = |cats: &[Category]| {
+            cats.iter().filter(|c| c.depth == 0).fold((0, 0), |a, c| {
+                (a.0 + c.total_cents, a.1 + c.transaction_count)
+            })
+        };
+        let all = v.list_categories(None, None).unwrap();
+        let ranged = |min, max| {
+            sum(&v
+                .list_categories_filtered_amount(
+                    None,
+                    None,
+                    vec![],
+                    None,
+                    BookingDirection::All,
+                    min,
+                    max,
+                )
+                .unwrap())
+        };
+        // no range = the plain listing
+        assert_eq!(ranged(None, None), sum(&all));
+        // below and above a threshold together are everything
+        let (lo, hi) = (ranged(None, Some(10_000)), ranged(Some(10_001), None));
+        assert!(lo.1 > 0 && hi.1 > 0);
+        assert_eq!((lo.0 + hi.0, lo.1 + hi.1), sum(&all));
+        // an impossible range leaves nothing
+        assert_eq!(ranged(Some(i64::MAX / 2), None), (0, 0));
     }
 }

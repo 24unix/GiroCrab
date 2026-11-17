@@ -6592,6 +6592,72 @@
         }
       }
     },
+    "Betrag ohne Vorzeichen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount without sign."
+          }
+        }
+      }
+    },
+    "Betrag: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount: %@"
+          }
+        }
+      }
+    },
+    "Betrag: %@ – %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount: %@ – %@"
+          }
+        }
+      }
+    },
+    "Betrag: ≤ %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount: ≤ %@"
+          }
+        }
+      }
+    },
+    "Betrag: ≥ %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount: ≥ %@"
+          }
+        }
+      }
+    },
+    "Betragsfilter zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset amount filter"
+          }
+        }
+      }
+    },
     "Beträge" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16131,6 +16197,28 @@
         }
       }
     },
+    "Kein Maximum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No maximum"
+          }
+        }
+      }
+    },
+    "Kein Minimum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No minimum"
+          }
+        }
+      }
+    },
     "Kein Sachwert passt zu „%@“." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19367,6 +19455,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "By Bank"
+          }
+        }
+      }
+    },
+    "Nach Betrag filtern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter by amount"
           }
         }
       }

@@ -71,8 +71,9 @@ extension AppModel {
         let (from, to) = periodRange
         runCore {
             let sums = categorySumFilter
-            categories = try vault.listCategoriesFiltered(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction)
+            categories = try vault.listCategoriesFilteredAmount(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction, amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents)
             categoryTree = Self.buildTree(categories)
+            uncategorizedFilteredCount = try uncategorizedCountFilter(sums).map { Int(try vault.countTransactions(filter: $0)) }
         }
     }
 
@@ -241,7 +242,7 @@ extension AppModel {
         reloadBookings()
     }
 
-    /// The category views („Ohne Kategorie“, a category) can be narrowed to accounts (#406).
+    /// The category views („Ohne Kategorie“, a category) narrow the sidebar's sums to the chosen accounts too (#406).
     var showsCategoryAccountFilter: Bool {
         switch sidebarSelection {
         case .category, .uncategorized: true
@@ -249,23 +250,56 @@ extension AppModel {
         }
     }
 
-    /// The chosen accounts that still exist, in sidebar order; empty = all accounts.
+    /// The list offers the account filter (#357): the category views, „Alle Konten“, account
+    /// groups and „Neue Umsätze“. A single account has nothing to choose from.
+    var showsAccountFilter: Bool {
+        switch sidebarSelection {
+        case .category, .uncategorized, .allAccounts, .group, .bank, .userGroup, .newBookings: true
+        case .account, .documents, .planned, .directDebits, .wealth, .none: false
+        }
+    }
+
+    /// The tiles of a category view („Ohne Kategorie“, a category) count what the list shows: the
+    /// category and every list filter (accounts, status, type, amount, search) narrow them. Elsewhere
+    /// they keep summing the whole selection and period.
+    var kpiFollowsList: Bool {
+        switch sidebarSelection {
+        case .category, .uncategorized: true
+        default: false
+        }
+    }
+
+    /// The accounts the filter chooses from: those of the selected group, otherwise all.
+    var accountFilterCandidates: [Account] {
+        let ids: [Int64]?
+        switch sidebarSelection {
+        case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.map(\.id)
+        case .bank(let key): ids = bankGroup(for: key)?.accounts.map(\.id)
+        case .userGroup(let uuid): ids = userGroupAccountIDs(uuid)
+        default: ids = nil
+        }
+        guard let ids else { return allAccounts }
+        return allAccounts.filter { ids.contains($0.id) }
+    }
+
+    /// The chosen accounts that still exist and belong to the selection, in sidebar order;
+    /// empty = all of them.
     var categoryAccountIDs: [Int64] {
         guard !categoryAccountFilter.isEmpty else { return [] }
-        return allAccounts.map(\.id).filter(categoryAccountFilter.contains)
+        return accountFilterCandidates.map(\.id).filter(categoryAccountFilter.contains)
     }
 
     /// Adds or removes one account; choosing every account is the same as no filter.
     func toggleCategoryAccount(_ id: Int64) {
         var next = Set(categoryAccountIDs)
         if !next.insert(id).inserted { next.remove(id) }
-        categoryAccountFilter = next.count == allAccounts.count ? [] : next
+        categoryAccountFilter = next.count == accountFilterCandidates.count ? [] : next
     }
 
-    /// What the sidebar's category sums count besides the period (#621): the same accounts
-    /// (only in the category views, where the list offers that filter) and status as the booking list.
-    var categorySumFilter: (accounts: [Int64], checked: Bool?, direction: BookingDirection) {
-        (showsCategoryAccountFilter ? categoryAccountIDs : [], statusFilter == .all ? nil : statusFilter == .checked, directionFilter)
+    /// What the sidebar's category sums count besides the period (#621): the same status, type and
+    /// amount range as the booking list, and its accounts only in the category views (#406).
+    var categorySumFilter: (accounts: [Int64], checked: Bool?, direction: BookingDirection, amount: AmountFilter) {
+        (showsCategoryAccountFilter ? categoryAccountIDs : [], statusFilter == .all ? nil : statusFilter == .checked, directionFilter, amountFilter)
     }
 
     /// Hint under the sidebar's „Kategorien“ header while a filter narrows the sums; nil = none.
@@ -274,6 +308,7 @@ extension AppModel {
         var parts: [String] = []
         if statusFilter != .all { parts.append(String(localized: "Status: \(statusFilter.title)")) }
         if directionFilter != .all { parts.append(directionFilter == .income ? String(localized: "Einnahmen") : String(localized: "Ausgaben")) }
+        if amountFilter.isActive { parts.append(String(localized: "Betrag")) }
         let chosen = categorySumFilter.accounts.count
         if chosen > 0 { parts.append(String(localized: "Konten: \(chosen) von \(allAccounts.count)")) }
         return parts.isEmpty ? nil : String(localized: "Summen gefiltert – \(parts.joined(separator: " · "))")
@@ -284,7 +319,7 @@ extension AppModel {
         let chosen = categoryAccountIDs.count
         return chosen == 0
             ? String(localized: "Konten: Alle")
-            : String(localized: "Konten: \(chosen) von \(allAccounts.count)")
+            : String(localized: "Konten: \(chosen) von \(accountFilterCandidates.count)")
     }
 
     var currentFilter: BookingFilter {
@@ -292,21 +327,25 @@ extension AppModel {
         var accountIDs: [Int64] = []
         var category: Int64?
         var uncategorized = false
+        // Chosen accounts (#357); within a group they narrow its accounts, empty = all of them.
+        let chosen = categoryAccountIDs
         switch sidebarSelection {
         case .account(let id): accountIDs = [id]
-        case .group(let gid): accountIDs = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
-        case .bank(let key): accountIDs = bankGroup(for: key)?.accounts.map(\.id) ?? []
-        case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
-        case .category(let id): category = id; accountIDs = categoryAccountIDs
-        case .uncategorized: uncategorized = true; accountIDs = categoryAccountIDs
-        case .allAccounts, .documents, .newBookings, .planned, .directDebits, .wealth, .none: break
+        case .group(let gid): accountIDs = chosen.isEmpty ? groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? [] : chosen
+        case .bank(let key): accountIDs = chosen.isEmpty ? bankGroup(for: key)?.accounts.map(\.id) ?? [] : chosen
+        case .userGroup(let uuid): accountIDs = chosen.isEmpty ? userGroupAccountIDs(uuid) : chosen
+        case .category(let id): category = id; accountIDs = chosen
+        case .uncategorized: uncategorized = true; accountIDs = chosen
+        case .allAccounts: accountIDs = chosen
+        case .documents, .newBookings, .planned, .directDebits, .wealth, .none: break
         }
-        // Everything new, whatever the list filters say elsewhere.
+        // Everything new, whatever the other list filters say; only the account and amount filters narrow it.
         if sidebarSelection == .newBookings {
             return BookingFilter(
-                accountIds: [], categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
+                accountIds: chosen, categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
                 search: nil, dateFrom: nil, dateTo: nil, limit: listLimit, offset: 0, scope: .all,
-                merchantKey: nil, direction: .all, checked: false, wholeDays: true
+                merchantKey: nil, direction: .all, checked: false, wholeDays: true,
+                amountMinCents: amountFilter.minCents, amountMaxCents: amountFilter.maxCents
             )
         }
         return BookingFilter(
@@ -325,7 +364,9 @@ extension AppModel {
             checked: statusFilter == .all ? nil : statusFilter == .checked,
             wholeDays: true,
             tagIds: tagFilter.untagged ? [] : tagFilter.tagIDs.sorted(),
-            untaggedOnly: tagFilter.untagged
+            untaggedOnly: tagFilter.untagged,
+            amountMinCents: amountFilter.minCents,
+            amountMaxCents: amountFilter.maxCents
         )
     }
 
@@ -517,7 +558,7 @@ extension AppModel {
         let (from, to) = periodRange
         let filter = currentFilter
         // The list query already summed the same bookings unless it is narrowed further.
-        if let page, filter.listHasFlow {
+        if let page, filter.listHasFlow || kpiFollowsList {
             selectionFlow = (page.flow.consumptionCents, page.flow.investedCents, page.flow.incomeCents)
             return
         }
@@ -681,7 +722,22 @@ extension AppModel {
     var liquidAccounts: [Account] { allAccounts.filter { $0.inTotal && [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
     var liquidBalance: Int64 { liquidAccounts.reduce(0) { $0 + $1.balanceCents } }
     var newCount: Int { allAccounts.reduce(0) { $0 + Int($1.newCount) } }
-    var uncategorizedCount: Int { allAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) } }
+    /// Bookings without a category (badge of „Ohne Kategorie“): all of them, or, while list filters
+    /// narrow the sums, those matching the filters (#357). Not tied to the period.
+    var uncategorizedCount: Int {
+        uncategorizedFilteredCount ?? allAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) }
+    }
+
+    /// The query behind the filtered badge; nil while no filter narrows the sums (the accounts' own counts apply).
+    func uncategorizedCountFilter(_ sums: (accounts: [Int64], checked: Bool?, direction: BookingDirection, amount: AmountFilter)) -> BookingFilter? {
+        guard !sums.accounts.isEmpty || sums.checked != nil || sums.direction != .all || sums.amount.isActive else { return nil }
+        let accounts = sums.accounts.isEmpty ? allAccounts.filter { $0.kind != .loan }.map(\.id) : sums.accounts
+        return BookingFilter(
+            accountIds: accounts, categoryId: nil, includeSubcategories: true, uncategorizedOnly: true,
+            search: nil, dateFrom: nil, dateTo: nil, limit: 1, offset: 0, scope: .all,
+            merchantKey: nil, direction: sums.direction, checked: sums.checked, wholeDays: false,
+            amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents)
+    }
 
     /// Everyday spending this month (never includes ETF plans / perks).
     /// Selected account/group and period; falls back to the dashboard month.
@@ -735,6 +791,11 @@ extension AppModel {
     }
 
     private var headerBalanceUnsplit: (label: String, cents: Int64)? {
+        // A group's or all accounts' total covers every account: no figure while accounts are filtered (#357).
+        switch sidebarSelection {
+        case .group, .bank, .userGroup, .allAccounts: if !categoryAccountIDs.isEmpty { return nil }
+        default: break
+        }
         switch sidebarSelection {
         case .account(let id): return allAccounts.first { $0.id == id }.map { (isTangible(id) ? String(localized: "Wert heute") : depotKind(of: id) == .securities ? String(localized: "Depotwert") : String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }

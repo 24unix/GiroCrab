@@ -102,7 +102,8 @@ extension AppModel {
         let filter = listFilter
         let (from, to) = periodRange
         let sums = categorySumFilter
-        let listHasFlow = filter.listHasFlow
+        let uncategorizedQuery = uncategorizedCountFilter(sums)
+        let listHasFlow = filter.listHasFlow || kpiFollowsList
         categoryRefreshTask = Task { [weak self] in
             do {
                 let r = try await Self.offMain { () -> CategoryRefresh in
@@ -113,7 +114,8 @@ extension AppModel {
                     return CategoryRefresh(
                         page: page,
                         flow: flow,
-                        categories: try vault.listCategoriesFiltered(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction),
+                        categories: try vault.listCategoriesFilteredAmount(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction, amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents),
+                        uncategorized: try uncategorizedQuery.map { Int(try vault.countTransactions(filter: $0)) },
                         groups: try vault.listAccountGroups(),
                         userGroups: try vault.listUserGroups()
                     )
@@ -125,11 +127,12 @@ extension AppModel {
                 }
                 let (nowFrom, nowTo) = self.periodRange
                 let nowSums = self.categorySumFilter
-                if nowFrom == from, nowTo == to, nowSums.accounts == sums.accounts, nowSums.checked == sums.checked, nowSums.direction == sums.direction {
+                if nowFrom == from, nowTo == to, nowSums.accounts == sums.accounts, nowSums.checked == sums.checked, nowSums.direction == sums.direction, nowSums.amount == sums.amount {
                     if self.currentFilter.accountIds == filter.accountIds {
                         self.selectionFlow = (r.flow.consumptionCents, r.flow.investedCents, r.flow.incomeCents)
                     }
                     self.categories = r.categories
+                    self.uncategorizedFilteredCount = r.uncategorized
                     self.categoryTree = Self.buildTree(r.categories)
                 }
                 self.applyAccountGroups(r.groups, r.userGroups)
@@ -145,6 +148,7 @@ extension AppModel {
         let page: BookingPage
         let flow: SelectionFlow
         let categories: [GiroCrabCore.Category]
+        let uncategorized: Int?
         let groups: [AccountGroup]
         let userGroups: [UserGroup]
     }

@@ -45,9 +45,14 @@ final class CategoryAccountFilterTests: XCTestCase {
         model.sidebarSelection = .uncategorized
         XCTAssertEqual(model.currentFilter.accountIds, [account])
         XCTAssertTrue(model.currentFilter.uncategorizedOnly)
-        // … but never narrows the account views
+        // … and since #357 also narrows „Alle Konten“, but never a single account
         model.sidebarSelection = .allAccounts
-        XCTAssertEqual(model.currentFilter.accountIds, [])
+        XCTAssertEqual(model.currentFilter.accountIds, [account])
+        model.sidebarSelection = .account(account)
+        XCTAssertEqual(model.currentFilter.accountIds, [account])
+        let other = try XCTUnwrap(model.allAccounts.first { $0.id != account })
+        model.sidebarSelection = .account(other.id)
+        XCTAssertEqual(model.currentFilter.accountIds, [other.id])
 
         model.sidebarSelection = .category(category)
         model.toggleCategoryAccount(account)

@@ -70,6 +70,8 @@ public final class AppModel {
     @ObservationIgnored private var runningBalanceObserver: NSKeyValueObservation?
     /// Flows of the selected account/group in the selected period; nil = not loaded yet.
     var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)?
+    /// „Ohne Kategorie“ badge while list filters narrow the sums; nil = the accounts' own counts (#357).
+    var uncategorizedFilteredCount: Int?
     var dashboard: InvestmentDashboard?
     var merchantStats: MerchantStats?
     /// The same history restricted to the booking's own account (#299).
@@ -162,6 +164,11 @@ public final class AppModel {
         get { directionFilter }
         set { loadingFilterInBackground { directionFilter = newValue } }
     }
+    /// Amount range as set by the header popover (the list follows in the background, #357).
+    var interactiveAmountFilter: AmountFilter {
+        get { amountFilter }
+        set { loadingFilterInBackground { amountFilter = newValue } }
+    }
     private func loadingFilterInBackground(_ change: () -> Void) {
         loadsFilterInBackground = true
         defer { loadsFilterInBackground = false }
@@ -231,11 +238,21 @@ public final class AppModel {
             reloadBookings()
         }
     }
-    /// Accounts whose bookings the category views show („Ohne Kategorie“ and
-    /// a category, GitHub #406); empty = all accounts. Kept while the app runs.
+    /// Only bookings within this absolute amount range (#357); filtered in the core, so the
+    /// count, pages and exports follow. Kept while the app runs, like the other list filters.
+    var amountFilter = AmountFilter() {
+        didSet {
+            guard amountFilter != oldValue else { return }
+            listLimit = Self.defaultListLimit
+            reloadAfterFilterChange()
+        }
+    }
+    /// Accounts whose bookings the booking list shows in the category views („Ohne Kategorie“ and
+    /// a category, GitHub #406), in „Alle Konten“, account groups and „Neue Umsätze“ (#357);
+    /// empty = all accounts. Kept while the app runs.
     var categoryAccountFilter: Set<Int64> = [] {
         didSet {
-            guard categoryAccountFilter != oldValue, showsCategoryAccountFilter else { return }
+            guard categoryAccountFilter != oldValue, showsAccountFilter else { return }
             listLimit = Self.defaultListLimit
             reloadSelection(periodChanged: true) // also the sidebar sums (#621)
         }

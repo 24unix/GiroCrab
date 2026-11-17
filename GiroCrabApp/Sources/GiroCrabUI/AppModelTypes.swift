@@ -546,6 +546,34 @@ extension BookingFilter {
     var listHasFlow: Bool {
         scope == .all && direction == .all && checked == nil && search == nil && categoryId == nil && !uncategorizedOnly
             && tagIds.isEmpty && !untaggedOnly
+            && amountMinCents == nil && amountMaxCents == nil
+    }
+}
+
+/// Amount range of the booking list (#357): absolute amounts in cents (the sign is the
+/// direction filter's business). `nil` = open on that side.
+struct AmountFilter: Equatable {
+    var minCents: Int64?
+    var maxCents: Int64?
+
+    var isActive: Bool { minCents != nil || maxCents != nil }
+
+    /// A range given the wrong way round is swapped.
+    var normalized: AmountFilter {
+        guard let lo = minCents, let hi = maxCents, lo > hi else { return self }
+        return AmountFilter(minCents: hi, maxCents: lo)
+    }
+
+    /// Label of the header pill: „Betrag“, or the range („Betrag: 50,00 € – 200,00 €“, „Betrag: ≥ 100,00 €“).
+    /// Contains amounts: show it with `.sensitive(.amounts)` while a range is active.
+    var title: String {
+        switch (minCents, maxCents) {
+        case (nil, nil): String(localized: "Betrag")
+        case (let lo?, let hi?) where lo == hi: String(localized: "Betrag: \(Money.format(lo))")
+        case (let lo?, let hi?): String(localized: "Betrag: \(Money.format(lo)) – \(Money.format(hi))")
+        case (let lo?, nil): String(localized: "Betrag: ≥ \(Money.format(lo))")
+        case (nil, let hi?): String(localized: "Betrag: ≤ \(Money.format(hi))")
+        }
     }
 }
 

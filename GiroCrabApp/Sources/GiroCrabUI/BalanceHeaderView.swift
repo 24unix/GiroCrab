@@ -60,6 +60,7 @@ struct StreamHeaderCard: View {
     }
     /// Where the tag button sits in the filter row: the tag popover points at it (#228).
     @State private var tagButtonFrame: CGRect = .zero
+    @State private var showAmountFilter = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
     @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader: Bool = false
     @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
@@ -307,7 +308,7 @@ struct StreamHeaderCard: View {
                 set: { _ in model.categoryAccountFilter = [] }
             ))
             Divider()
-            ForEach(model.allAccounts, id: \.id) { a in
+            ForEach(model.accountFilterCandidates, id: \.id) { a in
                 Toggle(isOn: Binding(
                     get: { model.categoryAccountIDs.contains(a.id) },
                     set: { _ in model.toggleCategoryAccount(a.id) }
@@ -323,6 +324,45 @@ struct StreamHeaderCard: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("Nur Buchungen ausgewählter Konten anzeigen")
+    }
+
+    /// Amount range (#357): the pill opens the popover and shows the range while one is set;
+    /// the cross next to it resets it with one click.
+    @ViewBuilder
+    private var amountFilterPill: some View {
+        let filter = model.amountFilter
+        HStack(spacing: 4) {
+            // Looks like the account menu next to it: body size, primary colour, chevron.
+            Button { showAmountFilter = true } label: {
+                HStack(spacing: 4) {
+                    if filter.isActive {
+                        Label(filter.title, systemImage: "eurosign.circle.fill")
+                            .sensitive(.amounts)
+                    } else {
+                        Label(filter.title, systemImage: "eurosign.circle")
+                    }
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                }
+                .appFont(.body)
+                .foregroundStyle(Theme.text)
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+            }
+            .buttonStyle(.plain)
+            .help("Nach Betrag filtern")
+            // On the pill itself, so the arrow points at it (not at the middle of the row).
+            .capturablePopover(isPresented: $showAmountFilter, arrowEdge: .bottom) {
+                AmountFilterForm(isPresented: $showAmountFilter)
+            }
+            if filter.isActive {
+                Button { model.interactiveAmountFilter = AmountFilter() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .help("Betragsfilter zurücksetzen")
+                .accessibilityLabel("Betragsfilter zurücksetzen")
+            }
+        }
+        .fixedSize()
     }
 
     @ViewBuilder
@@ -372,9 +412,10 @@ struct StreamHeaderCard: View {
                     TagFilterButton { tagButtonFrame = $0 }
                 }
                 #endif
-                if model.showsCategoryAccountFilter && model.allAccounts.count > 1 {
+                if model.showsAccountFilter && model.accountFilterCandidates.count > 1 {
                     categoryAccountMenu
                 }
+                amountFilterPill
                 if let a = account {
                     Button { showDocuments = true } label: {
                         Label("Dokumente", systemImage: "doc.text")
@@ -1073,5 +1114,102 @@ enum DepotChartSeries {
             pts = Array(pts[...lastChange])
         }
         return pts
+    }
+}
+
+/// Popover of the amount filter (#357): from / to as absolute amounts, empty = open.
+struct AmountFilterForm: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var isPresented: Bool
+    @State private var minText = ""
+    @State private var maxText = ""
+
+    /// Empty = no limit; nil = not a valid, non-negative amount.
+    private static func cents(_ text: String) -> Int64?? {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return .some(nil) }
+        guard let c = Money.parseCents(t), c >= 0 else { return nil }
+        return .some(c)
+    }
+
+    private var parsed: AmountFilter? {
+        guard let lo = Self.cents(minText), let hi = Self.cents(maxText) else { return nil }
+        return AmountFilter(minCents: lo, maxCents: hi).normalized
+    }
+
+    private func apply() {
+        guard let filter = parsed else { return }
+        model.interactiveAmountFilter = filter
+        isPresented = false
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text("Von")
+                    field("Von", prompt: "Kein Minimum", text: $minText)
+                }
+                GridRow {
+                    Text("Bis")
+                    field("Bis", prompt: "Kein Maximum", text: $maxText)
+                }
+            }
+            Text("Betrag ohne Vorzeichen.")
+                .appFont(.caption)
+                .foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Zurücksetzen") {
+                    minText = ""; maxText = ""
+                    model.interactiveAmountFilter = AmountFilter()
+                    isPresented = false
+                }
+                .disabled(!model.amountFilter.isActive && minText.isEmpty && maxText.isEmpty)
+                Spacer()
+                Button("Abbrechen", role: .cancel) { isPresented = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Übernehmen") { apply() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(parsed == nil)
+            }
+        }
+        // Like the rows of the account menu next to it: body size in the primary text colour.
+        .appFont(.body)
+        .foregroundStyle(Theme.text)
+        .padding(16)
+        .frame(minWidth: 300)
+        // The popover's own fill is darker than the account menu's panel: lift it to that translucent
+        // grey-blue in dark mode (a thin material under a light tint).
+        .background {
+            if colorScheme == .dark {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    Color(red: 0.62, green: 0.70, blue: 0.92).opacity(0.16) // the menu's blue-grey
+                }
+            }
+        }
+        #if os(iOS)
+        .presentationDetents([.medium])
+        #endif
+        .onAppear {
+            let f = model.amountFilter
+            minText = f.minCents.map(Money.plain) ?? ""
+            maxText = f.maxCents.map(Money.plain) ?? ""
+        }
+    }
+
+    private func field(_ title: LocalizedStringKey, prompt: LocalizedStringKey, text: Binding<String>) -> some View {
+        HStack(spacing: 4) {
+            TextField(title, text: text, prompt: Text(prompt))
+                .labelsHidden()
+                .appFont(.body, monospacedDigit: true)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 125)
+                .onSubmit { apply() }
+            Text(verbatim: "€").fixedSize()
+        }
+        .fixedSize()
     }
 }
