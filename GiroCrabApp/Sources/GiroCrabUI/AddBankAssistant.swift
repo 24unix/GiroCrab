@@ -148,7 +148,10 @@ struct AddBankSheet: View {
         guard let s = selected else { return [] }
         let kind = s.connector ?? (s.mode == .finTs ? .finTsGeneric : .enableBanking)
         guard let d = bankCatalog().first(where: { $0.kind == kind }) else { return [] }
-        return d.requiredSettings.filter { key in !(model.settingEntry(key)?.hasValue ?? false) }
+        return d.requiredSettings.filter { key in
+            if key == "fints.product_id", !model.fintsProductIDSource.isEmpty || model.fintsBuiltinAvailable { return false }
+            return !(model.settingEntry(key)?.hasValue ?? false)
+        }
     }
 
     private var isLastStep: Bool {
