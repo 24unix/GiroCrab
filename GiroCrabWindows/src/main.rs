@@ -1103,6 +1103,10 @@ fn render_header(
 
 /// Header plus the view of the selected target (bookings reload, or the depot / list view).
 fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
+    // Privacy follows `toggle || !unlocked`: unlock first and start with the toggle off, so the
+    // first paint shows real balances instead of masks.
+    win.set_privacy(false);
+    win.set_unlocked(true);
     match render_header(win, vault, selected) {
         Ok(sel) => {
             refresh_transfer_sources(win, vault);

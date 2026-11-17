@@ -1579,13 +1579,14 @@ export component MainWindow inherits Window {
                                 padding: 12px;
                                 spacing: 8px;
                                 Text { text: "Kategorie"; font-size: 12px; font-weight: 700; color: Theme.text; }
-                                ScrollView {
+                                cat-sv := ScrollView {
                                     vertical-stretch: 1;
-                                    content-height: ceil(root.category-tiles.length / 2) * 38px;
+                                    min-height: 180px;
+                                    viewport-height: ceil(root.category-tiles.length / 2) * 38px;
                                     for t[i] in root.category-tiles: Rectangle {
-                                        x: mod(i, 2) * (parent.width / 2);
+                                        x: mod(i, 2) * (cat-sv.visible-width / 2);
                                         y: floor(i / 2) * 38px;
-                                        width: parent.width / 2 - 4px;
+                                        width: cat-sv.visible-width / 2 - 4px;
                                         height: 32px;
                                         property <bool> on: root.inspector-category == t.index;
                                         border-radius: 4px;
