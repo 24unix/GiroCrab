@@ -13,6 +13,8 @@
 //!   selection_flow                 ~150 ms (a full pass over all bookings)
 //!   merchant_stats                  25 ms (153 ms via list_transactions before #591)
 //!   merchant_history                32 ms (total + own account; was 2 × merchant_stats)
+//!   suggest_categories              45 ms after a change (reads the history, #664; 50–90 ms with PAYPAL=3000,
+//!                                   varies run to run); 0.3 ms (1) / 1.5 ms (100) while the data is unchanged (2026-11-17)
 //!   local_api transactions(limit 100)  ~1.2 ms (first page, cursor page, single account; 2026-11-15)
 //!   local_api summary                  ~1.2 ms per year, 2.4 ms for the three-year maximum
 //!   preview_rule(limit 20)       1.3 ms, 31 ms if nothing matches (163 ms while it enriched
@@ -202,6 +204,40 @@ fn main() {
     time("merchant_history (off main: loadMerchantStats)", || {
         vault.merchant_history(b.merchant.key.clone(), b.account_id)
     });
+    let open: Vec<i64> = vault
+        .list_transactions(BookingFilter {
+            scope: BookingScope::All,
+            uncategorized_only: true,
+            limit: 100,
+            ..Default::default()
+        })
+        .unwrap()
+        .transactions
+        .iter()
+        .map(|t| t.id)
+        .collect();
+    if let Some(&first) = open.first() {
+        // the history is kept until the data changes: time both cases
+        time("suggest_categories (1 booking, after a change)", || {
+            flip = !flip;
+            let cat = Some(if flip { c1 } else { c2 });
+            vault.set_transaction_category(b.id, cat).unwrap();
+            vault.suggest_categories(vec![first])
+        });
+        time("suggest_categories (1 booking, data unchanged)", || {
+            vault.suggest_categories(vec![first])
+        });
+        let mut found = 0;
+        time("suggest_categories (100 bookings, data unchanged)", || {
+            found = vault.suggest_categories(open.clone()).unwrap().len();
+        });
+        println!(
+            "  → {found} of {} uncategorised bookings got a suggestion",
+            open.len()
+        );
+    } else {
+        println!("suggest_categories: no uncategorised booking, skipped");
+    }
     time(
         "list_transactions(all, no limit) – what the dashboard reads",
         || {

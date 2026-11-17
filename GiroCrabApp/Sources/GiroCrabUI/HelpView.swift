@@ -164,6 +164,8 @@ enum HelpCatalog {
 
                 Beispiel: `name:REWE OR purpose:"Bahn AG"`. Mit **R** in der Liste erzeugst du eine Regel direkt aus einer Buchung.
 
+                **Vorschläge aus der Historie:** Hat eine Buchung keine Kategorie, schlägt ihre Kategorie-Karte die Kategorie vor, die andere Buchungen beim selben Händler haben. Hat die Buchung eine IBAN, zählen zuerst die Buchungen an dieselbe IBAN; eine IBAN allein entscheidet nie. Grundlage sind Kategorien, die du selbst gewählt oder per Import übernommen hast, sowie geprüfte Regel-Buchungen (sie zählen weniger). Ein Vorschlag braucht mindestens zwei passende Buchungen; berechnet wird alles auf dem Gerät. *Übernehmen* setzt die Kategorie, *Als Regel …* macht daraus eine Regel. Solange du einen Vorschlag nicht übernimmst, zählt er in keiner Summe und keinem Budget.
+
                 **Splitbuchungen:** Eine Buchung lässt sich auf mehrere Kategorien aufteilen (z. B. Supermarkt-Einkauf in Lebensmittel und Haushalt). Die Summe der Teile muss dem Betrag entsprechen.
 
                 **Interne Umbuchungen** zwischen eigenen Konten werden erkannt und zählen nicht als Einnahme oder Ausgabe.
@@ -183,13 +185,15 @@ enum HelpCatalog {
 
                 Example: `name:REWE OR purpose:"Bahn AG"`. Press **R** in the list to create a rule straight from a booking.
 
+                **Suggestions from history:** When a booking has no category, its category card suggests the category that other bookings at the same merchant have. If the booking has an IBAN, bookings to the same IBAN count first; an IBAN alone never decides. They are based on categories you picked yourself or brought in by an import, and on checked rule bookings (which count less). A suggestion needs at least two matching bookings; everything is computed on the device. *Apply* sets the category, *Create Rule…* turns it into a rule. Until you apply a suggestion, it counts in no sum and no budget.
+
                 **Split bookings:** A booking can be divided across several categories (e.g. a supermarket trip into groceries and household). The parts must add up to the amount.
 
                 **Internal transfers** between your own accounts are detected and do not count as income or expense.
 
                 **Search:** ⌘F focuses the search field; it understands the same expressions as rules.
                 """],
-            keywords: ["regel", "rule", "kategorie", "category", "split", "umbuchung", "transfer", "suche", "search", "name:", "purpose:", "iban", "amount", "betrag", "regex"]),
+            keywords: ["regel", "rule", "kategorie", "category", "vorschlag", "suggestion", "historie", "history", "split", "umbuchung", "transfer", "suche", "search", "name:", "purpose:", "iban", "amount", "betrag", "regex"]),
         HelpTopic(
             id: "vault", icon: "lock.shield",
             title: ["de": "Tresor, Datenschutz & iCloud-Sync", "en": "Vault, privacy & iCloud sync"],

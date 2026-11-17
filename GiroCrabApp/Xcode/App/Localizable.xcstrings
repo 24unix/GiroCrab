@@ -3586,6 +3586,17 @@
         }
       }
     },
+    "Als Regel …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Rule…"
+          }
+        }
+      }
+    },
     "Als Vorlage speichern …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27935,6 +27946,17 @@
         }
       }
     },
+    "Vorschlag (aus Historie)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggestion (from History)"
+          }
+        }
+      }
+    },
     "WKN" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28463,6 +28485,28 @@
         }
       }
     },
+    "Wie %lld von %lld Buchungen an diese IBAN; zeitnahe zählen mehr, Regel-Buchungen weniger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Like %1$lld of %2$lld bookings to this IBAN; closer in time counts more, rule bookings less"
+          }
+        }
+      }
+    },
+    "Wie %lld von %lld Buchungen bei diesem Händler; zeitnahe zählen mehr, Regel-Buchungen weniger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Like %1$lld of %2$lld bookings at this merchant; closer in time counts more, rule bookings less"
+          }
+        }
+      }
+    },
     "Wie GiroCrab die Umsätze abruft. PIN und TAN fragt GiroCrab erst beim ersten Abruf ab." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28481,6 +28525,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "How GiroCrab fetches transactions from now on. The best connection is preselected."
+          }
+        }
+      }
+    },
+    "Wie alle %lld Buchungen an diese IBAN" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Like all %lld bookings to this IBAN"
+          }
+        }
+      }
+    },
+    "Wie alle %lld Buchungen bei diesem Händler" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Like all %lld bookings at this merchant"
           }
         }
       }

@@ -57,6 +57,7 @@ pub mod search_expr;
 pub mod secret;
 pub mod security_transactions;
 pub mod standing_orders;
+pub mod suggestions;
 pub mod sync_log;
 mod sync_merge;
 pub mod tags;

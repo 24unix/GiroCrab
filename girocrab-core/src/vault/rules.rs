@@ -19,7 +19,7 @@ impl Vault {
         RuleSet::new(rules)
     }
 
-    fn load_rules(conn: &Connection) -> CoreResult<Vec<Rule>> {
+    pub(crate) fn load_rules(conn: &Connection) -> CoreResult<Vec<Rule>> {
         let mut stmt = conn.prepare(&format!(
             "SELECT r.id, r.name, r.category_id, r.field, r.match_kind, r.pattern, r.case_sensitive,
                     r.min_amount_cents, r.max_amount_cents, {acc}, r.priority, r.enabled,

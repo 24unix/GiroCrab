@@ -76,6 +76,8 @@ public final class AppModel {
     var merchantStats: MerchantStats?
     /// The same history restricted to the booking's own account (#299).
     var merchantAccountStats: (accountId: Int64, stats: MerchantStats)?
+    /// Category earlier bookings of the selected booking's payee got (#664); nil = none.
+    var categorySuggestion: CategorySuggestion?
     var rules: [Rule] = []
     var history: [DailyBalance] = []
     /// Monthly sums of the selected category incl. subcategories (chart above its bookings, #502).
@@ -276,7 +278,10 @@ public final class AppModel {
             }
             // Cached per merchant; reloadMerchantStats() would drop the cache on every click.
             loadMerchantStats()
-            if selectedBookingID != oldValue { scheduleAutoReview() }
+            if selectedBookingID != oldValue {
+                loadCategorySuggestion()
+                scheduleAutoReview()
+            }
         }
     }
     var autoReviewDelay: AutoReviewDelay = .stored {
@@ -596,6 +601,7 @@ public final class AppModel {
     @ObservationIgnored var merchantStatsCache: [String: MerchantStats] = [:]
     /// Merchant whose history `merchantStats` currently shows.
     @ObservationIgnored var merchantStatsKey: String?
+    @ObservationIgnored var categorySuggestionTask: Task<Void, Never>?
 
     // MARK: State used by AppModel+Loading.swift
 
@@ -1394,6 +1400,7 @@ public final class AppModel {
         dropPendingPage()
         merchantStatsTask?.cancel()
         merchantStatsCache = [:]
+        categorySuggestionTask?.cancel()
         searchTask?.cancel()
         loanStore.loadTask?.cancel()
         loanStore.loans = []; loanStore.linkByBooking = [:]
@@ -1406,7 +1413,7 @@ public final class AppModel {
         demoActive = false
         vault = nil
         groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; tags = []; tagFilter = BookingTagFilter(); showTagFilter = false; showTagManager = false; tagDraft = TagDraft(); connections = []; settings = []
-        page = nil; listBalances = ListBalances(); dashboard = nil; merchantStats = nil; merchantAccountStats = nil; logoCache = [:]
+        page = nil; listBalances = ListBalances(); dashboard = nil; merchantStats = nil; merchantAccountStats = nil; categorySuggestion = nil; logoCache = [:]
     }
 
     /// Locking ends every bank dialog: no session keeps writing into the vault,

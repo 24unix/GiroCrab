@@ -161,6 +161,31 @@ extension AppModel {
         }
     }
 
+    /// Category suggestion from the history (#664) for the selected booking; the
+    /// core decides which bookings get one (as in "Ohne Kategorie"). It keeps the
+    /// history until the data changes; the first call after a change scans it, so
+    /// off the main thread and after the same short delay as the merchant history.
+    /// `keepShown`: as in `loadMerchantStats`.
+    func loadCategorySuggestion(keepShown: Bool = false) {
+        categorySuggestionTask?.cancel()
+        // a categorised booking needs no call (and loses a shown suggestion at once)
+        guard let booking = selectedBooking, booking.categoryId == nil else {
+            categorySuggestion = nil; return
+        }
+        let id = booking.id
+        if !(keepShown && categorySuggestion?.bookingId == id) { categorySuggestion = nil }
+        categorySuggestionTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled, let self else { return }
+            // nil when the call failed or the vault changed: no stale suggestion stays
+            let found = try? await self.vaultOffMain { vault in
+                try Perf.interval("categorySuggestion") { try vault.suggestCategories(bookingIds: [id]).first }
+            }
+            guard !Task.isCancelled, self.selectedBooking?.id == id else { return }
+            self.categorySuggestion = found ?? nil
+        }
+    }
+
     static func buildTree(_ flat: [GiroCrabCore.Category]) -> [CategoryNode] {
         func children(of parent: Int64?) -> [CategoryNode] {
             flat.filter { $0.parentId == parent }.map { c in
@@ -427,8 +452,15 @@ extension AppModel {
         // Every edit, sync and import ends up here: cached merchant histories may be
         // stale, and so may a scan still running from before the change. Restart it,
         // also when a history is on screen (it would otherwise keep the old numbers).
+        refreshSelectedBookingHistory()
+    }
+
+    /// After a data change: the selected booking's merchant history and category
+    /// suggestion again, keeping the shown ones until the fresh ones arrive.
+    func refreshSelectedBookingHistory() {
         merchantStatsCache = [:]
         loadMerchantStats(keepShown: true)
+        loadCategorySuggestion(keepShown: true)
     }
 
     /// After a reload: the multiple selection keeps only bookings the list still

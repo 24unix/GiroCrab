@@ -522,6 +522,10 @@ struct CategoryGridCard: View {
                 Text(booking.categoryPath.isEmpty ? model.uncategorizedLabel : booking.categoryPath)
                     .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
             }
+            if let s = model.categorySuggestion, s.bookingId == booking.id,
+               let category = model.categories.first(where: { $0.id == s.categoryId }) {
+                CategorySuggestionBox(booking: booking, suggestion: s, category: category)
+            }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], spacing: 6) {
                 ForEach(model.categoryTree) { node in
                     CategoryChip(category: node.category, selected: node.id == path.first) {
@@ -560,6 +564,77 @@ struct CategoryGridCard: View {
         }
         .card()
         .onChange(of: booking.id) { _, _ in openPath = nil }
+    }
+}
+
+/// "Vorschlag (aus Historie)" (#664): the category earlier bookings of this
+/// payee got, to accept with one click or to turn into a rule. Dashed, so it
+/// never reads as an assigned category.
+struct CategorySuggestionBox: View {
+    @Environment(AppModel.self) private var model
+    let booking: Booking
+    let suggestion: CategorySuggestion
+    let category: GiroCrabCore.Category
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Vorschlag (aus Historie)", systemImage: "clock.arrow.circlepath")
+                .appFont(.caption, weight: .semibold).foregroundStyle(Theme.secondary)
+            HStack(spacing: 6) {
+                Image(systemName: category.sfSymbol).appFont(.subheadline)
+                Text(category.path).appFont(.callout, weight: .semibold).lineLimit(2).sensitive(.labels)
+            }
+            .foregroundStyle(Theme.text)
+            reason.appFont(.caption2).foregroundStyle(Theme.secondary)
+            // side by side while both labels fit, else stacked (narrow inspector, larger text)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { buttons }
+                VStack(spacing: 6) { buttons }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.canvas))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+    }
+
+    @ViewBuilder private var buttons: some View {
+        Button { model.setCategory(category.id, for: booking) } label: {
+            Label("Übernehmen", systemImage: "checkmark").fixedSize().frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent).tint(Theme.accent)
+        Button {
+            model.openRuleEditor(draft: Self.ruleDraft(model.newRuleDraft(from: booking), booking: booking, suggestion: suggestion))
+        } label: {
+            Label("Als Regel …", systemImage: "wand.and.stars").fixedSize().frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+    }
+
+    /// "Als Regel …": the usual draft with the suggested category, matching the
+    /// IBAN when that is what told this payee apart from a namesake.
+    static func ruleDraft(_ base: Rule, booking: Booking, suggestion: CategorySuggestion) -> Rule {
+        var rule = base
+        rule.categoryId = suggestion.categoryId
+        let iban = booking.counterpartyIban.filter { !$0.isWhitespace }
+        if suggestion.basis == .iban, !iban.isEmpty {
+            rule.field = .counterpartyIban
+            rule.pattern = iban
+        }
+        return rule
+    }
+
+    /// At least two bookings back a suggestion, so the plural always fits. The
+    /// core weighs the votes, so a split count says why it still decided.
+    private var reason: Text {
+        let (n, of) = (Int(suggestion.support), Int(suggestion.considered))
+        switch (suggestion.basis, n == of) {
+        case (.iban, true): return Text("Wie alle \(n) Buchungen an diese IBAN")
+        case (.merchant, true): return Text("Wie alle \(n) Buchungen bei diesem Händler")
+        case (.iban, false): return Text("Wie \(n) von \(of) Buchungen an diese IBAN; zeitnahe zählen mehr, Regel-Buchungen weniger")
+        case (.merchant, false): return Text("Wie \(n) von \(of) Buchungen bei diesem Händler; zeitnahe zählen mehr, Regel-Buchungen weniger")
+        }
     }
 }
 

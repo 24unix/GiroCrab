@@ -203,6 +203,8 @@ pub struct Vault {
     /// The master key, kept for sync snapshots and peer merges so the app
     /// doesn't ask the keychain again. Wiped on drop.
     key: Mutex<Zeroizing<Vec<u8>>>,
+    /// Booking history behind category suggestions, kept until the data changes (#664).
+    pub(crate) suggestions: crate::suggestions::HistoryCache,
     _open: OpenVault,
 }
 
@@ -467,6 +469,7 @@ impl Vault {
             path,
             list_cache: bookings::ListCache::default(),
             key: Mutex::new(key),
+            suggestions: Default::default(),
             _open: OpenVault::new(),
         }))
     }

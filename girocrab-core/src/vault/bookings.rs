@@ -257,16 +257,7 @@ impl BookingFinisher {
         let salary_ibans = crate::salary::marked_salary_ibans(db)?;
         let overrides = crate::insights::load_overrides(db)?;
         // Own IBANs: uncategorised bookings to / from them are transfers (Issue #94).
-        let own_ibans: HashSet<String> = {
-            let mut st =
-                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != '' AND deleted_ms IS NULL")?;
-            let ibans = st
-                .query_map([], |r| r.get::<_, String>(0))?
-                .filter_map(Result::ok)
-                .map(|i| crate::connectors::fints::sepa::normalize_iban(&i))
-                .collect();
-            ibans
-        };
+        let own_ibans = Vault::own_ibans(db)?;
         let pair_transfers = Vault::payment_service_transfer_ids(db)?;
         // PayPal accounts: linked to a PayPal connection, or imported without
         // one (MoneyMoney) and named after PayPal. Other payment services
@@ -352,6 +343,22 @@ impl BookingFinisher {
 }
 
 impl Vault {
+    /// IBANs of the live accounts, normalised (`DE89…`, no blanks); a blank
+    /// one is left out, so it never matches bookings without a counterparty IBAN.
+    pub(crate) fn own_ibans(
+        db: &rusqlite::Connection,
+    ) -> Result<std::collections::HashSet<String>, CoreError> {
+        let mut st =
+            db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND deleted_ms IS NULL")?;
+        let ibans = st
+            .query_map([], |r| r.get::<_, String>(0))?
+            .filter_map(Result::ok)
+            .map(|i| crate::connectors::fints::sepa::normalize_iban(&i))
+            .filter(|i| !i.is_empty())
+            .collect();
+        Ok(ibans)
+    }
+
     /// WHERE clause (plus optional CTE, bound arguments and the KPI share
     /// expression) of a `BookingFilter`; shared by the list and bulk updates.
     #[allow(clippy::type_complexity)]

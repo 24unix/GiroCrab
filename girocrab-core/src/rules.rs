@@ -169,18 +169,8 @@ impl CompiledRule {
         if !r.enabled {
             return false;
         }
-        if !r.account_ids.is_empty() && !r.account_ids.contains(&t.account_id) {
+        if !r.admits(t.account_id, t.amount_cents) {
             return false;
-        }
-        if let Some(min) = r.min_amount_cents {
-            if t.amount_cents < min {
-                return false;
-            }
-        }
-        if let Some(max) = r.max_amount_cents {
-            if t.amount_cents > max {
-                return false;
-            }
         }
         let matcher = match &self.matcher {
             Matcher::Expr(expr) => return expr.matches_prepared(prepared),
@@ -204,6 +194,16 @@ impl CompiledRule {
                 matcher.is_match(&compact)
             }
         }
+    }
+}
+
+impl Rule {
+    /// Whether a booking lies within the rule's accounts and amount range
+    /// (its limits beyond the text; a search expression may hold more).
+    pub(crate) fn admits(&self, account_id: i64, amount_cents: i64) -> bool {
+        (self.account_ids.is_empty() || self.account_ids.contains(&account_id))
+            && self.min_amount_cents.is_none_or(|min| amount_cents >= min)
+            && self.max_amount_cents.is_none_or(|max| amount_cents <= max)
     }
 }
 

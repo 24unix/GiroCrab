@@ -43,8 +43,7 @@ extension AppModel {
         }
         showCategory(categoryID, on: Set(bookings.map(\.id)))
         // Merchant histories count categories: keep the shown one until the new one is in.
-        merchantStatsCache = [:]
-        loadMerchantStats(keepShown: true)
+        refreshSelectedBookingHistory()
         // Rule counts and the investment dashboard: reload only when on screen,
         // otherwise when the rule editor opens / the Investments scope is shown.
         if showRuleEditor { reloadRules() } else { rulesStale = true }
@@ -402,7 +401,12 @@ extension AppModel {
     }
 
     func openRuleEditor(from booking: Booking? = nil) {
-        ruleDraft = booking.map { newRuleDraft(from: $0) }
+        openRuleEditor(draft: booking.map { newRuleDraft(from: $0) })
+    }
+
+    /// The rule editor on `draft` (nil: the rule list).
+    func openRuleEditor(draft: Rule?) {
+        ruleDraft = draft
         showRuleEditor = true
     }
 
