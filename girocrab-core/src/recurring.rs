@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
@@ -23,7 +23,7 @@ pub(crate) const RECURRING_SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS recurring_series (
     id            INTEGER PRIMARY KEY,
     series_key    TEXT    NOT NULL UNIQUE,
-    status        TEXT    NOT NULL DEFAULT 'manual',   -- manual | ignored
+    status        TEXT    NOT NULL DEFAULT 'manual',   -- manual | ignored | auto (#615)
     interval      TEXT    NOT NULL DEFAULT 'monthly',  -- monthly | quarterly | halfyearly | yearly | custom
     custom_dates  TEXT    NOT NULL DEFAULT '',         -- custom: comma-separated MM-DD
     created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -174,11 +174,22 @@ fn normalize_iban(iban: &str) -> String {
         .to_ascii_uppercase()
 }
 
+/// Separates a known merchant from the IBAN in a series key (#615).
+const MERCHANT_SEP: &str = "|m:";
+
 /// Stable grouping key of a booking: direction + payer/payee. "" = not groupable.
+/// An IBAN shared by several known merchants (a payment service, a card clearing
+/// account) keeps them apart: `-iban:X|m:apple` (#615). Merchants guessed from the
+/// counterparty name (`x:…`) are left out, so a payee's spelling can't split a series.
 pub fn series_key(b: &Booking) -> String {
     let dir = if b.amount_cents < 0 { '-' } else { '+' };
     if !b.counterparty_iban.trim().is_empty() {
-        return format!("{dir}iban:{}", normalize_iban(&b.counterparty_iban));
+        let iban = normalize_iban(&b.counterparty_iban);
+        let m = &b.merchant.key;
+        if !m.is_empty() && !m.starts_with("x:") {
+            return format!("{dir}iban:{iban}{MERCHANT_SEP}{m}");
+        }
+        return format!("{dir}iban:{iban}");
     }
     if !b.merchant.key.is_empty() {
         return format!("{dir}m:{}", b.merchant.key);
@@ -189,6 +200,24 @@ pub fn series_key(b: &Booking) -> String {
     } else {
         format!("{dir}n:{name}")
     }
+}
+
+/// The key a decision was stored under before #615 (IBAN without merchant),
+/// for a key that names a merchant; an amount suffix (`#cents`) is kept.
+fn legacy_key(key: &str) -> Option<String> {
+    let (head, tail) = key.split_once(MERCHANT_SEP)?;
+    let suffix = tail.find('#').map_or("", |i| &tail[i..]);
+    Some(format!("{head}{suffix}"))
+}
+
+/// The user's decision for a series: its own entry, else one stored for the whole
+/// IBAN before #615. `auto` ("Automatisch erkennen" over such an old entry) means
+/// none, so the old entry no longer applies.
+fn decision<'a>(stored: &'a HashMap<String, Stored>, key: &str) -> Option<&'a Stored> {
+    let s = stored
+        .get(key)
+        .or_else(|| legacy_key(key).and_then(|k| stored.get(&k)))?;
+    (!s.auto).then_some(s)
 }
 
 fn date(s: &str) -> Option<NaiveDate> {
@@ -276,6 +305,8 @@ fn detect_interval(dates: &[NaiveDate]) -> Option<RecurrenceInterval> {
 #[derive(Debug, Clone)]
 struct Stored {
     ignored: bool,
+    /// Back to automatic detection although an entry for the whole IBAN exists (#615).
+    auto: bool,
     interval: RecurrenceInterval,
     custom_dates: Vec<String>,
 }
@@ -298,6 +329,7 @@ fn load_stored(conn: &Connection) -> CoreResult<HashMap<String, Stored>> {
             key,
             Stored {
                 ignored: status == "ignored",
+                auto: status == "auto",
                 interval: RecurrenceInterval::from_str(&interval),
                 custom_dates: custom
                     .split(',')
@@ -431,7 +463,7 @@ fn build_series(
     let mut out = Vec::new();
     for (key, mut list) in groups {
         list.sort_by(|a, b| (&a.booking_date, a.id).cmp(&(&b.booking_date, b.id)));
-        match stored.get(&key) {
+        match decision(stored, &key) {
             Some(s) if s.ignored => {}
             Some(s) => out.extend(make_series(
                 key.clone(),
@@ -458,7 +490,7 @@ fn build_series(
                 for cluster in amount_clusters(&list) {
                     let med = median(cluster.iter().map(|b| b.amount_cents.abs()).collect());
                     let sub = format!("{key}#{med}");
-                    if stored.get(&sub).is_some_and(|s| s.ignored) {
+                    if decision(stored, &sub).is_some_and(|s| s.ignored) {
                         continue;
                     }
                     if let Some(i) = detect_group(&cluster) {
@@ -489,7 +521,9 @@ fn ignored_series(bookings: &[Booking], stored: &HashMap<String, Stored>) -> Vec
             // The base key may hold free text with '#' ("-n:shop #12"): a whole key
             // that is itself a series key wins, otherwise only a numeric suffix
             // after the *last* '#' is the amount of a sub-series ("{key}#{cents}").
-            let whole = bookings.iter().any(|b| series_key(b) == *key);
+            let whole = bookings.iter().any(|b| {
+                series_key(b) == *key || legacy_key(&series_key(b)).as_deref() == Some(key)
+            });
             let (base, amount) = match key.rsplit_once('#') {
                 Some((b, a)) if !whole => match a.parse::<i64>() {
                     Ok(a) => (b, Some(a)),
@@ -497,9 +531,18 @@ fn ignored_series(bookings: &[Booking], stored: &HashMap<String, Stored>) -> Vec
                 },
                 _ => (key.as_str(), None),
             };
+            // An entry for the whole IBAN (before #615) covers the merchants behind it
+            // that have no decision of their own.
+            let in_base = |b: &&Booking| {
+                let k = series_key(b);
+                k == base
+                    || (legacy_key(&k).as_deref() == Some(base)
+                        && !stored.contains_key(&k)
+                        && amount.is_none_or(|a| !stored.contains_key(&format!("{k}#{a}"))))
+            };
             let last = bookings
                 .iter()
-                .filter(|b| series_key(b) == base)
+                .filter(in_base)
                 .filter(|b| amount.is_none_or(|a| (b.amount_cents.abs() - a).abs() * 100 <= a * 15))
                 .max_by(|a, b| (&a.booking_date, a.id).cmp(&(&b.booking_date, b.id)))?;
             Some(IgnoredRecurring {
@@ -699,12 +742,35 @@ impl Vault {
         Ok(())
     }
 
-    /// Forgets the user's decision; automatic detection applies again.
+    /// Forgets the user's decision; automatic detection applies again. A merchant
+    /// behind an IBAN that still has a decision from before #615 is marked `auto`
+    /// instead, so that old decision doesn't take over again (and the other
+    /// merchants keep it).
     pub fn reset_recurring(&self, series_key: String) -> Result<(), CoreError> {
-        self.db()?.execute(
-            "DELETE FROM recurring_series WHERE series_key = ?1",
-            [series_key],
-        )?;
+        let db = self.db()?;
+        let legacy_exists = match legacy_key(&series_key) {
+            Some(k) => db
+                .query_row(
+                    "SELECT 1 FROM recurring_series WHERE series_key = ?1",
+                    [k],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some(),
+            None => false,
+        };
+        if legacy_exists {
+            db.execute(
+                "INSERT INTO recurring_series(series_key, status) VALUES (?1, 'auto')
+                 ON CONFLICT(series_key) DO UPDATE SET status = 'auto'",
+                [series_key],
+            )?;
+        } else {
+            db.execute(
+                "DELETE FROM recurring_series WHERE series_key = ?1",
+                [series_key],
+            )?;
+        }
         Ok(())
     }
 }
@@ -880,6 +946,7 @@ mod tests {
             s[0].series_key.clone(),
             Stored {
                 ignored: true,
+                auto: false,
                 interval: RecurrenceInterval::Monthly,
                 custom_dates: vec![],
             },
@@ -891,6 +958,127 @@ mod tests {
         assert_eq!(hidden[0].amount_cents.abs(), s[0].amount_cents.abs());
     }
 
+    /// #615: Lidl shopping and an Apple subscription paid through one IBAN
+    /// (payment service / card clearing account).
+    fn lidl_and_apple_via_one_iban() -> Vec<Booking> {
+        let mut v = vec![];
+        let with = |mut b: Booking, cp: &str| {
+            b.merchant = MerchantResolver::resolve(cp, "");
+            b
+        };
+        for (i, d) in ["2026-08-11", "2026-09-11", "2026-10-11", "2026-11-10"]
+            .iter()
+            .enumerate()
+        {
+            v.push(with(
+                bk(i as i64, d, -299, "DE99 PAY", "Apple Services"),
+                "Apple Services",
+            ));
+        }
+        // monthly shopping (weekly is never detected): its own series next to Apple
+        for (i, d) in ["2026-08-04", "2026-09-04", "2026-10-05", "2026-11-04"]
+            .iter()
+            .enumerate()
+        {
+            v.push(with(
+                bk(10 + i as i64, d, -4_000 - 37 * i as i64, "DE99PAY", "Lidl"),
+                "Lidl",
+            ));
+        }
+        v
+    }
+
+    fn stored_entry(ignored: bool, auto: bool) -> Stored {
+        Stored {
+            ignored,
+            auto,
+            interval: RecurrenceInterval::Monthly,
+            custom_dates: vec![],
+        }
+    }
+
+    #[test]
+    fn known_merchants_behind_one_iban_are_separate_series() {
+        let v = lidl_and_apple_via_one_iban();
+        assert_eq!(series_key(&v[0]), "-iban:DE99PAY|m:apple");
+        assert_eq!(series_key(&v[5]), "-iban:DE99PAY|m:lidl");
+        let s = build_series(&v, &HashMap::new(), today());
+        assert_eq!(s.len(), 2, "{s:?}");
+        let apple = s.iter().find(|x| x.name == "Apple Services").unwrap();
+        let lidl = s.iter().find(|x| x.name == "Lidl").unwrap();
+        assert_eq!(apple.interval, RecurrenceInterval::Monthly);
+        assert!(!apple.amount_specific && !lidl.amount_specific);
+
+        // "Nicht wiederkehrend" on Lidl keeps the subscription
+        let mut stored = HashMap::new();
+        stored.insert(lidl.series_key.clone(), stored_entry(true, false));
+        let s = build_series(&v, &stored, today());
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].name, "Apple Services");
+        // marking Apple monthly leaves Lidl hidden (and Lidl's bookings out of it)
+        stored.insert(apple.series_key.clone(), stored_entry(false, false));
+        let s = build_series(&v, &stored, today());
+        assert_eq!(s.len(), 1);
+        assert_eq!(
+            (s[0].name.as_str(), s[0].source),
+            ("Apple Services", RecurringSource::Manual)
+        );
+        assert_eq!(s[0].occurrences, 4);
+        let hidden = ignored_series(&v, &stored);
+        assert_eq!(hidden.len(), 1);
+        assert_eq!(hidden[0].name, "Lidl");
+    }
+
+    #[test]
+    fn guessed_merchants_keep_the_iban_key() {
+        let mut b = bk(1, "2026-11-01", -95_000, "DE11", "Hausverwaltung Müller");
+        b.merchant = MerchantResolver::resolve("Hausverwaltung Müller", "");
+        assert!(b.merchant.key.starts_with("x:"));
+        assert_eq!(series_key(&b), "-iban:DE11");
+        assert_eq!(legacy_key("-iban:DE11"), None);
+        assert_eq!(
+            legacy_key("-iban:DE11|m:apple#299").as_deref(),
+            Some("-iban:DE11#299")
+        );
+    }
+
+    #[test]
+    fn decisions_for_the_whole_iban_from_before_still_apply() {
+        let v = lidl_and_apple_via_one_iban();
+        // hidden before #615 under the IBAN alone: both stay hidden
+        let mut stored = HashMap::new();
+        stored.insert("-iban:DE99PAY".to_string(), stored_entry(true, false));
+        assert!(build_series(&v, &stored, today()).is_empty());
+        let hidden = ignored_series(&v, &stored);
+        assert_eq!(hidden.len(), 1);
+        assert_eq!(hidden[0].series_key, "-iban:DE99PAY");
+
+        // a merchant's own decision wins and takes it out of the old entry
+        stored.insert(
+            "-iban:DE99PAY|m:apple".to_string(),
+            stored_entry(false, false),
+        );
+        let s = build_series(&v, &stored, today());
+        assert_eq!(s.len(), 1);
+        assert_eq!(
+            (s[0].name.as_str(), s[0].source),
+            ("Apple Services", RecurringSource::Manual)
+        );
+        assert_eq!(ignored_series(&v, &stored)[0].name, "Lidl");
+
+        // "Automatisch erkennen" over the old entry: detection again, for Apple only
+        stored.insert(
+            "-iban:DE99PAY|m:apple".to_string(),
+            stored_entry(false, true),
+        );
+        let s = build_series(&v, &stored, today());
+        assert_eq!(s.len(), 1);
+        assert_eq!(
+            (s[0].name.as_str(), s[0].source),
+            ("Apple Services", RecurringSource::Detected)
+        );
+    }
+
     #[test]
     fn manual_custom_dates_and_ignore() {
         let v = vec![bk(1, "2026-08-15", -12_000, "DE55", "Grundsteuer")];
@@ -899,6 +1087,7 @@ mod tests {
             "-iban:DE55".to_string(),
             Stored {
                 ignored: false,
+                auto: false,
                 interval: RecurrenceInterval::Custom,
                 custom_dates: normalize_custom_dates(&["15.03.".into(), "08-15".into()]),
             },
@@ -1009,6 +1198,71 @@ mod vault_tests {
         assert_eq!(hidden.len(), 1);
         assert_eq!(hidden[0].name, "Stadtkasse");
         v.reset_recurring(key).unwrap();
+        assert!(v.list_recurring(vec![]).unwrap().is_empty());
+        assert!(v.list_ignored_recurring(vec![]).unwrap().is_empty());
+        drop(v);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// #615: an entry for the whole IBAN from before stays for the other
+    /// merchants when one of them goes back to automatic detection.
+    #[test]
+    fn reset_over_an_old_iban_entry_marks_auto() {
+        let dir = std::env::temp_dir().join(format!("gc-recurring-615-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![7u8; 32]).unwrap();
+        let d = (Local::now().date_naive() - Duration::days(10))
+            .format("%Y-%m-%d")
+            .to_string();
+        let id = {
+            let c = v.db().unwrap();
+            c.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            c.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES ((SELECT id FROM account_groups), 'A', 'K')",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, counterparty_iban)
+                 VALUES ((SELECT id FROM accounts LIMIT 1), 'x', ?1, -299, 'Apple Services', 'DE99PAY')",
+                [&d],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO recurring_series(series_key, status) VALUES ('-iban:DE99PAY', 'ignored')",
+                [],
+            )
+            .unwrap();
+            c.query_row("SELECT id FROM transactions", [], |r| r.get::<_, i64>(0))
+                .unwrap()
+        };
+        assert!(
+            v.list_recurring(vec![]).unwrap().is_empty(),
+            "old entry hides it"
+        );
+        v.mark_booking_recurring(id, RecurrenceInterval::Monthly, vec![])
+            .unwrap();
+        let s = v.list_recurring(vec![]).unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].series_key, "-iban:DE99PAY|m:apple");
+        assert!(v.list_ignored_recurring(vec![]).unwrap().is_empty());
+
+        v.reset_recurring(s[0].series_key.clone()).unwrap();
+        let status = |k: &str| {
+            v.db()
+                .unwrap()
+                .query_row(
+                    "SELECT status FROM recurring_series WHERE series_key = ?1",
+                    [k],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()
+                .unwrap()
+        };
+        assert_eq!(status("-iban:DE99PAY|m:apple").as_deref(), Some("auto"));
+        assert_eq!(status("-iban:DE99PAY").as_deref(), Some("ignored"));
+        // one booking: nothing detected, and the old entry no longer hides it
         assert!(v.list_recurring(vec![]).unwrap().is_empty());
         assert!(v.list_ignored_recurring(vec![]).unwrap().is_empty());
         drop(v);
