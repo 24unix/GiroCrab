@@ -1442,9 +1442,75 @@ fn apply_transfer_prefill(win: &MainWindow, p: &TransferPrefill) {
     win.set_transfer_open(true);
 }
 
+/// Value of `--screenshot <path.png>` / `--screenshot=<path.png>`.
+fn screenshot_path_from_args(args: impl IntoIterator<Item = String>) -> Option<String> {
+    let mut it = args.into_iter();
+    while let Some(a) = it.next() {
+        if a == "--screenshot" {
+            return it.next();
+        }
+        if let Some(v) = a.strip_prefix("--screenshot=") {
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+/// Captures only this process's own window (`screencapture -l <window id>`), found by PID AND the
+/// exact title, so no other app, Finder or desktop background can end up in the picture. The
+/// software backend renders into an isolated window texture, which `screencapture -l` reads reliably.
+fn capture_own_window(path: &str, title: &str) -> bool {
+    let script = "import sys,Quartz\n\
+pid,title=int(sys.argv[1]),sys.argv[2]\n\
+for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly,Quartz.kCGNullWindowID):\n\
+    if w.get('kCGWindowOwnerPID')==pid and w.get('kCGWindowName')==title:\n\
+        print(w['kCGWindowNumber']);break\n";
+    let Ok(out) = std::process::Command::new("python3")
+        .args(["-I", "-c", script])
+        .arg(std::process::id().to_string())
+        .arg(title)
+        .output()
+    else {
+        return false;
+    };
+    let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if id.is_empty() {
+        eprintln!("screenshot: no window with this PID and title \"{title}\"");
+        return false;
+    }
+    std::process::Command::new("screencapture")
+        .args(["-x", "-o", "-l", &id, path])
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     views_ui::purge_stale_documents();
+    let screenshot = screenshot_path_from_args(std::env::args().skip(1));
+    if screenshot.is_some() && std::env::var_os("SLINT_BACKEND").is_none() {
+        // Software rendering: the isolated window texture is capturable (Metal is not).
+        std::env::set_var("SLINT_BACKEND", "winit-software");
+    }
     let win = MainWindow::new()?;
+    let demo_title = std::env::var_os("GIROCRAB_DEMO_SEED").is_some() || screenshot.is_some();
+    if demo_title {
+        win.set_window_title("GiroCrab Windows Demo".into());
+    }
+    if let Some(path) = screenshot {
+        let timer = slint::Timer::default();
+        timer.start(
+            slint::TimerMode::SingleShot,
+            Duration::from_secs(4),
+            move || {
+                let ok = capture_own_window(&path, "GiroCrab Windows Demo");
+                let _ = slint::quit_event_loop();
+                if !ok {
+                    std::process::exit(1);
+                }
+            },
+        );
+        std::mem::forget(timer);
+    }
     // Splash: dark at night (19:00-07:00 local); otherwise it follows the system theme.
     // No timezone database here, so local time is approximated as UTC+1 (CET).
     {

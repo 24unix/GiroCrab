@@ -489,7 +489,7 @@ private fun SumRow(label: String, cents: Long, masked: Boolean) {
 @Composable
 private fun MonthHeader(g: MonthGroup, masked: Boolean) {
     Row(
-        Modifier.fillMaxWidth().height(26.dp).background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 0.dp),
+        Modifier.fillMaxWidth().height(26.dp).background(MaterialTheme.colorScheme.surface).padding(start = 10.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -560,6 +560,18 @@ private fun BookingRow(
                         color = color(category.colorHex),
                         modifier = Modifier.clip(RoundedCornerShape(50))
                             .background(color(category.colorHex).copy(alpha = 0.15f))
+                            .padding(vertical = 1.dp, horizontal = 6.dp),
+                    )
+                } else {
+                    Text("Ohne Kategorie", fontSize = 11.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "⟲ Vorschlag",
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                            .clickable(onClick = onOpen)
                             .padding(vertical = 1.dp, horizontal = 6.dp),
                     )
                 }

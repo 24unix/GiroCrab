@@ -706,7 +706,8 @@ component Dialog inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-    title: "GiroCrab";
+    in property <string> window-title: "GiroCrab";
+    title: window-title;
     icon: @image-url("../../docs/assets/app-icon.png");
     forward-focus: fs;
     min-width: 1040px;
