@@ -425,6 +425,18 @@ struct StreamHeaderCard: View {
                     categoryAccountMenu
                 }
                 amountFilterPill
+                if model.hasActiveListFilters {
+                    // all list filters at once (#840); the period is a view choice and stays
+                    Button { model.resetListFilters(inBackground: true) } label: {
+                        Label("Filter zurücksetzen", systemImage: "xmark.circle")
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            #if os(iOS)
+                            .labelStyle(.iconOnly)
+                            #endif
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Status, Buchungsart, Tags, Konten, Betrag und Suche zurücksetzen")
+                }
                 if let a = account {
                     Button { showDocuments = true } label: {
                         Label("Dokumente", systemImage: "doc.text")

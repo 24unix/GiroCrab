@@ -294,6 +294,18 @@ extension AppModel {
         UserDefaults.standard.set(customPeriodFrom, forKey: "period.customFrom")
         UserDefaults.standard.set(customPeriodTo, forKey: "period.customTo")
         if period == .custom { periodDidChange() } else { period = .custom }
+        rememberPeriod()
+    }
+
+    static let lastPeriodKey = "period.last"
+
+    /// The period last chosen in the period menu (#840); `.custom` uses the saved start/end.
+    static var storedPeriod: Period? {
+        UserDefaults.standard.string(forKey: lastPeriodKey).flatMap { Period(lastChoiceKey: $0) }
+    }
+
+    func rememberPeriod() {
+        UserDefaults.standard.set(period.lastChoiceKey(), forKey: Self.lastPeriodKey)
     }
 
     private static let categoryPeriodsKey = "period.byCategory"

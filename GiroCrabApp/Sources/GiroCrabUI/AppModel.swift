@@ -186,6 +186,7 @@ public final class AppModel {
             loadsSelectionInBackground = true; period = newValue; loadsSelectionInBackground = false
             // The user's choice becomes the default of the selected category (#425).
             if case .category(let id)? = sidebarSelection { setCategoryPeriod(newValue, for: id) }
+            rememberPeriod() // restored on the next launch (#840)
         }
     }
     /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
@@ -209,11 +210,36 @@ public final class AppModel {
     /// the count, the pages and the printout follow.
     var statusFilter: StatusFilter = .all {
         didSet {
-            guard statusFilter != oldValue else { return }
+            guard statusFilter != oldValue, !suspendsFilterReloads else { return }
             listLimit = Self.defaultListLimit
             reloadAfterFilterChange() // the sidebar sums follow the status (#621)
         }
     }
+
+    /// Any list filter of the header row (status, type, tags, accounts, amount, search) narrows the list.
+    var hasActiveListFilters: Bool {
+        statusFilter != .all || directionFilter != .all || tagFilter.isActive || amountFilter.isActive
+            || !searchText.isEmpty || !categoryAccountIDs.isEmpty
+    }
+
+    /// „Filter zurücksetzen“ (#840): clears every list filter with a single reload; the period stays.
+    func resetListFilters(inBackground: Bool = false) {
+        do {
+            suspendsFilterReloads = true
+            defer { suspendsFilterReloads = false }
+            statusFilter = .all
+            directionFilter = .all
+            clearTagFilter()
+            amountFilter = AmountFilter()
+            categoryAccountFilter = []
+            searchText = ""
+            searchTask?.cancel()
+        }
+        listLimit = Self.defaultListLimit
+        if inBackground { loadingFilterInBackground(reloadAfterFilterChange) } else { reloadAfterFilterChange() }
+    }
+    /// Set while `resetListFilters` changes several filters: their own reloads are skipped.
+    @ObservationIgnored var suspendsFilterReloads = false
 
     /// Label of the header filter menu: "Status: Alle" or the active filters.
     var filterTitle: String {
@@ -230,7 +256,7 @@ public final class AppModel {
     /// Income / expenses only (GitHub #53); filtered in the core, so totals and CSV follow.
     var directionFilter: BookingDirection = .all {
         didSet {
-            guard directionFilter != oldValue else { return }
+            guard directionFilter != oldValue, !suspendsFilterReloads else { return }
             listLimit = Self.defaultListLimit
             reloadAfterFilterChange() // the sidebar sums follow the direction (#621)
         }
@@ -239,7 +265,7 @@ public final class AppModel {
     /// across sidebar selections, like the status filter. Not in „Neue Umsätze“.
     var tagFilter = BookingTagFilter() {
         didSet {
-            guard tagFilter != oldValue else { return }
+            guard tagFilter != oldValue, !suspendsFilterReloads else { return }
             listLimit = Self.defaultListLimit
             reloadBookings()
         }
@@ -248,7 +274,7 @@ public final class AppModel {
     /// count, pages and exports follow. Kept while the app runs, like the other list filters.
     var amountFilter = AmountFilter() {
         didSet {
-            guard amountFilter != oldValue else { return }
+            guard amountFilter != oldValue, !suspendsFilterReloads else { return }
             listLimit = Self.defaultListLimit
             reloadAfterFilterChange()
         }
@@ -258,12 +284,12 @@ public final class AppModel {
     /// empty = all accounts. Kept while the app runs.
     var categoryAccountFilter: Set<Int64> = [] {
         didSet {
-            guard categoryAccountFilter != oldValue, showsAccountFilter else { return }
+            guard categoryAccountFilter != oldValue, showsAccountFilter, !suspendsFilterReloads else { return }
             listLimit = Self.defaultListLimit
             reloadSelection(periodChanged: true) // also the sidebar sums (#621)
         }
     }
-    var searchText: String = "" { didSet { scheduleSearch() } }
+    var searchText: String = "" { didSet { if !suspendsFilterReloads { scheduleSearch() } } }
     /// Filters the accounts section of the sidebar (name, owner, IBAN / account number).
     var sidebarAccountSearch: String = ""
     var selectedBookingID: Booking.ID? {
@@ -708,6 +734,9 @@ public final class AppModel {
             return
         }
         if !options.demoSeed {
+            // The last chosen period (#840); no vault yet, so its reload is a no-op.
+            // Demo starts keep `.all` for reproducible screenshots.
+            if let saved = Self.storedPeriod { period = saved }
             // Normal start: zero I/O and no FFI here. The first frame shows the loading view;
             // everything else (language, vault check, demo seeding) runs in `bootstrap()`.
             vaultState = .starting

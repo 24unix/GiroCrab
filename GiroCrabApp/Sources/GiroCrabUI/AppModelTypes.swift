@@ -194,6 +194,15 @@ extension Period {
         default: return nil
         }
     }
+
+    /// `storageKey` plus `.custom`, whose dates are saved separately: the period restored at launch (#840).
+    func lastChoiceKey(now: Date = Date()) -> String {
+        self == .custom ? "custom" : storageKey(now: now) ?? "all"
+    }
+
+    init?(lastChoiceKey key: String, now: Date = Date()) {
+        if key == "custom" { self = .custom } else { self.init(storageKey: key, now: now) }
+    }
 }
 
 extension BookingDirection: @retroactive Identifiable {

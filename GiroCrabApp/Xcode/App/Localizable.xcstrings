@@ -25737,6 +25737,17 @@
         }
       }
     },
+    "Status, Buchungsart, Tags, Konten, Betrag und Suche zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset status, type, tags, accounts, amount and search"
+          }
+        }
+      }
+    },
     "Status: %@" : {
       "extractionState" : "manual",
       "localizations" : {
