@@ -1,10 +1,12 @@
-🦀 Vollständiger Funktionsumfang von GiroCrab v0.8.0!
+GiroCrab v0.8.0 (iOS Build unter Version 0.7.5, Schema v27)
 
-Hinweis zur Versionsnummer: Unsere Community-Entwicklung legt aktuell ein so hohes Tempo vor, dass wir schneller neue Features ausliefern, als Apples offizielles Versions-Review für neue Release-Zweige hinterherkommt. Damit ihr nicht auf die Freigabe einer neuen Hauptversionsnummer warten müsst, liefern wir das komplette v0.8.0-Paket direkt als neuen Build unter dem bereits freigegebenen 0.7.5-Train aus. Für euch zählt also die Build-Nummer – inhaltlich seid ihr hiermit auf dem brandneuen Stand von v0.8.0 (inkl. Tresor-Schema v27 für nahtlosen iCloud-Sync mit macOS v0.8.0)!
+Hinweis zur Versionsnummer in TestFlight:
+Weil unsere Entwicklung schneller voranschreitet als Apples Versions-Review fuer neue Release-Zweige, liefern wir das komplette v0.8.0-Release auf iOS ohne Wartezeit direkt als neuen Build unter 0.7.5 aus.
 
-Neu in diesem Build (Stand v0.8.0):
-• 🏦 Integrierte FinTS-Produktregistrierung: Offizielle FinTS-Registrierungs-ID ist direkt integriert.
-• 🛡️ Automatisches Tresor-Backup: Vor Migrationen wird automatisch ein verschlüsseltes Backup angelegt.
-• 📈 EquatePlus, IBKR & C24: Neuer EquatePlus-Connector, native Währung je IBKR-Depotposition, C24-Kategorien-Import und sprachunabhängige eigene Kategorien/Gruppen.
-• ⚡ Massiver Performance-Schub: ListCache (~30× schneller), vorab kompilierte Regex-Muster und schnelleres Regel-Update nach iCloud-Merges.
-• 🧭 Analysen & Serien: Cashflow folgt der Kontoauswahl, wiederkehrende Buchungen trennen Händler hinter derselben IBAN, „Geprüft“ wirkt auf die gesamte Mehrfachauswahl.
+Was ist neu und was kann getestet werden:
+- Integrierte FinTS-Produktregistrierung & automatisches Tresor-Backup vor dem Upgrade.
+- Tags filtern & auswerten (#228, #777): Buchungen nach Tags filtern und in den Diagrammen auswerten.
+- EquatePlus & IBKR-Einzelwaehrungen (#750, #625): Neuer EquatePlus-Connector und native Waehrung pro Depotposition.
+- Revolut OAuth-Popup (#289), ING Business (#721), Sparda Hannover (#619) & C24-Kategorien (#763).
+- iOS-Fix (#768): Schluessel-Einfuegen-Dialog unter Einstellungen -> Sicherheit bleibt stabil geoeffnet.
+- Performance-Schub & UI-Feinschliff: ListCache (#760), Split-Buchungs-Kategorien (#654), Analyse-Button in der Filterleiste (#757) und Seitenleisten-Zaehler (#592).

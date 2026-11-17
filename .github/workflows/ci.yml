@@ -180,8 +180,13 @@ jobs:
       - name: girocrab-core builds with the optional serde feature
         if: needs.changes.outputs.rust == 'true'
         run: cargo check -p girocrab-core --features serde
+      - name: Install cargo-nextest
+        if: needs.changes.outputs.rust == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
       - if: needs.changes.outputs.rust == 'true'
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
 
   # Windows MVP: the core must build and pass its tests on MSVC (Unix-only code such as the
   # local API socket is gated with cfg(unix)). SQLCipher links a vendored OpenSSL, so a cold
@@ -247,17 +252,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - if: needs.changes.outputs.swift == 'true'
+      - name: Cache prebuilt macOS XCFramework + UniFFI bindings
+        if: needs.changes.outputs.swift == 'true'
+        id: xcf-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            GiroCrabApp/GiroCrabCore.xcframework
+            GiroCrabApp/Sources/GiroCrabCore
+          key: xcf-macos-${{ runner.arch }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'build-xcframework.sh', 'girocrab-core/**', 'uniffi-bindgen/**') }}
+      - if: needs.changes.outputs.swift == 'true' && (steps.xcf-cache.outputs.cache-hit != 'true' || needs.changes.outputs.rust == 'true')
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - if: needs.changes.outputs.swift == 'true'
+      - if: needs.changes.outputs.swift == 'true' && (steps.xcf-cache.outputs.cache-hit != 'true' || needs.changes.outputs.rust == 'true')
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build Rust core + UniFFI bindings (macOS only)
-        if: needs.changes.outputs.swift == 'true'
+        if: needs.changes.outputs.swift == 'true' && steps.xcf-cache.outputs.cache-hit != 'true'
         run: ./build-xcframework.sh --macos-only
       - name: Stale-bindings check (build-xcframework.sh --check)
-        if: needs.changes.outputs.swift == 'true'
+        if: needs.changes.outputs.rust == 'true'
         run: |
           ./build-xcframework.sh --check
           echo '// stale' >> girocrab-core/src/text.rs
@@ -269,12 +283,9 @@ jobs:
       - name: Core tests of macOS-specific code (local API)
         if: needs.changes.outputs.swift == 'true' && needs.changes.outputs.macos-local-api == 'true'
         run: cargo test -p girocrab-core --lib local_api
-      - name: Build SwiftUI app
+      - name: Build & Test SwiftUI app (parallel)
         if: needs.changes.outputs.swift == 'true'
-        run: cd GiroCrabApp && swift build
-      - name: Test SwiftUI app
-        if: needs.changes.outputs.swift == 'true'
-        run: cd GiroCrabApp && swift test
+        run: cd GiroCrabApp && swift test --parallel
 
   # ---------------------------------------------------------------------------------------
   # Linux port (GiroCrabLinux/, Qt 6 / QML).

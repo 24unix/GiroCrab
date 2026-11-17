@@ -1,10 +1,12 @@
-🦀 Full GiroCrab v0.8.0 feature set inside!
+GiroCrab v0.8.0 (iOS Build under Version 0.7.5, Schema v27)
 
-Note on the version number: Community development is moving faster than Apple's review cycle for new marketing version trains. To deliver updates without review delays, the complete v0.8.0 feature set (including vault schema v27 for seamless iCloud sync with macOS v0.8.0) ships immediately as a new Build under the pre-approved 0.7.5 version train – watch the Build number!
+Note on the TestFlight version number:
+Because our development moves faster than Apple's version review for new release trains, the complete v0.8.0 release ships immediately as a new build under 0.7.5.
 
-What's new in this build (v0.8.0):
-• 🏦 Built-in FinTS Product Registration out of the box.
-• 🛡️ Automatic encrypted Vault Backup before schema migrations.
-• 📈 EquatePlus connector, native currency per IBKR depot position, C24 category import, and custom categories preserved across language changes.
-• ⚡ Major Performance Boost: ListCache (~30× faster), pre-compiled regexes, and faster rule application after iCloud merges.
-• 🧭 Analytics & Polish: Cashflow follows account selection, recurring detection separates merchants sharing an IBAN, and multi-select review.
+What to test:
+- Built-in FinTS product registration & automatic encrypted vault backup before upgrade.
+- Tag filtering & analytics (#228, #777): Filter bookings by tags and analyze them in charts.
+- EquatePlus & per-holding currencies (#750, #625): New EquatePlus connector and native currency per holding.
+- Revolut OAuth popup (#289), ING Business (#721), Sparda Hannover (#619) & C24 categories (#763).
+- iOS Fix (#768): Paste Key sheet in Settings -> Security stays open reliably.
+- Performance & UI polish: ListCache (#760), split booking categories (#654), inline Analytics toggle (#757) and sidebar counts (#592).
