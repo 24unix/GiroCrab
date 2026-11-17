@@ -87,7 +87,6 @@
   "Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann.": "Taking a new screenshot discards the annotations because the content may have shifted.",
   "Einrichtung läuft …": "Setting up…",
   "Entwickler-Schlüssel (GIROCRAB_NO_KEYCHAIN, Schlüsselbund unbenutzt)": "Developer key (GIROCRAB_NO_KEYCHAIN, keyring unused)",
-  "Erfundene Buchungen aller 7 Banken – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen.": "Fictitious transactions from all 7 banks – no real bank connected. As soon as real data exists, Face ID or your device passcode protects the vault automatically; here you can test the lock screen.",
   "Erkennt IBAN, Betrag, Empfänger und Zweck (⇧Strg+V; Strg+V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD, GiroCode) hierher ziehen.": "Detects IBAN, amount, recipient and purpose (⇧Ctrl+V; Ctrl+V outside text fields). Drop an invoice (PDF, ZUGFeRD, GiroCode) here.",
   "Ersetzt alle Daten dieses Tresors durch die Sicherung.": "Replaces all data in this vault with the backup.",
   "Erstattung für Bestellung #%1": "Refund for order #%1",

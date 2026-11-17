@@ -11966,13 +11966,13 @@
         }
       }
     },
-    "Erfundene Buchungen aller 7 Banken – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen." : {
+    "Erfundene Buchungen – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Made-up transactions for all 7 banks – no real bank connected. As soon as real data exists, Face ID or your device passcode protects the vault automatically; you can try the lock screen here."
+            "value" : "Made-up transactions – no real bank connected. As soon as real data exists, Face ID or your device passcode protects the vault automatically; you can try the lock screen here."
           }
         }
       }
@@ -15296,13 +15296,13 @@
         }
       }
     },
-    "Ihr eigener Tresor ist noch leer. Hier sehen Sie erfundene Buchungen aller 7 Banken." : {
+    "Ihr eigener Tresor ist noch leer. Hier sehen Sie erfundene Buchungen." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your own vault is still empty. Here you see fictional transactions from all 7 banks."
+            "value" : "Your own vault is still empty. Here you see fictional transactions."
           }
         }
       }
@@ -25078,6 +25078,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "You’re currently viewing demo data. New bank connections are created in your own vault – the app switches there automatically."
+          }
+        }
+      }
+    },
+    "Sie sehen gerade erfundene Demo-Daten. Ihr eigener Tresor bleibt unverändert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’re looking at fictional demo data. Your own vault stays unchanged."
           }
         }
       }

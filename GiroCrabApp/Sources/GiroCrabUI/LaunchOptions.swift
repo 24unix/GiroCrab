@@ -2,7 +2,7 @@ import Foundation
 
 /// Command line / environment switches.
 ///
-///  --demo-seed            fill a throw-away vault with demo data for all 7 banks
+///  --demo-seed            fill a throw-away vault with demo data
 ///  GIROCRAB_DEMO_SEED=1   same, via environment (works for Xcode schemes / iOS)
 ///  --demo-sync            (with demo data) start "Sync All" right away, to
 ///                         see the push-TAN / code / redirect 2FA sheets

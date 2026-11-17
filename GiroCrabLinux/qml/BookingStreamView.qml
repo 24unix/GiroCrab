@@ -978,9 +978,12 @@ Rectangle {
                 Layout.fillWidth: true
                 Text { text: qsTr("Demo-Daten"); font.pixelSize: Theme.subheadline + 1; font.weight: Font.DemiBold; color: Theme.text }
                 Text {
-                    text: AppModel.hasOwnVault
-                        ? qsTr("Ihr eigener Tresor ist noch leer. Hier sehen Sie erfundene Buchungen aller 7 Banken.")
-                        : qsTr("Erfundene Buchungen aller 7 Banken – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen.")
+                    // DemoBanner.message: only an own vault without data is called empty
+                    text: AppModel.hasOwnVault && AppModel.vaultMayHoldRealData()
+                        ? qsTr("Sie sehen gerade erfundene Demo-Daten. Ihr eigener Tresor bleibt unverändert.")
+                        : AppModel.hasOwnVault
+                            ? qsTr("Ihr eigener Tresor ist noch leer. Hier sehen Sie erfundene Buchungen.")
+                            : qsTr("Erfundene Buchungen – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen.")
                     font.pixelSize: Theme.caption; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true
                 }
             }

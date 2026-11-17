@@ -6,6 +6,19 @@ struct DemoBanner: View {
     @Environment(AppModel.self) private var model
     @State private var showRestore = false
 
+    /// Only an own vault without data is called empty; the button beside it
+    /// ("Zurück zum eigenen Tresor") follows the same flag. No bank count: it
+    /// went stale when the demo changed.
+    static func message(hasOwnVault: Bool, mayHoldRealData: Bool) -> String {
+        if hasOwnVault && mayHoldRealData {
+            return String(localized: "Sie sehen gerade erfundene Demo-Daten. Ihr eigener Tresor bleibt unverändert.")
+        }
+        if hasOwnVault {
+            return String(localized: "Ihr eigener Tresor ist noch leer. Hier sehen Sie erfundene Buchungen.")
+        }
+        return String(localized: "Erfundene Buchungen – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen.")
+    }
+
     var body: some View {
         let button = HStack(spacing: 14) {
             if !AppModel.vaultMayHoldRealData {
@@ -23,9 +36,7 @@ struct DemoBanner: View {
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Demo-Daten").appFont(.subheadline, weight: .semibold).foregroundStyle(Theme.text)
-                Text(model.hasOwnVault
-                     ? "Ihr eigener Tresor ist noch leer. Hier sehen Sie erfundene Buchungen aller 7 Banken."
-                     : "Erfundene Buchungen aller 7 Banken – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen.")
+                Text(Self.message(hasOwnVault: model.hasOwnVault, mayHoldRealData: AppModel.vaultMayHoldRealData))
                     .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
