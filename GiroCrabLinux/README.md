@@ -59,7 +59,7 @@ cargo run -- --demo-sheet recurring --screenshot /tmp/r.png       # ein Sheet mi
 
 Für Fedora, openSUSE, Arch und andere Distributionen ohne `.deb`: `packaging/flatpak/de.girocrab.GiroCrab.yml`
 (KDE-Runtime 6.11 mit Qt 6 und Kirigami, QtWebEngine/QtPdf aus `io.qt.qtwebengine.BaseApp`, Tesseract 5.5 mit
-deutschen und englischen Sprachdaten). Die CI (`.github/workflows/flatpak.yml`) legt für x86_64 und aarch64 je ein
+deutschen und englischen Sprachdaten). Die CI (`.github/workflows/ci.yml`, Job `flatpak`) legt für x86_64 (in PRs) und aarch64 (auf `main`) je ein
 `girocrab.flatpak` als Workflow-Artefakt ab. Selbst bauen (aus dem Wurzelverzeichnis des Repositorys):
 
 ```sh

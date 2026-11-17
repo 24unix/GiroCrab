@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerates cargo-sources.json (the offline crate list of the Flatpak build) from
 # GiroCrabLinux/Cargo.lock. Run it after every change to that lock file and commit the
-# result together with it; CI (flatpak.yml, job "cargo-sources") fails while they differ.
+# result together with it; CI (ci.yml, job "cargo-sources.json aktuell") fails while they differ.
 #
 #   GiroCrabLinux/packaging/flatpak/update-cargo-sources.sh          # rewrite the file
 #   GiroCrabLinux/packaging/flatpak/update-cargo-sources.sh --check  # only compare

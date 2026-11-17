@@ -1,0 +1,42 @@
+name: Cache cleanup
+
+# The repository's GitHub Actions cache is limited to 10 GB; the Rust caches are >0.3-1.3 GB each.
+# `ci.yml` only lets `main` write them (`save-if`), but a PR branch can still leave copies
+# (e.g. a PR that changes the workflow), and they crowd out the caches of `main`.
+# When a PR is closed or merged, its caches (`refs/pull/<N>/merge`) are deleted.
+#
+# `pull_request_target`: a PR from a fork gets a read-only token under `pull_request`, so
+# the delete would fail there. Safe here: this workflow checks out nothing and runs no
+# code from the PR; the only input is the PR number.
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete the caches of this PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          ref="refs/pull/${PR_NUMBER}/merge"
+          ids=$(gh cache list --ref "$ref" --limit 100 --json id --jq '.[].id')
+          if [ -z "$ids" ]; then
+            echo "No caches for $ref."
+            exit 0
+          fi
+          for id in $ids; do
+            echo "Deleting cache $id of $ref"
+            gh cache delete "$id" || true
+          done

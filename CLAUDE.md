@@ -42,7 +42,7 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`.
 - Always pass `-q`/`--quiet` to `cargo check`, `cargo test`, `xcodebuild`. If output is still long, pipe through `tail -n 40`.
 - Before pushing a PR (also Swift-only ones; CI runs these on every PR): `cargo fmt --all -- --check` and `cargo clippy -q --workspace --all-targets -- -D warnings`. After pushing, check `gh pr checks`.
-- **CI runs `linux.yml` for any change under `girocrab-core/**` or to `Localizable.xcstrings`**, not only for Linux files.
+- **CI runs the Linux jobs (`qt-minimum`, `debian`) of `ci.yml` for any change under `girocrab-core/**` (other than Markdown) or to `Localizable.xcstrings`**, not only for Linux files.
   Before pushing such a change: `python3 -I GiroCrabLinux/scripts/i18n-report.py` (every Linux UI text needs English, step
   "English UI texts") and `(cd GiroCrabLinux && cargo fmt -- --check)`. Its clippy/test steps need Qt: leave those to CI.
 - **A red check on code the PR does not touch is usually inherited from `main`.** Before debugging it: run the failing step
@@ -178,9 +178,14 @@ The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads o
 - **Merge without waiting for the slow runners:** when the relevant local checks (`cargo test`, `swift test`, `scripts/lint-*.sh`)
   already passed on this Mac and `card` is green, do NOT wait for the cloud `CI / swift` / `CI / rust` runs: merge immediately with
   `gh pr merge <N> --squash --delete-branch --admin`.
-- CI is path-aware: `linux.yml`/`flatpak.yml` run only for `girocrab-core/**`, `GiroCrabLinux/**`, `**/Localizable.xcstrings` or their own
-  workflow; in `ci.yml` the `changes` job skips the heavy Rust steps (clippy, tests) and the whole Swift build/test when a PR cannot touch them
-  (the cheap lint steps always run, required check names stay unchanged).
+- CI is one workflow (`ci.yml`); its `changes` job sets per-job flags from the changed files (PR: against the base, push to main: against the
+  previous head, manual run: everything). Linux (`qt-minimum`, `debian`) runs for `GiroCrabLinux/**`, `girocrab-core/**` (not `*.md`) and
+  `**/Localizable.xcstrings`; Flatpak for `GiroCrabLinux/**` and `girocrab-core/Cargo.toml`; `windows-core` for the core only; `windows-app` for
+  `GiroCrabWindows/**` and the core, its release build + installer for `GiroCrabWindows/**`/`scripts/package-windows.ps1` only; `swift` for
+  `GiroCrabApp/**` and the core. The cheap lint steps of `rust` always run. In PRs Debian/Flatpak build only amd64/x86_64 (arm64/aarch64 on main).
+- `rust` (fmt, lints, clippy, `cargo test --workspace`) runs on Ubuntu; the macOS-only branches of the local API are tested in `swift`.
+  Only `main` writes the Rust cache (`save-if`), PRs restore it: the repository's 10 GB Actions cache is small, branch caches evicted main's.
+  `cache-cleanup.yml` deletes a PR's caches (`refs/pull/<N>/merge`) when it is closed or merged. Check the size: `gh api repos/GiroCrab/GiroCrab/actions/cache/usage`.
 - Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
   and description in German, conventional-commit prefix (`feat:`, `fix:`, `perf:`, `ci:`, `docs:`).
 - The local xcframework is whatever branch last ran `./build-xcframework.sh`. Before trusting
