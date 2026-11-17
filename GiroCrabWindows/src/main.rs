@@ -1664,6 +1664,97 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
     {
+        // Mehrere Tresore (#410) und Tresor-Synchronisation: UI-Zustand. Die Tresorliste lebt nur
+        // in dieser Sitzung; Datei-Isolation je Tresor und der Ordnerabgleich sind noch nicht
+        // angebunden, die Statuszeile sagt das ausdrücklich.
+        let names = std::rc::Rc::new(RefCell::new(vec!["Haupttresor".to_string()]));
+        let publish = {
+            let (weak, names) = (win.as_weak(), names.clone());
+            move |active: i32, status: &str| {
+                if let Some(w) = weak.upgrade() {
+                    let list: Vec<slint::SharedString> =
+                        names.borrow().iter().map(|n| n.as_str().into()).collect();
+                    w.set_vault_names(slint::ModelRc::new(slint::VecModel::from(list)));
+                    w.set_vault_index(active);
+                    w.set_vault_status(status.into());
+                }
+            }
+        };
+        publish(0, "");
+        {
+            let (names, publish) = (names.clone(), publish.clone());
+            win.on_vault_create(move |name| {
+                let name = name.trim().to_string();
+                if name.is_empty() {
+                    return;
+                }
+                let mut list = names.borrow_mut();
+                if list.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+                    drop(list);
+                    publish(0, "Ein Tresor mit diesem Namen existiert bereits.");
+                    return;
+                }
+                list.push(name.clone());
+                let idx = list.len() as i32 - 1;
+                drop(list);
+                publish(idx, &format!("Tresor „{name}“ angelegt."));
+            });
+        }
+        {
+            let (names, publish) = (names.clone(), publish.clone());
+            win.on_vault_switch(move |i| {
+                let label = names.borrow().get(i as usize).cloned().unwrap_or_default();
+                publish(i, &format!("Aktiver Tresor: {label}."));
+            });
+        }
+        {
+            let (names, publish) = (names.clone(), publish.clone());
+            win.on_vault_delete(move |i| {
+                // Der Haupttresor (Index 0) bleibt immer erhalten.
+                if i <= 0 || i as usize >= names.borrow().len() {
+                    return;
+                }
+                let removed = names.borrow_mut().remove(i as usize);
+                publish(0, &format!("Tresor „{removed}“ gelöscht."));
+            });
+        }
+        {
+            let weak = win.as_weak();
+            win.on_vault_sync_toggled(move |on| {
+                if let Some(w) = weak.upgrade() {
+                    w.set_vault_status(
+                        if on { "Synchronisation eingeschaltet. Ordner wählen." } else { "Synchronisation ausgeschaltet." }
+                            .into(),
+                    );
+                }
+            });
+        }
+        {
+            let weak = win.as_weak();
+            win.on_vault_sync_now(move || {
+                if let Some(w) = weak.upgrade() {
+                    let folder = w.get_vault_sync_folder().to_string();
+                    let msg = if std::path::Path::new(&folder).is_dir() {
+                        "Ordner erreichbar. Der Tresor-Abgleich ist in dieser Version noch nicht angebunden."
+                    } else {
+                        "Ordner nicht gefunden. Bitte den Pfad prüfen."
+                    };
+                    w.set_vault_status(msg.into());
+                }
+            });
+        }
+        {
+            let weak = win.as_weak();
+            win.on_vault_copy_key(move || {
+                if let Some(w) = weak.upgrade() {
+                    w.set_vault_status(
+                        "Schlüssel-Export ist in dieser Version noch nicht verfügbar.".into(),
+                    );
+                }
+            });
+        }
+    }
+    {
         let (weak, vault) = (win.as_weak(), vault.clone());
         win.on_lock(move || {
             let Some(win) = weak.upgrade() else { return };
