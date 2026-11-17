@@ -510,7 +510,7 @@ fun SettingsScreen(
         }
 
         var couple by rememberSaveable { mutableStateOf(false) }
-        var bankAlloc by remember { mutableStateOf(if (state.demoActive) mapOf("Musterbank" to 450, "Trade Republic" to 350) else emptyMap()) }
+        var bankAlloc by remember { mutableStateOf<Map<String, Int>>(if (state.demoActive) mapOf("Musterbank" to 450, "Trade Republic" to 350) else emptyMap()) }
         var newBank by rememberSaveable { mutableStateOf("") }
         var newAmount by rememberSaveable { mutableStateOf("") }
         val limit = if (couple) 2000 else 1000

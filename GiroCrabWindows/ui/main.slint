@@ -44,8 +44,8 @@ global Theme {
     out property <color> amount: dark ? #f1f5f9 : #0f172a;
     out property <color> muted: dark ? #a3b1c4 : #4b5a70;
     out property <color> tertiary: dark ? #8494aa : #64748b;
-    out property <color> accent: dark ? #3b82f6 : Theme.accent;
-    out property <color> primary: dark ? #3b82f6 : Theme.accent;
+    out property <color> accent: dark ? #3b82f6 : #2563eb;
+    out property <color> primary: dark ? #3b82f6 : #2563eb;
     out property <color> positive: dark ? #34d399 : #047857;
     out property <color> negative: dark ? #f87171 : #b91c1c;
     out property <color> outflow: dark ? #f1f5f9 : #0f172a;
@@ -152,7 +152,7 @@ component SideLine inherits Rectangle {
     border-color: Theme.border;
     background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && !ta.pressed && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
     ta := TouchArea { clicked => { root.clicked(); } }
-    if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: Theme.accent; }
+    if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: #2563eb; }
     HorizontalLayout {
         padding-left: all-card ? 10px : 6px + max(r.depth - 1, 0) * 22px;
         padding-right: all-card ? 10px : 8px;
@@ -206,7 +206,7 @@ component SideLine inherits Rectangle {
                     height: 16px;
                     border-radius: 8px;
                     background: Theme.accent.with-alpha(0.2);
-                    row-badge-text := Text { text: r.badge; color: Theme.accent; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                    row-badge-text := Text { text: r.badge; color: #2563eb; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                 }
             }
             if r.progress >= 0: HorizontalLayout {
@@ -256,7 +256,7 @@ component SideLine inherits Rectangle {
             y: (parent.height - self.height) / 2;
             border-radius: 9px;
             background: Theme.accent.with-alpha(0.2);
-            badge-text := Text { text: r.badge; color: Theme.accent; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            badge-text := Text { text: r.badge; color: #2563eb; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
         }
         if r.amount != "" && !subtitle: Text {
             text: r.amount;
@@ -402,7 +402,7 @@ component BookingLine inherits Rectangle {
     height: (compact ? 36px : 56px) + (show-detail ? 20px : 0px);
     background: active ? #1d3557.with-alpha(Theme.dark ? 1.0 : 0.16) : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
     border-radius: 8px;
-    if active: Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: Theme.accent; }
+    if active: Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: #2563eb; }
     ta := TouchArea { clicked => { root.clicked(); } }
     if show-detail: Text {
         x: 62px; y: parent.height - 20px; width: parent.width - 74px; height: 16px;
@@ -432,8 +432,8 @@ component BookingLine inherits Rectangle {
             Rectangle {
                 width: 9px; height: 9px; y: (parent.height - self.height) / 2; x: 3px;
                 border-radius: 4.5px; border-width: 1px;
-                border-color: Theme.accent;
-                background: b.checked ? transparent : Theme.accent;
+                border-color: #2563eb;
+                background: b.checked ? transparent : #2563eb;
             }
             TouchArea { clicked => { root.toggle-checked(); } }
         }
@@ -1932,7 +1932,7 @@ export component MainWindow inherits Window {
                 }
                 if root.demo-active: Text {
                     text: "Demo: Die Überweisung wird nur simuliert und nicht an eine Bank gesendet.";
-                    color: Theme.accent; font-size: 11px; wrap: word-wrap;
+                    color: #2563eb; font-size: 11px; wrap: word-wrap;
                 }
                 Text {
                     text: "PIN und TAN werden erst beim Senden abgefragt und nie gespeichert.";
@@ -2138,7 +2138,7 @@ export component MainWindow inherits Window {
     if GroupsState.open: Dialog {
         dialog-width: 860px;
         GroupsPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             close() => { GroupsState.open = false; root.refocus(); }
         }
     }
@@ -2147,7 +2147,7 @@ export component MainWindow inherits Window {
     if MandatesState.open: Dialog {
         dialog-width: 900px;
         MandatesPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             close() => { MandatesState.open = false; root.refocus(); }
         }
     }
@@ -2156,7 +2156,7 @@ export component MainWindow inherits Window {
     if SettingsImportState.open: Dialog {
         dialog-width: 820px;
         SettingsImportPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             close() => { SettingsImportState.open = false; root.refocus(); }
         }
     }
@@ -2165,7 +2165,7 @@ export component MainWindow inherits Window {
     if AssetsState.open: Dialog {
         dialog-width: 940px;
         AssetsLoansPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             close() => { AssetsState.open = false; root.refocus(); }
         }
     }
@@ -2174,7 +2174,7 @@ export component MainWindow inherits Window {
     if tags-open: Dialog {
         dialog-width: 600px;
         TagsPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             tags: root.tg-rows; palette: root.tg-palette; merge-names: root.tg-merge-names;
             booking-title: root.tg-booking-title; has-booking: root.tg-has-booking;
             status: root.tg-status; armed: root.tg-armed;
@@ -2211,7 +2211,7 @@ export component MainWindow inherits Window {
     if budgets-open: Dialog {
         dialog-width: 560px;
         BudgetsPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             month-title: root.bg-month; rows: root.bg-rows; category-names: root.bg-category-names; status: root.bg-status;
             category <=> root.bg-category; amount <=> root.bg-amount;
             pick(i) => { root.budget-pick(i); }
@@ -2223,7 +2223,7 @@ export component MainWindow inherits Window {
     if templates-open: Dialog {
         dialog-width: 600px;
         TemplatesPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             rows: root.tp-rows; status: root.tp-status; armed: root.tp-armed;
             selected <=> root.tp-selected; name <=> root.tp-name; recipient <=> root.tp-recipient;
             iban <=> root.tp-iban; bic <=> root.tp-bic; amount <=> root.tp-amount; purpose <=> root.tp-purpose;
@@ -2239,7 +2239,7 @@ export component MainWindow inherits Window {
     if rc-open: Dialog {
         dialog-width: 640px;
         RecurringPanel {
-            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: #2563eb; negative: Theme.negative;
             tab <=> root.rc-tab; status: root.rc-status; salary-cycle: root.rc-salary-cycle;
             has-booking: root.rc-has-booking; booking-title: root.rc-booking-title; series-text: root.rc-series-text;
             salary-state: root.rc-salary-state; can-salary: root.rc-can-salary; has-series: root.rc-has-series;

@@ -37,6 +37,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
@@ -308,12 +311,12 @@ fun PaymentsScreen(
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             if (state.demoActive) DemoHintBanner()
-            androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 MODES.forEachIndexed { i, t ->
-                    androidx.compose.material3.SegmentedButton(
+                    SegmentedButton(
                         selected = mode == i,
                         onClick = { mode = i },
-                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, MODES.size),
+                        shape = SegmentedButtonDefaults.itemShape(i, MODES.size),
                         icon = {},
                     ) { Text(t, maxLines = 1, style = MaterialTheme.typography.labelMedium) }
                 }
