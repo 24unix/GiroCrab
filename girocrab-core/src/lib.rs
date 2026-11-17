@@ -24,6 +24,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod asset_classification;
+pub mod asset_counterbooking;
 pub mod assets;
 pub mod banking_gate;
 pub mod batch_csv;
