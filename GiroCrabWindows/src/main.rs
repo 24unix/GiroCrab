@@ -1107,11 +1107,16 @@ fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
         Ok(sel) => {
             refresh_transfer_sources(win, vault);
             // Fill the sidebar and the account count now; the background refresh follows.
-            if let Ok(accounts) = vault.list_accounts() {
-                views_ui::set_accounts_now(win, accounts);
-            }
+            views_ui::set_accounts_now(win, vault);
             views_ui::sync_target(sel);
             if sel.is_some() {
+                // First paint: load the scope's bookings synchronously (selects the first one);
+                // the background reload in `apply_view` then refreshes them.
+                let target = with_state(|st| st.target);
+                if let Ok(rows) = load_rows(vault, target) {
+                    with_state(|st| st.rows = rows);
+                    apply_filter(win);
+                }
                 views_ui::apply_view(win, vault);
             } else {
                 with_state(|st| {

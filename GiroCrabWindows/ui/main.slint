@@ -1157,6 +1157,7 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     GhostButton {
+                        horizontal-stretch: 1;
                         text: "+ Konto hinzufügen";
                         clicked => {
                             root.add-status = "";
@@ -1164,7 +1165,6 @@ export component MainWindow inherits Window {
                             root.add-open = true;
                         }
                     }
-                    Rectangle { horizontal-stretch: 1; }
                 }
             }
             Rectangle { x: parent.width - 1px; width: 1px; background: Theme.border; }
@@ -1212,12 +1212,11 @@ export component MainWindow inherits Window {
                             enabled: root.selected > 0 && !root.busy;
                             clicked => { root.transfer-start(); }
                         }
-                        GhostButton {
+                        if root.selected > 0: GhostButton {
                             y: (parent.height - self.height) / 2;
                             text: "Einstellungen";
                             min-width: 96px;
-                            enabled: root.selected > 0 && !root.busy;
-                            visible: root.selected > 0;
+                            enabled: !root.busy;
                             clicked => { root.account-edit(); }
                         }
                         Rectangle {

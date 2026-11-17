@@ -171,8 +171,15 @@ pub fn invalidate_planned_count() {
 
 /// Reloads accounts, groups, categories and counts for the sidebar on a worker thread.
 /// Stores the accounts and draws the sidebar at once (before the background refresh returns).
-pub fn set_accounts_now(win: &MainWindow, accounts: Vec<Account>) {
-    with_ui(|u| u.accounts = accounts);
+pub fn set_accounts_now(win: &MainWindow, vault: &Vault) {
+    let accounts = vault.list_accounts().unwrap_or_default();
+    let user_groups = vault.list_user_groups().unwrap_or_default();
+    let tangible_ids = vault.list_tangible_account_ids().unwrap_or_default();
+    with_ui(|u| {
+        u.accounts = accounts;
+        u.user_groups = user_groups;
+        u.tangible_ids = tangible_ids;
+    });
     render_sidebar(win);
 }
 
