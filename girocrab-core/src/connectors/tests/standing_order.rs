@@ -121,11 +121,11 @@ async fn run(vault: &Arc<Vault>, account_id: i64, order: StandingOrderJob) {
         execution_date: None,
         end_to_end_id: "GCSO".into(),
     };
-    let s = TransferSession::new_standing(
+    let s = TransferSession::new(
         Arc::clone(vault),
         Box::new(Accepting),
         ctx,
-        order,
+        OrderKind::Standing(order),
         summary,
         account_id,
     );

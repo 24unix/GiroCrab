@@ -230,6 +230,7 @@ pub enum Phase {
 }
 
 /// Everything a connector needs to log in. Secrets are wiped on drop.
+#[derive(Clone)]
 pub struct ConnectContext {
     pub connection_id: i64,
     pub login_name: String,

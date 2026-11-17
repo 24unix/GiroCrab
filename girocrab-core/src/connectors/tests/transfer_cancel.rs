@@ -13,6 +13,8 @@ struct Scripted {
     outcomes: Vec<CancelOutcome>,
     calls: Arc<AtomicUsize>,
     open: bool,
+    /// The bank refuses the order when it is sent.
+    refuse: bool,
 }
 
 #[async_trait]
@@ -26,6 +28,14 @@ impl BankConnector for Scripted {
     async fn fetch(&mut self, _ctx: &ConnectContext) -> CoreResult<FetchResult> {
         Ok(FetchResult::default())
     }
+    async fn send_transfer(&mut self, _: &ConnectContext, _: &TransferJob) -> CoreResult<Phase> {
+        if self.refuse {
+            return Err(CoreError::InvalidInput {
+                message: "refused".into(),
+            });
+        }
+        Ok(Phase::Ready)
+    }
     async fn cancel_transfer(&mut self, _ctx: &ConnectContext) -> CancelOutcome {
         let n = self.calls.fetch_add(1, Ordering::SeqCst);
         let out = self.outcomes[n.min(self.outcomes.len() - 1)].clone();
@@ -37,7 +47,7 @@ impl BankConnector for Scripted {
     }
 }
 
-fn session(outcomes: Vec<CancelOutcome>) -> (TransferSession, Arc<AtomicUsize>) {
+fn session(outcomes: Vec<CancelOutcome>, refuse: bool) -> (TransferSession, Arc<AtomicUsize>) {
     let dir = std::env::temp_dir().join(format!(
         "gc-cancel-{}-{}",
         std::process::id(),
@@ -71,9 +81,10 @@ fn session(outcomes: Vec<CancelOutcome>) -> (TransferSession, Arc<AtomicUsize>) 
         outcomes,
         calls: calls.clone(),
         open: false,
+        refuse,
     };
     (
-        TransferSession::new(vault, Box::new(connector), ctx, job, 1),
+        TransferSession::new(vault, Box::new(connector), ctx, OrderKind::Single, job, 1),
         calls,
     )
 }
@@ -84,11 +95,14 @@ fn pending() -> CancelOutcome {
 
 #[tokio::test]
 async fn cancel_retries_until_confirmed_then_stops() {
-    let (s, calls) = session(vec![
-        pending(),
-        CancelOutcome::CancellationUnknown { reason: "r".into() },
-        CancelOutcome::Cancelled,
-    ]);
+    let (s, calls) = session(
+        vec![
+            pending(),
+            CancelOutcome::CancellationUnknown { reason: "r".into() },
+            CancelOutcome::Cancelled,
+        ],
+        false,
+    );
     assert_eq!(s.cancel().await, pending());
     // The session is closed for further steps, but cancel stays retryable.
     assert!(matches!(s.start().await, Err(CoreError::SessionClosed)));
@@ -104,8 +118,34 @@ async fn cancel_retries_until_confirmed_then_stops() {
 
 #[tokio::test]
 async fn confirmed_cancel_is_reported_once_per_bank_call() {
-    let (s, calls) = session(vec![CancelOutcome::Cancelled]);
+    let (s, calls) = session(vec![CancelOutcome::Cancelled], false);
     assert_eq!(s.cancel().await, CancelOutcome::Cancelled);
     assert_eq!(s.cancel().await, CancelOutcome::Cancelled);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn executed_transfer_cannot_be_cancelled() {
+    let (s, calls) = session(vec![CancelOutcome::Cancelled], false);
+    // The bank executes the order. Recording it fails (the test vault has no
+    // account 1), which must not make the order cancellable again.
+    let _ = s.start().await;
+    assert!(matches!(s.start().await, Err(CoreError::SessionClosed)));
+    assert!(matches!(
+        s.cancel().await,
+        CancelOutcome::CancellationFailed { .. }
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn refused_transfer_needs_no_cancellation() {
+    let (s, calls) = session(vec![pending()], true);
+    assert!(matches!(
+        s.start().await,
+        Err(CoreError::InvalidInput { .. })
+    ));
+    assert!(matches!(s.poll().await, Err(CoreError::SessionClosed)));
+    assert_eq!(s.cancel().await, CancelOutcome::Cancelled);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
 }

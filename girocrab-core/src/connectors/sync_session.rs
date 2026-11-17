@@ -11,10 +11,10 @@ use crate::vault::Vault;
 
 use super::*;
 
-struct SessionState {
+/// The open bank dialog.
+struct Active {
     connector: Box<dyn BankConnector>,
     ctx: ConnectContext,
-    done: bool,
 }
 
 /// One sync run for one bank connection. Created by `Vault::begin_sync`.
@@ -22,7 +22,9 @@ struct SessionState {
 pub struct SyncSession {
     vault: Arc<Vault>,
     kind: ConnectorKind,
-    state: AsyncMutex<SessionState>,
+    /// `None` once the sync finished, failed or was cancelled, so every
+    /// later step gets `SessionClosed`.
+    state: AsyncMutex<Option<Active>>,
 }
 
 impl SyncSession {
@@ -35,11 +37,7 @@ impl SyncSession {
         Self {
             vault,
             kind,
-            state: AsyncMutex::new(SessionState {
-                connector,
-                ctx,
-                done: false,
-            }),
+            state: AsyncMutex::new(Some(Active { connector, ctx })),
         }
     }
 
@@ -50,32 +48,36 @@ impl SyncSession {
             .state
             .try_lock()
             .map_err(|_| CoreError::SessionClosed)?;
-        Ok(ConnectContext {
-            connection_id: st.ctx.connection_id,
-            login_name: st.ctx.login_name.clone(),
-            secret: SecretString::new(st.ctx.secret.expose().to_string()),
-            settings: st.ctx.settings.clone(),
-            state: st.ctx.state.clone(),
-            since: st.ctx.since.clone(),
-            since_by_account: st.ctx.since_by_account.clone(),
-        })
+        Ok(st.as_ref().ok_or(CoreError::SessionClosed)?.ctx.clone())
     }
 
-    async fn advance(
+    /// Runs one step on the open dialog and closes it when the sync ends.
+    async fn step(
         &self,
-        phase: CoreResult<Phase>,
-        st: &mut SessionState,
+        call: impl AsyncFnOnce(&mut Active) -> CoreResult<Phase>,
     ) -> CoreResult<SyncStep> {
+        let mut st = self.state.lock().await;
+        let active = st.as_mut().ok_or(CoreError::SessionClosed)?;
+        let phase = call(active).await;
+        let step = self.advance(phase, active).await;
+        if !matches!(
+            step,
+            Ok(SyncStep::NeedsChallenge { .. } | SyncStep::StillWaiting { .. })
+        ) {
+            *st = None;
+        }
+        step
+    }
+
+    async fn advance(&self, phase: CoreResult<Phase>, st: &mut Active) -> CoreResult<SyncStep> {
         match phase {
             Err(e) => {
-                st.done = true;
                 st.connector.finish(&st.ctx).await;
                 Err(e)
             }
             Ok(Phase::Challenge(c)) => Ok(SyncStep::NeedsChallenge { challenge: c }),
             Ok(Phase::Pending(c)) => Ok(SyncStep::StillWaiting { challenge: c }),
             Ok(Phase::ConfirmPayee(_)) => {
-                st.done = true;
                 st.connector.finish(&st.ctx).await;
                 Err(CoreError::Protocol {
                     message: "payee confirmation outside of a transfer".into(),
@@ -88,16 +90,10 @@ impl SyncSession {
                 ));
                 let fetched = st.connector.fetch(&st.ctx).await;
                 st.connector.finish(&st.ctx).await;
-                st.done = true;
-                let fetched = fetched?;
-                let summary = self.store(st.ctx.connection_id, fetched)?;
+                let summary = store_fetch(&self.vault, self.kind, st.ctx.connection_id, fetched?)?;
                 Ok(SyncStep::Finished { summary })
             }
         }
-    }
-
-    fn store(&self, connection_id: i64, data: FetchResult) -> CoreResult<SyncSummary> {
-        store_fetch(&self.vault, self.kind, connection_id, data)
     }
 }
 
@@ -105,46 +101,26 @@ impl SyncSession {
 impl SyncSession {
     /// Phase 1: log in. Returns a challenge or finishes the sync.
     pub async fn start(&self) -> Result<SyncStep, CoreError> {
-        let mut st = self.state.lock().await;
-        if st.done {
-            return Err(CoreError::SessionClosed);
-        }
-        let SessionState { connector, ctx, .. } = &mut *st;
-        let phase = connector.begin(ctx).await;
-        self.advance(phase, &mut st).await
+        self.step(async |s| s.connector.begin(&s.ctx).await).await
     }
 
     /// Phase 2a: submit the code / redirect URL the user typed.
     pub async fn submit_code(&self, code: String) -> Result<SyncStep, CoreError> {
-        let mut st = self.state.lock().await;
-        if st.done {
-            return Err(CoreError::SessionClosed);
-        }
-        let SessionState { connector, ctx, .. } = &mut *st;
-        let phase = connector
-            .respond(ctx, ChallengeResponse::Code(SecretString::new(code)))
-            .await;
-        self.advance(phase, &mut st).await
+        let code = ChallengeResponse::Code(SecretString::new(code));
+        self.step(async |s| s.connector.respond(&s.ctx, code).await)
+            .await
     }
 
     /// Phase 2b: ask whether the decoupled push approval happened.
     pub async fn poll(&self) -> Result<SyncStep, CoreError> {
-        let mut st = self.state.lock().await;
-        if st.done {
-            return Err(CoreError::SessionClosed);
-        }
-        let SessionState { connector, ctx, .. } = &mut *st;
-        let phase = connector.respond(ctx, ChallengeResponse::Poll).await;
-        self.advance(phase, &mut st).await
+        self.step(async |s| s.connector.respond(&s.ctx, ChallengeResponse::Poll).await)
+            .await
     }
 
     /// Cancels the sync and closes the bank dialog.
     pub async fn cancel(&self) {
-        let mut st = self.state.lock().await;
-        if !st.done {
-            let SessionState { connector, ctx, .. } = &mut *st;
-            connector.finish(ctx).await;
-            st.done = true;
+        if let Some(mut a) = self.state.lock().await.take() {
+            a.connector.finish(&a.ctx).await;
         }
     }
 

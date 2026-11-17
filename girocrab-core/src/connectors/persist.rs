@@ -1210,6 +1210,7 @@ impl Vault {
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
+            OrderKind::Single,
             job,
             request.account_id,
         )))
@@ -1301,11 +1302,11 @@ impl Vault {
             batch_booking: request.batch_booking,
             execution_date: exec_date,
         };
-        Ok(Arc::new(TransferSession::new_batch(
+        Ok(Arc::new(TransferSession::new(
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
-            batch,
+            OrderKind::Batch(batch),
             summary,
             request.account_id,
         )))
@@ -1464,11 +1465,11 @@ impl Vault {
             execution_date: None,
             end_to_end_id: new_end_to_end_id(),
         };
-        Ok(Arc::new(TransferSession::new_standing(
+        Ok(Arc::new(TransferSession::new(
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
-            order,
+            OrderKind::Standing(order),
             summary,
             request.account_id,
         )))
@@ -1574,14 +1575,14 @@ impl Vault {
             collections,
             batch_booking: request.batch_booking,
         };
-        Ok(Arc::new(TransferSession::new_debit(
+        Ok(Arc::new(TransferSession::new(
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
-            DebitSubmission {
+            OrderKind::Debit(DebitSubmission {
                 job,
                 mandate_ids: ids,
-            },
+            }),
             summary,
             request.account_id,
         )))

@@ -94,11 +94,11 @@ async fn run(batch_booking: bool, date: Option<&str>) -> (i64, i64, i64, i64) {
         since: "2020-01-01".into(),
         since_by_account: Default::default(),
     };
-    let s = TransferSession::new_batch(
+    let s = TransferSession::new(
         Arc::clone(&vault),
         Box::new(Accepting),
         ctx,
-        batch,
+        OrderKind::Batch(batch),
         summary,
         account_id,
     );

@@ -127,14 +127,14 @@ async fn run(batch_booking: bool, last: bool, unknown: bool) -> (i64, i64, i64, 
         since: "2020-01-01".into(),
         since_by_account: Default::default(),
     };
-    let s = TransferSession::new_debit(
+    let s = TransferSession::new(
         Arc::clone(&vault),
         Box::new(Accepting { unknown }),
         ctx,
-        DebitSubmission {
+        OrderKind::Debit(DebitSubmission {
             job,
             mandate_ids: ids,
-        },
+        }),
         summary,
         account_id,
     );
