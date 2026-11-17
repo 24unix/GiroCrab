@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import QtWebEngine
 
 // RootView.swift › .sheet(item: $model.webLoginConnection): WebLoginSheet (Trade Republic,
-// ConnectionsUI.swift), AmazonWebSheet, FnzWebSheet, QuirionWebSheet, SchwaebischHallWebSheet or PortalWebSheet
+// ConnectionsUI.swift), AmazonWebSheet, FnzWebSheet, QuirionWebSheet, SchwaebischHallWebSheet, EquatePlusWebSheet or PortalWebSheet
 // (Amex / Amazon Visa). The browser part is PortalBrowser (PortalUI.swift); the flow of
 // each login lives in its *WebLoginFlow.qml (texts, buttons, what is read from the page).
 // Main.qml loads this file on demand, so the app starts without QtWebEngine.
@@ -188,7 +188,7 @@ Item {
             AppModel.restoreWebCookies(connection)
             restoreSettle.restart()
             const files = { TradeRepublic: "TrWebLoginFlow.qml", AmazonOrders: "AmazonWebLoginFlow.qml", Fnz: "FnzWebLoginFlow.qml", Quirion: "QuirionWebLoginFlow.qml",
-                            SchwaebischHall: "SchwaebischHallWebLoginFlow.qml" }
+                            SchwaebischHall: "SchwaebischHallWebLoginFlow.qml", EquatePlus: "EquatePlusWebLoginFlow.qml" }
             flowLoader.setSource(files[kind] || "PortalWebLoginFlow.qml", { browser: sheet, connection: connection })
         }
         Component.onCompleted: if (connection) { lastConnection = connection; Qt.callLater(startFlow) }

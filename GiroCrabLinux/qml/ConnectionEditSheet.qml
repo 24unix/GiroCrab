@@ -136,6 +136,23 @@ Sheet {
             if (v !== current) AppModel.saveSetting(key, v)
         }
     }
+    /// ConnectionsUI.swift › saveAll(thenSync:): the login's settings and the account selection,
+    /// saved together; a fetch only starts after the selection is stored (a switched-off
+    /// account must not be fetched).
+    function saveAll(thenSync) {
+        save()
+        const id = connection.id
+        selection.saveIfChanged((ok, message) => {
+            if (ok) {
+                const c = AppModel.connections.find(x => x.id === id)
+                if (thenSync && c) AppModel.requestSync(c)
+            } else {
+                AppModel.errorTitle = qsTr("Kontenauswahl nicht gespeichert")
+                AppModel.errorMessage = message
+            }
+        })
+        close()
+    }
     function current() { return AppModel.connections.find(c => c.id === connection.id) || connection }
 
     /// PSD2 consent (PSD2Consent.swift): end date and stage.
@@ -317,7 +334,8 @@ Sheet {
                 }
                 SettingsFormSection {
                     title: qsTr("Kontenauswahl")
-                    AccountSelectionList { connection: sheet.visible ? sheet.connection : null }
+                    // saved by the sheet's own Speichern, so there is a single place to confirm (#720)
+                    AccountSelectionList { id: selection; connection: sheet.visible ? sheet.connection : null; showsSaveButton: false }
                 }
                 SettingsFormSection {
                     title: qsTr("Status")
@@ -385,10 +403,8 @@ Sheet {
             Button { text: qsTr("Bankzugang entfernen …"); palette.buttonText: Theme.negative; onClicked: confirmRemove.open() }
             Item { Layout.fillWidth: true }
             Button { text: qsTr("Abbrechen"); onClicked: sheet.close() }
-            Button { text: qsTr("Speichern && abrufen")
-                     onClicked: { sheet.save(); const id = sheet.connection.id; sheet.close()
-                                  const c = AppModel.connections.find(x => x.id === id); if (c) AppModel.requestSync(c) } }
-            Button { text: qsTr("Speichern"); highlighted: true; onClicked: { sheet.save(); sheet.close() } }
+            Button { text: qsTr("Speichern && abrufen"); onClicked: sheet.saveAll(true) }
+            Button { text: qsTr("Speichern"); highlighted: true; onClicked: sheet.saveAll(false) }
         }
     }
 

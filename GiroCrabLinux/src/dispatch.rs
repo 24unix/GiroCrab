@@ -888,7 +888,7 @@ fn call(method: &str, a: &Value) -> R {
         }
         // --- Händler-Logos (AppModel+Logos.swift, #33) --- network: called with Core.callAsync
         "merchant_logo" => merchant_logo(&*vault()?, a),
-        // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion/Schwäbisch Hall imports)
+        // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion/Schwäbisch Hall/EquatePlus imports)
         m if crate::web_login::handles(m) => crate::web_login::call(m, a, vault),
         _ => {
             let v = vault()?;

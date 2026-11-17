@@ -24,6 +24,24 @@ Funktionsumfang der Oberfläche.
 - **Regeln, die nur Tags setzen** (in der Mac-App angelegt), zeigen „→ Nur Tags“ und ihre Tags statt
   einer leeren Kategorie; im Formular steht „Keine (nur Tags)“.
 
+### EquatePlus (#720)
+
+- **Mitarbeiter-Aktienprogramme über EquatePlus:** Anmeldung im Browserfenster (bestätigt mit
+  EquateAccess oder der angebotenen Alternative), danach **„Programme und Bestände abrufen“**:
+  Jedes Programm wird ein eigenes Depot mit verfügbaren und gesperrten Beständen. Bisher führte
+  ein EquatePlus-Zugang unter Linux in den falschen Anmeldeablauf.
+- **„Dokumente laden …“** lädt die PDFs der Bibliothek (Bestätigungen, Auszüge,
+  Steuerbescheinigungen), nur noch fehlende. Sie liegen in **„Belege & PostBox“** (Suche:
+  equateplus), beim Programm-Depot nur bei eindeutigem Programmnamen. Einzelne defekte Dokumente
+  halten den Lauf nicht an; die Meldung nennt die häufigsten Gründe.
+- **Abgewählte Konten werden ausgeblendet:** In der Kontenauswahl eines Zugangs archiviert das
+  Abwählen das Konto (nicht mehr abgerufen, nicht in der Summe, Daten bleiben), und die
+  Seitenleiste blendet archivierte Konten aus; das Archiv-Symbol zeigt sie wieder an. Im
+  Bearbeiten-Fenster eines Zugangs speichern „Speichern“ und „Speichern & abrufen“ die
+  Kontenauswahl mit; ein Abruf startet erst danach.
+- Die Skripte im Browser sind die der Mac-App (`scripts/gen-equateplus-qml.py`, abgeglichen von
+  `scripts/test-equateplus-linux.cjs`). Mit einem echten EquatePlus-Zugang noch nicht getestet.
+
 ## Funktionsstand 0.7.5 (Kern 0.8.0)
 
 Mit diesem Schritt kann die Linux-Oberfläche alles, was die Mac-App 0.7.5 kann – bis auf die
