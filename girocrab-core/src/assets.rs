@@ -616,9 +616,12 @@ fn to_item(
 
 // ------------------------------------------------------------------ accounts
 
+/// A Sachwerte account whose kind the user changed (e.g. to cash) is an
+/// ordinary account afterwards: its balance comes from its bookings and
+/// opening balance, not from asset items.
 pub(crate) fn tangible_account_ids(conn: &Connection) -> CoreResult<Vec<i64>> {
     let mut st = conn.prepare(
-        "SELECT id FROM accounts WHERE connection_id IS NULL AND external_ref LIKE 'tangible-%' AND deleted_ms IS NULL ORDER BY id",
+        "SELECT id FROM accounts WHERE connection_id IS NULL AND external_ref LIKE 'tangible-%' AND kind = 'brokerage' AND deleted_ms IS NULL ORDER BY id",
     )?;
     let rows = st.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -627,7 +630,7 @@ pub(crate) fn tangible_account_ids(conn: &Connection) -> CoreResult<Vec<i64>> {
 pub(crate) fn is_tangible(conn: &Connection, account_id: i64) -> CoreResult<bool> {
     Ok(conn
         .query_row(
-            "SELECT 1 FROM accounts WHERE id = ?1 AND connection_id IS NULL AND external_ref LIKE 'tangible-%' AND deleted_ms IS NULL",
+            "SELECT 1 FROM accounts WHERE id = ?1 AND connection_id IS NULL AND external_ref LIKE 'tangible-%' AND kind = 'brokerage' AND deleted_ms IS NULL",
             [account_id],
             |_| Ok(()),
         )
@@ -686,7 +689,7 @@ pub(crate) fn refresh_balances(conn: &Connection) -> CoreResult<()> {
 /// move with the date (linear values, newer prices), not only with edits.
 pub(crate) fn refresh_balances_if_stale(conn: &Connection) -> CoreResult<()> {
     let stale: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM accounts WHERE connection_id IS NULL AND external_ref LIKE 'tangible-%'
+        "SELECT EXISTS(SELECT 1 FROM accounts WHERE connection_id IS NULL AND external_ref LIKE 'tangible-%' AND kind = 'brokerage'
                          AND deleted_ms IS NULL AND IFNULL(balance_date, '') != ?1)",
         [iso(today())],
         |r| r.get(0),
