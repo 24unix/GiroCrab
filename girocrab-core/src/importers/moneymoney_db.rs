@@ -825,7 +825,9 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
     match code.as_str() {
         "52090000" => return Some(ConnectorKind::VolksbankKasselGoettingen),
         "50050201" => return Some(ConnectorKind::Direkt1822),
-        "20041111" | "20041133" | "20041144" | "20041155" => return Some(ConnectorKind::Comdirect),
+        c if crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&c) => {
+            return Some(ConnectorKind::Comdirect)
+        }
         // bunq's German branch code; GiroCrab talks to the bunq Public API.
         BUNQ_DE_BLZ => return Some(ConnectorKind::Bunq),
         c if c.len() == 8 && crate::connectors::fints_presets::known_fints_blz(c) => {
