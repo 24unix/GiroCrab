@@ -137,7 +137,9 @@ ScrollView {
                 }
             }
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
-                   text: qsTr("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.") }
+                   text: AppModel.autoReviewDelay === "account"
+                         ? qsTr("Beim Wechsel auf ein einzelnes Konto in der Seitenleiste werden alle ungelesenen Umsätze dieses Kontos als gelesen markiert, unabhängig vom gewählten Zeitraum und von aktiven Filtern.")
+                         : qsTr("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.") }
         }
         // SettingsView.swift › TransferSettingsSection: opt-in clipboard check (#663), per device
         SettingsFormSection {

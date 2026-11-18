@@ -6567,6 +6567,17 @@
         }
       }
     },
+    "Bei Kontoauswahl" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On account selection"
+          }
+        }
+      }
+    },
     "Bei allen ausgewählten Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6651,6 +6662,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Require %@ on Unlock"
+          }
+        }
+      }
+    },
+    "Beim Wechsel auf ein einzelnes Konto in der Seitenleiste werden alle ungelesenen Umsätze dieses Kontos als gelesen markiert, unabhängig vom gewählten Zeitraum und von aktiven Filtern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you switch to an individual account in the sidebar, all unread transactions in that account are marked as read, regardless of the selected date range or active filters."
           }
         }
       }

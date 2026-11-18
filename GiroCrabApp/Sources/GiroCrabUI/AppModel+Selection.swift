@@ -11,6 +11,16 @@ extension AppModel {
         Set(UserDefaults.standard.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
     }
 
+    #if os(macOS)
+    func selectFromSidebar(_ selection: SidebarItem?) {
+        let previous = sidebarSelection
+        interactiveSidebarSelection = selection
+        if autoReviewDelay == .onAccountSelection, previous != selection, case .account(let id)? = selection {
+            markAllChecked(accountIDs: [id], quietWhenEmpty: true)
+        }
+    }
+    #endif
+
     /// Marks the selected booking as checked after `autoReviewDelay`, unless
     /// the selection moved on (or became a multiple one) in the meantime.
     func scheduleAutoReview() {
