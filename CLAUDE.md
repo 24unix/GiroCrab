@@ -39,7 +39,8 @@ Other UI files live in the same `GiroCrabUI/` dir. A view with its own design pa
 ## Builds
 - **Swift-only change** (only `GiroCrabApp/**/*.swift`): NEVER rebuild `girocrab-core` or run `./build-xcframework.sh`. Run only `swift build -q` (in `GiroCrabApp/`) or `xcodebuild -quiet`.
 - Rust change: `cargo check -q -p girocrab-core`; rebuild the xcframework only if the UniFFI API changed.
-- Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`.
+- Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`
+  (pre-push runs every cheap CI lint via `scripts/verify-fast.sh --lint-only`, ~10 s; without the flag it adds clippy and the serde check for the changed files, `--tests` the unit tests).
 - Always pass `-q`/`--quiet` to `cargo check`, `cargo test`, `xcodebuild`. If output is still long, pipe through `tail -n 40`.
 - Before pushing a PR (also Swift-only ones; CI runs these on every PR): `cargo fmt --all -- --check` and `cargo clippy -q --workspace --all-targets -- -D warnings`. After pushing, check `gh pr checks`.
   Under clippy the root `build.rs` skips the xcframework + Swift app build (~8 s instead of ~90 s after a core
