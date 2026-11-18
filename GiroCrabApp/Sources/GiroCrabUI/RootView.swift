@@ -731,12 +731,16 @@ struct MainSplitView: View {
         .alert(model.errorTitle ?? String(localized: "Etwas ist schiefgelaufen"),
                isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             if let retry = model.errorRetry {
-                Button("Erneut versuchen") { model.errorMessage = nil; retry() }
+                Button("Erneut versuchen") { model.errorOnClose = nil; model.errorMessage = nil; retry() }
             }
             ForEach(Array(model.errorAlternatives.enumerated()), id: \.offset) { _, alt in
-                Button(alt.title) { model.errorMessage = nil; alt.action() }
+                Button(alt.title) { model.errorOnClose = nil; model.errorMessage = nil; alt.action() }
             }
-            Button("OK", role: .cancel) { model.errorMessage = nil }
+            if let close = model.errorCloseTitle {
+                Button(close, role: .cancel) { model.errorMessage = nil }
+            } else {
+                Button("OK", role: .cancel) { model.errorMessage = nil }
+            }
         } message: {
             Text(model.errorMessage ?? "")
         }

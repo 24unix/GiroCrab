@@ -135,15 +135,15 @@ pub fn parse_date(s: &str) -> Option<String> {
         LazyLock::new(|| Regex::new(r"(?i)^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})").unwrap());
     let s = s.trim();
     let ymd = |y, m, d| crate::dates::ymd(y, m, d).map(iso);
-    let year = |y: &str| -> Option<i32> {
-        let n: i32 = y.parse().ok()?;
-        Some(if y.len() == 2 { 2000 + n } else { n })
-    };
     if let Some(c) = ISO.captures(s) {
         return ymd(c[1].parse().ok()?, c[2].parse().ok()?, c[3].parse().ok()?);
     }
     if let Some(c) = DMY.captures(s) {
-        return ymd(year(&c[3])?, c[2].parse().ok()?, c[1].parse().ok()?);
+        return ymd(
+            crate::dates::year(&c[3])?,
+            c[2].parse().ok()?,
+            c[1].parse().ok()?,
+        );
     }
     if let Some(c) = DAY_MONTH_NAME.captures(s) {
         return ymd(

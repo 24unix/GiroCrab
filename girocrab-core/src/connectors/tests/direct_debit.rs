@@ -102,30 +102,14 @@ async fn run(batch_booking: bool, last: bool, unknown: bool) -> (i64, i64, i64, 
         creditor_id: plan.creditor_id,
         scheme: group.scheme.debit(),
         sequence: group.sequence,
-        collection_date: date.clone(),
+        collection_date: date,
         collections,
         batch_booking,
     };
-    let summary = TransferJob {
-        source_iban: job.source_iban.clone(),
-        source_owner: "A".into(),
-        recipient_name: "Einzug".into(),
-        recipient_iban: String::new(),
-        recipient_bic: None,
-        amount_cents: 3_000,
-        purpose: String::new(),
-        instant: false,
-        execution_date: Some(date),
-        end_to_end_id: "GCSUM".into(),
-    };
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
-        secret: crate::secret::SecretString::new(String::new()),
-        settings: Default::default(),
-        state: serde_json::Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let s = TransferSession::new(
         Arc::clone(&vault),
@@ -135,7 +119,6 @@ async fn run(batch_booking: bool, last: bool, unknown: bool) -> (i64, i64, i64, 
             job,
             mandate_ids: ids,
         }),
-        summary,
         account_id,
     );
     let step = s.start().await.unwrap();

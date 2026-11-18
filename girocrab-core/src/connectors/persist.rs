@@ -167,6 +167,18 @@ fn refresh_existing(
 
 /// Persists accounts, bookings and documents of one fetch (shared by bank
 /// syncs and the keyless web-portal / statement import).
+/// Bank dates as stored: real `YYYY-MM-DD` days, since period filters, sums and file names
+/// read them as such. A booking date that is no day takes the value date, then today (as
+/// connectors already do for an empty one); a value date that is no day is left empty.
+fn store_dates(t: &mut RemoteTransaction) {
+    let value = crate::dates::parse_iso(&t.value_date);
+    let booking = crate::dates::parse_iso(&t.booking_date)
+        .or(value)
+        .unwrap_or_else(crate::dates::today);
+    t.booking_date = crate::dates::iso(booking);
+    t.value_date = value.map(crate::dates::iso).unwrap_or_default();
+}
+
 pub(crate) fn store_fetch(
     vault: &Vault,
     kind: ConnectorKind,
@@ -226,6 +238,8 @@ pub(crate) fn store_fetch(
                     .or_default()
                     .next(t);
             }
+            // After the content ids, so they stay what earlier syncs computed.
+            store_dates(t);
         }
         for (old, new) in &data.renamed_refs {
             if old.is_empty() || new.is_empty() || old == new {
@@ -974,21 +988,6 @@ pub(crate) fn group_for(kind: AccountKind) -> (&'static str, &'static str, i32) 
     }
 }
 
-/// Setting key marking a statements-only session (value = external_ref of the account).
-pub(crate) const STATEMENTS_ONLY: &str = "__statements_only";
-/// Setting listing the accounts (external refs, comma-separated) whose PDF
-/// statements a regular sync should also fetch (opt-in, GitHub #57).
-pub(crate) const STATEMENTS_AUTO: &str = "__statements_auto";
-/// Context setting of a sync of a connection whose document retrieval is switched off
-/// ("Dokumente abrufen" in the connection's settings): connectors skip downloading documents and
-/// remember nothing of them, so a later sync can fetch what is missing.
-pub(crate) const DOCUMENTS_OFF: &str = "__documents_off";
-
-/// Context setting: the day document retrieval was switched off (oldest), while it was switched
-/// back on and the documents since are not all fetched yet. Connectors that read documents from a
-/// window (Trade Republic's timeline, bunq's receipts) reach back to it.
-pub(crate) const DOCUMENTS_CATCHUP: &str = "__documents_catchup";
-
 /// Day retrieval was switched off; moved to the catch-up key once it is switched on again.
 fn documents_off_since_key(connection_id: i64) -> String {
     format!("documents.fetch.off_since.{connection_id}")
@@ -1036,12 +1035,6 @@ pub(crate) fn documents_fetch_on(
 }
 /// Days between two automatic statement fetches of one account.
 const STATEMENTS_AUTO_DAYS: i64 = 7;
-/// Setting listing the accounts (external refs, one per line) whose data a
-/// sync does not store: switched off or pending in the account selection,
-/// archived or deleted. Connectors that remember what they downloaded
-/// (documents) must not remember anything of these accounts, or it is
-/// never fetched again once the account is back.
-pub(crate) const SKIPPED_ACCOUNTS: &str = "__skipped_accounts";
 
 /// Vault setting key: fetch PDF statements of this account automatically.
 pub(crate) fn statements_auto_key(account_id: i64) -> String {
@@ -1319,6 +1312,34 @@ impl Vault {
 }
 
 impl Vault {
+    /// The documents a sync of this connection fetches; `statements_only` =
+    /// external ref of the account whose statements were asked for.
+    pub(super) fn documents_request(
+        &self,
+        connection_id: i64,
+        statements_only: Option<String>,
+    ) -> CoreResult<Documents> {
+        if !documents_fetch_on(&*self.db()?, connection_id)? {
+            // an explicit request must not run for nothing: store_fetch would drop what it brings
+            if statements_only.is_some() {
+                return Err(CoreError::invalid(tr(
+                    "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
+                )));
+            }
+            return Ok(Documents::Off);
+        }
+        if let Some(account) = statements_only {
+            return Ok(Documents::StatementsOnly(account));
+        }
+        Ok(Documents::On {
+            statements: self.statements_due(connection_id)?,
+            catchup_since: Vault::setting_inner(
+                &*self.db()?,
+                &documents_catchup_key(connection_id),
+            )?,
+        })
+    }
+
     /// External refs of this connection's accounts whose automatic statement
     /// fetch is on and due (never, or more than `STATEMENTS_AUTO_DAYS` ago).
     pub(super) fn statements_due(&self, connection_id: i64) -> CoreResult<Vec<String>> {
@@ -1361,7 +1382,7 @@ impl Vault {
             secret
         };
         let secret = SecretString::new(secret);
-        let (kind, key_str, login, state_json, ctx_settings, since, demo) = {
+        let (kind, key_str, login, state_json, ctx_settings, since, skipped, demo) = {
             let db = self.db()?;
             let (kind, login, state): (String, String, String) = db
                 .query_row(
@@ -1476,42 +1497,14 @@ impl Vault {
                 rows
             };
             let skipped = super::account_selection::skipped_refs(&db, connection_id)?;
-            if !skipped.is_empty() {
-                settings.insert(
-                    SKIPPED_ACCOUNTS.to_string(),
-                    SecretString::new(skipped.join("\n")),
-                );
-            }
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
             let since = since_window(crate::dates::today(), days, &newest);
-            (kind, key_str, login, state, settings, since, demo)
+            (kind, key_str, login, state, settings, since, skipped, demo)
         };
         let (since, since_by_account) = since;
-        let mut ctx_settings = ctx_settings;
-        let documents_on = documents_fetch_on(&*self.db()?, connection_id)?;
-        if !documents_on {
-            ctx_settings.insert(DOCUMENTS_OFF.into(), SecretString::new("1".into()));
-        } else if let Some(day) =
-            Vault::setting_inner(&*self.db()?, &documents_catchup_key(connection_id))?
-        {
-            ctx_settings.insert(DOCUMENTS_CATCHUP.into(), SecretString::new(day));
-        }
-        if let Some(ext) = statements_only {
-            // an explicit request must not run for nothing: store_fetch would drop what it brings
-            if !documents_on {
-                return Err(CoreError::invalid(tr(
-                    "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
-                )));
-            }
-            ctx_settings.insert(STATEMENTS_ONLY.into(), SecretString::new(ext));
-        } else if documents_on {
-            let due = self.statements_due(connection_id)?;
-            if !due.is_empty() {
-                ctx_settings.insert(STATEMENTS_AUTO.into(), SecretString::new(due.join(",")));
-            }
-        }
+        let documents = self.documents_request(connection_id, statements_only)?;
         let ctx = ConnectContext {
             connection_id,
             login_name: login,
@@ -1520,6 +1513,8 @@ impl Vault {
             state: serde_json::from_str(&state_json).unwrap_or(serde_json::json!({})),
             since,
             since_by_account,
+            documents,
+            skipped_accounts: skipped.into_iter().collect(),
         };
         let mut connector = make_connector_for(kind, &key_str, demo);
         if !demo && is_comdirect_fints(&key_str) {
@@ -1728,8 +1723,7 @@ impl Vault {
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
-            OrderKind::Single,
-            job,
+            OrderKind::Single(job),
             request.account_id,
         )))
     }
@@ -1822,8 +1816,7 @@ impl Vault {
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
-            OrderKind::Batch(batch),
-            summary,
+            OrderKind::Batch { batch, summary },
             request.account_id,
         )))
     }
@@ -1929,8 +1922,8 @@ impl Vault {
                 };
                 crate::connectors::StandingOrderJob {
                     action: request.action,
-                    source_iban: iban.clone(),
-                    source_owner: owner.clone(),
+                    source_iban: iban,
+                    source_owner: owner,
                     order_id,
                     recipient_name: name,
                     recipient_iban,
@@ -1958,8 +1951,8 @@ impl Vault {
                 }
                 crate::connectors::StandingOrderJob {
                     action: Action::Delete,
-                    source_iban: iban.clone(),
-                    source_owner: owner.clone(),
+                    source_iban: iban,
+                    source_owner: owner,
                     order_id: o.order_id,
                     recipient_name: o.recipient_name,
                     recipient_iban: o.recipient_iban,
@@ -1976,24 +1969,11 @@ impl Vault {
         };
         let sync = self.clone().begin_sync(connection_id, secret, demo)?;
         let ctx = sync.clone_context()?;
-        let summary = TransferJob {
-            source_iban: iban,
-            source_owner: owner,
-            recipient_name: order.recipient_name.clone(),
-            recipient_iban: order.recipient_iban.clone(),
-            recipient_bic: order.recipient_bic.clone(),
-            amount_cents: order.amount_cents,
-            purpose: order.purpose.clone(),
-            instant: false,
-            execution_date: None,
-            end_to_end_id: new_end_to_end_id(),
-        };
         Ok(Arc::new(TransferSession::new(
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
             OrderKind::Standing(order),
-            summary,
             request.account_id,
         )))
     }
@@ -2051,7 +2031,7 @@ impl Vault {
         if scheme == DebitScheme::B2b && !request.b2b_confirmed {
             return Err(CoreError::invalid(tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.")));
         }
-        let (connection_id, iban, owner, key_str, kind, demo) =
+        let (connection_id, iban, _, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
         if !matches!(
             kind,
@@ -2064,24 +2044,8 @@ impl Vault {
             )));
         }
         let (ids, collections): (Vec<i64>, Vec<_>) = group.rows.into_iter().unzip();
-        let total: i64 = collections.iter().map(|c| c.amount_cents).sum();
         let sync = self.clone().begin_sync(connection_id, secret, demo)?;
         let ctx = sync.clone_context()?;
-        let summary = TransferJob {
-            source_iban: iban.clone(),
-            source_owner: owner,
-            recipient_name: trf(
-                "Lastschrift-Einzug ({0} Lastschriften)",
-                &[&collections.len()],
-            ),
-            recipient_iban: String::new(),
-            recipient_bic: None,
-            amount_cents: total,
-            purpose: String::new(),
-            instant: false,
-            execution_date: Some(request.collection_date.clone()),
-            end_to_end_id: new_end_to_end_id(),
-        };
         let job = DebitJob {
             source_iban: iban,
             creditor_name: plan.creditor_name,
@@ -2100,7 +2064,6 @@ impl Vault {
                 job,
                 mandate_ids: ids,
             }),
-            summary,
             request.account_id,
         )))
     }
@@ -2260,7 +2223,7 @@ impl Vault {
             return self.record_planned_transfer(account_id, summary);
         }
         for p in &batch.payments {
-            self.record_planned_transfer(account_id, &payment_job(batch, summary, p))?;
+            self.record_planned_transfer(account_id, &payment_job(batch, p))?;
         }
         Ok(())
     }
@@ -2282,7 +2245,7 @@ impl Vault {
         for p in &batch.payments {
             self.record_pending_transfer(
                 account_id,
-                &payment_job(batch, summary, p),
+                &payment_job(batch, p),
                 &format!("Überweisung {state}"),
             )?;
         }
@@ -2362,7 +2325,6 @@ impl Vault {
 /// One payment of a batch as a single-transfer job (for per-payment bookings).
 fn payment_job(
     batch: &BatchTransferJob,
-    summary: &TransferJob,
     p: &crate::connectors::fints::sepa::BatchPayment,
 ) -> TransferJob {
     TransferJob {
@@ -2374,7 +2336,7 @@ fn payment_job(
         amount_cents: p.amount_cents,
         purpose: p.purpose.clone(),
         instant: false,
-        execution_date: summary.execution_date.clone(),
+        execution_date: batch.execution_date.clone(),
         end_to_end_id: p.end_to_end_id.clone(),
     }
 }

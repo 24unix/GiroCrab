@@ -33,13 +33,12 @@ use std::sync::LazyLock;
 
 use async_trait::async_trait;
 use regex::Regex;
-use serde_json::{json, Value};
 use zeroize::Zeroize;
 
 use super::uberspace::{attr, attrs, parse_date, text, INPUT};
 use super::{
     http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    ContentIds, FetchResult, Phase, RemoteAccount, RemoteTransaction,
+    ContentIds, Documents, FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
@@ -62,8 +61,6 @@ pub(crate) const REF_PREFIX: &str = "opeldirektbank:";
 const MAX_ROWS: usize = 5000;
 /// Start of the date range for the Postbox lists.
 const POSTBOX_START: &str = "01.01.2010";
-/// Documents remembered in the connector state (newest kept).
-const KNOWN_DOCUMENTS_MAX: usize = 1000;
 
 static FORM_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<form\b([^>]*)>").unwrap());
 static SELECT: LazyLock<Regex> =
@@ -569,10 +566,6 @@ fn document_file_name(row: &PostboxRow) -> String {
     format!("{}_{}.pdf", row.date, subject.trim().replace(' ', "_"))
 }
 
-fn known_documents(state: &Value) -> Vec<String> {
-    serde_json::from_value(state["documents"].clone()).unwrap_or_default()
-}
-
 /// `YYYY-MM-DD` → `DD.MM.YYYY`.
 fn site_date(iso: &str) -> Option<String> {
     let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).ok()?;
@@ -868,7 +861,7 @@ impl OpelDirektbankConnector {
     async fn documents(
         &mut self,
         wanted: &HashMap<String, String>,
-        known: &mut Vec<String>,
+        known: &mut KnownDocuments,
     ) -> CoreResult<Vec<RemoteDocument>> {
         let mut out = Vec::new();
         for tab in ["Ungelesen", "Gelesen"] {
@@ -895,7 +888,7 @@ impl OpelDirektbankConnector {
                     .and_then(|n| wanted.get(n))
                     .cloned()
                     .unwrap_or_default();
-                known.push(row.key());
+                known.insert(row.key());
                 out.push(RemoteDocument {
                     account_ref,
                     booking_external_id: None,
@@ -1002,21 +995,15 @@ impl BankConnector for OpelDirektbankConnector {
             .iter()
             .map(|a| (a.number.clone(), a.external_ref()))
             .collect();
-        let mut known = known_documents(&ctx.state);
-        let state = |known: &Vec<String>| {
-            let keep = known.len().saturating_sub(KNOWN_DOCUMENTS_MAX);
-            Some(json!({ "documents": known[keep..] }))
-        };
+        let mut known = KnownDocuments::from_state(&ctx.state);
 
-        // "Kontoauszüge abrufen" for one account: documents only.
-        if let Some(only) = ctx.settings.get(super::STATEMENTS_ONLY) {
-            let only = only.expose().to_string();
+        if let Documents::StatementsOnly(only) = &ctx.documents {
             let wanted: HashMap<String, String> =
-                refs.into_iter().filter(|(_, r)| *r == only).collect();
+                refs.into_iter().filter(|(_, r)| r == only).collect();
             let documents = self.documents(&wanted, &mut known).await?;
             return Ok(FetchResult {
                 documents,
-                state: state(&known),
+                state: Some(known.to_state()),
                 ..Default::default()
             });
         }
@@ -1040,21 +1027,20 @@ impl BankConnector for OpelDirektbankConnector {
             });
         }
 
-        let auto: Vec<String> = ctx
-            .settings
-            .get(super::STATEMENTS_AUTO)
-            .map(|v| v.expose().split(',').map(str::to_string).collect())
-            .unwrap_or_default();
-        if !auto.is_empty() {
+        let due = ctx.documents.due_statements();
+        if !due.is_empty() {
             let wanted: HashMap<String, String> =
-                refs.into_iter().filter(|(_, r)| auto.contains(r)).collect();
-            // Optional: a failed document download never fails the sync.
-            if let Ok(documents) = self.documents(&wanted, &mut known).await {
+                refs.into_iter().filter(|(_, r)| due.contains(r)).collect();
+            // Optional: a failed download never fails the sync. On failure the
+            // ids of what was downloaded so far are dropped with the documents.
+            let mut fetched = known.clone();
+            if let Ok(documents) = self.documents(&wanted, &mut fetched).await {
                 out.documents = documents;
-                out.statements_fetched = auto;
+                out.statements_fetched = due.to_vec();
+                known = fetched;
             }
         }
-        out.state = state(&known);
+        out.state = Some(known.to_state());
         Ok(out)
     }
 
@@ -1368,13 +1354,11 @@ mod tests {
     }
 
     #[test]
-    fn amounts_dates_and_known_documents() {
+    fn amounts_and_dates() {
         assert_eq!(parse_amount("<span>- 0,73 €</span>"), Some(-73));
         assert_eq!(parse_amount("+ 2.212,81 €"), Some(221_281));
         assert_eq!(parse_amount("97.000,00&nbsp;€"), Some(9_700_000));
         assert_eq!(parse_amount("—"), None);
         assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
-        assert_eq!(known_documents(&json!({"documents": ["a"]})), vec!["a"]);
-        assert!(known_documents(&Value::Null).is_empty());
     }
 }

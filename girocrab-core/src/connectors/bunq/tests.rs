@@ -226,12 +226,8 @@ async fn failing_draft_polls_end_as_unknown() {
     });
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
-        secret: crate::secret::SecretString::new(String::new()),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     for _ in 1..MAX_DRAFT_POLL_FAILURES {
         let p = c.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
@@ -400,12 +396,10 @@ async fn bunq_sandbox_live() {
     );
     let mut ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
         settings,
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));
@@ -613,12 +607,9 @@ async fn bunq_card_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
@@ -688,12 +679,9 @@ async fn bunq_direct_debit_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
@@ -783,12 +771,9 @@ async fn bunq_receipt_survey() {
         .abs();
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
@@ -954,12 +939,9 @@ async fn bunq_notes_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
@@ -1171,12 +1153,9 @@ async fn bunq_refused_notes_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
@@ -1316,12 +1295,9 @@ async fn bunq_live_transfer() {
     let to_name = std::env::var("BUNQ_TO_NAME").expect("BUNQ_TO_NAME");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));
@@ -1409,12 +1385,9 @@ async fn bunq_pending_drafts() {
         .and_then(|v| v.trim().parse().ok());
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();

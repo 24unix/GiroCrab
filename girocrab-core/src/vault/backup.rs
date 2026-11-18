@@ -154,7 +154,7 @@ impl Vault {
     /// open vault (SQLite backup API, same key on both sides).
     fn restore_via(&self, staging: &str, backup_path: &str, password: &str) -> CoreResult<()> {
         let tmp = Connection::open(staging)?;
-        Self::apply_key(&tmp, &self.kept_key()?)?;
+        Self::apply_key(&tmp, &self.kept_key())?;
         // wrong password or no database: the attach or the first read fails
         tmp.execute(
             "ATTACH DATABASE ?1 AS bak KEY ?2",

@@ -303,10 +303,7 @@ impl Portal for HttpPortal {
         let mut out = FetchResult::default();
         for account in accounts {
             if account.cash_flow {
-                let from = ctx
-                    .since_by_account
-                    .get(&account.remote.external_ref)
-                    .unwrap_or(&ctx.since);
+                let from = ctx.since_for(&account.remote.external_ref);
                 let (flow, _) = self
                     .call(
                         true,
@@ -721,10 +718,8 @@ mod tests {
             connection_id: 1,
             login_name: user.into(),
             secret: SecretString::new(password.into()),
-            settings: Default::default(),
-            state: serde_json::Value::Null,
             since: "2026-01-01".into(),
-            since_by_account: Default::default(),
+            ..Default::default()
         }
     }
 

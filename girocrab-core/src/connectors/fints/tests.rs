@@ -36,10 +36,9 @@ fn test_ctx() -> ConnectContext {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        settings: Default::default(),
         state: serde_json::json!({}),
         since: "2025-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     }
 }
 
@@ -340,10 +339,9 @@ fn message_has_correct_length_and_structure() {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        settings: Default::default(),
         state: serde_json::json!({}),
         since: "2025-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let payload = vec![c.hkidn(&ctx, 3), c.hkvvb(4), c.hktan_process4(5, "HKIDN")];
     let msg = c.build_message(&ctx, &payload, "946", None);
@@ -1304,6 +1302,7 @@ fn fints_date_needs_eight_ascii_digits() {
     assert_eq!(fints_date("20261107").as_deref(), Some("2026-11-07"));
     assert_eq!(fints_date("202ä1107"), None); // 8 bytes, not 8 digits
     assert_eq!(fints_date("2026110"), None);
+    assert_eq!(fints_date("20260230"), None);
     assert_eq!(fints_date(""), None);
 }
 

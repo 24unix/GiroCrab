@@ -15,8 +15,8 @@ use reqwest::cookie::{CookieStore, Jar};
 use serde_json::{json, Value};
 
 use super::{
-    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteTransaction,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, Documents,
+    FetchResult, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::{
     error::{CoreError, CoreResult},
@@ -603,11 +603,10 @@ impl BankConnector for EasybankConnector {
             return Err(CoreError::SessionClosed);
         }
         // "Kontoauszüge abrufen" for one card: statements only, no bookings.
-        if let Some(card) = ctx.settings.get(super::STATEMENTS_ONLY) {
-            let card = card.expose().to_string();
+        if let Documents::StatementsOnly(card) = &ctx.documents {
             let mut known = known_statements(&ctx.state);
             let documents = self
-                .statements(std::slice::from_ref(&card), &mut known, true)
+                .statements(std::slice::from_ref(card), &mut known, true)
                 .await?;
             return Ok(FetchResult {
                 documents,
@@ -633,8 +632,7 @@ impl BankConnector for EasybankConnector {
             .filter(|a| !text(a, "Number").is_empty() && text(a, "AccountStatus") != "Closed")
         {
             let external = format!("card:{}", text(account, "Number"));
-            let since = ctx.since_by_account.get(&external).unwrap_or(&ctx.since);
-            let days = days_since(since);
+            let days = days_since(ctx.since_for(&external));
             let transactions = match self.bookings(account, days).await? {
                 Some(t) => t,
                 None => self
@@ -645,17 +643,16 @@ impl BankConnector for EasybankConnector {
             cards.push(json!({ "account": account, "transactions": transactions }));
         }
         let mut out = snapshot(&json!({ "version": 1, "cards": cards }).to_string())?;
-        let auto: Vec<String> = ctx
-            .settings
-            .get(super::STATEMENTS_AUTO)
-            .map(|v| v.expose().split(',').map(str::to_string).collect())
-            .unwrap_or_default();
+        let due = ctx.documents.due_statements();
         let mut known = known_statements(&ctx.state);
-        if !auto.is_empty() {
-            // Optional: a failed statement download never fails the sync.
-            if let Ok(docs) = self.statements(&auto, &mut known, false).await {
+        if !due.is_empty() {
+            // Optional: a failed download never fails the sync. On failure the
+            // dates of what was downloaded so far are dropped with the documents.
+            let mut fetched = known.clone();
+            if let Ok(docs) = self.statements(due, &mut fetched, false).await {
                 out.documents = docs;
-                out.statements_fetched = auto;
+                out.statements_fetched = due.to_vec();
+                known = fetched;
             }
         }
         out.state = Some(self.state(&known));

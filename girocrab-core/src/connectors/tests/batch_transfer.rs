@@ -87,19 +87,14 @@ async fn run(batch_booking: bool, date: Option<&str>) -> (i64, i64, i64, i64) {
     };
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
-        secret: crate::secret::SecretString::new(String::new()),
-        settings: Default::default(),
-        state: serde_json::Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let s = TransferSession::new(
         Arc::clone(&vault),
         Box::new(Accepting),
         ctx,
-        OrderKind::Batch(batch),
-        summary,
+        OrderKind::Batch { batch, summary },
         account_id,
     );
     assert!(matches!(

@@ -9,6 +9,7 @@
 //! a group; user decisions live in `recurring_series`.
 
 use std::collections::HashMap;
+use std::ops::RangeInclusive;
 
 use jiff::civil::Date;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -74,17 +75,16 @@ impl RecurrenceInterval {
             Self::Custom => None,
         }
     }
-    /// Accepted gap between two bookings (days) and the minimum occurrences.
-    fn gap_bounds(self) -> Option<(i64, i64, usize)> {
-        match self {
-            Self::Monthly => Some((25, 36, 2)),
-            Self::Quarterly => Some((82, 100, 3)),
-            Self::HalfYearly => Some((170, 195, 2)),
-            Self::Yearly => Some((350, 380, 2)),
-            Self::Custom => None,
-        }
-    }
 }
+
+/// The intervals detection looks for, each with its accepted gap between two
+/// bookings (days) and the minimum number of bookings.
+const DETECTABLE: [(RecurrenceInterval, RangeInclusive<i64>, usize); 4] = [
+    (RecurrenceInterval::Monthly, 25..=36, 2),
+    (RecurrenceInterval::Quarterly, 82..=100, 3),
+    (RecurrenceInterval::HalfYearly, 170..=195, 2),
+    (RecurrenceInterval::Yearly, 350..=380, 2),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -273,18 +273,13 @@ fn detect_interval(dates: &[Date]) -> Option<RecurrenceInterval> {
         .map(|w| crate::dates::days_between(w[0], w[1]))
         .collect();
     let med = median(gaps.clone());
-    [
-        RecurrenceInterval::Monthly,
-        RecurrenceInterval::Quarterly,
-        RecurrenceInterval::HalfYearly,
-        RecurrenceInterval::Yearly,
-    ]
-    .into_iter()
-    .find(|i| {
-        let (lo, hi, min_n) = i.gap_bounds().expect("fixed interval");
-        let fitting = gaps.iter().filter(|g| (lo..=hi).contains(*g)).count();
-        (lo..=hi).contains(&med) && dates.len() >= min_n && fitting * 4 >= gaps.len() * 3
-    })
+    DETECTABLE
+        .into_iter()
+        .find(|(_, gap, min_n)| {
+            let fitting = gaps.iter().filter(|g| gap.contains(g)).count();
+            gap.contains(&med) && dates.len() >= *min_n && fitting * 4 >= gaps.len() * 3
+        })
+        .map(|(interval, ..)| interval)
 }
 
 /// Stored user decision for a series key.
