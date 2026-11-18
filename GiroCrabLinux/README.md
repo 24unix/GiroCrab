@@ -59,7 +59,7 @@ sudo dnf install qt6-qtwebengine qt6-qtpdf tesseract tesseract-langpack-deu mold
 
 `perl` ist das vollständige Paket, nicht nur `perl-interpreter`: SQLCipher bringt ein eigenes OpenSSL mit, dessen
 `Configure` Perl-Module wie `lib`, `Time::Piece` und `IPC::Cmd` braucht (sonst bricht der Build bei `openssl-sys` ab).
-`dbus-devel` braucht `libdbus-sys` für den Schlüsselbund (Secret Service). Ohne `kf6-kirigami` lässt sich die App bauen,
+`libdbus-sys` (Schlüsselbund, Secret Service) braucht `dbus-devel`. Ohne `kf6-kirigami` lässt sich die App bauen,
 startet aber nicht (`module "org.kde.kirigami" is not installed`).
 
 ```sh
