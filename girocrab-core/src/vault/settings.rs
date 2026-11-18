@@ -152,6 +152,11 @@ impl Vault {
     pub fn set_setting(&self, key: String, value: String) -> Result<(), CoreError> {
         let value = Zeroizing::new(value);
         let db = self.db()?;
-        Self::set_setting_inner(&db, &key, &value)
+        let tx = db.unchecked_transaction()?;
+        // a new default Enable Banking application must not move existing logins (#824)
+        super::enable_banking_apps::before_global_write(&tx, &key, &value)?;
+        Self::set_setting_inner(&tx, &key, &value)?;
+        tx.commit()?;
+        Ok(())
     }
 }

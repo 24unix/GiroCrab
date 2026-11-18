@@ -441,17 +441,14 @@ impl Vault {
         self: Arc<Self>,
         country: String,
     ) -> Result<Vec<Psd2Bank>, CoreError> {
+        // the default application, else any login's own (#824)
         let (app_id, pem) = {
             let db = self.db()?;
-            let get = |k: &str| {
-                Vault::setting_inner(&db, k)?
-                    .filter(|v| !v.is_empty())
-                    .ok_or_else(|| CoreError::MissingSetting { key: k.to_string() })
-            };
-            (
-                get("enablebanking.application_id")?,
-                get("enablebanking.private_key_pem")?,
-            )
+            crate::vault::enable_banking_apps::any_app(&db)?.ok_or_else(|| {
+                CoreError::MissingSetting {
+                    key: crate::vault::enable_banking_apps::APP_ID_KEY.to_string(),
+                }
+            })?
         };
         let jwt = EnableBankingConnector::make_jwt_for(&app_id, &pem)?;
         let country = country.trim().to_uppercase();

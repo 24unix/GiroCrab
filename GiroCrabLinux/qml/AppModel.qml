@@ -1692,6 +1692,14 @@ QtObject {
     function switchComdirectAccess(id) { run(() => core("switch_comdirect_access", { connection_id: id })); reloadAll() }
     function updateConnection(id, name, login) { run(() => core("update_bank_connection", { connection_id: id, display_name: name, login_name: login })); reloadAccounts() }
     function setConnectionPin(id, pin) { run(() => core("set_connection_pin", { connection_id: id, pin: pin })) }
+    /// Enable Banking application of one login (#824): its own, else the default one.
+    function connectionEnableBankingApp(id) { try { return core("connection_enable_banking_app", { connection_id: id }) || null } catch (e) { return null } }
+    function connectionEnableBankingKey(id) { try { return core("connection_enable_banking_key", { connection_id: id }) || "" } catch (e) { return "" } }
+    /// Stores the application of this login only; the default and all other logins keep theirs.
+    function setConnectionEnableBankingApp(id, applicationID, pem) {
+        const changed = run(() => core("set_connection_enable_banking_app", { connection_id: id, application_id: applicationID, private_key_pem: pem }))
+        if (changed) toast = qsTr("Anwendung für diesen Bankzugang gespeichert. Beim nächsten Abruf ist eine neue Zustimmung nötig.")
+    }
 
     // MARK: - Sync (AppModel.swift › requestSync … finishSync)
     property var syncingConnectionID: null
@@ -4010,8 +4018,9 @@ QtObject {
         if (!isDemo && ["AmazonOrders", "Fnz", "Quirion", "SchwaebischHall"].indexOf(c.connector) >= 0) return true
         if (isDemo || (c.connector !== "AmericanExpress" && c.connector !== "AmazonVisa")) return false
         const optIn = settingEntry(enableBankingOptInKey(c.connector))
-        const app = settingEntry("enablebanking.application_id"), key = settingEntry("enablebanking.private_key_pem")
-        return !cardUsesEnableBanking(optIn ? optIn.value : "", !!(app && app.has_value), !!(key && key.has_value))
+        // the card's own application (#824) or the default one
+        const app = connectionEnableBankingApp(c.id)
+        return !cardUsesEnableBanking(optIn ? optIn.value : "", !!(app && app.application_id), !!(app && app.has_key))
     }
 
     /// Not opened while the banking policy blocks this login (security lock); a lock

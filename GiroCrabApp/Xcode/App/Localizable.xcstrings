@@ -4901,6 +4901,17 @@
         }
       }
     },
+    "Anwendung für diesen Bankzugang gespeichert. Beim nächsten Abruf ist eine neue Zustimmung nötig." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application saved for this bank login. The next fetch needs a new consent."
+          }
+        }
+      }
+    },
     "Anwendung prüfen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12122,13 +12133,13 @@
         }
       }
     },
-    "Ein anderes Gerät hat eine neue Enable-Banking-Anwendung gespeichert. Sie ersetzt die bisher hier eingerichtete." : {
+    "Ein anderes Gerät hat eine neue Enable-Banking-Anwendung gespeichert. Sie ist jetzt die Standard-Anwendung für neue Bankzugänge; bestehende Bankzugänge behalten ihre bisherige." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Another device saved a new Enable Banking application. It replaces the one set up here."
+            "value" : "Another device saved a new Enable Banking application. It is now the default for new bank logins; existing bank logins keep their current one."
           }
         }
       }
@@ -14874,6 +14885,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Applies to positions classified as Real estate with instrument Direct holding."
+          }
+        }
+      }
+    },
+    "Gilt nur für diesen Bankzugang. Eine andere Anwendung braucht beim nächsten Abruf eine neue Zustimmung bei der Bank." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Applies to this bank login only. A different application needs a new consent at the bank on the next fetch."
           }
         }
       }

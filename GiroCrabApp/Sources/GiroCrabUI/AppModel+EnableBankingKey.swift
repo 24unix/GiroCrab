@@ -48,7 +48,9 @@ extension AppModel {
                 try vault.setSetting(key: "enablebanking.private_key_pem", value: app.pem)
                 reloadSettings()
                 if !UserDefaults.standard.bool(forKey: EnableBankingKeySync.noticeSuppressedKey) {
-                    let banks = connections.filter { $0.connector == .enableBanking }.map(\.displayName)
+                    // logins with their own application (#824) keep it
+                    let own = Set(((try? vault.listConnectionEnableBankingApps()) ?? []).map(\.connectionId))
+                    let banks = connections.filter { $0.connector == .enableBanking && !own.contains($0.id) }.map(\.displayName)
                     enableBankingAdoptNotice = EnableBankingKeySync.notice(for: app, replaced: here?.isComplete == true, banks: banks)
                 }
             } catch {
@@ -73,6 +75,31 @@ extension AppModel {
         } catch {
             // no iCloud Keychain here: the setting itself is stored anyway
             Self.debugLog("enablebanking key upload failed: \(error)")
+        }
+    }
+}
+
+// MARK: Enable Banking application per bank login (#824)
+
+extension AppModel {
+    /// The application this login signs with (its own, else the default one).
+    func connectionEnableBankingApp(_ id: Int64) -> ConnectionEnableBankingApp? {
+        (try? vault?.connectionEnableBankingApp(connectionId: id)) ?? nil
+    }
+
+    /// Private key of that application, for the login's settings.
+    func connectionEnableBankingKey(_ id: Int64) -> String {
+        ((try? vault?.connectionEnableBankingKey(connectionId: id)) ?? nil) ?? ""
+    }
+
+    /// Stores the application of this login only; the default and all other
+    /// logins keep theirs. Both empty: back to the default application.
+    func setConnectionEnableBankingApp(_ id: Int64, applicationID: String, pem: String) {
+        guard let vault else { return }
+        var changed = false
+        runCore { changed = try vault.setConnectionEnableBankingApp(connectionId: id, applicationId: applicationID, privateKeyPem: pem) }
+        if changed {
+            toast = String(localized: "Anwendung für diesen Bankzugang gespeichert. Beim nächsten Abruf ist eine neue Zustimmung nötig.")
         }
     }
 }

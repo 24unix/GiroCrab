@@ -85,7 +85,7 @@ struct EnableBankingAdoptNotice: Identifiable, Equatable {
 
     var message: String {
         var lines = [replaced
-            ? String(localized: "Ein anderes Gerät hat eine neue Enable-Banking-Anwendung gespeichert. Sie ersetzt die bisher hier eingerichtete.")
+            ? String(localized: "Ein anderes Gerät hat eine neue Enable-Banking-Anwendung gespeichert. Sie ist jetzt die Standard-Anwendung für neue Bankzugänge; bestehende Bankzugänge behalten ihre bisherige.")
             : String(localized: "Die Enable-Banking-Anwendung eines anderen Geräts wurde aus dem iCloud-Schlüsselbund übernommen.")]
         lines.append(String(localized: "Anwendungs-ID: \(shortApplicationID)"))
         if !banks.isEmpty {

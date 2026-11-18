@@ -38,6 +38,38 @@ pub(crate) fn pin_key(connection_id: i64) -> String {
     format!("pin.conn.{connection_id}")
 }
 
+/// Forgets stored sessions (cookies, PSD2 session) of a login; keeps FinTS
+/// system data.
+pub(crate) fn clear_session_inner(db: &Connection, connection_id: i64) -> CoreResult<()> {
+    let state: Option<String> = db
+        .query_row(
+            "SELECT state_json FROM bank_connections WHERE id = ?1",
+            [connection_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let mut v: serde_json::Value = state
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::json!({}));
+    if let Some(o) = v.as_object_mut() {
+        for k in [
+            "cookies",
+            "session_token",
+            "session_id",
+            "valid_until",
+            "saved_unix",
+            "source",
+        ] {
+            o.remove(k);
+        }
+    }
+    db.execute(
+        "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",
+        params![v.to_string(), connection_id],
+    )?;
+    Ok(())
+}
+
 /// Merges duplicate logins (same connector + same normalised login) into the
 /// oldest one, keeping every account and booking. Soft-deleted connections are
 /// left alone. Returns the number removed.
@@ -268,6 +300,8 @@ fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
                 "DELETE FROM settings WHERE key = ?1 OR substr(key, 1, length(?1) + 1) = ?1 || '.'",
                 [pin_key(id)],
             )?;
+            // and its own Enable Banking application (#824)
+            super::enable_banking_apps::merge_into(conn, keep, id)?;
             conn.execute("DELETE FROM bank_connections WHERE id = ?1", [id])?;
             removed += 1;
         } else {
@@ -403,33 +437,7 @@ impl Vault {
     /// Forgets stored sessions (cookies, PSD2 session); keeps FinTS system data.
     pub fn clear_connection_session(&self, connection_id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
-        let state: Option<String> = db
-            .query_row(
-                "SELECT state_json FROM bank_connections WHERE id = ?1",
-                [connection_id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let mut v: serde_json::Value = state
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(serde_json::json!({}));
-        if let Some(o) = v.as_object_mut() {
-            for k in [
-                "cookies",
-                "session_token",
-                "session_id",
-                "valid_until",
-                "saved_unix",
-                "source",
-            ] {
-                o.remove(k);
-            }
-        }
-        db.execute(
-            "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",
-            params![v.to_string(), connection_id],
-        )?;
-        Ok(())
+        clear_session_inner(&db, connection_id)
     }
 
     pub fn connection_status(&self, connection_id: i64) -> Result<ConnectionStatus, CoreError> {

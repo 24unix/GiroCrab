@@ -15,6 +15,10 @@ Sheet {
     property string pin: ""
     property bool storePin: false
     property var values: ({})
+    /// Enable Banking application of this login as loaded (#824): saved per login, only when changed.
+    property var loadedEBApp: ({ id: "", pem: "" })
+    readonly property var ebAppKeys: ["enablebanking.application_id", "enablebanking.private_key_pem"]
+    function isEBAppKey(key) { return ebAppKeys.indexOf(key) >= 0 }
     property var revealed: ({})
     property var status: null
     property bool showAdvanced: false
@@ -76,7 +80,11 @@ Sheet {
     function toggleReveal(key) {
         const r = Object.assign({}, revealed)
         if (r[key]) delete r[key]
-        else { if (!(values[key] || "")) setValue(key, AppModel.revealSetting(key)); r[key] = true }
+        else {
+            if (!(values[key] || ""))
+                setValue(key, key === "enablebanking.private_key_pem" ? AppModel.connectionEnableBankingKey(connection.id) : AppModel.revealSetting(key))
+            r[key] = true
+        }
         revealed = r
     }
     function load() {
@@ -89,7 +97,15 @@ Sheet {
         revealed = ({})
         showAdvanced = false
         const v = {}
+        if (keys.concat(advancedKeys).some(isEBAppKey)) {
+            const app = AppModel.connectionEnableBankingApp(connection.id)
+            const pem = AppModel.connectionEnableBankingKey(connection.id)
+            loadedEBApp = { id: app ? app.application_id : "", pem: pem }
+            v["enablebanking.application_id"] = loadedEBApp.id
+            v["enablebanking.private_key_pem"] = pem
+        }
         for (const key of keys.concat(advancedKeys, postboxKeys)) {
+            if (isEBAppKey(key)) continue
             const e = AppModel.settingEntry(key)
             v[key] = e && e.is_secret ? AppModel.revealSetting(key) : (e ? e.value : AppModel.revealSetting(key))
         }
@@ -103,10 +119,17 @@ Sheet {
             else if (pin !== "") AppModel.setConnectionPin(connection.id, pin)
         }
         saveSettings(keys.concat(advancedKeys, postboxKeys))
+        if (keys.concat(advancedKeys).some(isEBAppKey)) {
+            const id = (values["enablebanking.application_id"] || "").trim()
+            const pem = (values["enablebanking.private_key_pem"] || "").trim()
+            if (id !== loadedEBApp.id.trim() || pem !== loadedEBApp.pem.trim())
+                AppModel.setConnectionEnableBankingApp(connection.id, id, pem)
+        }
         pin = ""
     }
     function saveSettings(list) {
         for (const key of list) {
+            if (isEBAppKey(key)) continue
             const e = AppModel.settingEntry(key)
             const v = values[key] || ""
             const current = e && e.is_secret ? AppModel.revealSetting(key) : (e ? e.value : "")
@@ -411,10 +434,14 @@ Sheet {
         }
         Text {
             visible: kf.isPem && !kf.isRevealed
-            text: kf.entry && kf.entry.has_value ? qsTr("•••••• (gespeichert)") : qsTr("nicht gesetzt")
+            text: (sheet.isEBAppKey(kf.key) ? !!(sheet.values[kf.key] || "") : !!(kf.entry && kf.entry.has_value))
+                  ? qsTr("•••••• (gespeichert)") : qsTr("nicht gesetzt")
             font.pixelSize: Theme.body; color: Theme.secondary
         }
         Text { visible: kf.entry !== null && kf.entry.help !== ""; text: kf.entry ? kf.entry.help : ""; Layout.fillWidth: true; wrapMode: Text.WordWrap
+               font.pixelSize: Theme.caption2; color: Theme.secondary }
+        Text { visible: kf.key === "enablebanking.private_key_pem"; Layout.fillWidth: true; wrapMode: Text.WordWrap
+               text: qsTr("Gilt nur für diesen Bankzugang. Eine andere Anwendung braucht beim nächsten Abruf eine neue Zustimmung bei der Bank.")
                font.pixelSize: Theme.caption2; color: Theme.secondary }
     }
 }

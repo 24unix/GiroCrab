@@ -1438,6 +1438,8 @@ impl Vault {
                     settings.insert(tm_key, SecretString::new(v));
                 }
             }
+            // this login's own Enable Banking application, if it has one (#824)
+            crate::vault::enable_banking_apps::overlay(&db, connection_id, &mut settings)?;
             // PayPal via API signature needs no REST app.
             let nvp = kind == ConnectorKind::PayPal && super::paypal::nvp_configured(&settings);
             if !demo && !nvp {

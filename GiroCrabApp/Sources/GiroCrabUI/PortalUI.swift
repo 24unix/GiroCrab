@@ -15,10 +15,12 @@ extension AppModel {
         if Self.isMagicDemoLogin(c.loginName) { return false }
         if !isDemo, [.advanzia, .amazonOrders, .fnz, .quirion, .schwaebischHall, .equatePlus].contains(c.connector) { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
+        // the card's own application (#824) or the default one
+        let app = connectionEnableBankingApp(c.id)
         return !Self.cardUsesEnableBanking(
             optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
-            hasApp: settingEntry("enablebanking.application_id")?.hasValue ?? false,
-            hasKey: settingEntry("enablebanking.private_key_pem")?.hasValue ?? false)
+            hasApp: !(app?.applicationId.isEmpty ?? true),
+            hasKey: app?.hasKey ?? false)
     }
 
     static func enableBankingOptInKey(_ kind: ConnectorKind) -> String {
