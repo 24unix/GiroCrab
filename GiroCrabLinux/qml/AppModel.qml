@@ -148,6 +148,16 @@ QtObject {
     property var vaultInfo: ({ path: "", size: -1, keychain_bypassed: false, demo_seed: false })
     property string errorMessage: ""
     property string errorTitle: ""
+    /// AppModel+Transfer.swift reportUnrecordedOrder (#808): the bank executed the order, the vault
+    /// could not record it (no optimistic booking, planned transfer or standing order; for a
+    /// collection the mandates are not marked as collected).
+    function reportUnrecordedOrder(error, debit) {
+        const message = debit
+            ? qsTr("Die Bank hat die Lastschriften ausgeführt, GiroCrab konnte sie aber nicht speichern. Die Mandate sind nicht als eingezogen markiert: Prüfen Sie sie vor dem nächsten Einzug, sonst wird doppelt eingezogen.")
+            : qsTr("Die Bank hat den Auftrag ausgeführt, GiroCrab konnte ihn aber nicht speichern. Er erscheint mit dem nächsten Abruf. Senden Sie ihn nicht erneut.")
+        errorTitle = qsTr("Ausgeführt, aber nicht gespeichert")
+        errorMessage = message + "\n\n" + error
+    }
     property string toast: ""
     property bool showAddBank: false
     property bool showMoneyMoneyImport: false
@@ -2376,7 +2386,7 @@ QtObject {
         next(0)
     }
     function canFetchStatements(a) {
-        return a && a.connector && a.kind !== "Loan" && ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric"].indexOf(a.connector) >= 0
+        return a && a.connector && a.kind !== "Loan" && ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Easybank", "FordMoney", "OpelDirektbank"].indexOf(a.connector) >= 0
     }
     function fetchStatements(a) {
         if (syncingConnectionID !== null) return
@@ -3321,6 +3331,12 @@ QtObject {
         } else if (step.Finished) {
             pollTimer.stop()
             activeChallenge = null; activeTransfer = null; transferBusy = false
+            // #808: executed but not stored – still finish as sent (no resend), then warn
+            const recordError = step.Finished.outcome.record_error
+            if (recordError) {
+                const debit = activeTransferIsDebit
+                Qt.callLater(() => reportUnrecordedOrder(recordError, debit))
+            }
             if (activeTransferIsDebit) { activeTransferIsDebit = false; DirectDebits.finishGroup(); return }
             if (activeTransferIsStanding) {
                 activeTransferIsStanding = false

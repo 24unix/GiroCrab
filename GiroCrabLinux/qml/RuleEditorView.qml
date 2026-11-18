@@ -33,7 +33,9 @@ Sheet {
     onClosed: { AppModel.showRuleEditor = false; draft = null; selection = null; searchText = "" }
 
     function color(rule) { const c = AppModel.categoryByID(rule.category_id); return c ? c.color_hex : "#8E8E93" }
-    function categoryName(id) { const c = AppModel.categoryByID(id); return c ? c.path : "?" }
+    // a rule that only sets tags (#580) has no category (id 0)
+    function categoryName(id) { if (id === 0) return qsTr("Nur Tags"); const c = AppModel.categoryByID(id); return c ? c.path : "?" }
+    function tagNames(ids) { return TagsModel.tags.filter(t => ids.indexOf(t.id) >= 0).map(t => "#" + t.name).join(" ") }
     function select(rule) { selection = rule.id; draft = Object.assign({}, rule) }
     function newRule() { selection = null; draft = AppModel.newRuleDraft(null) }
     function save(rule) {
@@ -225,6 +227,9 @@ Sheet {
                                     Text { text: rr.modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                                     Text { text: "→ " + editor.categoryName(rr.modelData.category_id); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
                                            Sensitive { labels: true } }
+                                    // tag names are always covered in a report (#228)
+                                    Text { visible: (rr.modelData.tag_ids || []).length > 0; text: editor.tagNames(rr.modelData.tag_ids || [])
+                                           font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                                 }
                                 Rectangle {
                                     implicitWidth: cnt.implicitWidth + 12; implicitHeight: cnt.implicitHeight + 2; radius: height / 2
