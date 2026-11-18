@@ -318,6 +318,10 @@ public final class AppModel {
             // Cached per merchant; reloadMerchantStats() would drop the cache on every click.
             loadMerchantStats()
             if selectedBookingID != oldValue {
+                // The balance chart's marker follows the selected booking (#593). Set here, it
+                // lands in the selection's own update; set by the list's `onChange` afterwards,
+                // it cost the whole window one more pass (after every click, arrow key and load).
+                if let day = selectedBooking?.bookingDate, scrollFocusDay != day { scrollFocusDay = day }
                 loadCategorySuggestion()
                 scheduleAutoReview()
             }

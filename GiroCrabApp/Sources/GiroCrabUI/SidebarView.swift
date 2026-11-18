@@ -1083,7 +1083,5 @@ private struct CategoryChipToggle: View {
         }
     }
 
-    private var hiddenIDs: Set<Int64> {
-        Set(hiddenRaw.split(separator: ",").compactMap { Int64($0) })
-    }
+    private var hiddenIDs: Set<Int64> { ViewLayout.hiddenCategoryChipAccounts(raw: hiddenRaw) }
 }

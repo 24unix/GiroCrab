@@ -83,6 +83,13 @@ enum BalanceBarUnit: String, CaseIterable, Identifiable {
         case .day, .automatic: .day
         }
     }
+
+    /// First day after the bucket that starts at `start`. Quarters as three months: `Calendar`
+    /// does not add `.quarter`.
+    func end(after start: Date) -> Date? {
+        self == .quarter ? Calendar.current.date(byAdding: .month, value: 3, to: start)
+            : Calendar.current.date(byAdding: calendarComponent, value: 1, to: start)
+    }
 }
 
 /// One bar: a day, calendar month or calendar year of the balance history.

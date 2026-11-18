@@ -136,22 +136,29 @@ extension AppModel {
         guard let vault else { return }
         let ids = selectionAccountIDs
         let month = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
+        var placeholderDelay: Duration?
         if keepingShown && !isLoadingSelection {
             // the old data stays until the new one arrives
         } else if selectionPlaceholderDelay <= .zero || isLoadingSelection {
             showSelectionPlaceholder()
         } else {
-            let delay = selectionPlaceholderDelay
-            selectionPlaceholderTask = Task { [weak self] in
-                try? await Task.sleep(for: delay)
-                guard !Task.isCancelled, let self, self.selectionLoadTask != nil else { return }
-                self.selectionPlaceholderTask = nil
-                self.showSelectionPlaceholder()
-            }
+            placeholderDelay = selectionPlaceholderDelay
         }
         let task = Task { [weak self] in
             let load = Perf.signposter.beginInterval("selectionLoad")
             defer { Perf.signposter.endInterval("selectionLoad", load) }
+            // The grace period starts with the load, not with the click: until this task
+            // runs, the main thread is busy with the selection change itself (sidebar, title,
+            // header). Counted from the click, that alone used up the 200 ms, so even a fast
+            // load emptied the list for the placeholder and then built it a second time.
+            if let placeholderDelay, !Task.isCancelled {
+                self?.selectionPlaceholderTask = Task { [weak self] in
+                    try? await Task.sleep(for: placeholderDelay)
+                    guard !Task.isCancelled, let self, self.selectionLoadTask != nil else { return }
+                    self.selectionPlaceholderTask = nil
+                    self.showSelectionPlaceholder()
+                }
+            }
             do {
                 // The pay cycle comes first: `.sinceSalary` derives the period from it.
                 let cycle = try await Self.offMain { try vault.salaryCycle(accountIds: ids) }

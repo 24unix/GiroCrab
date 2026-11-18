@@ -55,6 +55,7 @@ public struct GiroCrabScenes: Scene {
                 .environment(model)
                 .modifier(AutoLockOnBackground(model: model))
                 .privacyModeEnvironment()
+                .listSettingsEnvironment()
                 #if os(macOS)
                 .appTextSize(textSize.effective)
                 .modifier(MenuBarBridge(model: model))

@@ -5,7 +5,7 @@ import GiroCrabCore
 /// inspector, bookings grouped into white day cards
 /// with the daily sum in the card header.
 struct BookingStreamView: View {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(\.textScale) private var textScale
     /// The empty state repeats the search text, which is drawn as a parameter
     /// `Text` and cannot carry `.sensitive()`.
@@ -406,7 +406,7 @@ struct MerchantFocusBar: View {
 }
 
 struct DayCardSegment: ViewModifier {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     let isTop: Bool
     let isBottom: Bool
 
@@ -440,7 +440,7 @@ struct DayCardSegment: ViewModifier {
 
 /// Date groups bookings without repeating a daily total.
 struct DayHeader: View {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(AppModel.self) private var model
     let day: DayGroup
     /// End-of-day balance (#577); nil = none shown.
@@ -533,7 +533,7 @@ private extension View {
 /// One booking of a day card; the last one closes the card.
 struct DayCardRow: View {
     @Environment(\.textScale) private var textScale
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(AppModel.self) private var model
     let booking: Booking
     let isLast: Bool
@@ -662,7 +662,7 @@ enum ListPurpose {
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
     @Environment(\.reportRedaction) private var redaction
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
     let booking: Booking
@@ -671,11 +671,9 @@ struct BookingRow: View {
     /// Amazon orders: drill-down of all items (and the refunded order's items)
     /// below the row; collapsed rows keep the uniform list height.
     @State private var amazonExpanded = false
-    @AppStorage(ViewLayout.hiddenCategoryChipAccountsKey) private var hiddenCategoryChipAccountsRaw = ""
+    @Environment(\.hiddenCategoryChipAccounts) private var hiddenCategoryChipAccounts
 
-    private var showsCategoryChip: Bool {
-        !hiddenCategoryChipAccountsRaw.split(separator: ",").compactMap { Int64($0) }.contains(booking.accountId)
-    }
+    private var showsCategoryChip: Bool { !hiddenCategoryChipAccounts.contains(booking.accountId) }
 
     private var showsDetails: Bool {
         density.showsDetails(isActive: density == .compact && model.selectedBookingID == booking.id && !compactDetailsCollapsed)
@@ -1066,7 +1064,7 @@ private struct RowSelectionTraits: ViewModifier {
 /// Scrolls the stream to the selected booking. A view of its own, so the
 /// selection is not a dependency of the whole list.
 private struct SelectionScroller: View {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(AppModel.self) private var model
     let proxy: ScrollViewProxy
 
@@ -1074,10 +1072,6 @@ private struct SelectionScroller: View {
         Color.clear
             .onChange(of: model.selectedBookingID) { _, id in
                 guard let id else { return }
-                // the chart marker follows the selected booking (#593)
-                if let day = model.selectedBooking?.bookingDate, model.selectedBookingID == id, model.scrollFocusDay != day {
-                    model.scrollFocusDay = day
-                }
                 // the day jump already scrolled to the day: do not override it
                 if model.jumpSelectedBookingID == id { model.jumpSelectedBookingID = nil; return }
                 // Every row is an element of the lazy stream, so the proxy finds it
@@ -1171,7 +1165,7 @@ struct AccountChip: View {
 /// emerald (or blue) badge; the sign always carries the direction too.
 struct AmountLabel: View {
     let cents: Int64
-    @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeStyle: NegativeAmountStyle = .neutral
+    @Environment(\.negativeAmountStyle) private var negativeStyle
 
     var body: some View {
         if cents > 0 {
