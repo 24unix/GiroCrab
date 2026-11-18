@@ -595,10 +595,7 @@ impl ConsorsbankArchive {
         } else {
             since
         };
-        let to = chrono::Local::now()
-            .date_naive()
-            .format("%Y-%m-%d")
-            .to_string();
+        let to = crate::dates::today_iso();
         let path = format!("/web-document-service/api/users/{crm}/documents/account-documents/v1");
         let mut out = Vec::new();
         let mut seen = HashSet::new();
