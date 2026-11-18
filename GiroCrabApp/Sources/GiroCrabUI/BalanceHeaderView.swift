@@ -55,8 +55,7 @@ struct StreamHeaderCard: View {
     @State private var showDocuments = false
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
     private var isOverviewSelection: Bool {
-        if case .allAccounts? = model.sidebarSelection { return true }
-        return false
+        model.sidebarRowSelection(for: .allAccounts).isSelected
     }
     /// Where the tag button sits in the filter row: the tag popover points at it (#228).
     @State private var tagButtonFrame: CGRect = .zero
@@ -246,7 +245,7 @@ struct StreamHeaderCard: View {
             }
             .contextMenu { ChartStyleInlinePicker() }
         } else if case .category = model.sidebarSelection {
-            CategorySumChart(sums: model.categoryHistory)
+            CategorySumChart(sums: model.categoryHistory, style: chartStyle)
         } else {
             BalanceChart(points: model.history) { model.jumpToDay($0) }
         }

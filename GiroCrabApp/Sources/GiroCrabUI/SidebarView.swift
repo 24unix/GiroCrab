@@ -26,7 +26,7 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
-        List(selection: $model.interactiveSidebarSelection) {
+        SidebarSelectionList {
             // Pages across all accounts that are opened daily or as a starting point stay above the
             // account tree: with many accounts they must not end up below the visible part.
             // „Neue Umsätze“ (#352)
@@ -278,7 +278,7 @@ struct SidebarView: View {
             // restore its own saved collapse state for sidebar sections.
             SectionHeader(
                 name: group.name, sfSymbol: group.sfSymbol, balanceCents: group.balanceCents,
-                selected: model.sidebarSelection == .group(group.id),
+                item: .group(group.id),
                 isLoanGroup: !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan },
                 open: open, toggle: toggle
             )
@@ -311,7 +311,7 @@ struct SidebarView: View {
                 }
                 SectionHeader(
                     name: group.name, sfSymbol: group.sfSymbol, balanceCents: group.balanceCents,
-                    selected: model.sidebarSelection == .bank(group.id),
+                    item: .bank(group.id),
                     isLoanGroup: !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan },
                     nameRedaction: [],
                     open: open, toggle: toggle
@@ -633,6 +633,24 @@ private struct AccountRowHeight: ViewModifier {
     }
 }
 
+/// The sidebar `List` and its selection. Reading the selection binding made the reading view
+/// depend on `sidebarSelection`: in `SidebarView` every click re-ran its whole body and rebuilt
+/// the outline. Here only this wrapper re-runs; its rows are the value `SidebarView` built last,
+/// so they stay as they are and only the selection highlight moves.
+private struct SidebarSelectionList<Content: View>: View {
+    @Environment(AppModel.self) private var model
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        @Bindable var model = model
+        List(selection: $model.interactiveSidebarSelection) { content }
+    }
+}
+
 /// Disclosure arrow of every collapsible sidebar header: `chevron.right` when
 /// closed, `chevron.down` when open. One 12 pt column, so the icons of
 /// all headers and accounts share one vertical axis.
@@ -656,17 +674,23 @@ struct DisclosureChevron: View {
 }
 
 struct SectionHeader: View {
-    /// Selected header: hierarchical styles so macOS can draw them light on the
-    /// accent-coloured selection (fixed theme colours stay dark there).
+    @Environment(AppModel.self) private var model
     let name: String
     let sfSymbol: String
     let balanceCents: Int64
-    var selected: Bool = false
+    /// The header's own sidebar item. Its selection flag (`sidebarRowSelection(for:)`) is read
+    /// here, so a selection change re-runs only the old and the new header, not
+    /// `SidebarView.body` (the whole outline).
+    let item: SidebarItem
     var isLoanGroup: Bool = false
     /// Bug report screenshot (#301): category-like group names hide on request, bank names stay visible.
     var nameRedaction: ReportRedaction = .labels
     var open: Bool = true
     var toggle: () -> Void = {}
+
+    /// Selected header: hierarchical styles so macOS can draw them light on the
+    /// accent-coloured selection (fixed theme colours stay dark there).
+    private var selected: Bool { model.sidebarRowSelection(for: item).isSelected }
 
     var body: some View {
         HStack(spacing: 5) {
@@ -706,7 +730,7 @@ struct AccountRow: View {
     /// Selected row: the amount uses the hierarchical `.primary` style, which
     /// macOS turns white on the accent-coloured selection (fixed theme colours
     /// stay dark there). `backgroundProminence` is not set in a macOS sidebar.
-    private var onSelection: Bool { model.sidebarSelection == .account(account.id) }
+    private var onSelection: Bool { model.sidebarRowSelection(for: .account(account.id)).isSelected }
     @Environment(\.reportRedaction) private var redaction
     let account: Account
     var syncing: Bool = false

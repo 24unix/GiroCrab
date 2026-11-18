@@ -25,6 +25,36 @@ enum SidebarItem: Hashable {
     case wealth
 }
 
+/// What the main window's booking column shows for a sidebar selection
+/// (`AppModel.mainColumn`). Accounts, groups and categories all show bookings
+/// (or a depot / Sachwerte view, decided by `AccountColumn`).
+enum MainColumn: Equatable {
+    case bookings, documents, planned, directDebits, wealth
+
+    init(_ item: SidebarItem?) {
+        switch item {
+        case .documents?: self = .documents
+        case .planned?: self = .planned
+        case .directDebits?: self = .directDebits
+        case .wealth?: self = .wealth
+        default: self = .bookings
+        }
+    }
+}
+
+/// Whether one sidebar row is the selected one (`AppModel.sidebarRowSelection(for:)`). A row
+/// that compared `sidebarSelection` itself re-ran on every click, and every sidebar row has a
+/// hosting view of its own; with one flag per row only the old and the new selection re-run.
+@MainActor
+@Observable
+final class SidebarRowSelection {
+    var isSelected: Bool
+
+    init(isSelected: Bool) {
+        self.isSelected = isSelected
+    }
+}
+
 /// Document origin is independent of its booking link. Bank connectors and
 /// statement imports store a source key; user uploads leave it empty.
 enum DocumentsScope: String, CaseIterable, Identifiable {
@@ -318,33 +348,53 @@ struct DayGroup: Identifiable {
 /// booking row. The list is flat, so its estimated height is based on rows of
 /// nearly equal height instead of day cards of 1 to 30 bookings – the scroll
 /// bar no longer jumps whenever a long or short day is built.
+///
+/// Its identity is its position, the nth header or the nth row, not the day or the booking:
+/// a new list (another category, period or filter) then updates the elements on screen in
+/// place instead of tearing them down and building new ones, which made up most of a
+/// selection change's main-thread time. Scroll targets go through `StreamSlots`.
+/// Consequence for every view inside a stream element: `@State` that belongs to one booking or
+/// day must be reset when that changes (`onChange(of: booking.id)`), or it shows on the next one
+/// (see `DayCardRow`, `BookingRow`, `MerchantSignet`, `StreamDayTracker`).
 enum StreamItem: Identifiable {
-    case header(DayGroup)
-    case row(Booking, isLast: Bool)
+    case header(DayGroup, ordinal: Int)
+    case row(Booking, isLast: Bool, ordinal: Int)
 
-    enum Key: Hashable {
-        case day(String)
-        case booking(Booking.ID)
-    }
-
-    var id: Key {
+    var id: StreamSlot {
         switch self {
-        case .header(let day): .day(day.id)
-        case .row(let b, _): .booking(b.id)
+        case .header(_, let n): .header(n)
+        case .row(_, _, let n): .row(n)
         }
     }
 
-    static func flatten(_ days: [DayGroup]) -> [StreamItem] {
+    static func flatten(_ days: [DayGroup]) -> (items: [StreamItem], slots: StreamSlots) {
         var out: [StreamItem] = []
+        var slots = StreamSlots()
         out.reserveCapacity(days.reduce(days.count) { $0 + $1.bookings.count })
-        for day in days {
-            out.append(.header(day))
+        var row = 0
+        for (h, day) in days.enumerated() {
+            out.append(.header(day, ordinal: h))
+            slots.day[day.date] = .header(h)
             for (i, b) in day.bookings.enumerated() {
-                out.append(.row(b, isLast: i == day.bookings.count - 1))
+                out.append(.row(b, isLast: i == day.bookings.count - 1, ordinal: row))
+                slots.booking[b.id] = .row(row)
+                row += 1
             }
         }
-        return out
+        return (out, slots)
     }
+}
+
+/// Identity of a booking stream element: the nth day header or the nth booking row.
+enum StreamSlot: Hashable {
+    case header(Int)
+    case row(Int)
+}
+
+/// Where a day's header and each booking sit in the stream: `ScrollViewProxy` targets.
+struct StreamSlots {
+    var day: [String: StreamSlot] = [:]
+    var booking: [Booking.ID: StreamSlot] = [:]
 }
 
 struct ActiveChallenge: Identifiable {

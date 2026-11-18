@@ -28,6 +28,15 @@ extension AppModel {
 
     var isMultiSelection: Bool { selectedBookingIDs.count > 1 }
 
+    /// The selected-state flag of one sidebar row; a row reads `isSelected` instead of
+    /// `sidebarSelection`, so a click re-runs only the rows whose state changes.
+    func sidebarRowSelection(for item: SidebarItem) -> SidebarRowSelection {
+        if let flag = sidebarRowSelections[item] { return flag }
+        let flag = SidebarRowSelection(isSelected: untrackedSidebarSelection == item)
+        sidebarRowSelections[item] = flag
+        return flag
+    }
+
     /// Sum of the selected bookings over all accounts, one entry per currency (#878).
     /// Currencies are never added together; the entries are sorted by currency code.
     var selectionTotals: [SelectionTotal] {
@@ -71,8 +80,11 @@ extension AppModel {
 
     // MARK: - Selection change (account, group, category, period)
 
+    /// A selection or period change now loads in the background (`reloadSelection`).
+    var selectionLoadsInBackground: Bool { loadsSelectionInBackground && vault != nil }
+
     func reloadSelection(periodChanged: Bool) {
-        if loadsSelectionInBackground, vault != nil {
+        if selectionLoadsInBackground {
             startSelectionLoad()
         } else if selectionLoadTask != nil {
             settlePendingSelectionLoad() // reloads everything
@@ -94,6 +106,7 @@ extension AppModel {
     func settlePendingSelectionLoad() {
         guard selectionLoadTask != nil else { return }
         endSelectionLoad()
+        if streamTopPending { scrollStreamTop() }
         refreshSalaryCycle()
         refreshRecurring()
         reloadCategories()
@@ -109,6 +122,22 @@ extension AppModel {
         selectionPlaceholderTask = nil
         isLoadingSelection = false
         selectionLoadStamp &+= 1
+    }
+
+    /// Back to the top of the booking stream for a new sidebar selection or period. When the
+    /// list loads in the background the scroll waits for the new data (`streamTopPending`, taken
+    /// where the load publishes or a synchronous reload takes over). Scrolling the old list at
+    /// the click cost a layout pass of its own, and clearing the chart marker's day then re-ran
+    /// every day header on screen, all for data about to be replaced.
+    func requestStreamTop() {
+        if selectionLoadsInBackground { streamTopPending = true } else { scrollStreamTop() }
+    }
+
+    private func scrollStreamTop() {
+        streamTopPending = false
+        // before the publish selects a booking: its day becomes the marker's day (#593)
+        scrollFocusDay = nil
+        streamTopRequest &+= 1
     }
 
     /// The load is slow: empty list and chart, so nothing of the previous
@@ -190,6 +219,7 @@ extension AppModel {
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
+                if self.streamTopPending { self.scrollStreamTop() }
                 let publish = Perf.signposter.beginInterval("publishSelection")
                 self.publish(loaded.page)
                 self.selectionFlow = (loaded.flow.consumptionCents, loaded.flow.investedCents, loaded.flow.incomeCents)

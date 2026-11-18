@@ -177,7 +177,7 @@ struct UserGroupHeader: View {
     @Environment(AppModel.self) private var model
     /// Selected header: hierarchical styles so macOS can draw them light on the
     /// accent-coloured selection (fixed theme colours stay dark there).
-    private var selected: Bool { model.sidebarSelection == SidebarItem.userGroup(group.uuid) }
+    private var selected: Bool { model.sidebarRowSelection(for: .userGroup(group.uuid)).isSelected }
     let group: UserGroup
     var open: Bool = true
     var toggle: () -> Void = {}
