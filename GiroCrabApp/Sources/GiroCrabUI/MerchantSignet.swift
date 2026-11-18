@@ -16,12 +16,20 @@ struct MerchantSignet: View {
     /// Only for logos that arrive after the first frame; a logo already in the
     /// model's cache is drawn right away (a row built while scrolling would
     /// otherwise show its monogram for one frame and lay out twice).
-    @State private var loadedLogo: (image: Image, pixels: Int)?
+    /// Keyed by `logoKey`: in the booking stream a row is reused for another booking (positional
+    /// identity), so a logo loaded for the previous merchant must not show for the next one.
+    @State private var loadedLogo: (key: String, image: Image, pixels: Int)?
+
+    private var logoKey: String {
+        merchant.domainCandidates.joined(separator: "|") + merchant.domain + model.logoProvider + "\(model.logoVersion)"
+    }
 
     var body: some View {
         let size = self.size * textScale   // grows with the text size (#343)
         // A logo loaded before "Aus" was picked must vanish at once, not after the task reran (#422).
-        let logo = model.cachedLogo(for: merchant) ?? (model.onlineLogos ? loadedLogo : nil)
+        let key = logoKey
+        let loaded = loadedLogo.flatMap { $0.key == key ? (image: $0.image, pixels: $0.pixels) : nil }
+        let logo = model.cachedLogo(for: merchant) ?? (model.onlineLogos ? loaded : nil)
         let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
         let brand = Color(hex: merchant.colorHex)
         let sharpLogo = logo.flatMap { $0.pixels >= 48 ? $0.image : nil }
@@ -72,13 +80,13 @@ struct MerchantSignet: View {
                     .offset(x: 2, y: -2)
             }
         }
-        .task(id: merchant.domainCandidates.joined(separator: "|") + merchant.domain + model.logoProvider + "\(model.logoVersion)") {
+        .task(id: key) {
             // cached: drawn above already – no second render
             guard model.cachedLogo(for: merchant) == nil else { return }
             let logo = await model.logo(for: merchant)
             // a task of an older id (provider switched meanwhile) must not overwrite the newer one
             guard !Task.isCancelled else { return }
-            loadedLogo = logo
+            loadedLogo = logo.map { (key, $0.image, $0.pixels) }
         }
         // The blue dot is the only "new" signal on screen: say it, too.
         .accessibilityLabel(showNewDot ? Text("\(merchant.name), neu") : Text(merchant.name))

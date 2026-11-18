@@ -67,7 +67,7 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             login_label: tr("E-Mail (nur Anzeige)").into(),
             secret_label: tr("(nicht nötig – nutzt Ihre REST-App)").into(),
             required_settings: s(&["paypal.client_id", "paypal.client_secret"]),
-            note: tr("OAuth2 Client Credentials; Historie in 31-Tage-Fenstern.").into(),
+            note: tr("OAuth2 Client Credentials (REST-App) oder API-Signatur (klassische NVP-API, unter Erweitert); Historie in 31-Tage-Fenstern.").into(),
         },
         ConnectorKind::TradeRepublic => BankDescriptor {
             kind,
@@ -190,6 +190,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Ford Money (Ford Bank): Tagesgeld- und Festgeldkonten mit Saldo und Umsätzen. Die Anmeldung wird in der Ford-Money-Security-App bestätigt. Kontoauszüge und weitere Dokumente aus der Postbox lassen sich abrufen; ungelesene Dokumente gelten danach bei Ford Money als gelesen. Inoffiziell: liest die Seiten des Online-Bankings, Änderungen sind möglich.").into(),
         },
+        ConnectorKind::Finpension => BankDescriptor {
+            kind,
+            name: "Finpension".into(),
+            protocol: tr("Datei-Import (CSV/JSON-Export)").into(),
+            bank_code: "".into(),
+            sf_symbol: "chart.pie".into(),
+            login_label: tr("Bezeichnung").into(),
+            secret_label: tr("Passwort").into(),
+            required_settings: vec![],
+            note: tr("Finpension (Schweiz): Säule 3a, Freizügigkeit und 1e. Die CSV- oder JSON-Exportdatei (Positionen und Cash-Buchungen) wird über „Datei importieren“ eingelesen; es gibt keine Anmeldung und keinen Netzwerkzugriff.").into(),
+        },
         ConnectorKind::Ffb => BankDescriptor {
             kind,
             name: "FFB (FIL Fondsbank)".into(),
@@ -298,6 +309,8 @@ pub enum Interface {
     EnableBanking,
     /// `Web-Portal` (embedded browser login, internal portal API)
     WebPortal,
+    /// `Datei-Import` (export file chosen by the user, no login)
+    FileImport,
 }
 
 /// What a connector can read or do. Only list what is implemented today.
@@ -309,6 +322,8 @@ pub enum Capability {
     Balances,
     /// Depot / securities positions.
     Securities,
+    /// Securities transactions of a depot (buys, sells, distributions as their own entries).
+    SecurityTransactions,
     /// SEPA credit transfers (incl. SEPA Instant where the bank offers it).
     Transfers,
     /// Standing orders (not implemented by any connector yet).
@@ -442,6 +457,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
             Capability::Documents,
         ],
         status: Status::Verified,
@@ -479,6 +495,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
         ],
         status: Status::TestingWanted,
         issues: &[],
@@ -492,6 +509,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
         ],
         status: Status::TestingWanted,
         issues: &[45],
@@ -616,6 +634,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
             Capability::Documents,
         ],
         status: Status::Limited,
@@ -629,6 +648,19 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         capabilities: &[Capability::Balances, Capability::Securities],
         status: Status::TestingWanted,
         issues: &[],
+    },
+    MatrixEntry {
+        name: "Finpension",
+        kind: Some(ConnectorKind::Finpension),
+        interface: Interface::FileImport,
+        official: Some(false),
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+        ],
+        status: Status::TestingWanted,
+        issues: &[300],
     },
     MatrixEntry {
         name: "Opel Direktbank",
@@ -665,6 +697,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
         ],
         status: Status::TestingWanted,
         issues: &[],
@@ -692,6 +725,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Balances,
             Capability::Transactions,
             Capability::Securities,
+            Capability::SecurityTransactions,
             Capability::Documents,
         ],
         status: Status::Verified,
@@ -752,6 +786,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Ffb => Box::new(ffb::FfbConnector::new()),
         ConnectorKind::FordMoney => Box::new(fordmoney::FordMoneyConnector::new()),
         ConnectorKind::OpelDirektbank => Box::new(opel::OpelDirektbankConnector::new()),
+        ConnectorKind::Finpension => Box::new(finpension::FinpensionConnector),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));
@@ -838,6 +873,39 @@ mod matrix_tests {
                 proto.starts_with("FinTS"),
                 e.interface == Interface::Fints,
                 "{}: interface vs protocol {proto:?}",
+                e.name
+            );
+        }
+    }
+
+    /// The README column "Depot-Aktivitäten" comes from this: exactly the connectors that fill
+    /// `FetchResult::security_transactions` (search for it in `connectors/` when one is added).
+    #[test]
+    fn security_transactions_are_listed_for_the_connectors_that_deliver_them() {
+        let mut kinds: Vec<String> = BANK_MATRIX
+            .iter()
+            .filter(|e| e.capabilities.contains(&Capability::SecurityTransactions))
+            .map(|e| format!("{:?}", e.kind.expect("a connector")))
+            .collect();
+        kinds.sort();
+        assert_eq!(
+            kinds,
+            [
+                "Comdirect",
+                "Ffb",
+                "Fnz",
+                "Ibkr",
+                "ScalableCapital",
+                "TradeRepublic"
+            ]
+        );
+        for e in BANK_MATRIX
+            .iter()
+            .filter(|e| e.capabilities.contains(&Capability::SecurityTransactions))
+        {
+            assert!(
+                e.capabilities.contains(&Capability::Securities),
+                "{}: activities without positions",
                 e.name
             );
         }

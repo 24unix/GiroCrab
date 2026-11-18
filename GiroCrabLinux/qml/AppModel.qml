@@ -148,6 +148,16 @@ QtObject {
     property var vaultInfo: ({ path: "", size: -1, keychain_bypassed: false, demo_seed: false })
     property string errorMessage: ""
     property string errorTitle: ""
+    /// AppModel+Transfer.swift reportUnrecordedOrder (#808): the bank executed the order, the vault
+    /// could not record it (no optimistic booking, planned transfer or standing order; for a
+    /// collection the mandates are not marked as collected).
+    function reportUnrecordedOrder(error, debit) {
+        const message = debit
+            ? qsTr("Die Bank hat die Lastschriften ausgeführt, GiroCrab konnte sie aber nicht speichern. Die Mandate sind nicht als eingezogen markiert: Prüfen Sie sie vor dem nächsten Einzug, sonst wird doppelt eingezogen.")
+            : qsTr("Die Bank hat den Auftrag ausgeführt, GiroCrab konnte ihn aber nicht speichern. Er erscheint mit dem nächsten Abruf. Senden Sie ihn nicht erneut.")
+        errorTitle = qsTr("Ausgeführt, aber nicht gespeichert")
+        errorMessage = message + "\n\n" + error
+    }
     property string toast: ""
     property bool showAddBank: false
     property bool showMoneyMoneyImport: false
@@ -1682,6 +1692,14 @@ QtObject {
     function switchComdirectAccess(id) { run(() => core("switch_comdirect_access", { connection_id: id })); reloadAll() }
     function updateConnection(id, name, login) { run(() => core("update_bank_connection", { connection_id: id, display_name: name, login_name: login })); reloadAccounts() }
     function setConnectionPin(id, pin) { run(() => core("set_connection_pin", { connection_id: id, pin: pin })) }
+    /// Enable Banking application of one login (#824): its own, else the default one.
+    function connectionEnableBankingApp(id) { try { return core("connection_enable_banking_app", { connection_id: id }) || null } catch (e) { return null } }
+    function connectionEnableBankingKey(id) { try { return core("connection_enable_banking_key", { connection_id: id }) || "" } catch (e) { return "" } }
+    /// Stores the application of this login only; the default and all other logins keep theirs.
+    function setConnectionEnableBankingApp(id, applicationID, pem) {
+        const changed = run(() => core("set_connection_enable_banking_app", { connection_id: id, application_id: applicationID, private_key_pem: pem }))
+        if (changed) toast = qsTr("Anwendung für diesen Bankzugang gespeichert. Beim nächsten Abruf ist eine neue Zustimmung nötig.")
+    }
 
     // MARK: - Sync (AppModel.swift › requestSync … finishSync)
     property var syncingConnectionID: null
@@ -2376,7 +2394,7 @@ QtObject {
         next(0)
     }
     function canFetchStatements(a) {
-        return a && a.connector && a.kind !== "Loan" && ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric"].indexOf(a.connector) >= 0
+        return a && a.connector && a.kind !== "Loan" && ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Easybank", "FordMoney", "OpelDirektbank"].indexOf(a.connector) >= 0
     }
     function fetchStatements(a) {
         if (syncingConnectionID !== null) return
@@ -3321,6 +3339,12 @@ QtObject {
         } else if (step.Finished) {
             pollTimer.stop()
             activeChallenge = null; activeTransfer = null; transferBusy = false
+            // #808: executed but not stored – still finish as sent (no resend), then warn
+            const recordError = step.Finished.outcome.record_error
+            if (recordError) {
+                const debit = activeTransferIsDebit
+                Qt.callLater(() => reportUnrecordedOrder(recordError, debit))
+            }
             if (activeTransferIsDebit) { activeTransferIsDebit = false; DirectDebits.finishGroup(); return }
             if (activeTransferIsStanding) {
                 activeTransferIsStanding = false
@@ -3994,8 +4018,9 @@ QtObject {
         if (!isDemo && ["AmazonOrders", "Fnz", "Quirion", "SchwaebischHall"].indexOf(c.connector) >= 0) return true
         if (isDemo || (c.connector !== "AmericanExpress" && c.connector !== "AmazonVisa")) return false
         const optIn = settingEntry(enableBankingOptInKey(c.connector))
-        const app = settingEntry("enablebanking.application_id"), key = settingEntry("enablebanking.private_key_pem")
-        return !cardUsesEnableBanking(optIn ? optIn.value : "", !!(app && app.has_value), !!(key && key.has_value))
+        // the card's own application (#824) or the default one
+        const app = connectionEnableBankingApp(c.id)
+        return !cardUsesEnableBanking(optIn ? optIn.value : "", !!(app && app.application_id), !!(app && app.has_key))
     }
 
     /// Not opened while the banking policy blocks this login (security lock); a lock

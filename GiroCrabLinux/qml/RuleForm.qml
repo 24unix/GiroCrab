@@ -33,7 +33,10 @@ Item {
         { id: "Purpose", title: qsTr("Verwendungszweck") }, { id: "BookingText", title: qsTr("Buchungstext") },
         { id: "CounterpartyIban", title: qsTr("IBAN") }
     ]
-    readonly property var categoryOptions: AppModel.categories.map(c => ({ id: c.id, title: "    ".repeat(c.depth) + c.name }))
+    // a rule that only adds tags (#580, made in the Mac app) keeps showing that choice; setting
+    // tags on rules is not in the Linux UI yet, so new rules always need a category
+    readonly property var categoryOptions: (rule && rule.category_id === 0 ? [{ id: 0, title: qsTr("Keine (nur Tags)") }] : [])
+        .concat(AppModel.categories.map(c => ({ id: c.id, title: "    ".repeat(c.depth) + c.name })))
 
     ColumnLayout {
         anchors.fill: parent

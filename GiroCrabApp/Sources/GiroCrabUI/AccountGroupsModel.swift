@@ -637,6 +637,30 @@ struct AccountMenuSection: Identifiable {
 }
 
 extension AppModel {
+    /// Another account carries the same name (two "Konto flex" of different holders): the owner tells
+    /// them apart, so menus and lists add it.
+    func hasNamesake(_ account: Account) -> Bool {
+        accountsByID.values.contains { $0.id != account.id && $0.name == account.name }
+    }
+
+    /// What tells the account apart from its namesakes: its owner, or – when it has none or a namesake
+    /// has the same – the end of its IBAN / account number. Empty without a namesake.
+    func accountDistinction(_ account: Account) -> String {
+        let others = accountsByID.values.filter { $0.id != account.id && $0.name == account.name }
+        guard !others.isEmpty else { return "" }
+        if !account.owner.isEmpty, !others.contains(where: { $0.owner == account.owner }) { return account.owner }
+        let number = (account.iban.isEmpty ? account.accountNumber : account.iban).filter { !$0.isWhitespace }
+        return number.isEmpty ? account.owner : "…" + number.suffix(4)
+    }
+
+    /// The account's name, with what tells it apart when another account has the same name.
+    func accountLabel(_ account: Account) -> String {
+        let distinction = accountDistinction(account)
+        return distinction.isEmpty ? account.name : "\(account.name) · \(distinction)"
+    }
+}
+
+extension AppModel {
     /// All accounts grouped and ordered exactly like the sidebar shows them
     /// in the current `accountView` (by group, bank or kind). Empty sections
     /// are dropped.

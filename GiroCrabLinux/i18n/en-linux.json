@@ -155,6 +155,7 @@
   "PDFs und Fotos (*.pdf *.png *.jpg *.jpeg *.heic)": "PDFs and photos (*.pdf *.png *.jpg *.jpeg *.heic)",
   "PNG-Bild (*.png)": "PNG image (*.png)",
   "Passwort der Schlüsseldatei": "Key file password",
+  "Passwort der Schlüsseldatei (leer = unverändert)": "Key file password (empty = unchanged)",
   "Passwort und Schlüsseldatei geprüft": "Password and key file checked",
   "PostBox · %1": "PostBox · %1",
   "Privater Schlüssel (*.pem *.key *.txt)": "Private key (*.pem *.key *.txt)",

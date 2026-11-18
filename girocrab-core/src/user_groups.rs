@@ -58,6 +58,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::connectors::group_for;
 use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
+use crate::fnv::Fnv1a64;
 use crate::i18n::{tr, trf};
 use crate::models::{Account, UserGroup};
 use crate::schema::has_column;
@@ -140,14 +141,10 @@ pub(crate) fn account_color_hash(
     login: &str,
     external_ref: &str,
 ) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for part in [connector, bank_code, login, external_ref] {
-        for b in part.bytes().chain(std::iter::once(0x1f)) {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-    h
+    [connector, bank_code, login, external_ref]
+        .into_iter()
+        .fold(Fnv1a64::default(), |h, part| h.field(part))
+        .finish()
 }
 
 /// Default colours for accounts without a chosen one (`hashes`: account id →

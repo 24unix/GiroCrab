@@ -7,11 +7,16 @@
 //!       (maximum window: 31 days, so history is requested month by month)
 //!
 //! No interactive 2FA: authentication uses the user's own REST app.
+//!
+//! With `paypal.api_signature` set, the classic NVP API is used instead
+//! (API username/password/signature, see [`super::paypal_nvp`]); account refs
+//! and transaction ids are the same, so switching keeps the stored bookings.
 
 use async_trait::async_trait;
 use chrono::{Duration, NaiveDate, Utc};
 use serde_json::Value;
 
+use super::paypal_nvp::{NvpClient, NvpCredentials};
 use super::{
     http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase,
     RemoteAccount, RemoteTransaction,
@@ -25,6 +30,17 @@ pub struct PayPalConnector {
     client: Option<reqwest::Client>,
     base: String,
     token: SecretString,
+    nvp: Option<NvpClient>,
+}
+
+/// Connector state key: ids whose GetTransactionDetails were already looked up.
+const DETAILS_DONE_KEY: &str = "nvp_details_done";
+
+/// True when the classic NVP API (API signature) is configured.
+pub(crate) fn nvp_configured(settings: &std::collections::HashMap<String, SecretString>) -> bool {
+    settings
+        .get("paypal.api_signature")
+        .is_some_and(|s| !s.expose().trim().is_empty())
 }
 
 impl PayPalConnector {
@@ -33,6 +49,7 @@ impl PayPalConnector {
             client: None,
             base: String::new(),
             token: SecretString::default(),
+            nvp: None,
         }
     }
 
@@ -69,7 +86,24 @@ impl Default for PayPalConnector {
 #[async_trait]
 impl BankConnector for PayPalConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
-        self.base = if ctx.setting_or("paypal.environment", "live") == "sandbox" {
+        let sandbox = ctx.setting_or("paypal.environment", "live") == "sandbox";
+        if nvp_configured(&ctx.settings) {
+            let nvp = NvpClient::new(
+                sandbox,
+                NvpCredentials {
+                    user: ctx.setting("paypal.api_username")?.trim().to_string(),
+                    password: SecretString::new(ctx.setting("paypal.api_password")?.to_string()),
+                    signature: SecretString::new(
+                        ctx.setting("paypal.api_signature")?.trim().to_string(),
+                    ),
+                },
+            )?;
+            // Checks the credentials before the sync goes on.
+            nvp.balances(&ctx.login_name).await?;
+            self.nvp = Some(nvp);
+            return Ok(Phase::Ready);
+        }
+        self.base = if sandbox {
             "https://api-m.sandbox.paypal.com".into()
         } else {
             "https://api-m.paypal.com".into()
@@ -106,6 +140,35 @@ impl BankConnector for PayPalConnector {
 
     async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let mut out = FetchResult::default();
+        if let Some(nvp) = &self.nvp {
+            out.accounts = nvp.balances(&ctx.login_name).await?;
+            if out.accounts.is_empty() {
+                out.accounts.push(fallback_account(ctx));
+            }
+            (out.transactions, out.withdrawn) = nvp.transactions(since_date(ctx)).await?;
+            // Every search succeeded: the holds listed are all that are open in the period.
+            out.hold_prefix = Some(super::paypal_nvp::HOLD_PREFIX.into());
+            retain_known(&mut out);
+            // Purpose from GetTransactionDetails, once per booking (ids kept in the state).
+            let mut done: Vec<String> = ctx.state[DETAILS_DONE_KEY]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            nvp.fill_details(&mut out.transactions, &mut done).await;
+            let keep_from = done.len().saturating_sub(super::paypal_nvp::MAX_DONE_IDS);
+            let mut state = if ctx.state.is_object() {
+                ctx.state.clone()
+            } else {
+                serde_json::json!({})
+            };
+            state[DETAILS_DONE_KEY] = serde_json::json!(done[keep_from..]);
+            out.state = Some(state);
+            return Ok(out);
+        }
         let balances = self.get("/v1/reporting/balances?currency_code=ALL").await?;
         for b in balances["balances"].as_array().cloned().unwrap_or_default() {
             let cur = b["currency"].as_str().unwrap_or("EUR").to_string();
@@ -126,20 +189,9 @@ impl BankConnector for PayPalConnector {
             });
         }
         if out.accounts.is_empty() {
-            out.accounts.push(RemoteAccount {
-                external_ref: "paypal:EUR".into(),
-                name: "PayPal".into(),
-                owner: ctx.login_name.clone(),
-                iban: String::new(),
-                account_number: ctx.login_name.clone(),
-                currency: "EUR".into(),
-                kind: AccountKind::PaymentService,
-                balance_cents: 0,
-                balance_date: super::today(),
-            });
+            out.accounts.push(fallback_account(ctx));
         }
-        let mut start = NaiveDate::parse_from_str(&ctx.since, "%Y-%m-%d")
-            .unwrap_or_else(|_| Utc::now().date_naive() - Duration::days(90));
+        let mut start = since_date(ctx);
         let end_all = Utc::now().date_naive();
         while start <= end_all {
             let end = (start + Duration::days(30)).min(end_all);
@@ -219,13 +271,36 @@ impl BankConnector for PayPalConnector {
             }
             start = end + Duration::days(1);
         }
-        // Only keep transactions for accounts we know.
-        let known: Vec<String> = out
-            .accounts
-            .iter()
-            .map(|a| a.external_ref.clone())
-            .collect();
-        out.transactions.retain(|t| known.contains(&t.account_ref));
+        retain_known(&mut out);
         Ok(out)
     }
+}
+
+fn since_date(ctx: &ConnectContext) -> NaiveDate {
+    NaiveDate::parse_from_str(&ctx.since, "%Y-%m-%d")
+        .unwrap_or_else(|_| Utc::now().date_naive() - Duration::days(90))
+}
+
+fn fallback_account(ctx: &ConnectContext) -> RemoteAccount {
+    RemoteAccount {
+        external_ref: "paypal:EUR".into(),
+        name: "PayPal".into(),
+        owner: ctx.login_name.clone(),
+        iban: String::new(),
+        account_number: ctx.login_name.clone(),
+        currency: "EUR".into(),
+        kind: AccountKind::PaymentService,
+        balance_cents: 0,
+        balance_date: super::today(),
+    }
+}
+
+/// Only keep transactions for accounts we know.
+fn retain_known(out: &mut FetchResult) {
+    let known: Vec<String> = out
+        .accounts
+        .iter()
+        .map(|a| a.external_ref.clone())
+        .collect();
+    out.transactions.retain(|t| known.contains(&t.account_ref));
 }

@@ -78,6 +78,72 @@ fn postbox_needs_comdirect_fints_and_api_credentials() {
 }
 
 #[test]
+fn postbox_and_statements_are_refused_while_document_retrieval_is_off() {
+    let (_dir, v) = vault("girocrab-postbox-docs-off");
+    let c = connection(&v, "fints:20041155");
+    v.set_setting("comdirect.client_id".into(), "id".into())
+        .unwrap();
+    v.set_setting("comdirect.client_secret".into(), "secret".into())
+        .unwrap();
+    v.set_comdirect_postbox(c, true).unwrap();
+    store_fetch(
+        &v,
+        ConnectorKind::FinTsGeneric,
+        c,
+        FetchResult {
+            accounts: vec![RemoteAccount {
+                external_ref: "DE02200411550123456700".into(),
+                name: "Girokonto".into(),
+                owner: String::new(),
+                iban: "DE02200411550123456700".into(),
+                account_number: "123456700".into(),
+                currency: "EUR".into(),
+                kind: AccountKind::Checking,
+                balance_cents: 0,
+                balance_date: "2026-11-17".into(),
+            }],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let account: i64 = v
+        .db()
+        .unwrap()
+        .query_row(
+            "SELECT id FROM accounts WHERE connection_id = ?1",
+            [c],
+            |r| r.get(0),
+        )
+        .unwrap();
+    v.set_documents_fetch(c, false).unwrap();
+    // an explicit request must not run for nothing: what it brings would not be stored
+    let err = v
+        .clone()
+        .fetch_account_statements(account, "pin".into(), true)
+        .map(|_| ())
+        .unwrap_err();
+    assert!(err.to_string().contains("ausgeschaltet"), "{err}");
+    let err = v
+        .clone()
+        .fetch_comdirect_postbox(c, "pin".into(), true)
+        .map(|_| ())
+        .unwrap_err();
+    assert!(err.to_string().contains("ausgeschaltet"), "{err}");
+    // a regular sync leaves the PostBox out
+    let ctx_free = v.clone().begin_sync(c, "pin".into(), true);
+    assert!(ctx_free.is_ok());
+    v.set_documents_fetch(c, true).unwrap();
+    assert!(v
+        .clone()
+        .fetch_comdirect_postbox(c, "pin".into(), true)
+        .is_ok());
+    assert!(v
+        .clone()
+        .fetch_account_statements(account, "pin".into(), true)
+        .is_ok());
+}
+
+#[test]
 fn postbox_is_fetched_weekly_with_a_week_of_overlap() {
     let today = day("2026-11-17");
     // never fetched: everything

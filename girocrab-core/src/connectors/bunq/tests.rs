@@ -927,8 +927,14 @@ async fn bunq_receipt_survey() {
                 }
             }
             let docs = c
-                .receipts(id, &acc.external_ref, std::slice::from_ref(p))
-                .await;
+                .receipts(
+                    id,
+                    &acc.external_ref,
+                    std::slice::from_ref(p),
+                    RECEIPT_WINDOW_DAYS,
+                )
+                .await
+                .0;
             println!("  GiroCrab receipts(): {} document(s)", docs.len());
             for d in &docs {
                 println!(
@@ -1139,7 +1145,15 @@ async fn bunq_notes_survey() {
         with_files.len()
     );
     for (id, account_ref, p) in &with_files {
-        let docs = c.receipts(*id, account_ref, std::slice::from_ref(p)).await;
+        let docs = c
+            .receipts(
+                *id,
+                account_ref,
+                std::slice::from_ref(p),
+                RECEIPT_WINDOW_DAYS,
+            )
+            .await
+            .0;
         println!(
             "  {}/{} id={}: {} document(s) {:?}",
             p["type"].as_str().unwrap_or("-"),

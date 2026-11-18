@@ -22,6 +22,9 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
     ("comdirect.client_secret", "comdirect Client-Secret", "Wird beim Freischalten des API-Zugangs einmalig angezeigt.", "comdirect REST-API", true, ""),
     ("paypal.client_id", "PayPal Client-ID", "REST-App auf developer.paypal.com mit aktivierter „Transaction Search“ anlegen.", "PayPal", false, ""),
     ("paypal.client_secret", "PayPal Secret", "Secret derselben REST-App.", "PayPal", true, ""),
+    ("paypal.api_username", "PayPal API-Benutzername", "Nur für den Abruf per API-Signatur (klassische NVP-API): PayPal › Kontoeinstellungen › API-Zugriff.", "PayPal", false, ""),
+    ("paypal.api_password", "PayPal API-Passwort", "Passwort derselben API-Zugangsdaten (nicht das Login-Passwort).", "PayPal", true, ""),
+    ("paypal.api_signature", "PayPal API-Signatur", "Ist sie gesetzt, ruft GiroCrab per API-Signatur statt per REST-App ab.", "PayPal", true, ""),
     ("paypal.environment", "PayPal-Umgebung", "live (echte Daten) oder sandbox (nur Testdaten, z. B. „Initial Balance“)", "PayPal", false, "live"),
     ("bunq.environment", "bunq-Umgebung", "production oder sandbox (Test-API von bunq).", "bunq", false, "production"),
     ("enablebanking.application_id", "Enable Banking Application-ID", "Anwendung auf enablebanking.com registrieren (wird als JWT-„kid“ verwendet).", "Enable Banking (PSD2)", false, ""),
@@ -149,6 +152,11 @@ impl Vault {
     pub fn set_setting(&self, key: String, value: String) -> Result<(), CoreError> {
         let value = Zeroizing::new(value);
         let db = self.db()?;
-        Self::set_setting_inner(&db, &key, &value)
+        let tx = db.unchecked_transaction()?;
+        // a new default Enable Banking application must not move existing logins (#824)
+        super::enable_banking_apps::before_global_write(&tx, &key, &value)?;
+        Self::set_setting_inner(&tx, &key, &value)?;
+        tx.commit()?;
+        Ok(())
     }
 }

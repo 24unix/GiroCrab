@@ -86,8 +86,12 @@ struct AccountSelectionList: View {
                             if on { d.enabled.insert(c.accountRef) } else { d.enabled.remove(c.accountRef) }
                         })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(c.name).sensitive()
-                            Text(detail(c)).appFont(.caption).foregroundStyle(.secondary).sensitive()
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(c.name).sensitive()
+                                Spacer(minLength: 8)
+                                Text(detail(c)).appFont(.caption).foregroundStyle(.secondary).sensitive()
+                                    .lineLimit(1).truncationMode(.middle)
+                            }
                             if c.pending, !c.existingConnection.isEmpty {
                                 Label("Bereits über „\(redaction.masking(c.existingConnection))“ eingebunden", systemImage: "exclamationmark.triangle")
                                     .appFont(.caption).foregroundStyle(Theme.warning)
@@ -95,8 +99,9 @@ struct AccountSelectionList: View {
                         }
                     }
                 }
-                Text("Abrufen: Konto, Umsätze und Dokumente werden über diesen Zugang importiert. Überspringen: nichts davon; das Konto wird archiviert und ausgeblendet und behält seine gespeicherten Daten. Das Archiv-Symbol in der Seitenleiste zeigt archivierte Konten wieder an.")
+                Text("Aus: Das Konto wird archiviert und ausgeblendet, seine Daten bleiben erhalten.")
                     .appFont(.caption).foregroundStyle(.secondary)
+                    .help("Abrufen: Konto, Umsätze und Dokumente werden über diesen Zugang importiert. Überspringen: nichts davon; das Konto wird archiviert und ausgeblendet und behält seine gespeicherten Daten. Das Archiv-Symbol in der Seitenleiste zeigt archivierte Konten wieder an.")
                 if let error = d.error { Text(error).appFont(.caption).foregroundStyle(Theme.negative) }
                 if showsSaveButton {
                     Button(saveTitle) { save() }

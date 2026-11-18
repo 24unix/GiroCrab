@@ -62,6 +62,8 @@ pub enum ConnectorKind {
     FordMoney,
     /// Opel Direktbank savings accounts and Postbox PDFs via the web banking (TwoVerify approval).
     OpelDirektbank,
+    /// Finpension (CH): Säule 3a, Freizügigkeit, 1e – import of the CSV/JSON export (#300).
+    Finpension,
 }
 
 impl ConnectorKind {
@@ -92,6 +94,7 @@ impl ConnectorKind {
             ConnectorKind::Ffb => "ffb",
             ConnectorKind::FordMoney => "fordmoney",
             ConnectorKind::OpelDirektbank => "opeldirektbank",
+            ConnectorKind::Finpension => "finpension",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -151,6 +154,7 @@ impl ConnectorKind {
             ConnectorKind::Ffb,
             ConnectorKind::FordMoney,
             ConnectorKind::OpelDirektbank,
+            ConnectorKind::Finpension,
         ]
     }
 }
@@ -912,6 +916,11 @@ pub struct SavingsPlan {
     pub active: bool,
     pub total_invested_cents: i64,
     pub executions: Vec<PlanExecution>,
+    /// The days of the month the plan ran on in the month its rate is taken from, oldest first (a plan
+    /// can run more than once a month, on different days). Empty: only `day_of_month` is known.
+    #[uniffi(default = [])]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub run_days: Vec<u32>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

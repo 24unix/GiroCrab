@@ -119,7 +119,7 @@ final class BookingDensityTests: XCTestCase {
                 for density in BookingDensity.allCases {
                     defaults.set(density.rawValue, forKey: BookingDensity.defaultsKey)
                     let row = BookingRow(booking: booking)
-                        .environment(model).defaultAppStorage(defaults)
+                        .environment(model).listSettingsEnvironment().defaultAppStorage(defaults)
                         .appTextSize(size).frame(width: width)
                     let renderer = ImageRenderer(content: row)
                     let image = try XCTUnwrap(renderer.cgImage)
@@ -136,12 +136,12 @@ final class BookingDensityTests: XCTestCase {
                 defaults.set(BookingDensity.compact.rawValue, forKey: BookingDensity.defaultsKey)
                 model.selectedBookingID = booking.id
                 let expanded = ImageRenderer(content: BookingRow(booking: booking)
-                    .environment(model).defaultAppStorage(defaults).appTextSize(size).frame(width: width))
+                    .environment(model).listSettingsEnvironment().defaultAppStorage(defaults).appTextSize(size).frame(width: width))
                 let image = try XCTUnwrap(expanded.cgImage)
                 if size == .standard { expandedHeights[width] = image.height }
                 XCTAssertGreaterThanOrEqual(image.height, heights[2], "Compact details also reserve room for the date column")
                 let collapsed = ImageRenderer(content: BookingRow(booking: booking, compactDetailsCollapsed: true)
-                    .environment(model).defaultAppStorage(defaults).appTextSize(size).frame(width: width))
+                    .environment(model).listSettingsEnvironment().defaultAppStorage(defaults).appTextSize(size).frame(width: width))
                 XCTAssertEqual(try XCTUnwrap(collapsed.cgImage).height, heights[0],
                                "Closing details keeps selection but restores the single-line height")
                 if let directory = ProcessInfo.processInfo.environment["GIROCRAB_DENSITY_SHOTS"] {

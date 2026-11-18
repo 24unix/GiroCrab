@@ -15,10 +15,46 @@ extension AppModel {
         if Self.isMagicDemoLogin(c.loginName) { return false }
         if !isDemo, [.advanzia, .amazonOrders, .fnz, .quirion, .schwaebischHall, .equatePlus].contains(c.connector) { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
+        // the card's own application (#824) or the default one
+        let app = connectionEnableBankingApp(c.id)
         return !Self.cardUsesEnableBanking(
             optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
-            hasApp: settingEntry("enablebanking.application_id")?.hasValue ?? false,
-            hasKey: settingEntry("enablebanking.private_key_pem")?.hasValue ?? false)
+            hasApp: !(app?.applicationId.isEmpty ?? true),
+            hasKey: app?.hasKey ?? false)
+    }
+
+    /// Connections fed by an export file the user picks (no login, no sync).
+    func usesFileImport(_ c: BankConnection) -> Bool {
+        c.connector == .finpension && !isDemo && !Self.isMagicDemoLogin(c.loginName)
+    }
+
+    func importFinpension(_ c: BankConnection, url: URL) {
+        guard let pin = pinVault() else { return }
+        let ok = url.startAccessingSecurityScopedResource()
+        defer { if ok { url.stopAccessingSecurityScopedResource() } }
+        let fileName = url.lastPathComponent
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            showError(String(localized: "Finpension-Import fehlgeschlagen"), describe(error))
+            return
+        }
+        let id = c.id
+        Task {
+            do {
+                let s = try await pin.run { try $0.importFinpensionExport(connectionId: id, bytes: data) }
+                guard isCurrent(pin) else { return }
+                toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen aus \(fileName)")
+                reloadAll()
+            } catch where !isCurrent(pin) {
+                // Locked or switched vault meanwhile: no error over another vault.
+            } catch CoreError.InvalidInput {
+                showError(String(localized: "Nichts erkannt"), String(localized: "In \(fileName) wurden keine Finpension-Positionen oder -Buchungen erkannt. Erwartet: CSV oder JSON-Export mit ISIN, Anzahl, Kurs, Marktwert bzw. Datum, Beschreibung, Betrag."))
+            } catch {
+                showError(String(localized: "Finpension-Import fehlgeschlagen"), describe(error))
+            }
+        }
     }
 
     static func enableBankingOptInKey(_ kind: ConnectorKind) -> String {

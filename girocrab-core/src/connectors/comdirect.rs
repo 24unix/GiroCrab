@@ -591,8 +591,9 @@ impl BankConnector for ComdirectConnector {
                 holds_ok = false;
             }
         }
-        // PostBox documents (optional, errors are ignored)
-        if let Some(first) = out.accounts.first().map(|a| a.external_ref.clone()) {
+        // PostBox documents (optional, errors are ignored; not when document retrieval is off)
+        if ctx.settings.contains_key(super::DOCUMENTS_OFF) {
+        } else if let Some(first) = out.accounts.first().map(|a| a.external_ref.clone()) {
             let docs = self.postbox(&first, &ctx.since).await;
             out.documents.extend(docs);
         }

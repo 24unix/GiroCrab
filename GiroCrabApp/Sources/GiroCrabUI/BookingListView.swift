@@ -5,7 +5,7 @@ import GiroCrabCore
 /// inspector, bookings grouped into white day cards
 /// with the daily sum in the card header.
 struct BookingStreamView: View {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(\.textScale) private var textScale
     /// The empty state repeats the search text, which is drawn as a parameter
     /// `Text` and cannot carry `.sensitive()`.
@@ -13,21 +13,17 @@ struct BookingStreamView: View {
 
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
-    @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
-    /// View › "Auswertungen anzeigen" (GitHub #233): hides the charts and analysis cards.
-    @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
-    @AppStorage(ViewLayout.budgetsKey) private var showBudgets: Bool = true
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSize
-    @State private var showCashflowIOS = false
     #endif
 
     var body: some View {
         @Bindable var model = model
-        let isOverview: Bool = { if case .allAccounts? = model.sidebarSelection { return true }; return false }()
+        // Per-item flags instead of `sidebarSelection`: they change only when „Alle Konten“ /
+        // „Neue Umsätze“ is entered or left, so a switch between categories leaves this view alone.
+        let isOverview = model.sidebarRowSelection(for: .allAccounts).isSelected
         // „Neue Umsätze“: account cards instead of day cards, no charts
-        let isNewBookings = model.sidebarSelection == .newBookings
-        let cards = ViewLayout.cards(statistics: showStatistics, budgets: showBudgets)
+        let isNewBookings = model.sidebarRowSelection(for: .newBookings).isSelected
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
@@ -65,35 +61,7 @@ struct BookingStreamView: View {
                         if !emptyVault && model.scope != .investments {
                             MerchantLogoTipView()
                         }
-                        if model.scope == .investments {
-                            InvestmentDashboardView()
-                        } else if cards.any, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics {
-                            // Overview: always; single account: only when toggled on.
-                            #if os(iOS)
-                            if cards.cashflow {
-                                DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
-                                    VStack(spacing: ViewLayout.cardGap) {
-                                        CashflowCard()
-                                        if cards.budgets { BudgetProgressCard() }
-                                    }
-                                    .padding(.top, 8)
-                                }
-                                .appFont(.subheadline, weight: .medium)
-                                .padding(.horizontal, 14).padding(.vertical, 10)
-                                .frame(maxWidth: .infinity)
-                                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
-                            } else {
-                                BudgetProgressCard()
-                            }
-                            #else
-                            if cards.cashflow {
-                                CashflowCard().transition(Motion.slide(.top))
-                            }
-                            if cards.budgets {
-                                BudgetProgressCard().transition(Motion.slide(.top))
-                            }
-                            #endif
-                        }
+                        StreamAnalysisCards(isOverview: isOverview, isNewBookings: isNewBookings, hasAccounts: !model.allAccounts.isEmpty)
                         if model.isLoadingSelection {
                             ProgressView().controlSize(.small)
                                 .frame(maxWidth: .infinity)
@@ -119,14 +87,15 @@ struct BookingStreamView: View {
                                 if density == .compact, case .header = item { return false }
                                 return true
                             }) { item in
+                                // No `.id(day/booking)` here: identity is the position (`StreamItem`),
+                                // an explicit id would rebuild every row of a new list.
                                 switch item {
-                                case .header(let day):
-                                    DayHeader(day: day, balance: model.listBalances.days[day.date]).padding(.top, day.id == firstDayID ? ViewLayout.cardGap : 14)
-                                        .trackScrollDay(day.date).id(day.id)
-                                case .row(let b, let isLast):
+                                case .header(let day, let n):
+                                    DayHeader(day: day, balance: model.listBalances.days[day.date]).padding(.top, n == 0 ? ViewLayout.cardGap : 14)
+                                        .trackScrollDay(day.date)
+                                case .row(let b, let isLast, _):
                                     DayCardRow(booking: b, isLast: isLast, balance: model.listBalances.bookings[b.id])
                                         .trackScrollDay(b.bookingDate)
-                                        .id(b.id)
                                 }
                             }
                         }
@@ -173,18 +142,19 @@ struct BookingStreamView: View {
                 model.dropAnywhere(urls)
             }
             .background(SelectionScroller(proxy: proxy))
-            // another account, group, period or view: back to the newest day
-            .onChange(of: model.sidebarSelection) { _, _ in scrollToTop(proxy) }
-            .onChange(of: model.period) { _, _ in scrollToTop(proxy) }
+            // another account, group, period or view: back to the newest day; for a sidebar
+            // selection or a period once its data is in (`AppModel.requestStreamTop`)
+            .onChange(of: model.streamTopRequest) { _, _ in proxy.scrollTo(Self.topID, anchor: .top) }
             .onChange(of: model.scope) { _, _ in scrollToTop(proxy) }
             .onChange(of: model.scrollToDay) { _, jump in
                 guard let day = jump?.day else { return }
                 let first = model.dayGroups.first(where: { $0.date == day })?.bookings.first
+                let slots = model.streamSlots
                 withAnimation(Motion.animation(.easeOut(duration: 0.25))) {
-                    if density == .compact, let first {
-                        proxy.scrollTo(first.id, anchor: .top)
-                    } else {
-                        proxy.scrollTo(day, anchor: .top)
+                    if density == .compact, let first, let slot = slots.booking[first.id] {
+                        proxy.scrollTo(slot, anchor: .top)
+                    } else if let slot = slots.day[day] {
+                        proxy.scrollTo(slot, anchor: .top)
                     }
                 }
                 // select the day's first booking so the detail pane follows
@@ -198,9 +168,9 @@ struct BookingStreamView: View {
                     let token = jump?.token
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(350))
-                        guard model.scrollToDay?.token == token else { return }
+                        guard model.scrollToDay?.token == token, let slot = model.streamSlots.booking[first.id] else { return }
                         withAnimation(Motion.animation(.easeOut(duration: 0.15))) {
-                            proxy.scrollTo(first.id, anchor: density == .standard ? nil : .top)
+                            proxy.scrollTo(slot, anchor: density == .standard ? nil : .top)
                         }
                     }
                 }
@@ -263,7 +233,7 @@ struct BookingStreamView: View {
         // A real window title (Window menu, Mission Control, VoiceOver); the
         // toolbar keeps its room for the scope picker.
         #if os(iOS)
-        .modifier(WindowTitle(title: model.title))
+        .modifier(WindowTitle())
         #endif
         .bookingOutputSheets()
     }
@@ -311,11 +281,6 @@ struct BookingStreamView: View {
         #endif
     }
 
-    private var firstDayID: String? {
-        for case .header(let d) in model.streamItems { return d.id }
-        return nil
-    }
-
     private static let topID = "stream-top"
     #if !os(iOS)
     /// Gap between the fixed header and the first card of the scroll content.
@@ -329,6 +294,56 @@ struct BookingStreamView: View {
     }
 }
 
+
+/// Investment dashboard or the cashflow and budget cards above the booking stream. A view of
+/// its own: its `@AppStorage` settings never compare equal, so in `BookingStreamView` they made
+/// the whole stream re-run whenever its parent was re-created (on every sidebar selection).
+private struct StreamAnalysisCards: View {
+    @Environment(AppModel.self) private var model
+    let isOverview: Bool
+    let isNewBookings: Bool
+    let hasAccounts: Bool
+    @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
+    /// View › "Auswertungen anzeigen" (GitHub #233): hides the charts and analysis cards.
+    @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
+    @AppStorage(ViewLayout.budgetsKey) private var showBudgets: Bool = true
+    #if os(iOS)
+    @State private var showCashflowIOS = false
+    #endif
+
+    var body: some View {
+        let cards = ViewLayout.cards(statistics: showStatistics, budgets: showBudgets)
+        if model.scope == .investments {
+            InvestmentDashboardView()
+        } else if cards.any, !isNewBookings, hasAccounts, isOverview || showAnalytics {
+            // Overview: always; single account: only when toggled on.
+            #if os(iOS)
+            if cards.cashflow {
+                DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
+                    VStack(spacing: ViewLayout.cardGap) {
+                        CashflowCard()
+                        if cards.budgets { BudgetProgressCard() }
+                    }
+                    .padding(.top, 8)
+                }
+                .appFont(.subheadline, weight: .medium)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
+            } else {
+                BudgetProgressCard()
+            }
+            #else
+            if cards.cashflow {
+                CashflowCard().transition(Motion.slide(.top))
+            }
+            if cards.budgets {
+                BudgetProgressCard().transition(Motion.slide(.top))
+            }
+            #endif
+        }
+    }
+}
 
 /// Print and export sheets plus the file exporters behind the menu commands; shared by the
 /// booking list and the depot view, so a command works in both.
@@ -406,7 +421,7 @@ struct MerchantFocusBar: View {
 }
 
 struct DayCardSegment: ViewModifier {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     let isTop: Bool
     let isBottom: Bool
 
@@ -440,7 +455,7 @@ struct DayCardSegment: ViewModifier {
 
 /// Date groups bookings without repeating a daily total.
 struct DayHeader: View {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(AppModel.self) private var model
     let day: DayGroup
     /// End-of-day balance (#577); nil = none shown.
@@ -485,7 +500,11 @@ private struct StreamDayTracker: ViewModifier {
     /// Distance from the top edge of the scroll view in points.
     private static let line: CGFloat = 24
     @Environment(AppModel.self) private var model
-    @State private var crossing = false
+    /// The day this element counted in `scrollCrossing` while it crosses the line; nil = not on
+    /// the line. Kept instead of a flag because elements are reused for other days (positional
+    /// identity, `StreamItem`): a release must hit the day that was counted, whichever of the
+    /// geometry callback and the day change runs first.
+    @State private var counted: String?
     let day: String
 
     func body(content: Content) -> some View {
@@ -494,26 +513,36 @@ private struct StreamDayTracker: ViewModifier {
                 let f = proxy.frame(in: .named(Self.space))
                 return f.minY <= Self.line && f.maxY > Self.line
             } action: { crosses in
-                guard crosses != crossing else { return }
-                crossing = crosses
+                guard crosses != (counted != nil) else { return }
                 if crosses {
-                    model.scrollCrossing[day, default: 0] += 1
+                    count(day)
                     if model.scrollFocusDay != day { model.scrollFocusDay = day }
                 } else {
-                    release()
+                    releaseCounted()
                 }
             }
             // the lazy stack drops rows that scrolled far away without a last callback
-            .onDisappear {
-                guard crossing else { return }
-                crossing = false
-                release()
+            .onDisappear { releaseCounted() }
+            // Reused for another day while on the line: the count moves to the new day. The
+            // chart marker is left alone; a new list brings its own (`requestStreamTop`), and
+            // pointing it at whatever day sits at the old offset made it jump.
+            .onChange(of: day) {
+                guard counted != nil else { return }
+                releaseCounted()
+                count(day)
             }
+    }
+
+    private func count(_ day: String) {
+        model.scrollCrossing[day, default: 0] += 1
+        counted = day
     }
 
     /// A day has several elements (header, rows): the focus ends only when none of them is
     /// left on the line. A short delay covers the hand-over to the next day's element.
-    private func release() {
+    private func releaseCounted() {
+        guard let day = counted else { return }
+        counted = nil
         let left = (model.scrollCrossing[day] ?? 1) - 1
         model.scrollCrossing[day] = left > 0 ? left : nil
         guard left <= 0, model.scrollFocusDay == day else { return }
@@ -525,15 +554,15 @@ private struct StreamDayTracker: ViewModifier {
 }
 
 private extension View {
-    /// Must come before `.id(...)`: after it, the geometry modifier takes the scroll target away
-    /// from `ScrollViewProxy.scrollTo` and every jump to a day or booking does nothing.
+    /// Rows carry no `.id(...)` (see `StreamItem`); one placed after this modifier would take the
+    /// scroll target away from `ScrollViewProxy.scrollTo`, so every jump would do nothing.
     func trackScrollDay(_ day: String) -> some View { modifier(StreamDayTracker(day: day)) }
 }
 
 /// One booking of a day card; the last one closes the card.
 struct DayCardRow: View {
     @Environment(\.textScale) private var textScale
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(AppModel.self) private var model
     let booking: Booking
     let isLast: Bool
@@ -589,6 +618,8 @@ struct DayCardRow: View {
         .onChange(of: model.selectedBookingID) { _, id in
             if id != booking.id { compactDetailsCollapsed = false }
         }
+        // the row is reused for another booking (positional identity, `StreamItem`)
+        .onChange(of: booking.id) { compactDetailsCollapsed = false }
     }
 
     @ViewBuilder
@@ -662,7 +693,7 @@ enum ListPurpose {
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
     @Environment(\.reportRedaction) private var redaction
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
     let booking: Booking
@@ -671,11 +702,9 @@ struct BookingRow: View {
     /// Amazon orders: drill-down of all items (and the refunded order's items)
     /// below the row; collapsed rows keep the uniform list height.
     @State private var amazonExpanded = false
-    @AppStorage(ViewLayout.hiddenCategoryChipAccountsKey) private var hiddenCategoryChipAccountsRaw = ""
+    @Environment(\.hiddenCategoryChipAccounts) private var hiddenCategoryChipAccounts
 
-    private var showsCategoryChip: Bool {
-        !hiddenCategoryChipAccountsRaw.split(separator: ",").compactMap { Int64($0) }.contains(booking.accountId)
-    }
+    private var showsCategoryChip: Bool { !hiddenCategoryChipAccounts.contains(booking.accountId) }
 
     private var showsDetails: Bool {
         density.showsDetails(isActive: density == .compact && model.selectedBookingID == booking.id && !compactDetailsCollapsed)
@@ -773,12 +802,8 @@ struct BookingRow: View {
                     HStack(spacing: 6) {
                         #if !os(iOS)
                         if model.showsAccountMarkers {
-                            ViewThatFits(in: .horizontal) {
-                                AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId),
-                                            symbol: model.accountSymbol(booking.accountId), compact: compactChip)
-                                AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId),
-                                            symbol: model.accountSymbol(booking.accountId), compact: true)
-                            }
+                            AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId),
+                                        symbol: model.accountSymbol(booking.accountId), compact: compactChip)
                         }
                         #endif
                         // category with the sidebar's icon and colour, then the payment method
@@ -971,6 +996,8 @@ struct BookingRow: View {
                 RowSelectionBackground(id: booking.id)
             }
         }
+        // the row is reused for another booking (positional identity, `StreamItem`)
+        .onChange(of: booking.id) { amazonExpanded = false }
     }
 }
 
@@ -1066,7 +1093,7 @@ private struct RowSelectionTraits: ViewModifier {
 /// Scrolls the stream to the selected booking. A view of its own, so the
 /// selection is not a dependency of the whole list.
 private struct SelectionScroller: View {
-    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.bookingDensity) private var density
     @Environment(AppModel.self) private var model
     let proxy: ScrollViewProxy
 
@@ -1074,17 +1101,14 @@ private struct SelectionScroller: View {
         Color.clear
             .onChange(of: model.selectedBookingID) { _, id in
                 guard let id else { return }
-                // the chart marker follows the selected booking (#593)
-                if let day = model.selectedBooking?.bookingDate, model.selectedBookingID == id, model.scrollFocusDay != day {
-                    model.scrollFocusDay = day
-                }
                 // the day jump already scrolled to the day: do not override it
                 if model.jumpSelectedBookingID == id { model.jumpSelectedBookingID = nil; return }
                 // Every row is an element of the lazy stream, so the proxy finds it
-                // even while it is off-screen.
+                // even while it is off-screen; its target is its position (`StreamItem`).
+                guard let slot = model.streamSlots.booking[id] else { return }
                 withAnimation(Motion.animation(.easeOut(duration: 0.15))) {
                     // Expanded rows can exceed the viewport: keep their title visible.
-                    proxy.scrollTo(id, anchor: density == .standard ? nil : .top)
+                    proxy.scrollTo(slot, anchor: density == .standard ? nil : .top)
                 }
             }
     }
@@ -1141,11 +1165,13 @@ struct AccountChip: View {
     let label: String
     let color: Color
     var symbol = "building.columns"
-    /// Narrow rows: just the symbol (the category keeps the room).
+    /// Narrow rows: just the symbol (the category keeps the room). Otherwise the label shows
+    /// whenever the whole chip fits the room the row offers.
     var compact = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        AccountChipLayout {
+            Capsule().fill(color.opacity(0.12))
             Image(systemName: symbol)
                 .appFont(.caption, weight: .semibold)
                 .foregroundStyle(color)
@@ -1157,13 +1183,65 @@ struct AccountChip: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, compact ? 0 : 6)
-        .padding(.vertical, 1.5)
-        .background(Capsule().fill(color.opacity(compact ? 0 : 0.12)))
-        .fixedSize()
+        // a label that does not fit is placed outside the chip
+        .clipped()
         .help(label)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Konto: \(label)"))
+    }
+}
+
+/// Symbol and label in a tinted capsule, or only the symbol when the full chip does not fit
+/// the offered width (or there is no label). One layout instead of `ViewThatFits` over a full
+/// and a compact chip, which built and measured both for every booking row on screen.
+/// Subviews: capsule, symbol, optional label.
+private struct AccountChipLayout: Layout {
+    private static let padding: CGFloat = 6
+    private static let spacing: CGFloat = 4
+    private static let vertical: CGFloat = 1.5
+
+    /// Ideal sizes, measured once per subview change: the stack around the chip asks for its
+    /// size several times per layout pass.
+    struct Sizes {
+        var icon: CGSize
+        var label: CGSize?
+        var full: CGSize?
+        var compact: CGSize
+    }
+
+    func makeCache(subviews: Subviews) -> Sizes {
+        let icon = subviews[1].sizeThatFits(.unspecified)
+        let label = subviews.count > 2 ? subviews[2].sizeThatFits(.unspecified) : nil
+        let full = label.map {
+            CGSize(width: Self.padding * 2 + icon.width + Self.spacing + $0.width,
+                   height: max(icon.height, $0.height) + Self.vertical * 2)
+        }
+        return Sizes(icon: icon, label: label, full: full,
+                     compact: CGSize(width: icon.width, height: icon.height + Self.vertical * 2))
+    }
+
+    func updateCache(_ cache: inout Sizes, subviews: Subviews) {
+        cache = makeCache(subviews: subviews)
+    }
+
+    /// The full chip when it fits `width` (nil: ideal size, no limit).
+    private func full(_ cache: Sizes, within width: CGFloat?) -> CGSize? {
+        cache.full.flatMap { (width ?? .infinity) >= $0.width ? $0 : nil }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Sizes) -> CGSize {
+        full(cache, within: proposal.width) ?? cache.compact
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Sizes) {
+        let showsLabel = full(cache, within: bounds.width + 0.5) != nil
+        let iconX = bounds.minX + (showsLabel ? Self.padding : 0)
+        subviews[0].place(at: bounds.origin, proposal: showsLabel ? ProposedViewSize(bounds.size) : .zero)
+        subviews[1].place(at: CGPoint(x: iconX, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(cache.icon))
+        guard subviews.count > 2, let label = cache.label else { return }
+        // outside the clipped bounds when it does not fit
+        let labelX = showsLabel ? iconX + cache.icon.width + Self.spacing : bounds.maxX + 1000
+        subviews[2].place(at: CGPoint(x: labelX, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(label))
     }
 }
 
@@ -1171,7 +1249,7 @@ struct AccountChip: View {
 /// emerald (or blue) badge; the sign always carries the direction too.
 struct AmountLabel: View {
     let cents: Int64
-    @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeStyle: NegativeAmountStyle = .neutral
+    @Environment(\.negativeAmountStyle) private var negativeStyle
 
     var body: some View {
         if cents > 0 {
@@ -1218,17 +1296,18 @@ struct LoadMoreBookingsFooter: View {
     }
 }
 
-/// macOS: the window carries the view's title, the toolbar does not show it
-/// (macOS 15+). iOS keeps the empty navigation title as before.
+/// Window title from `model.title`, read in the modifier's own body so a title change re-runs
+/// only this modifier, not the view that applies it. macOS: the window carries the view's
+/// title, the toolbar does not show it (macOS 15+). iOS keeps the empty navigation title.
 struct WindowTitle: ViewModifier {
-    let title: String
+    @Environment(AppModel.self) private var model
     /// The title bar is drawn by AppKit, so `.sensitive()` cannot cover it:
     /// any bug report capture shows the app name (the title may be an account).
     @Environment(\.reportRedaction) private var redaction
 
     func body(content: Content) -> some View {
         #if os(macOS)
-        let title = redaction.isDisjoint(with: [.personal, .labels]) ? title : "GiroCrab"
+        let title = redaction.isDisjoint(with: [.personal, .labels]) ? model.title : "GiroCrab"
         if #available(macOS 15.0, *) {
             content.navigationTitle(title).toolbar(removing: .title)
         } else {
@@ -1243,10 +1322,17 @@ struct WindowTitle: ViewModifier {
 /// Toolbar of the booking list. macOS: customizable (View › Symbolleiste
 /// anpassen …) – Überweisen and Abrufen are shown by default, the rest can be
 /// added; every command is also in the menu bar. iOS: unchanged.
+///
+/// macOS: the modifier's body reads no model state and holds no `@AppStorage`; each item's
+/// content is a view of its own that reads what it shows. Rebuilding the toolbar content
+/// re-bridges every item to AppKit (`ToolbarBridge`), so it must not happen on each sidebar
+/// or booking selection: a read here (or an `@AppStorage`, which never compares equal when
+/// the parent re-creates this modifier) did exactly that.
 struct MainToolbar: ViewModifier {
     @Environment(AppModel.self) private var model
-    @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
+    #if os(iOS)
     @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
+    #endif
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -1278,44 +1364,23 @@ struct MainToolbar: ViewModifier {
         #else
         content.toolbar(id: "girocrab.main") {
             ToolbarItem(id: "scope", placement: .principal) {
-                // Keep one customizable toolbar item, with the filter for the current view.
-                if model.sidebarSelection == .wealth {
-                    WealthScopePicker()
-                } else if model.sidebarSelection == .documents {
-                    DocumentsScopePicker()
-                } else {
-                    switch model.presentation {
-                    case .securities: DepotTabPicker()
-                    // Sachwerte have neither booking scopes nor depot tabs; the item stays so the
-                    // customizable toolbar keeps its layout
-                    case .tangible: Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
-                    case .bookings: BookingScopePicker().disabled(model.sidebarSelection == .newBookings)
-                    }
-                }
+                ScopeToolbarControl()
             }
             .defaultCustomization(.visible, options: .alwaysAvailable) // pinned: not draggable/removable, so the others keep their slots (#609)
             ToolbarItem(id: "transfer", placement: .primaryAction) {
-                Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
-                    .help("Neue Überweisung (⌘N)")
-                    .disabled(!model.canTransfer)
+                TransferToolbarButton()
             }
             ToolbarItem(id: "newBooking", placement: .primaryAction) {
-                Button { model.openManualBooking() } label: { Label("Neue Buchung", systemImage: "plus") }
-                    .help("Neue Buchung (⌥⌘N)")
-                    .disabled(!model.canAddManualBooking)
+                NewBookingToolbarButton()
             }
             ToolbarItem(id: "sync", placement: .primaryAction) {
-                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
-                    .help(model.bankingBlocksAll ? (BankingPolicy.shared.gate?.message ?? "") : String(localized: "Alle Konten abrufen (⌘R)"))
-                    .disabled(model.bankingBlocksAll)
+                SyncToolbarButton()
             }
             ToolbarItem(id: "inspector", placement: .primaryAction) {
-                Button { showInspector.toggle() } label: { Label("Informationen", systemImage: "sidebar.trailing") }
-                    .help(showInspector ? String(localized: "Informationen ausblenden (⌥⌘I)") : String(localized: "Informationen einblenden (⌥⌘I)"))
+                InspectorToolbarButton()
             }
             ToolbarItem(id: "privacy", placement: .primaryAction) {
-                Toggle(isOn: $privacyMode) { Label("Privatmodus", systemImage: privacyMode ? "eye.slash" : "eye") }
-                    .help(privacyMode ? String(localized: "Privatmodus beenden (⇧⌘H)") : String(localized: "Privatmodus: Beträge ausblenden (⇧⌘H)"))
+                PrivacyToolbarToggle()
             }
             extraToolbarItems
         }
@@ -1344,9 +1409,7 @@ struct MainToolbar: ViewModifier {
                 .help("Kategorisierungsregeln … (⌥⌘K)")
         }
         ToolbarItem(id: "lock", placement: .primaryAction, showsByDefault: false) {
-            Button { model.lock() } label: { Label("Tresor sperren", systemImage: "lock") }
-                .help("Tresor sperren (⌃⌘L)")
-                .disabled(!model.hasOwnVault)
+            LockToolbarButton()
         }
         ToolbarItem(id: "settings", placement: .primaryAction, showsByDefault: false) {
             SettingsLink { Label("Einstellungen", systemImage: "gearshape") }
@@ -1357,6 +1420,86 @@ struct MainToolbar: ViewModifier {
 }
 
 #if os(macOS)
+/// The one pinned toolbar item: the filter of the view in the booking column.
+private struct ScopeToolbarControl: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        // Keep one customizable toolbar item, with the filter for the current view.
+        if model.mainColumn == .wealth {
+            WealthScopePicker()
+        } else if model.mainColumn == .documents {
+            DocumentsScopePicker()
+        } else {
+            switch model.presentation {
+            case .securities: DepotTabPicker()
+            // Sachwerte have neither booking scopes nor depot tabs; the item stays so the
+            // customizable toolbar keeps its layout
+            case .tangible: Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            case .bookings: BookingScopePicker().disabled(model.sidebarRowSelection(for: .newBookings).isSelected)
+            }
+        }
+    }
+}
+
+private struct TransferToolbarButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
+            .help("Neue Überweisung (⌘N)")
+            .disabled(!model.canTransfer)
+    }
+}
+
+private struct NewBookingToolbarButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button { model.openManualBooking() } label: { Label("Neue Buchung", systemImage: "plus") }
+            .help("Neue Buchung (⌥⌘N)")
+            .disabled(!model.canAddManualBooking)
+    }
+}
+
+private struct SyncToolbarButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
+            .help(model.bankingBlocksAll ? (BankingPolicy.shared.gate?.message ?? "") : String(localized: "Alle Konten abrufen (⌘R)"))
+            .disabled(model.bankingBlocksAll)
+    }
+}
+
+private struct InspectorToolbarButton: View {
+    @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
+
+    var body: some View {
+        Button { showInspector.toggle() } label: { Label("Informationen", systemImage: "sidebar.trailing") }
+            .help(showInspector ? String(localized: "Informationen ausblenden (⌥⌘I)") : String(localized: "Informationen einblenden (⌥⌘I)"))
+    }
+}
+
+private struct PrivacyToolbarToggle: View {
+    @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
+
+    var body: some View {
+        Toggle(isOn: $privacyMode) { Label("Privatmodus", systemImage: privacyMode ? "eye.slash" : "eye") }
+            .help(privacyMode ? String(localized: "Privatmodus beenden (⇧⌘H)") : String(localized: "Privatmodus: Beträge ausblenden (⇧⌘H)"))
+    }
+}
+
+private struct LockToolbarButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button { model.lock() } label: { Label("Tresor sperren", systemImage: "lock") }
+            .help("Tresor sperren (⌃⌘L)")
+            .disabled(!model.hasOwnVault)
+    }
+}
+
 /// Modifier keys held at the last mouse-down in the app. SwiftUI runs a tap
 /// gesture after the event has passed, so `NSApp.currentEvent` no longer
 /// carries them; a local monitor records them as the click arrives.

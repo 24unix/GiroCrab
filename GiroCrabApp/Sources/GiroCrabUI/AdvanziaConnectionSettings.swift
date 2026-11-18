@@ -16,6 +16,13 @@ final class AdvanziaConnectionSettingsState {
     private let keychain: AdvanziaKeychainClient
     init(keychain: AdvanziaKeychainClient = .system) { self.keychain = keychain }
 
+    /// Differs from what was loaded: a password typed, the save switch or the release method changed.
+    var hasChanges: Bool {
+        guard loaded else { return false }
+        return !password.isEmpty || storePassword != hasSavedPassword
+            || authMethod != (AdvanziaAuthMethod(rawValue: profile?.authMethod ?? "") ?? .sms)
+    }
+
     func load(connectionID: Int64, model: AppModel) async {
         guard let pin = model.pinVault() else { return }
         self.pin = pin; busy = true

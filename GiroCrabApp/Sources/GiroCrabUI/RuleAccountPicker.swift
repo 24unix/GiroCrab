@@ -66,7 +66,7 @@ struct RuleAccountPicker: View {
                     ForEach(model.accountMenuSections) { section in
                         Section(section.title) {
                             ForEach(section.accounts.filter { !accountIds.contains($0.id) }) { a in
-                                Button("\(a.bankName) – \(a.name)") {
+                                Button("\(a.bankName) – \(model.accountLabel(a))") {
                                     accountIds = RuleAccountSelection.adding(a.id, to: accountIds)
                                 }
                             }

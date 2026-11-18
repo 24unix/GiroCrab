@@ -8,10 +8,26 @@ Verhalten und Texte kommen dabei 1:1 aus der Mac-App, auf Deutsch und Englisch. 
 Einstellungen › Sicherheit steht deshalb „Kern-Version“: Die Nummer gehört zum Kern, nicht zum
 Funktionsumfang der Oberfläche.
 
+## Korrekturen (Kern 0.8.0)
+
+- **Belegvorschau:** In „Belege & PostBox“ füllt das PDF die Breite der Vorschau und bleibt beim
+  Wechsel zwischen Belegen sichtbar (vorher blieb sie ab dem zweiten Beleg leer).
+- **Ausgeführt, aber nicht gespeichert (#808):** Führt die Bank einen Auftrag aus, den GiroCrab nicht
+  speichern kann, warnt jetzt ein Hinweis wie in der Mac-App, statt Erfolg zu melden. Bei
+  Lastschriften nennt er, dass die Mandate vor dem nächsten Einzug zu prüfen sind.
+- **Bankzugang bearbeiten:** Uberspace, FFB, Ford Money und Opel Direktbank haben wieder das Feld für
+  Passwort bzw. PIN samt „im Tresor speichern“; Easybank, Ford Money und Opel Direktbank bieten
+  „Kontoauszüge abrufen“ an. Bei der Commerzbank mit Schlüsseldatei (RAH-10) fragt der Dialog nach
+  dem „Passwort der Schlüsseldatei“, die Benutzerkennung ist fest.
+- **EquatePlus** erscheint unter Linux vorerst nicht im Bankkatalog: Sein Anmeldeablauf ist noch
+  nicht übernommen, die Auswahl öffnete das falsche Browserfenster.
+- **Regeln, die nur Tags setzen** (in der Mac-App angelegt), zeigen „→ Nur Tags“ und ihre Tags statt
+  einer leeren Kategorie; im Formular steht „Keine (nur Tags)“.
+
 ## Funktionsstand 0.7.5 (Kern 0.8.0)
 
 Mit diesem Schritt kann die Linux-Oberfläche alles, was die Mac-App 0.7.5 kann – bis auf die
-kleinen Lücken am Ende. Einige Funktionen sind schon aus neueren Mac-Versionen übernommen, weil
+kleinen Lücken, die damals am Ende standen. Einige Funktionen sind schon aus neueren Mac-Versionen übernommen, weil
 sie mit dem Übrigen eng zusammenhängen; sie sind mit *(Mac-App: erst nach 0.7.5)* markiert.
 
 ### Seitenleiste, Kategorien, Regeln
@@ -270,10 +286,6 @@ sie mit dem Übrigen eng zusammenhängen; sie sind mit *(Mac-App: erst nach 0.7.
 - Unten im Einstellungsfenster steht dezent die Version (z. B. „GiroCrab 0.8.0“), auf jedem Reiter.
   Wie „Kern-Version“ in Sicherheit ist es die Nummer des Kerns, auf dem die Linux-Oberfläche
   gebaut ist.
-
-### Noch nicht in der Linux-Oberfläche
-
-- RAH-10-Texte in „Bankzugang bearbeiten“
 
 ## Funktionsstand 0.7.0 (Kern 0.7.5)
 

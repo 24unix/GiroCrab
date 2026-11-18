@@ -943,8 +943,8 @@ impl MerchantResolver {
     }
 
     fn resolve_uncached(counterparty: &str, purpose: &str) -> MerchantInfo {
-        let cp = normalise(counterparty);
-        let pu = normalise(purpose);
+        let cp = normalise(&without_mail_local_parts(counterparty));
+        let pu = normalise(&without_mail_local_parts(purpose));
         // "PayPal *Spotify", "PayPal Europe ... Ihr Einkauf bei Spotify AB": look behind the processor.
         let ctx = format!("{cp} {pu}");
         if let Some(entry) = find_checked(&cp, &ctx) {
@@ -1219,6 +1219,23 @@ pub fn payment_method(
     crate::i18n::tr(m).to_string()
 }
 
+/// `s` with the part before the `@` of e-mail addresses removed: a mailbox name
+/// says nothing about the merchant ("paypal@shop.de" is the shop, not PayPal),
+/// the domain does.
+fn without_mail_local_parts(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains('@') {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    let words: Vec<&str> = s
+        .split(' ')
+        .map(|w| match w.split_once('@') {
+            Some((local, domain)) if !local.is_empty() && domain.contains('.') => domain,
+            _ => w,
+        })
+        .collect();
+    std::borrow::Cow::Owned(words.join(" "))
+}
+
 /// Human purpose without SEPA keys and terminal noise.
 pub fn clean_purpose(raw: &str) -> String {
     let mut s = raw.replace('\n', " ");
@@ -1249,9 +1266,10 @@ pub fn clean_purpose(raw: &str) -> String {
         .filter(|w| {
             !(w.starts_with("Debitk")
                 || w.starts_with("PP.")
+                // a date: four digits, then '-' (not a reference like "54544a4-…")
                 || (w.len() >= 7
                     && w.chars().take(4).all(|c| c.is_ascii_digit())
-                    && w.contains('-')))
+                    && w.as_bytes()[4] == b'-'))
         })
         .collect();
     words.join(" ").trim().trim_matches('.').trim().to_string()
@@ -1667,6 +1685,27 @@ mod tests {
         assert_eq!(
             clean_purpose("Debitk.1 2029-12 Lidl sagt Danke KASSEL"),
             "Lidl sagt Danke KASSEL"
+        ); // references that start with digits stay
+        assert_eq!(
+            clean_purpose("9AB12345CD678901E / 54544a4-4545bc45-4545 / shop@example.com"),
+            "9AB12345CD678901E / 54544a4-4545bc45-4545 / shop@example.com"
+        );
+    }
+
+    #[test]
+    fn mailbox_names_do_not_make_the_merchant() {
+        // "paypal@…" is the shop's mailbox, not a PayPal payment
+        let m = resolve_merchant(
+            "Beispiel GmbH".into(),
+            "T1 / R-1 / paypal@beispiel.de".into(),
+        );
+        assert_ne!(m.name, "PayPal");
+        let m = resolve_merchant("".into(), "paypal@beispiel.de".into());
+        assert_ne!(m.name, "PayPal");
+        // the domain still counts
+        assert_eq!(
+            resolve_merchant("".into(), "service@paypal.de".into()).name,
+            "PayPal"
         );
     }
 }

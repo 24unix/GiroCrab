@@ -199,7 +199,7 @@ struct BankSetupSheet: View {
                             .appFont(.caption, design: .monospaced)
                             .frame(height: 80)
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.border))
-                    } else if entry?.isSecret ?? key.contains("secret") {
+                    } else if AppModel.isSecretSetting(key, entry) {
                         SecureField(entry?.label ?? settingLabels[key] ?? key, text: binding(key))
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder)

@@ -63,6 +63,11 @@ struct SliceCompositionCard<Grouping: View, Footer: View>: View {
     @ViewBuilder var grouping: (Bool) -> Grouping
     @ViewBuilder var footer: () -> Footer
     @AppStorage private var displayRaw: String
+    /// "Alle anzeigen": the "Weitere (n)" slice is unfolded into its positions.
+    @State private var showAll = false
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.textScale) private var textScale
+    @Environment(\.reportRedaction) private var redaction
 
     init(slices: [DepotSlice], currency: String, foldsRing: Bool = true, filter: Binding<Set<String>?>,
          expandedKey: String, displayKey: String, note: LocalizedStringKey? = nil,
@@ -93,18 +98,19 @@ struct SliceCompositionCard<Grouping: View, Footer: View>: View {
                 Text(note).appFont(.caption).foregroundStyle(Theme.secondary)
             }
             if total > 0 {
-                let ring = foldsRing ? DepotComposition.fold(all, keep: DepotComposition.maxPositionSlices) : all
-                let tiles = DepotComposition.fold(all, keep: DepotComposition.maxTiles)
+                let ring = CompositionDrawing.ringSlices(all, foldsRing: foldsRing, showAll: showAll)
+                let tiles = CompositionDrawing.tileSlices(all, showAll: showAll)
                 // the clicked slice, as long as it still exists in the drawing that shows it
                 let selected = (display.wrappedValue == .tiles ? tiles : display.wrappedValue == .ring ? ring : all)
                     .first { filter != nil && $0.memberKeys == filter }?.id
-                switch display.wrappedValue {
-                case .ring:
-                    CompositionRing(slices: ring, total: total, currency: currency, selected: selected, select: choose)
-                case .bars:
-                    CompositionRankBars(slices: all, total: total, currency: currency, selected: selected, select: choose)
-                case .tiles:
-                    CompositionTreemap(slices: tiles, total: total, currency: currency, selected: selected, select: choose)
+                CompositionDrawing(display: display.wrappedValue, all: all, total: total, currency: currency,
+                                   foldsRing: foldsRing, showAll: showAll, selected: selected, select: choose)
+                if CompositionDrawing.isFolded(display.wrappedValue, all: all, foldsRing: foldsRing) || showAll {
+                    Button { withAnimation(Motion.animation(.easeInOut(duration: 0.2))) { showAll.toggle() } } label: {
+                        Label(showAll ? String(localized: "Weniger anzeigen") : String(localized: "Alle \(all.count) anzeigen"),
+                              systemImage: showAll ? "chevron.up.circle" : "list.bullet")
+                    }
+                    .buttonStyle(.plain).appFont(.caption).foregroundStyle(Theme.accent)
                 }
                 if filter != nil {
                     Button { filter = nil } label: {
@@ -129,16 +135,43 @@ struct SliceCompositionCard<Grouping: View, Footer: View>: View {
     @ViewBuilder
     private var controls: some View {
         #if os(iOS)
-        HStack(spacing: 10) { grouping(true); displayPicker }
+        HStack(spacing: 10) { grouping(true); displayTools }
             .onChange(of: displayRaw) { filter = nil }
         #else
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { grouping(false); displayPicker }
-            VStack(alignment: .leading, spacing: 8) { grouping(false); displayPicker }
-            HStack(spacing: 10) { grouping(true); displayPicker }
+            HStack(spacing: 12) { grouping(false); displayTools }
+            VStack(alignment: .leading, spacing: 8) { grouping(false); displayTools }
+            HStack(spacing: 10) { grouping(true); displayTools }
         }
         .onChange(of: displayRaw) { filter = nil }
         #endif
+    }
+
+    /// The display switch and the share button (the picture of what is shown, via the system share sheet).
+    private var displayTools: some View {
+        HStack(spacing: 10) {
+            displayPicker
+            shareButton
+        }
+    }
+
+    @ViewBuilder
+    private var shareButton: some View {
+        let all = slices
+        let total = all.reduce(Int64(0)) { $0 + $1.cents }
+        if total > 0 {
+            let drawing = CompositionDrawing(display: display.wrappedValue, all: all, total: total, currency: currency,
+                                             foldsRing: foldsRing, showAll: showAll)
+            let (scheme, scale, redaction) = (colorScheme, textScale, redaction)
+            ShareLink(item: CompositionSnapshot(render: {
+                CompositionSnapshot.png(of: drawing, scheme: scheme, textScale: scale, redaction: redaction)
+            }), preview: SharePreview("Zusammensetzung")) {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .buttonStyle(.borderless)
+            .help("Grafik als Bild teilen")
+            .accessibilityLabel("Grafik als Bild teilen")
+        }
     }
 
     /// Icons like the chart switch of the account header (#634): small segments, the name as help and

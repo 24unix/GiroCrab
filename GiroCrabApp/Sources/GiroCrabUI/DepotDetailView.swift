@@ -14,10 +14,13 @@ struct DepotData {
     let heldHistory: [String: ValuePosition]
     /// Positions no longer held that have a history, the latest sale first.
     let soldPositions: [ValuePosition]
+    /// Savings plans recognised in the activities (nil: not loaded).
+    var plans: InvestmentDashboard?
     var holdings: [Holding] { assets.map(\.holding) }
 
     init(accountId: Int64, revision: Int, assets: [ClassifiedAsset], transactions: [SecurityTransaction],
-         valuePoints: [DepotValuePoint], valuePositions: [ValuePosition]) {
+         valuePoints: [DepotValuePoint], valuePositions: [ValuePosition], plans: InvestmentDashboard? = nil) {
+        self.plans = plans
         self.accountId = accountId
         self.revision = revision
         self.assets = assets
@@ -72,12 +75,13 @@ struct DepotTabPicker: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .fixedSize()
-        .help("Positionen oder Wertpapieraktivitäten (⌘1, ⌘2)")
+        .help("Positionen, Wertpapieraktivitäten oder Sparpläne (⌘1, ⌘2, ⌘3)")
     }
 }
 
 /// A securities depot as a view of its own: value, four depot figures, positions or activities.
 /// No cash flow, budgets, booking scopes or booking filters; the search and the sort are the view's own.
+/// Layout, building blocks and the rules for changing it: `docs/DEPOT_UND_VERMOEGEN_UI.md`.
 struct DepotDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.reportRedaction) private var redaction
@@ -88,12 +92,24 @@ struct DepotDetailView: View {
     @State private var query = ""
     @State private var sort = DepotSort()
     @State private var activityFilter = DepotActivityFilter.all
+    @State private var activityYear: Int?
+    /// The savings plans grid page: 0 = up to now, each step back is one page of months earlier.
+    @State private var planPage = 0
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var planPageSize: Int { sizeClass == .compact ? 4 : 6 }
+    #else
+    private var planPageSize: Int { 6 }
+    #endif
     @State private var compositionMode = DepotCompositionMode.position
     /// Positions behind the slice clicked in the composition card (nil: all).
     @State private var compositionFilter: Set<String>?
     @State private var editingClassification: ClassificationEditRequest?
     @State private var historyRequest: PositionHistoryRequest?
     @State private var demoSheetShown = false
+    @State private var csvDocument = CSVFileDocument(data: Data())
+    @State private var csvFilename = "GiroCrab-Depot"
+    @State private var showCSVExporter = false
 
     private var currency: String { account.currency.isEmpty ? "EUR" : account.currency }
 
@@ -131,6 +147,57 @@ struct DepotDetailView: View {
         .capturableSheet(item: $editingClassification) { AssetClassificationSheet(request: $0).environment(model) }
         .capturableSheet(item: $historyRequest) { PositionHistorySheet(request: $0).environment(model) }
         .task(id: loadKey) { await reload() }
+        .onChange(of: account.id) { activityYear = nil; planPage = 0 }
+        // the year menu offers only the years of the period: a new period drops a year it no longer holds
+        .onChange(of: model.depotPeriodTitle) { activityYear = nil }
+        .onChange(of: planPage) { _, _ in Task { await reloadPlans() } }
+        // another width, another page size (iPad split, rotation): start again at the newest page, so no
+        // months fall between two pages
+        .onChange(of: planPageSize) { _, _ in
+            planPage = 0
+            Task { await reloadPlans() }
+        }
+        .fileExporter(isPresented: $showCSVExporter, document: csvDocument, contentType: .commaSeparatedText,
+                      defaultFilename: csvFilename) { result in
+            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
+        }
+    }
+
+    // MARK: CSV export (what the table shows: search, period and filter applied)
+
+    private func shownPositions(_ data: DepotData) -> [DepotPosition] {
+        let positions = DepotPosition.make(data.assets)
+        return DepotPosition.sorted(DepotPosition.filtered(DepotPosition.filtered(positions, query: query), keys: compositionFilter, inventory: positions), by: sort)
+    }
+
+    private func shownActivities(_ data: DepotData) -> [SecurityTransaction] {
+        let (from, to) = model.depotPeriodRange
+        let items = DepotActivities.filtered(data.transactions, accountId: account.id, filter: activityFilter,
+                                             query: query, from: from, to: to)
+        return DepotActivities.inYear(items, activityYear)
+    }
+
+    private func exportCSV(_ data: DepotData) {
+        switch model.depotTab {
+        case .positions:
+            csvDocument = CSVFileDocument(data: Data(DepotCSV.positions(shownPositions(data), currency: currency).utf8))
+            csvFilename = DepotCSV.filename(account: account.name, kind: "Positionen")
+        case .activities:
+            csvDocument = CSVFileDocument(data: Data(DepotCSV.activities(shownActivities(data), currency: currency).utf8))
+            csvFilename = DepotCSV.filename(account: account.name, kind: "Aktivitaeten", year: activityYear)
+        case .plans:
+            return   // the plans have no export
+        }
+        showCSVExporter = true
+    }
+
+    private func exportButton(_ data: DepotData) -> some View {
+        HStack {
+            Spacer()
+            Button { exportCSV(data) } label: { Label("Als CSV exportieren …", systemImage: "square.and.arrow.up") }
+                .buttonStyle(.borderless)
+                .help("Exportiert, was die Tabelle gerade zeigt (Suche, Zeitraum und Filter)")
+        }
     }
 
     /// iPhone: the tab switch sits in the page (macOS: in the toolbar).
@@ -146,9 +213,14 @@ struct DepotDetailView: View {
         if case .failed(let message) = load {
             failure(message)
         } else if let data {
-            switch model.depotTab {
-            case .positions: positionsTab(data, wide: wide)
-            case .activities: activitiesTab(data, wide: wide)
+            VStack(alignment: .leading, spacing: 8) {
+                // activities: the button sits in their filter row; positions have none
+                if model.depotTab == .positions, !data.assets.isEmpty { exportButton(data) }
+                switch model.depotTab {
+                case .positions: positionsTab(data, wide: wide)
+                case .activities: activitiesTab(data, wide: wide)
+                case .plans: plansTab(data)
+                }
             }
         } else {
             ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.top, 30)
@@ -156,19 +228,22 @@ struct DepotDetailView: View {
     }
 
     private func reload() async {
-        let id = account.id, revision = model.vaultRevision
+        let id = account.id, revision = model.vaultRevision, months = planPageSize, page = planPage
         if case .loaded(let d) = load, d.accountId == id, d.revision == revision {} else { load = .loading }
         do {
             let result = try await model.vaultOffMain { vault in
                 (try vault.classifiedAssets(accountId: id), try vault.listSecurityTransactions(accountId: id),
                  try vault.depotValueHistory(accountIds: [id], days: DepotValueHistory.lookbackDays),
-                 try vault.depotValuePositions(accountId: id))
+                 try vault.depotValuePositions(accountId: id),
+                 try vault.depotSavingsPlans(accountId: id, months: UInt32(months), endOffsetMonths: UInt32(page * months)))
             }
             // nil: locked or swapped meanwhile; a cancelled load never replaces newer data
             guard !Task.isCancelled, let result else { return }
             let data = DepotData(accountId: id, revision: revision, assets: result.0, transactions: result.1,
-                                 valuePoints: result.2, valuePositions: result.3)
+                                 valuePoints: result.2, valuePositions: result.3, plans: result.4)
             load = .loaded(data)
+            // paged or resized while this load ran: its plans are of the page it started with
+            if page != planPage || months != planPageSize { Task { await reloadPlans() } }
             // (developer) `--demo-sheet position-history`: once, the first position that has a history
             if model.options.demoSheetName == "position-history", !demoSheetShown,
                let p = DepotPosition.make(data.assets).lazy.compactMap({ data.valuePosition($0) }).first {
@@ -179,6 +254,20 @@ struct DepotDetailView: View {
             guard !Task.isCancelled else { return }
             load = .failed(describe(error))
         }
+    }
+
+    /// Only the savings plans again, after the period changed: the rest of the depot stays as loaded.
+    private func reloadPlans() async {
+        let id = account.id, revision = model.vaultRevision, page = planPage, months = planPageSize
+        guard case .loaded(let d) = load, d.accountId == id, d.revision == revision else { return }
+        let plans = try? await model.vaultOffMain {
+            try $0.depotSavingsPlans(accountId: id, months: UInt32(months), endOffsetMonths: UInt32(page * months))
+        }
+        // nil: locked or swapped meanwhile; the depot or the page changed again: this answer is stale
+        guard !Task.isCancelled, let plans, page == planPage, months == planPageSize,
+              case .loaded(var current) = load, current.accountId == id, current.revision == revision else { return }
+        current.plans = plans
+        load = .loaded(current)
     }
 
     private func failure(_ message: String) -> some View {
@@ -275,7 +364,7 @@ struct DepotDetailView: View {
     @ViewBuilder
     private func heldPositions(_ data: DepotData, wide: Bool) -> some View {
         let positions = DepotPosition.make(data.assets)
-        let shown = DepotPosition.sorted(DepotPosition.filtered(DepotPosition.filtered(positions, query: query), keys: compositionFilter, inventory: positions), by: sort)
+        let shown = shownPositions(data)
         if data.assets.isEmpty {
             ContentUnavailableView(
                 "Keine Positionen",
@@ -330,12 +419,63 @@ struct DepotDetailView: View {
 
     // MARK: activities
 
+    /// Pages back through the months of the plans grid: always one page is shown, the arrows move it.
+    private func planPager(_ data: DepotData) -> some View {
+        let months = data.plans?.months ?? []
+        let earliest = data.transactions.compactMap { $0.bookingDate.count >= 7 ? String($0.bookingDate.prefix(7)) : nil }.min()
+        let canGoBack = (months.first ?? "") > (earliest ?? "")
+        return HStack(spacing: 6) {
+            Spacer()
+            Button { planPage += 1 } label: { Image(systemName: "chevron.left") }
+                .disabled(!canGoBack)
+                .help("Frühere Monate")
+                .accessibilityLabel(Text("Frühere Monate"))
+            if let first = months.first, let last = months.last {
+                Text("\(DateText.monthLabel(first)) – \(DateText.monthLabel(last))")
+                    .appFont(.caption, monospacedDigit: true).foregroundStyle(Theme.secondary)
+            }
+            Button { planPage -= 1 } label: { Image(systemName: "chevron.right") }
+                .disabled(planPage == 0)
+                .help("Spätere Monate")
+                .accessibilityLabel(Text("Spätere Monate"))
+        }
+        .buttonStyle(.borderless)
+    }
+
+    /// The savings plans of this depot, in the same grid as "Sparpläne & Perks".
+    @ViewBuilder
+    private func plansTab(_ data: DepotData) -> some View {
+        let plans = data.plans.map { DepotPlans.matching($0, query: query) }
+        return VStack(alignment: .leading, spacing: 14) {
+            planPager(data)
+            if let plans, !plans.plans.isEmpty {
+                HStack(alignment: .top, spacing: 8) {
+                    KPI(title: "Monatlich investiert", subtitle: "\(plans.plans.filter(\.active).count) aktive Sparpläne · Rate des letzten Monats",
+                        value: Money.format(plans.totalMonthlyCents, currency: currency), tint: Theme.invest)
+                    // what the months of this page add up to (the plans' executions in the grid)
+                    KPI(title: "Investiert im Zeitraum",
+                        subtitle: "\(DateText.monthLabel(plans.months.first ?? "")) – \(DateText.monthLabel(plans.months.last ?? ""))",
+                        value: Money.format(plans.plans.flatMap(\.executions).reduce(0) { $0 + $1.amountCents }, currency: currency),
+                        tint: Theme.invest)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                PlanGrid(dashboard: plans, currency: currency)
+            } else if !query.isEmpty, data.plans?.plans.isEmpty == false {
+                ContentUnavailableView("Keine Treffer", systemImage: "magnifyingglass",
+                                       description: Text("Kein Sparplan passt zu „\(redaction.masking(query))“."))
+                    .padding(.top, 30)
+            } else {
+                ContentUnavailableView("Keine Sparpläne erkannt", systemImage: "calendar.badge.clock",
+                                       description: Text("In diesem Zeitraum wurden keine wiederkehrenden Sparplan-Käufe erkannt. Sparplan-Ausführungen erscheinen hier, sobald das Depot sie liefert."))
+                    .padding(.top, 30)
+            }
+        }
+    }
+
     @ViewBuilder
     private func activitiesTab(_ data: DepotData, wide: Bool) -> some View {
-        let (from, to) = model.depotPeriodRange
-        let shown = DepotActivities.filtered(data.transactions, accountId: account.id, filter: activityFilter,
-                                             query: query, from: from, to: to)
-        DepotActivitiesView(all: data.transactions, shown: shown, filter: $activityFilter, query: query,
+        let shown = shownActivities(data)
+        DepotActivitiesView(all: data.transactions, shown: shown, filter: $activityFilter, year: $activityYear, export: { exportCSV(data) }, query: query,
                             periodTitle: model.depotPeriodTitle, wide: wide)
     }
 }

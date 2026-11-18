@@ -37,6 +37,9 @@ jobs:
         with:
           draft: true
           generate_release_notes: true
+          body: |
+            > **Hinweis zu Windows & Android (Frühes Alpha-Stadium):**
+            > Die Pakete für **Windows** (`girocrab-windows-x86_64-setup.exe` / `.zip`) und **Android** (`GiroCrab-Android-alpha.apk`) befinden sich noch in einem frühen Entwicklungsstadium (Alpha). Funktionsumfang, Oberfläche und Sicherheitshärtung entsprechen noch **nicht** der signierten & notarisierten macOS-Version (`GiroCrab-macOS-arm64.dmg`). Bitte nutzt diese Vorab-Builds nur zum Ausprobieren (idealerweise im Demo-Modus oder mit einem Test-Tresor).
 
   windows-package:
     needs: draft-release
@@ -64,11 +67,50 @@ jobs:
           path: dist/*
           if-no-files-found: error
       - name: Attach to the draft release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: gh release upload "$TAG_NAME" dist/girocrab-windows-x86_64.zip dist/girocrab-windows-x86_64-setup.exe dist/SHA256SUMS.txt --clobber --repo "$REPO"
+
+  android-package:
+    needs: draft-release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build Android Alpha APK
+        working-directory: GiroCrabAndroid
+        run: gradle assembleDebug --console=plain --stacktrace
+      - name: Prepare Alpha Asset
+        run: |
+          mkdir -p dist
+          APK_SRC=$(ls GiroCrabAndroid/app/build/outputs/apk/debug/*.apk | head -1)
+          cp "$APK_SRC" dist/GiroCrab-Android-alpha.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: girocrab-android-alpha
+          path: dist/GiroCrab-Android-alpha.apk
+          if-no-files-found: error
+      - name: Attach Alpha APK to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "$TAG_NAME" dist/GiroCrab-Android-alpha.apk --clobber --repo "$REPO"
 
   sync-docs-website:
     # Stable releases only. README goes through a PR (main is protected); the website is pushed to
@@ -84,7 +126,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Configure git push auth
-        run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
       - name: Sync README and girocrab.de
         # The tag name goes in through the environment, not into the script text: this step
         # holds the website deploy token, and a tag name is attacker-chosen text for anyone

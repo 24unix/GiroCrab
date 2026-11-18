@@ -133,12 +133,27 @@ struct ConnectionEditSheet: View {
     @State private var tanMedium = ""
     private var isFinTs: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(connection.connector) }
     private var tanMediumKey: String { "fints.tan_medium.\(connection.id)" }
+    /// Application-ID / key: shown and saved for this login only (#824).
+    private static let ebIDKey = "enablebanking.application_id"
+    private static let ebPemKey = "enablebanking.private_key_pem"
+    private func isEBAppKey(_ key: String) -> Bool { key == Self.ebIDKey || key == Self.ebPemKey }
     @State private var values: [String: String] = [:]
+    /// Enable Banking application of this login as loaded (#824): saved per login, only when changed.
+    @State private var loadedEBApp: (id: String, pem: String) = ("", "")
     @State private var revealed: Set<String> = []
     @State private var importingKey = false
     @State private var status: ConnectionStatus?
     @State private var confirmRemove: BankConnection?
     @State private var selection = AccountSelectionDraft()
+    /// Document retrieval of this connection (only for banks that deliver documents).
+    @State private var documentsSupported = false
+    @State private var documentsFetch = true
+    /// "Dokumente abrufen" is off: nothing that fetches documents runs (PostBox included).
+    private var documentsBlocked: Bool { documentsSupported && !documentsFetch }
+    @State private var initialDocumentsFetch = true
+    /// The values as loaded: "Speichern" is only available once something differs.
+    @State private var initialValues: [String: String] = [:]
+    @State private var initialTanMedium = ""
     @State private var confirmClear: SessionClear?
 
     /// Session data whose deletion is being confirmed.
@@ -169,7 +184,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa, .advanzia: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus, .ffb, .fordMoney, .opelDirektbank: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus, .ffb, .fordMoney, .opelDirektbank, .finpension: return []
         }
     }
 
@@ -182,6 +197,8 @@ struct ConnectionEditSheet: View {
     private var advancedKeys: [String] {
         switch connection.connector {
         case .americanExpress: return ["enablebanking.use.amex", "enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url", "enablebanking.aspsp.amex", "enablebanking.country.amex"]
+        // Prototype #156: classic NVP API instead of the REST app.
+        case .payPal: return AppModel.payPalSignatureKeys
         case .amazonVisa: return ["enablebanking.use.amazonvisa", "enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url", "enablebanking.aspsp.amazonvisa", "enablebanking.country.amazonvisa"]
         default: return []
         }
@@ -230,6 +247,7 @@ struct ConnectionEditSheet: View {
 
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
     @State private var importingStatement = false
+    @State private var importingFinpension = false
     @State private var confirmSwitch = false
     /// comdirect via FinTS: PostBox through the bank's API as well (#838).
     @State private var postbox = false
@@ -247,6 +265,8 @@ struct ConnectionEditSheet: View {
     private var savesPortalLogin: Bool { connection.connector == .americanExpress }
     @State private var storePortalLogin = false
     @State private var portalUser = ""
+    @State private var initialPortalUser = ""
+    @State private var initialStorePortalLogin = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -270,7 +290,7 @@ struct ConnectionEditSheet: View {
                         LabeledContent("Gespeichert als") { Text(normalizePhoneNumber(input: login)).sensitive() }
                     }
                     let blz = connection.bankCode.isEmpty ? (descriptor?.bankCode ?? "") : connection.bankCode
-                    if !blz.isEmpty {
+                    if !blz.isEmpty, isFinTs {
                         LabeledContent("BLZ", value: blz)
                     }
                     if usesPin {
@@ -285,6 +305,10 @@ struct ConnectionEditSheet: View {
                         TextField("TAN-Medium", text: $tanMedium, prompt: Text("Optional"))
                             .autocorrectionDisabled()
                     }
+                    if documentsSupported {
+                        Toggle("Dokumente abrufen", isOn: $documentsFetch)
+                            .help("Belege, Kontoauszüge und PostBox-Dokumente werden bei jedem Abruf geladen. Aus: keine neuen Dokumente, bereits gespeicherte bleiben. Beim Einschalten lädt der nächste Abruf fehlende Dokumente nach.")
+                    }
                 } header: { Text("Zugang").appSectionHeader() }
                 if connection.connector == .advanzia {
                     AdvanziaConnectionFields(state: advanziaSettings)
@@ -293,6 +317,33 @@ struct ConnectionEditSheet: View {
                     Section {
                         ForEach(keys, id: \.self) { key in field(key) }
                     } header: { Text(sectionTitle).appSectionHeader() }
+                }
+                // Prototype #156: classic NVP API (API signature) instead of the REST app.
+                if connection.connector == .payPal {
+                    Section {
+                        DisclosureGroup("Erweitert: API-Signatur (klassische NVP-API)", isExpanded: $showAdvanced) {
+                            Text("Ist die API-Signatur gesetzt, ruft GiroCrab per API-Benutzername, API-Passwort und Signatur ab; Client-ID und Secret werden dann nicht gebraucht.")
+                                .appFont(.caption).foregroundStyle(Theme.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            ForEach(advancedKeys, id: \.self) { key in field(key) }
+                        }
+                    }
+                }
+                if connection.connector == .finpension {
+                    Section {
+                        Text("Finpension hat keine Schnittstelle: Laden Sie in Ihrem Finpension-Konto den Export (CSV oder JSON) mit Positionen und Cash-Buchungen herunter und lesen Sie ihn hier ein. Säule 3a, Freizügigkeit und 1e werden gleich behandelt. Es gibt keine Anmeldung und keinen Netzwerkzugriff.")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button { importingFinpension = true } label: { Label("Finpension-Export importieren …", systemImage: "doc.badge.plus") }
+                            .buttonStyle(.borderedProminent)
+                            .fileImporter(isPresented: $importingFinpension, allowedContentTypes: [.commaSeparatedText, .json, .plainText, .data]) { result in
+                                if case .success(let url) = result {
+                                    save()
+                                    model.importFinpension(connection, url: url)
+                                    dismiss()
+                                }
+                            }
+                    }
                 }
                 if isPortal {
                     Section {
@@ -374,13 +425,18 @@ struct ConnectionEditSheet: View {
                                     model.setComdirectPostbox(connection.id, on)
                                     postbox = model.comdirectPostboxEnabled(connection.id)
                                 }))
+                                .disabled(documentsBlocked)
+                            if documentsBlocked {
+                                Label("Wird nicht abgerufen, solange „Dokumente abrufen“ oben ausgeschaltet ist.", systemImage: "info.circle")
+                                    .appFont(.caption).foregroundStyle(Theme.secondary)
+                            }
                             if postbox {
                                 Button {
                                     save()
                                     dismiss()
                                     model.fetchComdirectPostbox(model.connections.first { $0.id == connection.id } ?? connection)
                                 } label: { Label("PostBox jetzt abrufen", systemImage: "tray.and.arrow.down") }
-                                    .disabled(model.syncingConnectionID != nil)
+                                    .disabled(model.syncingConnectionID != nil || documentsBlocked)
                             }
                         } header: {
                             Text("PostBox").appSectionHeader()
@@ -427,14 +483,13 @@ struct ConnectionEditSheet: View {
                 // HIG: the default button (Return) is the rightmost one.
                 HStack { removeBtn; Spacer(); cancelBtn; fetchBtn; saveBtn }
                 VStack(spacing: 8) {
-                    HStack { cancelBtn; Spacer(); saveBtn }
-                    fetchBtn
+                    HStack { cancelBtn; Spacer(); fetchBtn; saveBtn }
                     removeBtn
                 }
             }
             .padding(14)
         }
-        .macFrame(minWidth: 560, minHeight: 560)
+        .macFrame(minWidth: 560, minHeight: 640)
         .onAppear(perform: load)
         .task {
             if connection.connector == .advanzia {
@@ -506,7 +561,7 @@ struct ConnectionEditSheet: View {
     private func field(_ key: String) -> some View {
         let entry = model.settingEntry(key)
         let label = entry?.label ?? settingLabels[key] ?? (key.hasPrefix("fints.url.") ? String(localized: "FinTS-URL") : key)
-        let secret = entry?.isSecret ?? false
+        let secret = AppModel.isSecretSetting(key, entry)
         VStack(alignment: .leading, spacing: 4) {
             if key.contains("private_key") {
                 HStack {
@@ -520,7 +575,8 @@ struct ConnectionEditSheet: View {
                         .appFont(.caption, design: .monospaced)
                         .frame(height: 90)
                 } else {
-                    Text(entry?.hasValue == true ? "•••••• (gespeichert)" : "nicht gesetzt").foregroundStyle(Theme.secondary)
+                    let stored = isEBAppKey(key) ? !(values[key] ?? "").isEmpty : entry?.hasValue == true
+                    Text(stored ? "•••••• (gespeichert)" : "nicht gesetzt").foregroundStyle(Theme.secondary)
                 }
             } else if secret {
                 HStack {
@@ -540,6 +596,10 @@ struct ConnectionEditSheet: View {
             if let help = entry?.help {
                 Text(help).appFont(.caption2).foregroundStyle(Theme.secondary)
             }
+            if key == Self.ebPemKey {
+                Text("Gilt nur für diesen Bankzugang. Eine andere Anwendung braucht beim nächsten Abruf eine neue Zustimmung bei der Bank.")
+                    .appFont(.caption2).foregroundStyle(Theme.secondary)
+            }
         }
     }
 
@@ -548,7 +608,9 @@ struct ConnectionEditSheet: View {
             if revealed.contains(key) {
                 revealed.remove(key)
             } else {
-                if (values[key] ?? "").isEmpty { values[key] = model.revealSetting(key) }
+                if (values[key] ?? "").isEmpty {
+                    values[key] = key == Self.ebPemKey ? model.connectionEnableBankingKey(connection.id) : model.revealSetting(key)
+                }
                 revealed.insert(key)
             }
         } label: {
@@ -563,19 +625,42 @@ struct ConnectionEditSheet: View {
         Binding(get: { values[key] ?? "" }, set: { values[key] = $0 })
     }
 
-    private var removeBtn: some View {
-        Button("Bankzugang entfernen …", role: .destructive) { confirmRemove = connection }
-    }
     private var cancelBtn: some View {
-        Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+        Button(hasChanges ? "Abbrechen" : "Schließen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
     }
     private var saveBtn: some View {
         Button("Speichern") { saveAll() }
             .disabled(connection.connector == .advanzia && (advanziaSettings.busy || !advanziaSettings.loaded))
             .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+            .disabled(!hasChanges)
     }
+    /// Something in the sheet differs from what was loaded (name, login, PIN, settings, account selection).
+    private var hasChanges: Bool {
+        let l = isTR ? normalizePhoneNumber(input: login) : login.trimmingCharacters(in: .whitespaces)
+        if name != connection.displayName || l != connection.loginName { return true }
+        if usesPin, storePin != (status?.hasPin ?? false) || !pin.isEmpty { return true }
+        if values != initialValues { return true }
+        if isFinTs, tanMedium.trimmingCharacters(in: .whitespaces) != initialTanMedium { return true }
+        if documentsSupported, documentsFetch != initialDocumentsFetch { return true }
+        // Amex portal login (user name, password, save switch) and Advanzia (password, release method)
+        // are not in `values`.
+        if savesPortalLogin,
+           storePortalLogin != initialStorePortalLogin || !pin.isEmpty
+            || portalUser.trimmingCharacters(in: .whitespaces) != initialPortalUser { return true }
+        if connection.connector == .advanzia, advanziaSettings.hasChanges { return true }
+        return selection.hasChanges
+    }
+    /// Mac: the trash in the list of connections removes it, so the sheet has no button for that.
+    @ViewBuilder private var removeBtn: some View {
+        #if !os(macOS)
+        Button("Bankzugang entfernen …", role: .destructive) { confirmRemove = connection }
+        #endif
+    }
+    /// Icon only: "Speichern & abrufen".
     private var fetchBtn: some View {
-        Button("Speichern & abrufen") { saveAll(thenSync: true) }
+        Button { saveAll(thenSync: true) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+            .help("Speichern & abrufen")
+            .accessibilityLabel(Text("Speichern & abrufen"))
             .disabled(connection.connector == .advanzia && (advanziaSettings.busy || !advanziaSettings.loaded))
     }
 
@@ -609,12 +694,24 @@ struct ConnectionEditSheet: View {
         status = model.connectionStatus(connection.id)
         storePin = status?.hasPin ?? false
         if isComdirect, connection.connector == .finTsGeneric { postbox = model.comdirectPostboxEnabled(connection.id) }
+        documentsSupported = model.documentsFetchSupported(connection.id)
+        documentsFetch = model.documentsFetchEnabled(connection.id)
+        initialDocumentsFetch = documentsFetch
         if isFinTs { tanMedium = model.revealSetting(tanMediumKey) }
         if savesPortalLogin {
             portalUser = model.revealSetting(AppModel.portalLoginKey(connection.id))
             storePortalLogin = status?.hasPin == true || !portalUser.isEmpty
+            initialPortalUser = portalUser
+            initialStorePortalLogin = storePortalLogin
         }
-        for key in keys + advancedKeys + postboxKeys {
+        if (keys + advancedKeys).contains(where: isEBAppKey) {
+            let id = model.connectionEnableBankingApp(connection.id)?.applicationId ?? ""
+            let pem = model.connectionEnableBankingKey(connection.id)
+            loadedEBApp = (id, pem)
+            values[Self.ebIDKey] = id
+            values[Self.ebPemKey] = pem
+        }
+        for key in keys + advancedKeys + postboxKeys where !isEBAppKey(key) {
             let e = model.settingEntry(key)
             if e?.isSecret == true {
                 values[key] = model.revealSetting(key)
@@ -622,10 +719,12 @@ struct ConnectionEditSheet: View {
                 values[key] = e?.value ?? model.revealSetting(key)
             }
         }
+        initialValues = values
+        initialTanMedium = tanMedium.trimmingCharacters(in: .whitespaces)
     }
 
     private func saveSettings(_ keys: [String]) {
-        for key in keys {
+        for key in keys where !isEBAppKey(key) {
             let v = values[key] ?? ""
             let current = (model.settingEntry(key)?.isSecret ?? false) ? model.revealSetting(key) : (model.settingEntry(key)?.value ?? "")
             if v != current {
@@ -635,6 +734,10 @@ struct ConnectionEditSheet: View {
     }
 
     private func save() {
+        if documentsSupported, documentsFetch != initialDocumentsFetch {
+            model.setDocumentsFetch(connection.id, documentsFetch)
+            initialDocumentsFetch = documentsFetch
+        }
         let l = isTR ? normalizePhoneNumber(input: login) : login.trimmingCharacters(in: .whitespaces)
         model.updateConnection(connection.id, name: name, login: l)
         if usesPin {
@@ -656,11 +759,24 @@ struct ConnectionEditSheet: View {
             }
         }
         saveSettings(keys + advancedKeys + postboxKeys)
+        if (keys + advancedKeys).contains(where: isEBAppKey) {
+            let id = (values[Self.ebIDKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let pem = (values[Self.ebPemKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if id != loadedEBApp.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                || pem != loadedEBApp.pem.trimmingCharacters(in: .whitespacesAndNewlines) {
+                model.setConnectionEnableBankingApp(connection.id, applicationID: id, pem: pem)
+            }
+        }
         if isFinTs {
             let medium = tanMedium.trimmingCharacters(in: .whitespaces)
             if medium != model.revealSetting(tanMediumKey) { model.saveSetting(tanMediumKey, medium) }
         }
         pin = ""
+        // the sheet can stay open (Speichern): what was saved is the new "unchanged"
+        initialValues = values
+        initialTanMedium = tanMedium.trimmingCharacters(in: .whitespaces)
+        initialPortalUser = portalUser.trimmingCharacters(in: .whitespaces)
+        initialStorePortalLogin = storePortalLogin
     }
 }
 

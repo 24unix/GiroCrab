@@ -718,13 +718,9 @@ fn looks_like_bic(s: &str) -> bool {
         && s.chars().take(6).all(|c| c.is_ascii_alphabetic())
 }
 
+/// Low 32 bits of FNV-1a 64 as hex.
 fn fnv(s: &str) -> String {
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in s.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    format!("{:08x}", h as u32)
+    format!("{:08x}", crate::fnv::fnv1a64(s) as u32)
 }
 
 fn ext_ref(a: &SrcAccount) -> String {

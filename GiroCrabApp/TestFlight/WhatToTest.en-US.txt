@@ -1,7 +1,7 @@
-GiroCrab v0.8.0 (iOS Build under Version 0.7.5, Schema v27)
+GiroCrab v0.8.5 (iOS Build under Version 0.7.5, Schema v27)
 
 Note on the TestFlight version number:
-Because our development moves faster than Apple's version review for new release trains, the complete v0.8.0 release ships immediately as a new build under 0.7.5.
+Because our development moves faster than Apple's version review for new release trains, the complete v0.8.5 release ships immediately as a new build under 0.7.5.
 
 What to test:
 - Built-in FinTS product registration & automatic encrypted vault backup before upgrade.

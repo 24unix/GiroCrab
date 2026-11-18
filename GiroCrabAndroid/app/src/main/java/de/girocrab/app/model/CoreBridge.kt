@@ -76,7 +76,7 @@ object CorePaymentParser {
 /** Realistic German demo data across 7 banks. Deterministic (seeded). */
 object AnnouncementLoader {
     /** Parses `policy/announcements.json` (bundled as a Java resource). Signature verification is the caller's job. */
-    fun load(today: LocalDate = LocalDate.now(), lang: String = "de", version: String = "0.8.0"): List<Announcement> = runCatching {
+    fun load(today: LocalDate = LocalDate.now(), lang: String = "de", version: String = "0.8.5"): List<Announcement> = runCatching {
         val raw = AnnouncementLoader::class.java.classLoader?.getResourceAsStream("announcements.json")
             ?.bufferedReader()?.use { it.readText() } ?: return emptyList()
         val arr = JSONObject(raw).getJSONArray("announcements")

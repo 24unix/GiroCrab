@@ -153,6 +153,12 @@ struct UpdAccount {
     allowed: HashSet<String>,
 }
 
+impl UpdAccount {
+    fn allows(&self, tx: &str) -> bool {
+        self.allowed.is_empty() || self.allowed.contains(tx)
+    }
+}
+
 /// Consorsbank (BNP Paribas): see `docs/consorsbank-connector.md`.
 const CONSORSBANK_BLZ: &str = "76030080";
 
@@ -509,9 +515,7 @@ impl BankConnector for FinTsConnector {
             };
             // HKEKA, or HKEKP when the bank offers only that (DKB, #449)
             let tx = self.statement_tx();
-            let upd_allows = upd
-                .as_ref()
-                .map(|u| u.allowed.is_empty() || u.allowed.contains(tx.unwrap_or("HKEKA")));
+            let upd_allows = upd.as_ref().map(|u| u.allows(tx.unwrap_or("HKEKA")));
             self.log_statement_support(upd_allows);
             // Not an error (#449): the app reports "no new statements" with a hint.
             let Some(tx) = tx.filter(|_| upd_allows.unwrap_or(true)) else {
@@ -530,11 +534,7 @@ impl BankConnector for FinTsConnector {
             return Ok(result);
         }
         for (acc, upd) in &accounts {
-            let allowed = |tx: &str| {
-                upd.as_ref()
-                    .map(|u| u.allowed.is_empty() || u.allowed.contains(tx))
-                    .unwrap_or(true)
-            };
+            let allowed = |tx: &str| upd.as_ref().is_none_or(|u| u.allows(tx));
             let mut kind = upd
                 .as_ref()
                 .map(|u| kind_from_code(u.kind_code))
@@ -810,10 +810,7 @@ impl BankConnector for FinTsConnector {
                 message: "RAH-10 unterstützt zunächst nur Kontoabrufe.".into(),
             });
         }
-        self.transferring = true;
-        self.result = TransferResult::default();
-        self.order_submitted = false;
-        self.order = None;
+        self.begin_order();
         let r = self.start_transfer(ctx, job).await;
         if r.is_err() {
             self.transferring = false;
@@ -826,10 +823,7 @@ impl BankConnector for FinTsConnector {
         ctx: &ConnectContext,
         job: &BatchTransferJob,
     ) -> CoreResult<Phase> {
-        self.transferring = true;
-        self.result = TransferResult::default();
-        self.order_submitted = false;
-        self.order = None;
+        self.begin_order();
         let r = self.start_batch(ctx, job).await;
         if r.is_err() {
             self.transferring = false;
@@ -842,10 +836,7 @@ impl BankConnector for FinTsConnector {
         ctx: &ConnectContext,
         job: &StandingOrderJob,
     ) -> CoreResult<Phase> {
-        self.transferring = true;
-        self.result = TransferResult::default();
-        self.order_submitted = false;
-        self.order = None;
+        self.begin_order();
         let r = self.start_standing_order(ctx, job).await;
         if r.is_err() {
             self.transferring = false;
@@ -858,10 +849,7 @@ impl BankConnector for FinTsConnector {
         ctx: &ConnectContext,
         job: &DebitJob,
     ) -> CoreResult<Phase> {
-        self.transferring = true;
-        self.result = TransferResult::default();
-        self.order_submitted = false;
-        self.order = None;
+        self.begin_order();
         let r = self.start_direct_debit(ctx, job).await;
         if r.is_err() {
             self.transferring = false;

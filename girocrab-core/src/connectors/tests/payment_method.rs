@@ -86,3 +86,32 @@ fn only_paypal_accounts_read_paypal() {
         ]
     );
 }
+
+/// Entries a connector reports as `withdrawn` (PayPal's internal pairs) are
+/// removed when an older version stored them, and are not stored again.
+#[test]
+fn withdrawn_entries_are_removed() {
+    let dir = crate::test_support::TempDir::new("girocrab-withdrawn");
+    let p = dir.join("v.db");
+    let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
+    let paypal = v
+        .add_bank_connection(ConnectorKind::PayPal, String::new(), "login".into())
+        .unwrap();
+    // an older version stored the internal entry
+    store_fetch(
+        &v,
+        ConnectorKind::PayPal,
+        paypal,
+        fetch("paypal:EUR", "intern", 1000),
+    )
+    .unwrap();
+    assert_eq!(methods(&v).len(), 1);
+    // the new version leaves it out and reports it as withdrawn
+    let mut now = fetch("paypal:EUR", "echt", -500);
+    now.transactions[0].external_id = "paypal:EUR-2".into();
+    now.withdrawn = vec![("paypal:EUR".into(), "paypal:EUR-1".into())];
+    store_fetch(&v, ConnectorKind::PayPal, paypal, now.clone()).unwrap();
+    store_fetch(&v, ConnectorKind::PayPal, paypal, now).unwrap();
+    let left: Vec<String> = methods(&v).into_iter().map(|(p, _)| p).collect();
+    assert_eq!(left, vec!["echt".to_string()]);
+}

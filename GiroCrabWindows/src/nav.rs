@@ -542,7 +542,8 @@ pub fn category_fold_id(key: &str) -> Option<String> {
 /// Moves `target_id` one place up (before its predecessor) or down (after its
 /// successor) in `ids`. Returns `false` when nothing changed (id missing or
 /// already at the edge).
-pub fn move_category_in_order(ids: &mut Vec<i64>, target_id: i64, move_up: bool) -> bool {
+#[allow(dead_code)] // not wired into the UI yet; covered by tests
+pub fn move_category_in_order(ids: &mut [i64], target_id: i64, move_up: bool) -> bool {
     let Some(pos) = ids.iter().position(|&id| id == target_id) else {
         return false;
     };
@@ -563,6 +564,7 @@ pub fn move_category_in_order(ids: &mut Vec<i64>, target_id: i64, move_up: bool)
 
 /// Sorts `items` by the user-defined order `ordered_ids`. Items whose id is not
 /// listed keep their relative order and follow the listed ones (stable sort).
+#[allow(dead_code)] // not wired into the UI yet; covered by tests
 pub fn apply_custom_category_order<T, F: Fn(&T) -> i64>(
     items: &mut [T],
     ordered_ids: &[i64],
@@ -579,15 +581,18 @@ pub fn apply_custom_category_order<T, F: Fn(&T) -> i64>(
 
 /// Left indent in pixels for a sidebar row at hierarchy `depth`, so
 /// subcategory icons align under the parent category label text start.
+#[allow(dead_code)] // not wired into the UI yet; covered by tests
 pub fn sidebar_hierarchy_indent_px(depth: u32, compact_mode: bool) -> i32 {
     depth as i32 * if compact_mode { 16 } else { 22 }
 }
 
 /// Fixed sidebar width in pixels (#600): the structure no longer resizes with its content.
+#[allow(dead_code)] // not wired into the UI yet; covered by tests
 pub const SIDEBAR_FIXED_WIDTH_PX: i32 = 256;
 
 /// Whether `section` (the id behind a `toggle:<id>` section key) is one of the sidebar's
 /// fixed top-level sections, which keep their order and cannot be moved or removed (#600).
+#[allow(dead_code)] // not wired into the UI yet; covered by tests
 pub fn is_sidebar_section_pinned(section: &str) -> bool {
     matches!(
         section,

@@ -12,9 +12,21 @@ struct DepotActivitiesView: View {
     let all: [SecurityTransaction]
     let shown: [SecurityTransaction]
     @Binding var filter: DepotActivityFilter
+    /// Calendar year of the booking date (nil: all years); in addition to the type, the search and the period.
+    @Binding var year: Int?
+    /// Exports what the table shows as CSV; the button sits in the filter row, next to the table.
+    var export: (() -> Void)?
     let query: String
     let periodTitle: String
     let wide: Bool
+
+    /// Years with at least one activity in the chosen period, newest first: a year outside the period
+    /// would only give an empty table.
+    private var years: [Int] {
+        let (from, to) = model.depotPeriodRange
+        let inPeriod = all.filter { DepotActivities.inPeriod($0.bookingDate, from: from, to: to) }
+        return Array(Set(inPeriod.compactMap { Int($0.bookingDate.prefix(4)) })).sorted(by: >)
+    }
 
     private var firstRecorded: String? { all.map(\.bookingDate).filter { !$0.isEmpty }.min() }
 
@@ -40,27 +52,51 @@ struct DepotActivitiesView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Group {
-                if wide {
-                    Picker("Art", selection: $filter) {
-                        ForEach(DepotActivityFilter.allCases) { Text($0.title).tag($0) }
+            HStack(spacing: 12) {
+                Group {
+                    if wide {
+                        Picker("Art", selection: $filter) {
+                            ForEach(DepotActivityFilter.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented).fixedSize()
+                    } else {
+                        Picker("Art", selection: $filter) {
+                            ForEach(DepotActivityFilter.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.menu).fixedSize()
                     }
-                    .pickerStyle(.segmented).fixedSize()
-                } else {
-                    Picker("Art", selection: $filter) {
-                        ForEach(DepotActivityFilter.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .help("Kosten: eigene Gebühren- und Steuerzeilen sowie Aktivitäten mit Gebühren oder Steuern")
+                if years.count > 1 || year != nil {
+                    Picker("Jahr", selection: $year) {
+                        Text("Alle Jahre").tag(Int?.none)
+                        ForEach(years, id: \.self) { Text(String($0)).tag(Int?.some($0)) }
                     }
-                    .pickerStyle(.menu).fixedSize()
+                    .pickerStyle(.menu).labelsHidden().fixedSize()
+                    .help("Nur Aktivitäten dieses Kalenderjahres")
+                }
+                Spacer(minLength: 8)
+                if let export {
+                    Button(action: export) {
+                        if wide {
+                            Label("Als CSV exportieren …", systemImage: "square.and.arrow.up")
+                        } else {
+                            Label("Als CSV exportieren …", systemImage: "square.and.arrow.up").labelStyle(.iconOnly)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Exportiert, was die Tabelle gerade zeigt (Suche, Zeitraum und Filter)")
+                    .accessibilityLabel("Als CSV exportieren")
                 }
             }
-            .labelsHidden()
-            .help("Kosten: eigene Gebühren- und Steuerzeilen sowie Aktivitäten mit Gebühren oder Steuern")
             Text(info).appFont(.caption).foregroundStyle(Theme.secondary)
         }
     }
 
     private var info: String {
         var parts = [String(localized: "\(shown.count) von \(all.count) Aktivitäten"), String(localized: "Zeitraum: \(periodTitle)")]
+        if let year { parts.append(String(localized: "Jahr: \(String(year))")) }
         if let first = firstRecorded { parts.append(String(localized: "erfasst ab \(DateText.medium(first))")) }
         return parts.joined(separator: " · ")
     }
@@ -202,8 +238,8 @@ struct DepotActivitiesView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(kindText(t)).foregroundStyle(Theme.text)
-                if !t.bookingText.isEmpty, t.bookingText != kindText(t) {
-                    Text(t.bookingText).sensitive().appFont(.caption2).foregroundStyle(Theme.tertiary)
+                if case let note = DepotActivities.noteText(t), !note.isEmpty, note != kindText(t) {
+                    Text(note).sensitive().appFont(.caption2).foregroundStyle(Theme.tertiary)
                 }
             }
             .frame(width: kindW, alignment: .leading)
@@ -290,7 +326,7 @@ struct DepotActivitiesView: View {
             if feeText(t) != "–" { line("Gebühren", feeText(t)) }
             if taxText(t) != "–" { line("Steuern", taxText(t)) }
             if !idText(t).isEmpty { line("ISIN / WKN", idText(t)) }
-            if !t.bookingText.isEmpty, t.bookingText != kindText(t) { line("Bankhinweis", t.bookingText) }
+            if case let note = DepotActivities.noteText(t), !note.isEmpty, note != kindText(t) { line("Bankhinweis", note) }
             #if os(iOS)
             if let id = t.cashTransactionId {
                 Button { model.revealBooking(id) } label: {

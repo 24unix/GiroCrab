@@ -177,6 +177,10 @@ impl Vault {
         documents_json: String,
     ) -> CoreResult<Vec<String>> {
         self.check_fnz(connection_id)?;
+        // document retrieval switched off for this connection: nothing to download
+        if !super::documents_fetch_on(&*self.db()?, connection_id)? {
+            return Ok(Vec::new());
+        }
         let docs: Vec<Value> = serde_json::from_str(&documents_json)
             .map_err(|_| invalid("FNZ: Ungültige Dokumentenliste."))?;
         let db = self.db()?;

@@ -3157,3 +3157,9 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
     assert_eq!(v.list_accounts().unwrap().len(), before);
     assert_eq!(bookings(&v, active.id).len(), 1);
 }
+
+#[test]
+fn external_refs_never_change() {
+    // Imported accounts are matched again by this ref on the next import.
+    assert_eq!(fnv("12345678|0532013000"), "663cb359");
+}

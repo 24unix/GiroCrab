@@ -81,6 +81,27 @@ final class BalanceBarsTests: XCTestCase {
         XCTAssertEqual(BalanceChart.axisStride(units: 30, width: 150, labelWidth: 48, steps: steps), 10)
     }
 
+    /// The bar the scrolled list follows (#593): the bar containing the day, else the nearest start.
+    func testBarAtDateFindsContainingOrNearestBar() {
+        // January and March 2026: February has no data, so no bar
+        let pts = days(from: "2026-01-01", count: 31) { _ in 1 } + days(from: "2026-03-01", count: 31) { _ in 2 }
+        let bars = BalanceBuckets.make(pts, unit: .month)
+        XCTAssertEqual(bars.count, 2)
+        func bar(_ day: String) -> String? {
+            BalanceChart.bar(at: DateText.date(day)!, in: bars, unit: .month).map { DateText.iso($0.start) }
+        }
+        XCTAssertEqual(bar("2026-01-01"), "2026-01-01")
+        XCTAssertEqual(bar("2026-01-31"), "2026-01-01")
+        XCTAssertEqual(bar("2026-03-15"), "2026-03-01")
+        // February: 31+ days after January 1st, at most 28 before March 1st
+        XCTAssertEqual(bar("2026-02-01"), "2026-03-01")
+        XCTAssertEqual(bar("2026-02-25"), "2026-03-01")
+        XCTAssertEqual(bar("2025-06-01"), "2026-01-01")  // before the first bar
+        XCTAssertEqual(bar("2027-06-01"), "2026-03-01")  // after the last bar
+        XCTAssertNil(BalanceChart.bar(at: DateText.date("2026-01-01")!, in: [], unit: .month))
+        XCTAssertEqual(BalanceBarUnit.quarter.end(after: DateText.date("2025-10-01")!).map(DateText.iso), "2026-01-01")
+    }
+
     func testAutomaticUsesYearsBeyondSixYears() {
         XCTAssertEqual(BalanceBarUnit.automatic.resolved(dayCount: 6 * 365), .month)
         XCTAssertEqual(BalanceBarUnit.automatic.resolved(dayCount: 7 * 365), .year)

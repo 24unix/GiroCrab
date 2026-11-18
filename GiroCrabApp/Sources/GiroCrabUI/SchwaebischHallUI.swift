@@ -205,6 +205,8 @@ struct SchwaebischHallWebSheet: View {
     @State private var ready = false
     @State private var running = false
     @State private var includeDocuments = true
+    /// "Dokumente abrufen" of the connection (bank connection dialog): off = no list, no PDFs.
+    private var documentsOn: Bool { !model.documentsOffConnectionIDs.contains(connection.id) }
     @State private var progress = ""
     @State private var notice: String?
     @State private var task: Task<Void, Never>?
@@ -239,7 +241,7 @@ struct SchwaebischHallWebSheet: View {
             Divider()
             HStack {
                 Button("Schließen", role: .cancel) { task?.cancel(); close() }.keyboardShortcut(.cancelAction)
-                Toggle("PDF-Dokumente aus dem Postfach", isOn: $includeDocuments).disabled(running)
+                if documentsOn { Toggle("PDF-Dokumente aus dem Postfach", isOn: $includeDocuments).disabled(running) }
                 Spacer()
                 Button("Verträge abrufen") { start() }.buttonStyle(.borderedProminent).disabled(!ready || running)
             }.padding(12)
@@ -298,7 +300,7 @@ struct SchwaebischHallWebSheet: View {
                     choosing = true
                     while choosing { try await Task.sleep(nanoseconds: 200_000_000) }
                 }
-                if includeDocuments {
+                if includeDocuments && documentsOn {
                     progress = String(localized: "Postfach auflisten …")
                     let list = try await run(SchwaebischHallScripts.documents)
                     let pending = try await pin.run { try $0.pendingSchwaebischHallDocuments(connectionId: connectionId, documentsJson: list) }

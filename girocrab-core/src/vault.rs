@@ -28,6 +28,7 @@ mod balances;
 pub(crate) mod bookings;
 mod categories;
 pub(crate) mod connections;
+pub(crate) mod enable_banking_apps;
 mod merge;
 mod rah10;
 mod rules;
@@ -36,6 +37,7 @@ mod transfer_pairs;
 
 pub(crate) use bookings::{enrich, sql_int_list, LIVE_BOOKINGS_SQL, PENDING_SQL};
 pub use connections::ConnectionStatus;
+pub use enable_banking_apps::ConnectionEnableBankingApp;
 pub use merge::MergeStats;
 pub use settings::KNOWN_SETTINGS;
 

@@ -15,6 +15,10 @@ Sheet {
     property string pin: ""
     property bool storePin: false
     property var values: ({})
+    /// Enable Banking application of this login as loaded (#824): saved per login, only when changed.
+    property var loadedEBApp: ({ id: "", pem: "" })
+    readonly property var ebAppKeys: ["enablebanking.application_id", "enablebanking.private_key_pem"]
+    function isEBAppKey(key) { return ebAppKeys.indexOf(key) >= 0 }
     property var revealed: ({})
     property var status: null
     property bool showAdvanced: false
@@ -28,9 +32,12 @@ Sheet {
     /// comdirect logins can switch between FinTS and comdirect's own API.
     readonly property bool isComdirect: kind === "Comdirect"
         || (kind === "FinTsGeneric" && ["20041111", "20041133", "20041144", "20041155"].indexOf(connection.bank_code) >= 0)
-    readonly property bool usesPin: ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Comdirect", "TradeRepublic", "Bunq", "Ibkr", "Easybank", "AlteLeipziger", "VolkswagenBank"].indexOf(kind) >= 0
+    readonly property bool usesPin: ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Comdirect", "TradeRepublic", "Bunq", "Ibkr", "Easybank", "AlteLeipziger", "VolkswagenBank", "Uberspace", "Ffb", "FordMoney", "OpelDirektbank"].indexOf(kind) >= 0
     /// ConnectionsUI.swift › ConnectionEditSheet: these portals take a password, not a PIN
-    readonly property bool usesPassword: ["Easybank", "AlteLeipziger"].indexOf(kind) >= 0
+    readonly property bool usesPassword: ["Easybank", "AlteLeipziger", "Uberspace", "FordMoney", "OpelDirektbank"].indexOf(kind) >= 0
+    /// AppModel+Rah.swift › usesRah10 (#460): the secret is the key file's password, the login is fixed.
+    readonly property bool isRah10: !!connection && kind === "FinTsGeneric"
+        && (AppModel.run(() => AppModel.core("connection_key", { connection_id: connection.id })) || "").endsWith(":rah10")
     /// Global setting keys relevant for this connector.
     readonly property var allKeys: {
         switch (kind) {
@@ -73,7 +80,11 @@ Sheet {
     function toggleReveal(key) {
         const r = Object.assign({}, revealed)
         if (r[key]) delete r[key]
-        else { if (!(values[key] || "")) setValue(key, AppModel.revealSetting(key)); r[key] = true }
+        else {
+            if (!(values[key] || ""))
+                setValue(key, key === "enablebanking.private_key_pem" ? AppModel.connectionEnableBankingKey(connection.id) : AppModel.revealSetting(key))
+            r[key] = true
+        }
         revealed = r
     }
     function load() {
@@ -86,7 +97,15 @@ Sheet {
         revealed = ({})
         showAdvanced = false
         const v = {}
+        if (keys.concat(advancedKeys).some(isEBAppKey)) {
+            const app = AppModel.connectionEnableBankingApp(connection.id)
+            const pem = AppModel.connectionEnableBankingKey(connection.id)
+            loadedEBApp = { id: app ? app.application_id : "", pem: pem }
+            v["enablebanking.application_id"] = loadedEBApp.id
+            v["enablebanking.private_key_pem"] = pem
+        }
         for (const key of keys.concat(advancedKeys, postboxKeys)) {
+            if (isEBAppKey(key)) continue
             const e = AppModel.settingEntry(key)
             v[key] = e && e.is_secret ? AppModel.revealSetting(key) : (e ? e.value : AppModel.revealSetting(key))
         }
@@ -100,10 +119,17 @@ Sheet {
             else if (pin !== "") AppModel.setConnectionPin(connection.id, pin)
         }
         saveSettings(keys.concat(advancedKeys, postboxKeys))
+        if (keys.concat(advancedKeys).some(isEBAppKey)) {
+            const id = (values["enablebanking.application_id"] || "").trim()
+            const pem = (values["enablebanking.private_key_pem"] || "").trim()
+            if (id !== loadedEBApp.id.trim() || pem !== loadedEBApp.pem.trim())
+                AppModel.setConnectionEnableBankingApp(connection.id, id, pem)
+        }
         pin = ""
     }
     function saveSettings(list) {
         for (const key of list) {
+            if (isEBAppKey(key)) continue
             const e = AppModel.settingEntry(key)
             const v = values[key] || ""
             const current = e && e.is_secret ? AppModel.revealSetting(key) : (e ? e.value : "")
@@ -198,7 +224,7 @@ Sheet {
                     SettingsFormRow { label: qsTr("Anzeigename")
                         TextField { text: sheet.name; onTextEdited: sheet.name = text; Layout.fillWidth: true; Layout.preferredWidth: 300 } }
                     SettingsFormRow { label: sheet.descriptor ? sheet.descriptor.login_label : qsTr("Benutzerkennung")
-                        TextField { text: sheet.login; onTextEdited: sheet.login = text; Layout.fillWidth: true; Layout.preferredWidth: 300 } }
+                        TextField { text: sheet.login; onTextEdited: sheet.login = text; enabled: !sheet.isRah10; Layout.fillWidth: true; Layout.preferredWidth: 300 } }
                     SettingsFormRow { visible: sheet.isTR && sheet.login !== ""; label: qsTr("Gespeichert als")
                               value: sheet.isTR && sheet.login !== "" ? AppModel.core("normalize_phone_number", { input: sheet.login }) : "" }
                     SettingsFormRow {
@@ -207,7 +233,7 @@ Sheet {
                     }
                     CheckBox {
                         visible: sheet.usesPin
-                        text: sheet.kind === "Bunq" ? qsTr("API-Schlüssel im Tresor speichern") : sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID im Tresor speichern") : sheet.usesPassword ? qsTr("Passwort im Tresor speichern") : qsTr("PIN im Tresor speichern")
+                        text: sheet.isRah10 ? qsTr("Passwort im Tresor speichern") : sheet.kind === "Bunq" ? qsTr("API-Schlüssel im Tresor speichern") : sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID im Tresor speichern") : sheet.usesPassword ? qsTr("Passwort im Tresor speichern") : qsTr("PIN im Tresor speichern")
                         checked: sheet.storePin
                         onToggled: sheet.storePin = checked
                     }
@@ -216,7 +242,7 @@ Sheet {
                         Layout.fillWidth: true
                         echoMode: TextInput.Password
                         text: sheet.pin; onTextEdited: sheet.pin = text
-                        placeholderText: sheet.status && sheet.status.has_pin ? qsTr("Gespeicherte PIN (leer = unverändert)") : (sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID") : sheet.usesPassword ? qsTr("Passwort") : qsTr("PIN"))
+                        placeholderText: sheet.isRah10 ? qsTr("Passwort der Schlüsseldatei (leer = unverändert)") : sheet.status && sheet.status.has_pin ? qsTr("Gespeicherte PIN (leer = unverändert)") : (sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID") : sheet.usesPassword ? qsTr("Passwort") : qsTr("PIN"))
                     }
                 }
                 SettingsFormSection {
@@ -408,10 +434,14 @@ Sheet {
         }
         Text {
             visible: kf.isPem && !kf.isRevealed
-            text: kf.entry && kf.entry.has_value ? qsTr("•••••• (gespeichert)") : qsTr("nicht gesetzt")
+            text: (sheet.isEBAppKey(kf.key) ? !!(sheet.values[kf.key] || "") : !!(kf.entry && kf.entry.has_value))
+                  ? qsTr("•••••• (gespeichert)") : qsTr("nicht gesetzt")
             font.pixelSize: Theme.body; color: Theme.secondary
         }
         Text { visible: kf.entry !== null && kf.entry.help !== ""; text: kf.entry ? kf.entry.help : ""; Layout.fillWidth: true; wrapMode: Text.WordWrap
+               font.pixelSize: Theme.caption2; color: Theme.secondary }
+        Text { visible: kf.key === "enablebanking.private_key_pem"; Layout.fillWidth: true; wrapMode: Text.WordWrap
+               text: qsTr("Gilt nur für diesen Bankzugang. Eine andere Anwendung braucht beim nächsten Abruf eine neue Zustimmung bei der Bank.")
                font.pixelSize: Theme.caption2; color: Theme.secondary }
     }
 }

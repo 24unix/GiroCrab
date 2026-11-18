@@ -397,7 +397,7 @@ impl RemoteTransaction {
     pub fn content_id(&self, occurrence: u32) -> String {
         format!(
             "{CONTENT_ID_PREFIX}{:016x}",
-            fnv1a64(&format!("{}\u{1f}{occurrence}", self.content_key()))
+            crate::fnv::fnv1a64(format!("{}\u{1f}{occurrence}", self.content_key()))
         )
     }
 }
@@ -406,16 +406,6 @@ impl RemoteTransaction {
 /// (`h` + 16 hex digits, `DefaultHasher`) are adopted on the next sync, see
 /// [`adopt_legacy_content_id`].
 pub(crate) const CONTENT_ID_PREFIX: char = 'c';
-
-/// FNV-1a 64-bit hash.
-pub(crate) fn fnv1a64(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(0x0100_0000_01b3);
-    }
-    h
-}
 
 /// Hands out content ids, counting occurrences per identical content (not
 /// per list position): the ids stay the same when the fetch window moves or
@@ -481,12 +471,19 @@ pub struct FetchResult {
     /// PDFs fetched from the bank (trade confirmations, PostBox, statements).
     /// An empty `account_ref` stores the document without an account.
     pub documents: Vec<crate::documents::RemoteDocument>,
+    /// Some documents could not be looked at this time (a limit, a failed request): a catch-up
+    /// after switching document retrieval on again goes on with the next sync.
+    pub documents_incomplete: bool,
     /// The comdirect PostBox next to a FinTS login was fetched (#838): its
     /// last fetch date moves on.
     pub postbox_fetched: bool,
     /// external_id prefix of provisional bookings (card holds) this fetch
     /// lists completely: stored ones missing from it are removed.
     pub hold_prefix: Option<String>,
+    /// `(account external ref, external_id)` of entries the bank lists that move
+    /// no money (e.g. PayPal's internal offsetting pairs): not stored, and a
+    /// stored one is removed (soft delete, stays deleted).
+    pub withdrawn: Vec<(String, String)>,
     /// `(old, new)` account external refs to rewrite before storing (a
     /// connector switched to a stable account key).
     pub renamed_refs: Vec<(String, String)>,

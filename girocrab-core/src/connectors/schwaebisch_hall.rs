@@ -493,6 +493,10 @@ impl Vault {
         documents_json: String,
     ) -> CoreResult<Vec<String>> {
         self.check_schwaebisch_hall(connection_id)?;
+        // document retrieval switched off for this connection: nothing to download
+        if !super::documents_fetch_on(&*self.db()?, connection_id)? {
+            return Ok(Vec::new());
+        }
         if documents_json.len() > super::MAX_TEXT_BYTES {
             return Err(invalid());
         }

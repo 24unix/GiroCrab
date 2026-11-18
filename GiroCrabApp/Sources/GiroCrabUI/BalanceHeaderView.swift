@@ -55,8 +55,7 @@ struct StreamHeaderCard: View {
     @State private var showDocuments = false
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
     private var isOverviewSelection: Bool {
-        if case .allAccounts? = model.sidebarSelection { return true }
-        return false
+        model.sidebarRowSelection(for: .allAccounts).isSelected
     }
     /// Where the tag button sits in the filter row: the tag popover points at it (#228).
     @State private var tagButtonFrame: CGRect = .zero
@@ -246,7 +245,7 @@ struct StreamHeaderCard: View {
             }
             .contextMenu { ChartStyleInlinePicker() }
         } else if case .category = model.sidebarSelection {
-            CategorySumChart(sums: model.categoryHistory)
+            CategorySumChart(sums: model.categoryHistory, style: chartStyle)
         } else {
             BalanceChart(points: model.history) { model.jumpToDay($0) }
         }
@@ -565,10 +564,10 @@ struct BalanceChart: View {
     let points: [DailyBalance]
     /// Click on a day (jump to its bookings).
     var onSelect: ((Date) -> Void)? = nil
-    /// Day under the mouse pointer (hover readout: date + balance).
-    @State private var hovered: Point?
-    /// Bar under the mouse pointer (bar style: month/day + average balance).
-    @State private var hoveredBar: BalanceBucket?
+    /// Day or bar under the mouse pointer. Only the overlay and the accessibility value read it,
+    /// each in a view of its own: a hover step redraws the marker without re-running `body`,
+    /// where Charts re-evaluates every mark (up to ~1800 on long histories, every frame).
+    @State private var hover = Hover()
     @AppStorage(BalanceChartStyle.defaultsKey) private var style: BalanceChartStyle = .line
     @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
@@ -577,7 +576,14 @@ struct BalanceChart: View {
     /// Height of the chart: the y-axis keeps its labels apart by it (large text in a small chart).
     @State private var chartHeight: CGFloat = 0
 
-    private struct Point: Identifiable, Equatable {
+    @Observable fileprivate final class Hover {
+        /// Day under the mouse pointer (hover readout: date + balance).
+        var point: Point?
+        /// Bar under the mouse pointer (bar style: month/day + average balance).
+        var bar: BalanceBucket?
+    }
+
+    fileprivate struct Point: Identifiable, Equatable {
         let id: Int
         let date: Date
         let cents: Int64
@@ -693,14 +699,14 @@ struct BalanceChart: View {
         if drawStyle == .bars {
             let all = buckets
             guard !all.isEmpty else { return }
-            let current = hoveredBar.map(\.id) ?? (delta > 0 ? -1 : all.count)
-            hoveredBar = all[min(max(current + delta, 0), all.count - 1)]
+            let current = hover.bar.map(\.id) ?? (delta > 0 ? -1 : all.count)
+            hover.bar = all[min(max(current + delta, 0), all.count - 1)]
             return
         }
         let all = pts
         guard !all.isEmpty else { return }
-        let current = hovered.flatMap { h in all.firstIndex { $0.id == h.id } } ?? (delta > 0 ? -1 : all.count)
-        hovered = all[min(max(current + delta, 0), all.count - 1)]
+        let current = hover.point.flatMap { h in all.firstIndex { $0.id == h.id } } ?? (delta > 0 ? -1 : all.count)
+        hover.point = all[min(max(current + delta, 0), all.count - 1)]
     }
 
     private var summary: String {
@@ -714,10 +720,10 @@ struct BalanceChart: View {
     }
 
     private var currentValue: String {
-        if drawStyle == .bars, let b = hoveredBar {
+        if drawStyle == .bars, let b = hover.bar {
             return String(localized: "\(barTitle(b)): Ø \(Money.format(b.averageCents)), Ende \(Money.format(b.closingCents))")
         }
-        guard let h = hovered else { return summary }
+        guard let h = hover.point else { return summary }
         return "\(h.date.formatted(.dateTime.weekday(.wide).day().month(.wide))): \(Money.format(h.cents))"
     }
 
@@ -736,17 +742,17 @@ struct BalanceChart: View {
         return last.timeIntervalSince(first) / 86_400
     }
 
-    private func clearHover() { hovered = nil; hoveredBar = nil }
+    private func clearHover() { hover.point = nil; hover.bar = nil }
 
     /// Jumps to the bookings of the hovered day / bar; false if nothing is hovered.
     @discardableResult private func selectHovered() -> Bool {
         guard let onSelect else { return false }
         switch drawStyle {
         case .bars:
-            guard let b = hoveredBar else { return false }
+            guard let b = hover.bar else { return false }
             onSelect(b.last)
         default:
-            guard let h = hovered else { return false }
+            guard let h = hover.point else { return false }
             onSelect(h.date)
         }
         return true
@@ -756,7 +762,7 @@ struct BalanceChart: View {
         interactiveChart
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Saldoverlauf")
-            .accessibilityValue(currentValue)
+            .modifier(HoverObservers(hover: hover, value: { currentValue }))
             .accessibilityHint(onSelect == nil ? "" : String(localized: "Pfeiltasten wählen einen Tag, Eingabe zeigt seine Buchungen."))
             .accessibilityAdjustableAction { direction in
                 switch direction {
@@ -778,10 +784,7 @@ struct BalanceChart: View {
         .onChange(of: points.first?.date) { _, _ in clearHover() }
         .onChange(of: points.count) { _, _ in clearHover() }
         .onChange(of: style) { _, _ in clearHover() }
-        .onChange(of: barUnit) { _, _ in hoveredBar = nil }
-        // the booking list highlights the day under the pointer (#593)
-        .onChange(of: hovered) { _, h in model.chartHoverDay = h.map { DateText.iso($0.date) } }
-        .onChange(of: hoveredBar) { _, b in model.chartHoverDay = b.map { DateText.iso($0.last) } }
+        .onChange(of: barUnit) { _, _ in hover.bar = nil }
         .onDisappear { model.chartHoverDay = nil }
         .contextMenu { styleMenu }
         #if os(macOS)
@@ -791,7 +794,7 @@ struct BalanceChart: View {
         .onKeyPress(.rightArrow) { step(1); return .handled }
         .onKeyPress(.return) { selectHovered() ? .handled : .ignored }
         .onKeyPress(.escape) {
-            guard hovered != nil || hoveredBar != nil else { return .ignored }
+            guard hover.point != nil || hover.bar != nil else { return .ignored }
             clearHover()
             return .handled
         }
@@ -818,7 +821,7 @@ struct BalanceChart: View {
     /// Marker for the hovered day, else the day at the top of the scrolled list. Drawn in the
     /// overlay, outside the chart's marks, so moving it does not rebuild the line.
     @ViewBuilder private func marker(in all: [Point], proxy: ChartProxy, geo: GeometryProxy) -> some View {
-        if let m = hovered ?? followedPoint(in: all), let plot = proxy.plotFrame,
+        if let m = hover.point ?? followedPoint(in: all), let plot = proxy.plotFrame,
            let x = proxy.position(forX: m.date), let y = proxy.position(forY: m.euros) {
             let frame = geo[plot]
             let left = m.id * 2 > all.count
@@ -828,10 +831,9 @@ struct BalanceChart: View {
                     .offset(x: frame.minX + x, y: frame.minY)
                 Circle().fill(Theme.accent).frame(width: 6, height: 6)
                     .offset(x: frame.minX + x - 3, y: frame.minY + y - 3)
-                readout(m.date.formatted(Self.dayFormat), cents: m.cents)
-                    .fixedSize()
-                    .frame(width: max(0, left ? x - 4 : frame.width - x - 4), alignment: left ? .trailing : .leading)
-                    .offset(x: left ? frame.minX : frame.minX + x + 4, y: frame.minY)
+                PlotReadoutLayout(plot: frame, before: x, after: x, left: left) {
+                    readout(m.date.formatted(Self.dayFormat), cents: m.cents)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .allowsHitTesting(false)
@@ -867,7 +869,7 @@ struct BalanceChart: View {
         .chartXAxis { xAxis(span: spanDays(pts.first?.date, pts.last?.date)) }
         .chartOverlay { proxy in
             GeometryReader { geo in
-                marker(in: pts, proxy: proxy, geo: geo)
+                ObservationScope { marker(in: pts, proxy: proxy, geo: geo) }
                 Rectangle().fill(.clear).contentShape(Rectangle())
                     .onContinuousHover { phase in
                         switch phase {
@@ -876,9 +878,9 @@ struct BalanceChart: View {
                             let x = location.x - geo[plot].origin.x
                             guard let date: Date = proxy.value(atX: x) else { return }
                             let nearest = pts.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
-                            if nearest != hovered { hovered = nearest }
+                            if nearest != hover.point { hover.point = nearest }
                         case .ended:
-                            hovered = nil
+                            hover.point = nil
                         }
                     }
                     .onTapGesture { location in
@@ -910,13 +912,11 @@ struct BalanceChart: View {
         // yearly bars: every gap is already a turn of the year
         let years = barUnit == .year ? []
             : bars.first.flatMap { f in bars.last.map { BalanceBuckets.yearStarts(from: f.start, to: $0.last) } } ?? []
-        let followed = followedBar(in: bars)
-        let active = hoveredBar ?? followed
         Chart {
             ForEach(bars) { b in
                 BarMark(x: .value(xLabel, b.start, unit: unit), y: .value("Ø Saldo", b.euros))
                     .foregroundStyle(b.averageCents < 0 ? Theme.outflow : Theme.accent)
-                    .opacity(active?.id == b.id || active == nil ? 0.85 : 0.35)
+                    .opacity(0.85)
                     .cornerRadius(1.5)
             }
             // Plain date (no unit): the rule sits on the boundary between December and January.
@@ -924,20 +924,6 @@ struct BalanceChart: View {
                 RuleMark(x: .value("Jahr", y))
                     .foregroundStyle(Theme.tertiary.opacity(0.6))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-            }
-            if hoveredBar == nil, let f = followed {
-                RuleMark(x: .value(xLabel, f.start, unit: unit))
-                    .foregroundStyle(.clear)
-                    .annotation(position: f.id * 2 > bars.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-                        readout(barTitle(f), prefix: "Ø ", cents: f.averageCents)
-                    }
-            }
-            if let h = hoveredBar {
-                RuleMark(x: .value(xLabel, h.start, unit: unit))
-                    .foregroundStyle(.clear)
-                    .annotation(position: h.id * 2 > bars.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-                        readout(barTitle(h), prefix: "Ø ", cents: h.averageCents)
-                    }
             }
         }
         .chartYScale(domain: (lo - (lo < 0 ? pad : 0))...(hi + pad))
@@ -948,22 +934,23 @@ struct BalanceChart: View {
         .chartXAxis { xAxis(span: spanDays(bars.first?.start, bars.last?.last), centered: barUnit != .day) }
         .chartOverlay { proxy in
             GeometryReader { geo in
+                ObservationScope { barHighlight(in: bars, unit: barUnit, proxy: proxy, geo: geo) }
                 Rectangle().fill(.clear).contentShape(Rectangle())
                     .onContinuousHover { phase in
                         switch phase {
                         case .active(let location):
                             guard let plot = proxy.plotFrame,
                                   let date: Date = proxy.value(atX: location.x - geo[plot].origin.x) else { return }
-                            let hit = bar(at: date, in: bars, unit: unit)
-                            if hit != hoveredBar { hoveredBar = hit }
+                            let hit = Self.bar(at: date, in: bars, unit: barUnit)
+                            if hit != hover.bar { hover.bar = hit }
                         case .ended:
-                            hoveredBar = nil
+                            hover.bar = nil
                         }
                     }
                     .onTapGesture { location in
                         guard let onSelect, let plot = proxy.plotFrame,
                               let date: Date = proxy.value(atX: location.x - geo[plot].origin.x),
-                              let hit = bar(at: date, in: bars, unit: unit)
+                              let hit = Self.bar(at: date, in: bars, unit: barUnit)
                         else { return }
                         onSelect(hit.last)
                     }
@@ -971,17 +958,54 @@ struct BalanceChart: View {
         }
     }
 
-    /// Bar of the day at the top of the scrolled booking list (bar style, #593).
-    private func followedBar(in bars: [BalanceBucket]) -> BalanceBucket? {
-        guard let day = model.scrollFocusDay, let date = DateText.date(day) else { return nil }
-        return bar(at: date, in: bars, unit: resolvedBarUnit.calendarComponent)
+    /// The hovered bar, else the bar of the day at the top of the scrolled booking list (#593):
+    /// a veil dims the plot beside it and the readout names it. Drawn in the overlay like the
+    /// line chart's `marker`, so the marks never depend on it: Charts re-evaluates every mark
+    /// whenever `body` runs, which is slow on long histories, and the scroll position changes
+    /// many times a second.
+    @ViewBuilder private func barHighlight(in bars: [BalanceBucket], unit: BalanceBarUnit,
+                                           proxy: ChartProxy, geo: GeometryProxy) -> some View {
+        if let b = hover.bar ?? followedBar(in: bars, unit: unit), let plot = proxy.plotFrame,
+           let x0 = proxy.position(forX: b.start),
+           let x1 = unit.end(after: b.start).flatMap({ proxy.position(forX: $0) }) {
+            let frame = geo[plot]
+            // The chart sits on a `.card()`: a bar at 0.85 under this shows at about 0.35.
+            let veil = Theme.card.opacity(0.59)
+            let gapStart = min(max(0, x0), frame.width)
+            ZStack(alignment: .topLeading) {
+                HStack(spacing: 0) {
+                    veil.frame(width: gapStart)
+                    Color.clear.frame(width: max(0, min(x1, frame.width) - gapStart))
+                    veil
+                }
+                .frame(width: frame.width, height: frame.height)
+                .offset(x: frame.minX, y: frame.minY)
+                PlotReadoutLayout(plot: frame, before: x0, after: x1, left: b.id * 2 > bars.count) {
+                    readout(barTitle(b), prefix: "Ø ", cents: b.averageCents)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .allowsHitTesting(false)
+        }
     }
 
-    /// The bar whose month (or day) contains `date`, else the nearest one.
-    private func bar(at date: Date, in bars: [BalanceBucket], unit: Calendar.Component) -> BalanceBucket? {
-        let cal = Calendar.current
-        if let exact = bars.first(where: { cal.isDate($0.start, equalTo: date, toGranularity: unit) }) { return exact }
-        return bars.min { abs($0.start.timeIntervalSince(date)) < abs($1.start.timeIntervalSince(date)) }
+    private func followedBar(in bars: [BalanceBucket], unit: BalanceBarUnit) -> BalanceBucket? {
+        guard let day = model.scrollFocusDay, let date = DateText.date(day) else { return nil }
+        return Self.bar(at: date, in: bars, unit: unit)
+    }
+
+    /// The bar containing `date`, else the one with the nearest start. Binary search over the
+    /// date-ordered bars: the scroll position asks many times a second.
+    static func bar(at date: Date, in bars: [BalanceBucket], unit: BalanceBarUnit) -> BalanceBucket? {
+        var lo = 0, hi = bars.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if bars[mid].start <= date { lo = mid + 1 } else { hi = mid }
+        }
+        // bars[lo - 1] is the last bar starting on or before `date`
+        if lo > 0, let end = unit.end(after: bars[lo - 1].start), date < end { return bars[lo - 1] }
+        return bars[max(0, lo - 1)..<min(bars.count, lo + 1)]
+            .min { abs($0.start.timeIntervalSince(date)) < abs($1.start.timeIntervalSince(date)) }
     }
 
     // MARK: shared
@@ -1090,6 +1114,48 @@ struct BalanceChart: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
     }
+}
+
+/// Places a chart readout at the top of `plot`, 4 pt before (`left`) or after the marked x range
+/// (plot coordinates), and keeps it inside the plot like an annotation's `.fit(to: .chart)`.
+private struct PlotReadoutLayout: Layout {
+    let plot: CGRect
+    let before: CGFloat
+    let after: CGFloat
+    let left: Bool
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let readout = subviews.first else { return }
+        let width = readout.sizeThatFits(.unspecified).width
+        let x = min(max(left ? before - 4 - width : after + 4, 0), max(0, plot.width - width))
+        readout.place(at: CGPoint(x: bounds.minX + plot.minX + x, y: bounds.minY + plot.minY), proposal: .unspecified)
+    }
+}
+
+/// The parts of `BalanceChart` that follow the hover: the accessibility value and the day the
+/// booking list highlights (#593). A modifier of its own, so only it re-runs on a hover step.
+private struct HoverObservers: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let hover: BalanceChart.Hover
+    let value: () -> String
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityValue(value())
+            .onChange(of: hover.point) { _, h in model.chartHoverDay = h.map { DateText.iso($0.date) } }
+            .onChange(of: hover.bar) { _, b in model.chartHoverDay = b.map { DateText.iso($0.last) } }
+    }
+}
+
+/// Builds `content` in a body of its own: observable state it reads invalidates this view,
+/// not the one that made the closure.
+private struct ObservationScope<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    var body: some View { content() }
 }
 
 /// Audio Graph / VoiceOver chart description of the balance history.
