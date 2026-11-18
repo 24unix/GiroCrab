@@ -178,10 +178,7 @@ impl Vault {
 
     /// Creates (id == 0) or updates a rule. Validates the pattern first.
     pub fn save_rule(&self, rule: Rule) -> Result<i64, CoreError> {
-        if rule.pattern.len() > crate::rules::MAX_PATTERN_LEN {
-            return Err(CoreError::invalid(tr("Das Suchmuster ist zu lang.")));
-        }
-        crate::rules::CompiledRule::compile(rule.clone())?;
+        let rule = crate::rules::CompiledRule::compile_supported(rule)?.rule;
         if rule.pattern.trim().is_empty() {
             return Err(CoreError::invalid(tr("Das Suchmuster ist leer.")));
         }
@@ -197,11 +194,7 @@ impl Vault {
         let kind = match rule.match_kind {
             MatchKind::Keyword => "keyword",
             MatchKind::Regex => "regex",
-            MatchKind::Expression => {
-                // `compile` keeps unsupported fields for imported rules; a saved rule may not use them.
-                crate::search_expr::SearchExpr::parse_supported(&rule.pattern)?;
-                "expression"
-            }
+            MatchKind::Expression => "expression",
         };
         if rule.id == 0 {
             db.execute(
