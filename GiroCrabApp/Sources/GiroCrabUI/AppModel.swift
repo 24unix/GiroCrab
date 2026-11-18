@@ -591,8 +591,19 @@ public final class AppModel {
     var toast: String?
     /// Text of the error alert. Clearing it also clears title and retry.
     var errorMessage: String? {
-        didSet { if errorMessage == nil { errorTitle = nil; errorRetry = nil; errorAlternatives = [] } }
+        didSet {
+            guard errorMessage == nil else { return }
+            let onClose = errorOnClose
+            errorTitle = nil; errorRetry = nil; errorAlternatives = []
+            errorCloseTitle = nil; errorOnClose = nil
+            onClose?()
+        }
     }
+    /// Title of the closing button (nil = "OK").
+    var errorCloseTitle: String?
+    /// Runs when the alert is closed with that button (not with retry or an alternative):
+    /// "Alle abrufen" goes on with the next login only once the error was closed (#1041).
+    @ObservationIgnored var errorOnClose: (@MainActor () -> Void)?
     /// Alert title naming what failed (HIG: specific, not "something went wrong").
     var errorTitle: String?
     /// Optional "Erneut versuchen" action of the error alert.
