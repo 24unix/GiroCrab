@@ -18,12 +18,11 @@
 
 <p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.8.5</sub></p>
 <p align="center">
-  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/girocrab-windows-x86_64-setup.exe"><img src="docs/assets/download-windows-alpha.svg" alt="Für Windows laden (Alpha – Frühe Vorschau)" width="210" height="44"></a>
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/girocrab-windows-x86_64-setup.exe"><img src="docs/assets/download-windows-alpha.svg" alt="Für Windows laden (Alpha – Frühe Vorschau)" width="260" height="56"></a>
   &nbsp;
-  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-Android-alpha.apk"><img src="docs/assets/download-android-alpha.svg" alt="Für Android laden (Alpha – Frühe Vorschau)" width="210" height="44"></a>
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-Android-alpha.apk"><img src="docs/assets/download-android-alpha.svg" alt="Für Android laden (Alpha – Frühe Vorschau)" width="260" height="56"></a>
 </p>
 <p align="center"><sub>🧪 <strong>Windows &amp; Android (frühes Alpha-Stadium):</strong> Vorab-Builds zum Ausprobieren (idealerweise im Demo-Modus) – noch nicht auf dem Stand von macOS &amp; iOS.</sub></p>
-
 <p align="center">
   <a href="https://github.com/GiroCrab/GiroCrab/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/GiroCrab/GiroCrab?label=release&color=2ea44f"></a>
   <a href="https://github.com/GiroCrab/GiroCrab/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/GiroCrab/GiroCrab/total?color=007AFF"></a>
