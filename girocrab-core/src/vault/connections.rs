@@ -501,7 +501,9 @@ impl Vault {
 
 /// comdirect bank code of a login: from the first comdirect IBAN among its
 /// accounts (characters 5–12), else the stored bank code. The account's code
-/// decides: comdirect's API logins all carry 20041111.
+/// comes first: comdirect's API logins all carry 20041111. Only a first
+/// guess – if comdirect rejects it for this login (9210), the FinTS connector
+/// tries its other codes and keeps the one that works.
 fn comdirect_blz(
     conn: &Connection,
     connection_id: i64,

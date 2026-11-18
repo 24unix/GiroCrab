@@ -69,7 +69,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 
 use self::accounts::{account_label, kind_from_code};
-use self::dialog::{approval_pending, has_so_prefix};
+use self::dialog::{approval_pending, has_so_prefix, is_comdirect};
 use self::syntax::{Segment, SegmentBuilder};
 use super::{
     BankConnector, BatchTransferJob, Challenge, ChallengeResponse, ConnectContext, DebitJob,
@@ -136,6 +136,11 @@ struct FinTsState {
     /// the dialog is opened with the one-step function 999 and without HKTAN.
     #[serde(default)]
     single_step: bool,
+    /// comdirect: the bank code this login is known under when it differs from
+    /// the connector's (taken from an IBAN). Found by [`FinTsConnector::login`]
+    /// after a 9210 "Bankleitzahl passt nicht zum Benutzer"; "" = the connector's.
+    #[serde(default)]
+    login_blz: String,
 }
 
 /// Account from the user parameter data (HIUPD).
@@ -281,6 +286,9 @@ pub struct FinTsConnector {
     vop_with_tan: bool,
     /// Name-check result shown to the user, awaiting confirmation.
     vop_pending: Option<PayeeMatch>,
+    /// The last dialog init was rejected because the bank code does not
+    /// belong to this login (9210, see [`blz_mismatch`]).
+    blz_rejected: bool,
 }
 
 /// A transfer order ready to send (segment number set at send time).
@@ -346,6 +354,7 @@ impl FinTsConnector {
             vop_id: None,
             vop_with_tan: false,
             vop_pending: None,
+            blz_rejected: false,
         }
     }
 
@@ -410,6 +419,11 @@ impl BankConnector for FinTsConnector {
         if let Ok(st) = serde_json::from_value::<FinTsState>(ctx.state.clone()) {
             self.st = st;
         }
+        // comdirect: log in under the bank code found last time (the address
+        // above is the same for all of comdirect's codes)
+        if self.rah.is_none() && is_comdirect(&self.blz) && is_comdirect(&self.st.login_blz) {
+            self.blz = self.st.login_blz.clone();
+        }
         if let Some(rah) = &self.rah {
             if self.st.system_id.is_empty() {
                 self.st.system_id = rah.identity.system_id.clone();
@@ -428,10 +442,7 @@ impl BankConnector for FinTsConnector {
                     self.tan_medium_override.clone()
                 };
         }
-        if self.st.system_id.is_empty() || self.st.sec_func.is_empty() {
-            self.sync_dialog(ctx).await?;
-        }
-        self.open_dialog(ctx).await
+        self.login(ctx).await
     }
 
     async fn respond(
