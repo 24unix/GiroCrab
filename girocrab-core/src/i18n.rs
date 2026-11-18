@@ -365,6 +365,13 @@ fn english(de: &str) -> Option<&'static str> {
         "Browser-Anmeldung nötig: {0}" => "Browser sign-in required: {0}",
         "Dieser Abruf ist nicht mehr aktiv" => "This sync is no longer active",
         "Dieser Tresor wurde mit einer neueren GiroCrab-Version gespeichert. Bitte die App aktualisieren." => "This vault was saved by a newer version of GiroCrab. Please update the app.",
+        // ------------------------------------------------------------ vault_manager.rs
+        "Der Name des Tresors darf nicht leer sein" => "The vault name must not be empty",
+        "Der Name des Tresors ist zu lang" => "The vault name is too long",
+        "Der Name des Tresors enthält unzulässige Zeichen" => "The vault name contains characters that aren't allowed",
+        "Keine Tresor-Datei" => "Not a vault file",
+        "Ein Tresor mit diesem Namen existiert bereits" => "A vault with this name already exists",
+        "Ungültiger Tresorname" => "Invalid vault name",
         // ------------------------------------------------------------ connectors (catalog, sessions, persist)
         "VR-NetKey oder Alias" => "VR-NetKey or alias",
         "Online-Banking-PIN" => "Online banking PIN",
