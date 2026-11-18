@@ -269,8 +269,17 @@ extension AppModel {
         syncBatchSkipped = []
     }
 
-    /// Toast suffix of a sync with the comdirect PostBox (#838).
-    static func postboxNote(_ s: SyncSummary) -> String {
+    /// Toast suffix of a sync with the comdirect PostBox (#838) or the
+    /// Consorsbank Online-Archiv (#1024).
+    static func postboxNote(_ s: SyncSummary, _ c: BankConnection) -> String {
+        if c.connector == .finTsGeneric, c.bankCode == "76030080" {
+            guard let n = s.postboxDocuments else {
+                return String(localized: "Online-Archiv nicht abgerufen. Bitte PIN und Freigabe in der Consorsbank App prüfen.")
+            }
+            return n == 0
+                ? String(localized: "keine neuen Dokumente aus dem Online-Archiv")
+                : String(localized: "\(n) neue Dokumente aus dem Online-Archiv")
+        }
         guard let n = s.postboxDocuments else {
             return String(localized: "PostBox nicht abgerufen. Bitte Client-ID und Client-Secret der comdirect-API prüfen.")
         }
@@ -406,13 +415,13 @@ extension AppModel {
             } else if postboxConnectionID == connection.id {
                 postboxConnectionID = nil
                 documentsVersion += 1
-                toast = syncNotice(connection, s) + " · " + Self.postboxNote(s)
+                toast = syncNotice(connection, s) + " · " + Self.postboxNote(s, connection)
             } else {
                 let quiet = quietSyncConnectionID == connection.id
                 // scheduled syncs only speak up when something changed
                 if !quiet || s.transactionsImported > 0 || !s.newAccounts.isEmpty || !s.revokedAccounts.isEmpty {
                     var note = syncNotice(connection, s) + Self.skippedArchivedNote(s)
-                    if let n = s.postboxDocuments, n > 0 { note += " · " + Self.postboxNote(s) }
+                    if let n = s.postboxDocuments, n > 0 { note += " · " + Self.postboxNote(s, connection) }
                     toast = note
                 }
                 if s.postboxDocuments.map({ $0 > 0 }) ?? false { documentsVersion += 1 }
@@ -451,6 +460,13 @@ extension AppModel {
                 self.finishSync(error: error)
             }
         }
+    }
+
+    /// Consorsbank Online-Archiv (#1024): the approval dialog's link switches between the
+    /// app approval and a typed TAN ("TAN" / "APP", handled in `consorsbank_archive.rs`).
+    func switchApproval(_ word: String) {
+        pollTask?.cancel()
+        submitCode(word)
     }
 
     func submitCode(_ code: String) {

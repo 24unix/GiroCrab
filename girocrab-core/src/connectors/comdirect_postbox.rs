@@ -45,6 +45,28 @@ pub(crate) trait PostboxSource: Send {
     /// downloaded: a stored copy still gets its account.
     fn stub(&self, entry: &Value) -> Option<RemoteDocument>;
     async fn finish(&mut self, ctx: &ConnectContext);
+    /// Name of the document source in the app's steps ("PostBox", "Online-Archiv").
+    fn label(&self) -> String {
+        tr("PostBox").into()
+    }
+    /// The account a downloaded document belongs to; `None` leaves it without
+    /// one. comdirect: the account whose IBAN or number is in the PDF text,
+    /// else the login's first Girokonto.
+    fn assign<'a>(
+        &self,
+        doc: &RemoteDocument,
+        accounts: &[&'a RemoteAccount],
+    ) -> Option<&'a RemoteAccount> {
+        let text = crate::documents::extract_pdf_text(&doc.bytes);
+        let found = assign_account(&doc.title, &text, accounts);
+        crate::depot_debug::log(&format!(
+            "comdirect postbox: {} text={} chars -> {}",
+            doc.doc_type,
+            text.len(),
+            found.map_or("default account", |a| kind_name(a.kind))
+        ));
+        found.or_else(|| default_account(accounts))
+    }
 }
 
 #[async_trait]
@@ -99,7 +121,7 @@ impl FintsWithPostbox {
         Self::with_source(fints, Box::new(ComdirectConnector::new()), since)
     }
 
-    fn with_source(
+    pub(crate) fn with_source(
         fints: Box<dyn BankConnector>,
         rest: Box<dyn PostboxSource>,
         since: String,
@@ -124,17 +146,17 @@ impl FintsWithPostbox {
     ) -> CoreResult<Phase> {
         match rest {
             Ok(Phase::Challenge(mut c)) => {
-                c.title = trf("PostBox: {0}", &[&c.title]);
+                c.title = trf("{0}: {1}", &[&self.rest.label(), &c.title]);
                 return Ok(Phase::Challenge(c));
             }
             Ok(Phase::Pending(mut c)) => {
-                c.title = trf("PostBox: {0}", &[&c.title]);
+                c.title = trf("{0}: {1}", &[&self.rest.label(), &c.title]);
                 return Ok(Phase::Pending(c));
             }
             Ok(Phase::Ready) => match self.rest.list(&self.since).await {
                 Some(entries) => {
                     crate::depot_debug::log(&format!(
-                        "comdirect postbox: {} documents since '{}'",
+                        "postbox: {} documents since '{}'",
                         entries.len(),
                         self.since
                     ));
@@ -142,16 +164,16 @@ impl FintsWithPostbox {
                     if !entries.is_empty() {
                         let total = entries.len();
                         self.stage = Stage::Download { entries, next: 0 };
-                        return Ok(progress(0, total));
+                        return Ok(progress(&self.rest.label(), 0, total));
                     }
                 }
-                None => crate::depot_debug::log("comdirect postbox: listing failed"),
+                None => crate::depot_debug::log("postbox: listing failed"),
             },
             Ok(Phase::ConfirmPayee(_)) => {
-                crate::depot_debug::log("comdirect postbox: unexpected payee check")
+                crate::depot_debug::log("postbox: unexpected payee check")
             }
             Err(e) => crate::depot_debug::log(&format!(
-                "comdirect postbox: login failed ({})",
+                "postbox: login failed ({})",
                 e.to_string().chars().take(60).collect::<String>()
             )),
         }
@@ -174,10 +196,10 @@ impl FintsWithPostbox {
             n += 1;
         }
         if *next < entries.len() {
-            return Ok(progress(*next, entries.len()));
+            return Ok(progress(&self.rest.label(), *next, entries.len()));
         }
         crate::depot_debug::log(&format!(
-            "comdirect postbox: {} of {} documents downloaded",
+            "postbox: {} of {} documents downloaded",
             self.docs.iter().filter(|d| !d.bytes.is_empty()).count(),
             entries.len()
         ));
@@ -192,10 +214,10 @@ impl FintsWithPostbox {
 }
 
 /// The step the app shows while the PostBox downloads run.
-fn progress(done: usize, total: usize) -> Phase {
+fn progress(label: &str, done: usize, total: usize) -> Phase {
     Phase::Pending(Challenge {
         kind: ChallengeKind::Progress,
-        title: tr("PostBox wird geladen").into(),
+        title: trf("{0} wird geladen", &[&label]),
         message: trf(
             "Freigabe erhalten. {0} von {1} Dokumenten geladen, danach folgt der Abruf der Konten.",
             &[&done, &total],
@@ -243,25 +265,16 @@ impl BankConnector for FintsWithPostbox {
             .iter()
             .filter(|a| !skipped.contains(&a.external_ref.as_str()))
             .collect();
-        let fallback = default_account(&accounts);
         let mut matched = 0usize;
         let mut docs = std::mem::take(&mut self.docs);
         for d in &mut docs {
-            let text = crate::documents::extract_pdf_text(&d.bytes);
-            let found = assign_account(&d.title, &text, &accounts);
-            crate::depot_debug::log(&format!(
-                "comdirect postbox: {} text={} chars -> {}",
-                d.doc_type,
-                text.len(),
-                found.map_or("default account", |a| kind_name(a.kind))
-            ));
-            matched += found.is_some() as usize;
-            if let Some(a) = found.or(fallback) {
+            if let Some(a) = self.rest.assign(d, &accounts) {
                 d.account_ref = a.external_ref.clone();
+                matched += 1;
             }
         }
         crate::depot_debug::log(&format!(
-            "comdirect postbox: {matched} of {} documents matched an account, the others went to the default account",
+            "postbox: {matched} of {} documents got an account",
             docs.len()
         ));
         out.documents.extend(docs);
