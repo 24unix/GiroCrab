@@ -674,6 +674,17 @@
         }
       }
     },
+    "%lld Bestellungen gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld orders found"
+          }
+        }
+      }
+    },
     "%lld Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2341,6 +2352,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1% Saveback"
+          }
+        }
+      }
+    },
+    "1 Bestellung gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 order found"
           }
         }
       }
@@ -7128,6 +7150,28 @@
         }
       }
     },
+    "Bestelldetails" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order details"
+          }
+        }
+      }
+    },
+    "Bestelldetails aus %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order details from %@"
+          }
+        }
+      }
+    },
     "Bestellliste %@ …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7135,6 +7179,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Order list %@ …"
+          }
+        }
+      }
+    },
+    "Bestellliste %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order list %lld of %lld"
           }
         }
       }
@@ -7168,6 +7223,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Order"
+          }
+        }
+      }
+    },
+    "Bestellung %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order %lld of %lld"
           }
         }
       }
@@ -7207,6 +7273,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetch orders"
+          }
+        }
+      }
+    },
+    "Bestellungen werden abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching orders"
           }
         }
       }
