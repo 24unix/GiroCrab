@@ -27627,6 +27627,17 @@
         }
       }
     },
+    "Suche in natürlicher Sprache" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Natural-language search"
+          }
+        }
+      }
+    },
     "Suche löschen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29873,6 +29884,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Understood"
+          }
+        }
+      }
+    },
+    "Versteht Angaben wie „Lebensmittel letzten Monat über 50 €“. Läuft vollständig auf diesem Gerät; an das Modell gehen nur Suchtext, heutiges Datum und Kategorienamen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Understands phrases like “groceries last month over €50”. Runs entirely on this device; only the search text, today’s date and category names are sent to the model."
           }
         }
       }

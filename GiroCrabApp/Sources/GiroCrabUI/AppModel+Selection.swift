@@ -262,11 +262,61 @@ extension AppModel {
 
     func scheduleSearch() {
         searchTask?.cancel()
+        let query = searchText
+        // Text this model wrote back after a natural-language parse is not parsed again.
+        let isRewrite = NaturalSearch.lastRewrite == query
+        NaturalSearch.lastRewrite = nil
         searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.reloadListInBackground() // the literal search, as ever
+            guard !isRewrite, NaturalSearch.isEnabled, NaturalSearch.looksNatural(query) else { return }
+            try? await Task.sleep(nanoseconds: 650_000_000) // ~800 ms after the last keystroke
             guard !Task.isCancelled else { return }
-            self?.reloadListInBackground()
+            await self.applyNaturalSearch(query)
         }
+    }
+
+    /// Refines the literal search (opt-in, Einstellungen › Allgemein): a pure keyword phrase
+    /// ("zeige alle amazon") directly, anything else through the on-device model. Period, category
+    /// and amount range become the existing filters, the rest stays the search text. Without a model
+    /// answer the phrase loses only its filler words; a stale result changes nothing.
+    private func applyNaturalSearch(_ query: String) async {
+        let parsed = await NaturalSearch.understand(
+            query, categoryNames: categories.map(\.name), today: DateText.iso(Date()))
+        // The user may have typed on, cleared the field or locked the vault meanwhile.
+        guard !Task.isCancelled, searchText == query, isUnlocked else { return }
+        applyParsedSearch(parsed)
+    }
+
+    /// Puts a parsed search phrase into the filters and reloads the list once.
+    func applyParsedSearch(_ parsed: ParsedSearchQuery, today: Date = Date()) {
+        var currentCategory: Int64?
+        if case .category(let id)? = sidebarSelection { currentCategory = id }
+        let old = NaturalSearchState(
+            searchText: searchText, period: period, customFrom: customPeriodFrom, customTo: customPeriodTo,
+            categoryID: currentCategory, amountFilter: amountFilter)
+        var new = old
+        NaturalSearch.apply(parsed: parsed, to: &new, categories: categories, today: today)
+        guard new != old else { return }
+
+        // The category first: it may bring its own default period, which the parsed one then replaces.
+        if new.categoryID != old.categoryID, let id = new.categoryID {
+            interactiveSidebarSelection = .category(id)
+        }
+        if new.period != old.period || new.customFrom != old.customFrom || new.customTo != old.customTo,
+           let from = DateText.date(new.customFrom), let to = DateText.date(new.customTo) {
+            applyCustomPeriod(from: from, to: to)
+        }
+        if new.amountFilter != old.amountFilter {
+            suspendsFilterReloads = true // the search reload below covers it
+            amountFilter = new.amountFilter
+            suspendsFilterReloads = false
+            listLimit = Self.defaultListLimit
+        }
+        // Always set (even unchanged): its `scheduleSearch` reloads the list once for the filters above.
+        NaturalSearch.lastRewrite = new.searchText
+        searchText = new.searchText
     }
 
     // MARK: - Pay cycle (GitHub #37)
