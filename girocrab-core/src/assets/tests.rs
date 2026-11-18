@@ -376,6 +376,66 @@ fn deleting_the_account_hides_its_items_and_stops_fetching() {
     assert!(super::fetch_plan(&db, true).unwrap().is_empty());
 }
 
+/// A Sachwerte account turned into a cash account keeps its opening balance
+/// and bookings through a vault merge instead of being valued at 0.
+#[test]
+fn sachwerte_account_changed_to_cash_keeps_its_computed_balance() {
+    let (a, pa) = temp_vault();
+    let acc = a.create_tangible_account("Portemonnaie".into()).unwrap();
+    a.set_account_kind(acc, AccountKind::Cash).unwrap();
+    a.set_account_opening_balance(acc, Some(231_20), String::new())
+        .unwrap();
+    a.save_manual_booking(
+        acc,
+        None,
+        crate::offline::ManualBookingSetup {
+            booking_date: days_ago(1),
+            amount_cents: -26_20,
+            counterparty: "Bäcker".into(),
+            purpose: String::new(),
+            category_id: None,
+            note: String::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(balance(&a, acc), 205_00);
+    assert!(a.list_tangible_account_ids().unwrap().is_empty());
+
+    let (b, pb) = temp_vault();
+    b.merge_other_vault(pa.to_string_lossy().to_string(), vec![7u8; 32])
+        .unwrap();
+    a.merge_other_vault(pb.to_string_lossy().to_string(), vec![7u8; 32])
+        .unwrap();
+    assert_eq!(balance(&a, acc), 205_00);
+    let bacc = b
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|x| x.name == "Portemonnaie")
+        .unwrap()
+        .id;
+    assert_eq!(balance(&b, bacc), 205_00);
+}
+
+/// The kind change itself revalues the account, in both directions.
+#[test]
+fn changing_the_kind_revalues_a_sachwerte_account_at_once() {
+    let (v, _p) = temp_vault();
+    let acc = v.create_tangible_account("Tresor".into()).unwrap();
+    v.save_asset_item(
+        acc,
+        None,
+        manual("Uhr", &days_ago(10), 2_000_00, AssetInterpolation::Step),
+    )
+    .unwrap();
+    assert_eq!(balance(&v, acc), 2_000_00);
+
+    v.set_account_kind(acc, AccountKind::Cash).unwrap();
+    assert_eq!(balance(&v, acc), 0);
+    v.set_account_kind(acc, AccountKind::Brokerage).unwrap();
+    assert_eq!(balance(&v, acc), 2_000_00);
+}
+
 #[test]
 fn vault_merge_brings_items_points_and_typed_prices() {
     let (a, pa) = temp_vault();

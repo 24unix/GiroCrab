@@ -154,6 +154,17 @@ fn reset_to_sum(conn: &Connection, account_id: i64) -> CoreResult<()> {
     Ok(())
 }
 
+/// After an account stopped being a Sachwerte account or a manual loan, whose
+/// balance came from its items or loan terms: opening balance + Σ bookings,
+/// or Σ bookings without an opening balance.
+pub(crate) fn recompute(conn: &Connection, account_id: i64) -> CoreResult<()> {
+    if load(conn, account_id)?.is_some() {
+        refresh(conn, account_id)
+    } else {
+        reset_to_sum(conn, account_id)
+    }
+}
+
 /// Refreshes every account with an opening balance. Called after every import
 /// and booking change (via `apply_rules_inner`) and after vault merges.
 pub(crate) fn refresh_all(conn: &Connection) -> CoreResult<()> {
