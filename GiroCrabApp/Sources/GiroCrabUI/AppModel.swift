@@ -442,6 +442,9 @@ public final class AppModel {
     /// `documentsWithoutAccount` = documents without an account (e.g. PostBox, #838).
     var documentsScope: DocumentsScope = .all
     var documentsAccountFilter: Int64?
+    /// "Belege & PostBox" filtered to one bank connection (#1042); nil = all, `documentsWithoutAccount` =
+    /// documents without an account (they have no bank connection). Set it with `selectDocumentsConnection`.
+    var documentsConnectionFilter: Int64?
     static let documentsWithoutAccount: Int64 = -1
     /// „Geplant“ (#240): payments with a bank order, the filters and a reload
     /// marker (set by everything that can change them: transfers, syncs).

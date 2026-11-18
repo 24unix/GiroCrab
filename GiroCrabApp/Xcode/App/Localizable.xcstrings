@@ -3558,6 +3558,17 @@
         }
       }
     },
+    "Alle Bankzugänge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Bank Connections"
+          }
+        }
+      }
+    },
     "Alle Belege exportieren …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6354,6 +6365,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bank connections are locked because this version contains a security vulnerability or a serious bug in bank access. Your data stays readable."
+          }
+        }
+      }
+    },
+    "Bankzugang" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank Connection"
           }
         }
       }
@@ -11610,6 +11632,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatically save documents to a folder"
+          }
+        }
+      }
+    },
+    "Dokumente eines Bankzugangs anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show documents for a bank connection"
           }
         }
       }
