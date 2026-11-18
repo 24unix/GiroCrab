@@ -3,13 +3,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::sepa::PainHeader;
 use super::syntax::Segment;
 use super::transfer::is_auth_error;
 use super::{pain008, FinTsConnector, PreparedOrder, Vop};
 use crate::connectors::{ConnectContext, DebitJob, Phase};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::iban::normalize_iban;
 
 /// What the bank allows for batch direct debits (BPD HIDMES/HIDMCS/HIBMES).
 /// Lead times in calendar days before the due date.
@@ -142,29 +142,10 @@ impl FinTsConnector {
         ) {
             check_debit_lead_time(p, job.sequence, chrono::Local::now().date_naive(), due)?;
         }
-        if self.sec() == "999" {
-            return Err(CoreError::Bank {
-                code: "HKTAN".into(),
-                message: tr("Für Lastschriften ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
-            });
-        }
-        let mut errors = Vec::new();
-        let accounts = self.account_list(ctx, &mut errors).await;
-        let want = normalize_iban(&job.source_iban);
-        let (acc, upd) = accounts
-            .into_iter()
-            .find(|(a, _)| normalize_iban(&a.iban) == want)
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf(
-                    "Konto {0} bei der Bank{1}",
-                    &[&job.source_iban, &String::new()],
-                ),
-            })?;
-        if let Some(u) = &upd {
-            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
-                return Err(not_allowed());
-            }
-        }
+        self.require_tan_method(tr("Für Lastschriften ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen."))?;
+        let Some(acc) = self.source_account(ctx, &job.source_iban, seg_id).await? else {
+            return Err(not_allowed());
+        };
         let version = pain008::DebitVersion::pick(
             self.st
                 .pain_formats
@@ -176,27 +157,12 @@ impl FinTsConnector {
             code: seg_id.into(),
             message: tr("Die Bank akzeptiert keines der unterstützten pain.008-Formate.").into(),
         })?;
-        let (date, time) = Self::now();
-        let created = format!(
-            "{}-{}-{}T{}:{}:{}",
-            &date[..4],
-            &date[4..6],
-            &date[6..],
-            &time[..2],
-            &time[2..4],
-            &time[4..]
-        );
-        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
-        let owner = if job.creditor_name.trim().is_empty() {
-            "Kontoinhaber"
-        } else {
-            job.creditor_name.trim()
-        };
+        let header = PainHeader::new(&job.creditor_name);
         let xml = pain008::build_pain008(&pain008::Pain008 {
-            message_id: &msg_id,
-            created: &created,
+            message_id: &header.message_id,
+            created: &header.created,
             collection_date: &job.collection_date,
-            creditor_name: owner,
+            creditor_name: header.owner,
             creditor_iban: &acc.iban,
             creditor_bic: &acc.bic,
             creditor_id: &job.creditor_id,
@@ -221,9 +187,6 @@ impl FinTsConnector {
             debit_layout: Some((p.sum_required, p.single_booking_allowed)),
             standing: None,
         });
-        self.vop_id = None;
-        self.vop_with_tan = false;
-        self.vop_pending = None;
         let reply = self.send_order(ctx, Vop::None).await?;
         // The bank lists HKCCM among the orders that need a name check (VoP): batches are
         // sent without one, so a refusal most likely means exactly that. Say so instead

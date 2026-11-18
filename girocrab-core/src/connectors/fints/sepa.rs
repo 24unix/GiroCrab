@@ -138,6 +138,40 @@ pub fn format_amount(cents: i64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
 }
 
+/// Group header fields of every pain.001 and pain.008 message GiroCrab builds.
+pub(crate) struct PainHeader<'a> {
+    pub(crate) message_id: String,
+    /// Local time, `YYYY-MM-DDTHH:MM:SS`.
+    pub(crate) created: String,
+    /// The schema requires a name, so an empty one gets a placeholder.
+    pub(crate) owner: &'a str,
+}
+
+impl<'a> PainHeader<'a> {
+    pub(crate) fn new(owner: &'a str) -> Self {
+        let now = chrono::Local::now();
+        let owner = owner.trim();
+        Self {
+            message_id: format!(
+                "GC{}{:08X}",
+                now.format("%Y%m%d%H%M%S"),
+                rand::random::<u32>()
+            ),
+            created: now.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            owner: if owner.is_empty() {
+                "Kontoinhaber"
+            } else {
+                owner
+            },
+        }
+    }
+
+    /// `YYYY-MM-DD` of `created`: the execution date of an order that names none.
+    pub(crate) fn date(&self) -> &str {
+        &self.created[..10]
+    }
+}
+
 pub struct Pain001<'a> {
     pub message_id: &'a str,
     /// ISO date-time, e.g. 2026-11-09T10:15:00
