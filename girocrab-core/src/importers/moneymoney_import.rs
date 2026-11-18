@@ -647,8 +647,8 @@ pub(crate) fn match_bank_without_counterparty(
     used: &mut [bool],
 ) {
     let days = |a: &str, b: &str| {
-        let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
-        Some((d(a)? - d(b)?).num_days().abs())
+        let d = |s: &str| jiff::civil::Date::strptime("%Y-%m-%d", s).ok();
+        Some(crate::dates::days_between(d(a)?, d(b)?).abs())
     };
     for (r, m) in rows.iter().zip(out.iter_mut()) {
         if m.is_some() {
