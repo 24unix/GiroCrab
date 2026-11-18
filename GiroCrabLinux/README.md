@@ -47,6 +47,21 @@ Auch die Web-Logins (Trade Republic, Amex, Amazon, FNZ, quirion) brauchen nur `q
 `cpp/webcookies.cpp` liest den Cookie-Speicher von QtWebEngine ohne gegen QtWebEngine zu linken (QtNetwork aus
 `qt6-base-dev` genügt zum Bauen); fehlt das Modul, startet die App trotzdem und meldet es erst beim Web-Login.
 
+Fedora (der erste Befehl genügt zum Bauen und Starten, geprüft mit Fedora 43 in einem frischen Container;
+`qt6-qtpdf` enthält auch das PDF-Plugin für den Druck):
+
+```sh
+sudo dnf install rust cargo gcc-c++ perl dbus-devel pkgconf-pkg-config \
+  qt6-qtbase-devel qt6-qtdeclarative-devel kf6-kirigami breeze-icon-theme
+# optional: Web-Logins, PDF-Vorschau und Drucken / Texterkennung / schnelleres Linken
+sudo dnf install qt6-qtwebengine qt6-qtpdf tesseract tesseract-langpack-deu mold
+```
+
+`perl` ist das vollständige Paket, nicht nur `perl-interpreter`: SQLCipher bringt ein eigenes OpenSSL mit, dessen
+`Configure` Perl-Module wie `lib`, `Time::Piece` und `IPC::Cmd` braucht (sonst bricht der Build bei `openssl-sys` ab).
+`dbus-devel` braucht `libdbus-sys` für den Schlüsselbund (Secret Service). Ohne `kf6-kirigami` lässt sich die App bauen,
+startet aber nicht (`module "org.kde.kirigami" is not installed`).
+
 ```sh
 cd GiroCrabLinux
 cargo run                                  # startet mit dem Demo-Tresor
