@@ -885,54 +885,53 @@ struct BalanceChart: View {
         }
     }
 
-    @available(macOS 15, iOS 18, *)
-    private static func vectorChart(years: [Date], plotted: [PlottedPoint]) -> some View {
-        // One plot instead of two marks per point: Charts builds every mark again at each new width.
-        Chart {
-            ForEach(years, id: \.self) { y in
-                RuleMark(x: .value("Jahr", y))
-                    .foregroundStyle(Theme.tertiary.opacity(0.5))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-            }
-            AreaPlot(plotted, x: .value("Tag", \.date), yStart: .value("Min", \.floor), yEnd: .value("Saldo", \.euros))
-                .foregroundStyle(Theme.chartAreaFill)
-                .interpolationMethod(.monotone)
-            LinePlot(plotted, x: .value("Tag", \.date), y: .value("Saldo", \.euros))
-                .foregroundStyle(Self.lineColor)
-                .lineStyle(Self.lineStroke)
-                .interpolationMethod(.monotone)
-        }
-    }
-
     private static let lineColor = Theme.accent.opacity(0.8)
     private static let lineStroke = StrokeStyle(lineWidth: 1.5)
+
+    /// Area and line of the balance. On macOS 15 / iOS 18 one plot each instead of two marks per
+    /// point: Charts builds every mark again at each new width.
+    ///
+    /// Deliberately not a `@ChartContentBuilder` with `if #available` inside: `ChartContentBuilder`'s
+    /// `buildPartialBlock` is obsoleted from macOS 15 / iOS 18 on, and the Xcode on the CI runner
+    /// (macos-26 image) still picks it for a block inside such a check, then rejects it
+    /// ("'buildPartialBlock(first:)' is unavailable"). Newer compilers accept that code, so a local
+    /// build passing proves nothing. Here the plots are joined with an explicit call to the
+    /// macOS 15 `buildBlock`, and the type erasure matches what `buildLimitedAvailability` does.
+    private static func balanceSeries(_ cur: Prepared) -> AnyChartContent {
+        if #available(macOS 15, iOS 18, *) {
+            let area = AreaPlot(cur.plotted, x: .value("Tag", \.date), yStart: .value("Min", \.floor), yEnd: .value("Saldo", \.euros))
+                .foregroundStyle(Theme.chartAreaFill)
+                .interpolationMethod(.monotone)
+            let line = LinePlot(cur.plotted, x: .value("Tag", \.date), y: .value("Saldo", \.euros))
+                .foregroundStyle(lineColor)
+                .lineStyle(lineStroke)
+                .interpolationMethod(.monotone)
+            return AnyChartContent(erasing: ChartContentBuilder.buildBlock(area, line))
+        }
+        let floor = cur.yDomain.lowerBound
+        return AnyChartContent(erasing: ForEach(cur.drawn) { p in
+            AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", floor), yEnd: .value("Saldo", p.euros))
+                .foregroundStyle(Theme.chartAreaFill)
+                .interpolationMethod(.monotone)
+            LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
+                .foregroundStyle(lineColor)
+                .lineStyle(lineStroke)
+                .interpolationMethod(.monotone)
+        })
+    }
 
     @ViewBuilder private var lineChart: some View {
         let cur = current
         let pts = cur.pts
         let yDomain = cur.yDomain
         let years = pts.first.flatMap { f in pts.last.map { BalanceBuckets.yearStarts(from: f.date, to: $0.date) } } ?? []
-        Group {
-            if #available(macOS 15, iOS 18, *) {
-                Self.vectorChart(years: years, plotted: cur.plotted)
-            } else {
-                Chart {
-                    ForEach(years, id: \.self) { y in
-                        RuleMark(x: .value("Jahr", y))
-                            .foregroundStyle(Theme.tertiary.opacity(0.5))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-                    }
-                    ForEach(cur.drawn) { p in
-                        AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", yDomain.lowerBound), yEnd: .value("Saldo", p.euros))
-                            .foregroundStyle(Theme.chartAreaFill)
-                            .interpolationMethod(.monotone)
-                        LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
-                            .foregroundStyle(Self.lineColor)
-                            .lineStyle(Self.lineStroke)
-                            .interpolationMethod(.monotone)
-                    }
-                }
+        Chart {
+            ForEach(years, id: \.self) { y in
+                RuleMark(x: .value("Jahr", y))
+                    .foregroundStyle(Theme.tertiary.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
             }
+            Self.balanceSeries(cur)
         }
         .chartXScale(domain: cur.xDomain)
         .chartYScale(domain: yDomain)
