@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 use super::{
-    keyfile::{BankKey, KeyFile},
+    keyfile::{BankKey, Identity, KeyFile},
     product_id, rah10,
     syntax::{self, SegmentBuilder, Value},
 };
@@ -166,16 +166,13 @@ pub(crate) struct SavedBankKeys {
     pub expected: Vec<String>,
 }
 
-pub fn inspect_rah10_keyfile(bytes: Vec<u8>, password: String) -> CoreResult<Rah10KeyfileInfo> {
-    let bytes = Zeroizing::new(bytes);
-    let password = Zeroizing::new(password);
-    let file = KeyFile::open(&bytes, password.as_bytes())?;
-    if file.identities.len() != 1 {
+/// The key file's only bank login, if it is one RAH-10 supports (Commerzbank).
+pub(crate) fn supported_identity(file: &KeyFile) -> CoreResult<&Identity> {
+    let [identity] = file.identities.as_slice() else {
         return Err(CoreError::invalid(tr(
             "Bitte eine Schlüsseldatei mit genau einem Bankzugang verwenden.",
         )));
-    }
-    let identity = &file.identities[0];
+    };
     if !matches!(
         identity.host.as_str(),
         "hbci.commerzbank.de" | "fints.commerzbank.de"
@@ -184,6 +181,14 @@ pub fn inspect_rah10_keyfile(bytes: Vec<u8>, password: String) -> CoreResult<Rah
             "Die Schlüsseldatei enthält keinen unterstützten Commerzbank-Zugang.",
         )));
     }
+    Ok(identity)
+}
+
+pub fn inspect_rah10_keyfile(bytes: Vec<u8>, password: String) -> CoreResult<Rah10KeyfileInfo> {
+    let bytes = Zeroizing::new(bytes);
+    let password = Zeroizing::new(password);
+    let file = KeyFile::open(&bytes, password.as_bytes())?;
+    let identity = supported_identity(&file)?;
     let needs_bank_keys = [0, 1].iter().any(|kind| {
         !file
             .bank_keys

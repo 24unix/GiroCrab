@@ -555,8 +555,6 @@ fn english(de: &str) -> Option<&'static str> {
         "Unerwartete Bankschlüssel-Antwort." => "Unexpected bank key reply.",
         "Mehrere Bankschlüssel derselben Art empfangen; keine automatische Auswahl." => "Received several bank keys of the same type; none is picked automatically.",
         "Signatur- und Verschlüsselungsschlüssel wurden nicht vollständig geliefert." => "The signature and encryption keys were not both delivered.",
-        "Der Import unterstützt zunächst genau einen Bankzugang pro Schlüsseldatei." => "For now the import supports exactly one bank login per key file.",
-        "RAH-10 wird zunächst nur für Commerzbank-Schlüsseldateien unterstützt." => "For now RAH-10 is only supported for Commerzbank key files.",
         "Dieser Bankzugang ist bereits vorhanden." => "This bank login already exists.",
         "RAH-10 unterstützt zunächst nur Kontoabrufe." => "For now RAH-10 only supports fetching accounts.",
         "Schlüsseldatei beschädigt oder Format noch nicht unterstützt." => "The key file is damaged or its format is not supported yet.",

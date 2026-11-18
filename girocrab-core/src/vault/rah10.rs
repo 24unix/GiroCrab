@@ -42,20 +42,7 @@ impl Vault {
         let password = Zeroizing::new(password);
         let mut file =
             crate::connectors::fints::keyfile::KeyFile::open(&bytes, password.as_bytes())?;
-        if file.identities.len() != 1 {
-            return Err(CoreError::invalid(tr(
-                "Der Import unterstützt zunächst genau einen Bankzugang pro Schlüsseldatei.",
-            )));
-        }
-        let identity = &file.identities[0];
-        if !matches!(
-            identity.host.as_str(),
-            "hbci.commerzbank.de" | "fints.commerzbank.de"
-        ) {
-            return Err(CoreError::invalid(tr(
-                "RAH-10 wird zunächst nur für Commerzbank-Schlüsseldateien unterstützt.",
-            )));
-        }
+        let identity = crate::connectors::fints::bank_keys::supported_identity(&file)?;
         let blz = identity.blz.clone();
         let login = identity.user_id.clone();
         let first = u64::from(identity.signature_id) + 1;
