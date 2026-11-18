@@ -8,21 +8,7 @@ Verhalten und Texte kommen dabei 1:1 aus der Mac-App, auf Deutsch und Englisch. 
 Einstellungen › Sicherheit steht deshalb „Kern-Version“: Die Nummer gehört zum Kern, nicht zum
 Funktionsumfang der Oberfläche.
 
-## Korrekturen (Kern 0.8.0)
-
-- **Belegvorschau:** In „Belege & PostBox“ füllt das PDF die Breite der Vorschau und bleibt beim
-  Wechsel zwischen Belegen sichtbar (vorher blieb sie ab dem zweiten Beleg leer).
-- **Ausgeführt, aber nicht gespeichert (#808):** Führt die Bank einen Auftrag aus, den GiroCrab nicht
-  speichern kann, warnt jetzt ein Hinweis wie in der Mac-App, statt Erfolg zu melden. Bei
-  Lastschriften nennt er, dass die Mandate vor dem nächsten Einzug zu prüfen sind.
-- **Bankzugang bearbeiten:** Uberspace, FFB, Ford Money und Opel Direktbank haben wieder das Feld für
-  Passwort bzw. PIN samt „im Tresor speichern“; Easybank, Ford Money und Opel Direktbank bieten
-  „Kontoauszüge abrufen“ an. Bei der Commerzbank mit Schlüsseldatei (RAH-10) fragt der Dialog nach
-  dem „Passwort der Schlüsseldatei“, die Benutzerkennung ist fest.
-- **EquatePlus** erscheint unter Linux vorerst nicht im Bankkatalog: Sein Anmeldeablauf ist noch
-  nicht übernommen, die Auswahl öffnete das falsche Browserfenster.
-- **Regeln, die nur Tags setzen** (in der Mac-App angelegt), zeigen „→ Nur Tags“ und ihre Tags statt
-  einer leeren Kategorie; im Formular steht „Keine (nur Tags)“.
+## Funktionsstand 0.8.6 (in Arbeit)
 
 ### EquatePlus (#720)
 
@@ -41,6 +27,22 @@ Funktionsumfang der Oberfläche.
   Kontenauswahl mit; ein Abruf startet erst danach.
 - Die Skripte im Browser sind die der Mac-App (`scripts/gen-equateplus-qml.py`, abgeglichen von
   `scripts/test-equateplus-linux.cjs`). Mit einem echten EquatePlus-Zugang noch nicht getestet.
+
+## Korrekturen (Kern 0.8.0)
+
+- **Belegvorschau:** In „Belege & PostBox“ füllt das PDF die Breite der Vorschau und bleibt beim
+  Wechsel zwischen Belegen sichtbar (vorher blieb sie ab dem zweiten Beleg leer).
+- **Ausgeführt, aber nicht gespeichert (#808):** Führt die Bank einen Auftrag aus, den GiroCrab nicht
+  speichern kann, warnt jetzt ein Hinweis wie in der Mac-App, statt Erfolg zu melden. Bei
+  Lastschriften nennt er, dass die Mandate vor dem nächsten Einzug zu prüfen sind.
+- **Bankzugang bearbeiten:** Uberspace, FFB, Ford Money und Opel Direktbank haben wieder das Feld für
+  Passwort bzw. PIN samt „im Tresor speichern“; Easybank, Ford Money und Opel Direktbank bieten
+  „Kontoauszüge abrufen“ an. Bei der Commerzbank mit Schlüsseldatei (RAH-10) fragt der Dialog nach
+  dem „Passwort der Schlüsseldatei“, die Benutzerkennung ist fest.
+- **EquatePlus** erscheint unter Linux vorerst nicht im Bankkatalog: Sein Anmeldeablauf ist noch
+  nicht übernommen, die Auswahl öffnete das falsche Browserfenster.
+- **Regeln, die nur Tags setzen** (in der Mac-App angelegt), zeigen „→ Nur Tags“ und ihre Tags statt
+  einer leeren Kategorie; im Formular steht „Keine (nur Tags)“.
 
 ## Funktionsstand 0.7.5 (Kern 0.8.0)
 
