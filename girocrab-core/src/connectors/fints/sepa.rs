@@ -138,6 +138,12 @@ pub fn format_amount(cents: i64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
 }
 
+/// `ReqdExctnDt` of a transfer that names no date (HKCCS, HKIPZ, HKCCM). The field is mandatory
+/// in the schema, but these orders run at once and some banks (Postbank, error 9150 "Ausführungsdatum
+/// darf nicht belegt werden") reject today's date there. `1999-01-01` is the FinTS convention for
+/// "no date"; only a scheduled transfer (HKCSE) carries a real one.
+pub(crate) const IMMEDIATE_EXECUTION_DATE: &str = "1999-01-01";
+
 /// Group header fields of every pain.001 and pain.008 message GiroCrab builds.
 pub(crate) struct PainHeader<'a> {
     pub(crate) message_id: String,
@@ -164,11 +170,6 @@ impl<'a> PainHeader<'a> {
                 owner
             },
         }
-    }
-
-    /// `YYYY-MM-DD` of `created`: the execution date of an order that names none.
-    pub(crate) fn date(&self) -> &str {
-        &self.created[..10]
     }
 }
 
@@ -467,6 +468,19 @@ mod tests {
         assert!(xml.contains("<BICFI>BYLADEM1001</BICFI>"));
         assert!(xml.contains("<BICFI>COBADEFFXXX</BICFI>"));
         assert!(!xml.contains("<BIC>"));
+    }
+
+    #[test]
+    fn immediate_orders_carry_the_placeholder_date() {
+        let mut p = sample("Max Muster", "Miete");
+        p.execution_date = IMMEDIATE_EXECUTION_DATE;
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>1999-01-01</ReqdExctnDt>"));
+        p.version = PainVersion::V09;
+        p.instant = true;
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt><Dt>1999-01-01</Dt></ReqdExctnDt>"));
+        assert!(!xml.contains("2026-11-09</Dt>"));
     }
 
     #[test]

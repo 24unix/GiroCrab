@@ -308,7 +308,10 @@ impl FinTsConnector {
             }
         };
         let header = sepa::PainHeader::new(&job.source_owner);
-        let exec = job.execution_date.as_deref().unwrap_or(header.date());
+        let exec = job
+            .execution_date
+            .as_deref()
+            .unwrap_or(sepa::IMMEDIATE_EXECUTION_DATE);
         let xml = sepa::build_pain001(&sepa::Pain001 {
             message_id: &header.message_id,
             created: &header.created,
@@ -405,7 +408,10 @@ impl FinTsConnector {
         };
         let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
         let header = sepa::PainHeader::new(&job.source_owner);
-        let exec = job.execution_date.as_deref().unwrap_or(header.date());
+        let exec = job
+            .execution_date
+            .as_deref()
+            .unwrap_or(sepa::IMMEDIATE_EXECUTION_DATE);
         let xml = sepa::build_pain001_batch(&sepa::Pain001Batch {
             message_id: &header.message_id,
             created: &header.created,
