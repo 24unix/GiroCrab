@@ -109,24 +109,11 @@ async fn run(vault: &Arc<Vault>, account_id: i64, order: StandingOrderJob) {
         since: "2020-01-01".into(),
         since_by_account: Default::default(),
     };
-    let summary = TransferJob {
-        source_iban: order.source_iban.clone(),
-        source_owner: "A".into(),
-        recipient_name: order.recipient_name.clone(),
-        recipient_iban: order.recipient_iban.clone(),
-        recipient_bic: None,
-        amount_cents: order.amount_cents,
-        purpose: order.purpose.clone(),
-        instant: false,
-        execution_date: None,
-        end_to_end_id: "GCSO".into(),
-    };
     let s = TransferSession::new(
         Arc::clone(vault),
         Box::new(Accepting),
         ctx,
         OrderKind::Standing(order),
-        summary,
         account_id,
     );
     assert!(matches!(
