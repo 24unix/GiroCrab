@@ -928,7 +928,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
     let conn_id = v.list_bank_connections().unwrap()[0].id;
     let db = v.db().unwrap();
     assert_eq!(
-        adopt_account(&db, conn_id, "remote-1", "", "", AccountKind::Checking).unwrap(),
+        adopt_account(&db, conn_id, "remote-1", "", "", "", AccountKind::Checking).unwrap(),
         None
     );
     let adopted = adopt_account(
@@ -936,6 +936,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
         conn_id,
         "remote-1",
         "DE89 3704 0044 0532 0130 00",
+        "",
         "",
         AccountKind::Checking,
     )
@@ -956,6 +957,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
             conn_id,
             "remote-2",
             "DE89370400440532013000",
+            "",
             "",
             AccountKind::Checking
         )
@@ -989,16 +991,43 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
     let (usd, eur) = (ids[0], ids[1]);
     let iban = "GB51 TCCL 0000 0000 0000 01";
     assert_eq!(
-        adopt_account(&db, conn_id, "w:EUR", iban, "EUR", AccountKind::Checking).unwrap(),
+        adopt_account(
+            &db,
+            conn_id,
+            "w:EUR",
+            iban,
+            "",
+            "EUR",
+            AccountKind::Checking
+        )
+        .unwrap(),
         Some(eur)
     );
     assert_eq!(
-        adopt_account(&db, conn_id, "w:USD", iban, "USD", AccountKind::Checking).unwrap(),
+        adopt_account(
+            &db,
+            conn_id,
+            "w:USD",
+            iban,
+            "",
+            "USD",
+            AccountKind::Checking
+        )
+        .unwrap(),
         Some(usd)
     );
     // a third currency finds no wallet to take over
     assert_eq!(
-        adopt_account(&db, conn_id, "w:GBP", iban, "GBP", AccountKind::Checking).unwrap(),
+        adopt_account(
+            &db,
+            conn_id,
+            "w:GBP",
+            iban,
+            "",
+            "GBP",
+            AccountKind::Checking
+        )
+        .unwrap(),
         None
     );
 }
@@ -1048,6 +1077,7 @@ fn a_direct_connector_takes_over_accounts_of_an_unsynced_psd2_connection() {
             direct,
             "fordmoney:1",
             "DE00000000001000000001",
+            "",
             "EUR",
             AccountKind::CreditCard
         )
@@ -1075,6 +1105,7 @@ fn a_direct_connector_takes_over_accounts_of_an_unsynced_psd2_connection() {
             direct,
             "fordmoney:2",
             "DE00000000001000000002",
+            "",
             "EUR",
             AccountKind::Savings
         )
@@ -1417,22 +1448,32 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
             "card-x",
             "DE02120300000000202051",
             "",
+            "",
             AccountKind::CreditCard
         )
         .unwrap(),
         None
     );
     assert_eq!(
-        adopt_account(&db, conn_id, "card-1", "", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(&db, conn_id, "card-1", "", "", "", AccountKind::CreditCard).unwrap(),
         Some(visa.id)
     );
     // only once, and never for another login
     assert_eq!(
-        adopt_account(&db, conn_id, "card-2", "", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(&db, conn_id, "card-2", "", "", "", AccountKind::CreditCard).unwrap(),
         None
     );
     assert_eq!(
-        adopt_account(&db, conn_id + 1, "dep-1", "", "", AccountKind::Brokerage).unwrap(),
+        adopt_account(
+            &db,
+            conn_id + 1,
+            "dep-1",
+            "",
+            "",
+            "",
+            AccountKind::Brokerage
+        )
+        .unwrap(),
         None
     );
 }
@@ -1471,7 +1512,16 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
     // the web login reports the card without an IBAN: still taken over, once
     let db = v.db().unwrap();
     assert_eq!(
-        adopt_account(&db, conn.id, "amazon-1", "", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(
+            &db,
+            conn.id,
+            "amazon-1",
+            "",
+            "",
+            "",
+            AccountKind::CreditCard
+        )
+        .unwrap(),
         Some(card.id)
     );
     db.execute(
@@ -1480,7 +1530,16 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
     )
     .unwrap();
     assert_eq!(
-        adopt_account(&db, conn.id, "amazon-2", "", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(
+            &db,
+            conn.id,
+            "amazon-2",
+            "",
+            "",
+            "",
+            AccountKind::CreditCard
+        )
+        .unwrap(),
         None
     );
 }
@@ -3003,6 +3062,158 @@ fn psd2_choice_without_create_connections_does_nothing() {
     assert!(v.list_bank_connections().unwrap().is_empty());
 }
 
+/// MoneyMoney's pseudo code for the Miles & More card logins (#1017): Deutsche
+/// Bank (current cards, 50: main and partner card) and DKB (the issuer before
+/// 10/2025, 51), plus both renamed (52: Deutsche Bank, 53: DKB).
+const MILES_AND_MORE: &str = "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage) VALUES
+   (50, 'DE', 'Miles & More Credit Card', 'db-id', '', 'X', 'Deutsche Bank', 'SYS', 'LS'),
+   (51, 'DE', 'Miles & More Credit Card', 'dkb-login', '', 'X', 'DKB', 'SYS', 'LS'),
+   (52, 'DE', 'Miles & More Credit Card', 'db-id-2', '', 'X', 'Lufthansa-Karte', 'SYS', 'LS'),
+   (53, 'DE', 'miles & more credit card', 'dkb-login-2', '', 'X', 'Alte Meilenkarte', 'SYS', 'LS');
+ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, currency, name, owner, kind, type, sort, initial_balance, group_key, cred) VALUES
+   (50, 50, '5232 XXXX XXXX 1234', '', 0, '', 'EUR', 'Miles & More Blue Credit Card', 'Max', 0, 0, 50, 0, 0, 'X'),
+   (54, 50, '5232 XXXX XXXX 5678', '', 0, '', 'EUR', 'Partnerkarte', 'Erika', 0, 0, 54, 0, 0, 'X'),
+   (51, 51, '4711', '12030000', 0, '', 'EUR', 'Miles & More Gold', 'Max', 0, 0, 51, 0, 0, 'X'),
+   (52, 52, '9876', '', 0, '', 'EUR', 'Meilen', 'Max', 0, 0, 52, 0, 0, 'X'),
+   (53, 53, '4712', '12030000', 0, '', 'EUR', 'Meilen alt', 'Max', 0, 0, 53, 0, 0, 'X');";
+
+#[test]
+fn miles_and_more_pseudo_code_maps_to_the_deutsche_bank_card_login() {
+    let v = vault();
+    let path = fake_db_with(false, MILES_AND_MORE);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let bank = |id: i64| p.banks.iter().find(|b| b.mm_id == id).unwrap();
+    let account = |id: i64| p.accounts.iter().find(|a| a.mm_id == id).unwrap();
+    // also renamed: no card carries DKB's bank code
+    for id in [50, 52] {
+        assert_eq!(bank(id).bank_code, "50070439", "{id}");
+        assert_eq!(bank(id).connector, Some(ConnectorKind::FinTsGeneric));
+        // FinTS only: not the bank's current-account login in the PSD2 catalogue
+        let keys: Vec<_> = bank(id)
+            .connection_options
+            .iter()
+            .map(|o| o.key.as_str())
+            .collect();
+        assert_eq!(keys, ["fints:50070439"], "{id}");
+    }
+    // a card by its login (pseudo or the cards' own bank code), whatever its name
+    for id in [50, 54, 52, 51, 53] {
+        assert_eq!(account(id).suggested_kind, AccountKind::CreditCard, "{id}");
+    }
+    // the old DKB cards are never sent to the Deutsche Bank login: by the
+    // login's name, or by the bank code of its cards
+    for id in [51, 53] {
+        assert_eq!(bank(id).connector, None, "{id}");
+        assert!(!bank(id).bank_code.contains("50070439"), "{id}");
+        // nor to DKB's current-account login in the PSD2 catalogue
+        assert!(bank(id).connection_options.is_empty(), "{id}");
+    }
+
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    let logins = v.list_bank_connections().unwrap();
+    let card_login = logins.iter().find(|c| c.login_name == "db-id").unwrap();
+    assert_eq!(card_login.connector, ConnectorKind::FinTsGeneric);
+    assert_eq!(card_login.bank_code, "50070439");
+    // not "Deutsche Bank", like the current-account login
+    assert_eq!(
+        card_login.display_name,
+        "Miles & More Kreditkarte (Deutsche Bank)"
+    );
+    for name in ["Miles & More Blue Credit Card", "Partnerkarte"] {
+        let card = account_by_name(&v, name);
+        assert_eq!(card.connection_id, Some(card_login.id), "{name}");
+        assert_eq!(card.kind, AccountKind::CreditCard);
+    }
+    for name in ["Miles & More Gold", "Meilen alt"] {
+        assert_eq!(account_by_name(&v, name).connection_id, None, "{name}");
+    }
+
+    // first sync: each card by its number, though two hang on the login
+    let (main, partner) = (
+        account_by_name(&v, "Miles & More Blue Credit Card").id,
+        account_by_name(&v, "Partnerkarte").id,
+    );
+    let db = v.db().unwrap();
+    let take = |ext: &str, number: &str| {
+        adopt_account(
+            &db,
+            card_login.id,
+            ext,
+            "",
+            number,
+            "EUR",
+            AccountKind::CreditCard,
+        )
+        .unwrap()
+    };
+    assert_eq!(take("card-b", "5232123456785678"), Some(partner));
+    // the only card left has another number: not taken as a guess
+    assert_eq!(take("card-c", "5232123456789999"), None);
+    assert_eq!(take("card-a", "5232123456781234"), Some(main));
+}
+
+#[test]
+fn same_card_number_needs_the_same_digits_or_a_masked_side() {
+    assert!(same_card_number("5232 1234 5678 1234", "5232123456781234"));
+    assert!(same_card_number("5232 XXXX XXXX 1234", "5232123456781234"));
+    assert!(same_card_number("1234", "5232123456781234"));
+    // masked differently, same length
+    assert!(same_card_number("5232 12XX XXXX 1234", "52XXXXXX56781234"));
+    // two complete numbers ending alike are two cards, also of other lengths
+    assert!(!same_card_number("5232123456781234", "4111123456781234"));
+    assert!(!same_card_number("371234567891234", "5232123456781234"));
+    assert!(!same_card_number("", "5232123456781234"));
+    assert!(!same_card_number("123", "123"));
+    // a known other card blocks a guess, an account id in another form does not
+    assert!(other_card("5232 XXXX XXXX 1234", "5232123456789999"));
+    assert!(!other_card("5232 XXXX XXXX 1234", "5232123456781234"));
+    assert!(!other_card("1234567890", "5232123456789999"));
+    assert!(!other_card("", "5232123456789999"));
+}
+
+#[test]
+fn card_synced_before_the_import_is_found_by_its_number() {
+    let v = vault();
+    let (login, synced) = {
+        let db = v.db().unwrap();
+        let (login, _) = Vault::add_bank_connection_keyed(
+            &db,
+            ConnectorKind::FinTsGeneric,
+            "fints:50070439",
+            Some("50070439"),
+            "Miles & More Kreditkarte (Deutsche Bank)".into(),
+            "db-id".into(),
+        )
+        .unwrap();
+        let gid = Vault::ensure_group(&db, "Karten", "creditcard", 1).unwrap();
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, currency, kind)
+             VALUES (?1, ?2, 'fints-card', 'Meine Karte', '5232123456781234', 'EUR', 'credit_card')",
+            params![login, gid],
+        )
+        .unwrap();
+        (login, db.last_insert_rowid())
+    };
+    let p = v
+        .preview_moneymoney_database(fake_db_with(false, MILES_AND_MORE), PW.into(), None)
+        .unwrap();
+    let account = |id: i64| p.accounts.iter().find(|a| a.mm_id == id).unwrap();
+    assert_eq!(
+        p.banks
+            .iter()
+            .find(|b| b.mm_id == 50)
+            .unwrap()
+            .existing_connection_id,
+        Some(login)
+    );
+    assert_eq!(account(50).existing_account_id, Some(synced));
+    // the partner card is not synced yet
+    assert_eq!(account(54).existing_account_id, None);
+}
+
 #[test]
 fn connection_priority_fints_then_own_api_then_enable_banking() {
     let v = vault();
@@ -3701,9 +3912,16 @@ fn adopt_account_reuses_imported_trade_republic_checking_account_without_iban() 
             params![conn_id, gid],
         )
         .unwrap();
-        let adopted =
-            super::adopt_account(&db, conn_id, "tr:cash", "", "EUR", AccountKind::Checking)
-                .unwrap();
+        let adopted = super::adopt_account(
+            &db,
+            conn_id,
+            "tr:cash",
+            "",
+            "",
+            "EUR",
+            AccountKind::Checking,
+        )
+        .unwrap();
         assert!(
             adopted.is_some(),
             "imported TR checking account must be adopted"

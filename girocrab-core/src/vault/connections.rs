@@ -1057,6 +1057,7 @@ mod tests {
                 c,
                 "DE10200411550123456789",
                 "DE10200411550123456789",
+                "",
                 "EUR",
                 crate::models::AccountKind::Checking,
             )
@@ -1447,6 +1448,7 @@ mod tests {
             c,
             "dep-1",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
         )
@@ -1482,6 +1484,7 @@ mod tests {
                 c,
                 iban,
                 iban,
+                "",
                 "EUR",
                 crate::models::AccountKind::Checking,
             )
@@ -1561,7 +1564,7 @@ mod tests {
             let db = a.db().unwrap();
             let iban = "DE10200411550123456789";
             let take = |ext: &str, iban: &str, kind| {
-                crate::importers::moneymoney_db::adopt_account(&db, c, ext, iban, "EUR", kind)
+                crate::importers::moneymoney_db::adopt_account(&db, c, ext, iban, "", "EUR", kind)
                     .unwrap()
             };
             assert_eq!(
@@ -1688,6 +1691,7 @@ mod tests {
             &db,
             c,
             "dep-1",
+            "",
             "",
             "EUR",
             crate::models::AccountKind::Brokerage,
