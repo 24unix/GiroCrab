@@ -529,15 +529,17 @@ final class NaturalSearchModelTests: XCTestCase {
     }
 
     /// A model that invents today's date for a phrase without a period must not move the period.
-    func testInventedDateDoesNotChangeThePeriod() {
+    func testInventedDateDoesNotChangeThePeriod() throws {
         let model = demoModel(naturalSearch: false)
+        let rent = try XCTUnwrap(model.categories.first { $0.name == "Miete" }?.id)
         let before = (model.period, model.customPeriodFrom, model.customPeriodTo)
         model.searchText = "zeige alle miete"
         model.applyParsedSearch(ParsedSearchQuery(text: "miete", fromDate: "2026-11-18", toDate: "2026-11-18"))
         XCTAssertEqual(model.period, before.0)
         XCTAssertEqual(model.customPeriodFrom, before.1)
         XCTAssertEqual(model.customPeriodTo, before.2)
-        XCTAssertEqual(model.effectiveSearchText, "miete")
+        XCTAssertEqual(model.sidebarSelection, .category(rent))
+        XCTAssertEqual(model.effectiveSearchText, "")
     }
 
     func testSearchLiterallyKeepsThePhrase() async throws {
