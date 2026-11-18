@@ -22404,6 +22404,17 @@
         }
       }
     },
+    "Nicht alle Karten ließen sich öffnen – übernommen werden die bisher geladenen Karten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not every card could be opened – the cards loaded so far will be imported."
+          }
+        }
+      }
+    },
     "Nicht als Gehalt erkannt. Markieren Sie den Eingang, damit der Zeitraum „Seit letztem Gehalt“ ihn nutzt." : {
       "extractionState" : "manual",
       "localizations" : {
