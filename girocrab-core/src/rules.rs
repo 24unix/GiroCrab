@@ -132,11 +132,16 @@ impl CompiledRule {
         rule: Rule,
         parse_expr: fn(&str) -> Result<SearchExpr, SearchExprError>,
     ) -> CoreResult<Self> {
+        // Parse an expression before the byte check: the parser has its own,
+        // lower limit in characters and its message names it.
+        let expr = match rule.match_kind {
+            MatchKind::Expression => Some(parse_expr(&rule.pattern)?),
+            MatchKind::Keyword | MatchKind::Regex => None,
+        };
         if rule.pattern.len() > MAX_PATTERN_LEN {
             return Err(CoreError::invalid(tr("Das Suchmuster ist zu lang.")));
         }
-        if rule.match_kind == MatchKind::Expression {
-            let expr = parse_expr(&rule.pattern)?;
+        if let Some(expr) = expr {
             return Ok(CompiledRule {
                 rule,
                 matcher: Matcher::Expr(expr),
@@ -452,12 +457,19 @@ mod tests {
     fn overlong_pattern_is_rejected_in_the_ui_language() {
         use crate::i18n::{with_language, Lang};
         let long = "a".repeat(MAX_PATTERN_LEN + 1);
-        for kind in [MatchKind::Keyword, MatchKind::Regex, MatchKind::Expression] {
+        for (kind, expected) in [
+            (MatchKind::Keyword, "The pattern is too long."),
+            (MatchKind::Regex, "The pattern is too long."),
+            (
+                MatchKind::Expression,
+                "The search expression is too long (at most 2000 characters).",
+            ),
+        ] {
             let result = with_language(Lang::En, || CompiledRule::compile(rule(&long, kind)));
             let Err(CoreError::InvalidInput { message }) = result else {
                 panic!("{kind:?}: expected InvalidInput");
             };
-            assert_eq!(message, "The pattern is too long.");
+            assert_eq!(message, expected, "{kind:?}");
         }
         assert!(
             CompiledRule::compile(rule(&"a".repeat(MAX_PATTERN_LEN), MatchKind::Keyword)).is_ok()
