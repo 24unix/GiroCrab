@@ -25,8 +25,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{
-    http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteTransaction,
+    http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, KnownDocuments,
+    Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -134,13 +134,6 @@ fn oaep_encrypt(key: &rsa::PublicKey, password: &str) -> CoreResult<Vec<u8>> {
 }
 
 pub struct Fin4uConnector {
-    /// `documentReferenceId`s already downloaded (connector state).
-    known_documents: Vec<String>,
-    /// Accounts whose data GiroCrab does not store this time (switched off,
-    /// archived …): their documents are neither downloaded nor remembered.
-    skipped_accounts: std::collections::HashSet<String>,
-    /// Document retrieval switched off for this connection: no documents downloaded or remembered.
-    documents_off: bool,
     client: Option<reqwest::Client>,
     access_token: SecretString,
     refresh_token: SecretString,
@@ -149,9 +142,6 @@ pub struct Fin4uConnector {
 impl Fin4uConnector {
     pub fn new() -> Self {
         Fin4uConnector {
-            known_documents: Vec::new(),
-            skipped_accounts: Default::default(),
-            documents_off: false,
             client: None,
             access_token: SecretString::default(),
             refresh_token: SecretString::default(),
@@ -764,18 +754,6 @@ pub(crate) fn parse_transactions_for(
 #[async_trait]
 impl BankConnector for Fin4uConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
-        self.known_documents = ctx.state["documents"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect();
-        self.skipped_accounts = ctx
-            .settings
-            .get(super::SKIPPED_ACCOUNTS)
-            .map(|v| v.expose().lines().map(str::to_string).collect())
-            .unwrap_or_default();
-        self.documents_off = ctx.settings.contains_key(super::DOCUMENTS_OFF);
         if ctx.login_name.trim().is_empty() || ctx.secret.expose().is_empty() {
             return Err(CoreError::Authentication {
                 message: tr("Benutzername (E-Mail) und Passwort für fin4u erforderlich").into(),
@@ -800,7 +778,7 @@ impl BankConnector for Fin4uConnector {
         Ok(Phase::Ready)
     }
 
-    async fn fetch(&mut self, _ctx: &ConnectContext) -> CoreResult<FetchResult> {
+    async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let list = self.get("/bankaccounts/bank-account").await?;
         if !list["bankAccounts"].is_array() && !list.is_array() {
             return Err(interface_changed("Kontoliste ohne „bankAccounts“"));
@@ -817,6 +795,7 @@ impl BankConnector for Fin4uConnector {
             .map(|a| str_of(a, "id"))
             .collect();
         let accounts = parse_accounts(&list, false, &super::today());
+        let mut known = KnownDocuments::from_state(&ctx.state);
         let mut out = FetchResult::default();
         for (mut id, mut account) in accounts {
             let alh = alh_ids.contains(&id);
@@ -828,15 +807,15 @@ impl BankConnector for Fin4uConnector {
                 // „Dokumente einsehen“: download the ones not fetched before –
                 // but only for accounts that are stored now: remembered
                 // documents of a switched-off account would never come back.
-                let documents = if self.skipped_accounts.contains(&account.external_ref)
-                    || self.documents_off
+                let documents = if ctx.skipped_accounts.contains(&account.external_ref)
+                    || !ctx.documents.enabled()
                 {
                     Vec::new()
                 } else {
                     parse_documents(&detail)
                 };
                 for d in documents {
-                    if self.known_documents.contains(&d.reference_id) {
+                    if known.contains(&d.reference_id) {
                         continue;
                     }
                     let Ok(bytes) = self.document(&d.reference_id).await else {
@@ -856,7 +835,7 @@ impl BankConnector for Fin4uConnector {
                         source_url: format!("fin4u:document:{}", d.reference_id),
                         date: d.date.clone(),
                     });
-                    self.known_documents.push(d.reference_id);
+                    known.insert(d.reference_id);
                 }
                 let refreshed = detail["reloadAccountDetailSuccessful"]
                     .as_bool()
@@ -901,10 +880,7 @@ impl BankConnector for Fin4uConnector {
             ));
             out.accounts.push(account);
         }
-        let keep: Vec<&String> = self.known_documents.iter().rev().take(2000).collect();
-        out.state = Some(serde_json::json!({
-            "documents": keep.into_iter().rev().collect::<Vec<_>>(),
-        }));
+        out.state = Some(known.to_state());
         Ok(out)
     }
 
@@ -1197,31 +1173,6 @@ mod tests {
         assert!(login_error_kind(400, &json!({"error": "invalid_grant"})).is_ok());
         assert!(login_error_kind(401, &json!({"error": "invalid_client"})).is_err());
         assert!(login_error_kind(404, &Value::Null).is_err());
-    }
-
-    #[tokio::test]
-    async fn reads_the_accounts_a_sync_does_not_store() {
-        let mut settings = std::collections::HashMap::new();
-        settings.insert(
-            super::super::SKIPPED_ACCOUNTS.to_string(),
-            SecretString::new("fin4u:a1\nfin4u:a2".into()),
-        );
-        let ctx = ConnectContext {
-            connection_id: 1,
-            login_name: String::new(),
-            secret: SecretString::default(),
-            settings,
-            state: serde_json::json!({ "documents": ["d1"] }),
-            since: "2026-01-01".into(),
-            since_by_account: Default::default(),
-        };
-        let mut c = Fin4uConnector::new();
-        // no login: begin stops before the network, after reading the context
-        assert!(c.begin(&ctx).await.is_err());
-        assert_eq!(c.known_documents, vec!["d1".to_string()]);
-        let mut skipped: Vec<&String> = c.skipped_accounts.iter().collect();
-        skipped.sort();
-        assert_eq!(skipped, vec!["fin4u:a1", "fin4u:a2"]);
     }
 
     #[test]

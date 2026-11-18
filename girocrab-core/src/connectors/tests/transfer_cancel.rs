@@ -72,12 +72,8 @@ fn session(outcomes: Vec<CancelOutcome>, bank: Bank) -> (TransferSession, Arc<At
     let calls = Arc::new(AtomicUsize::new(0));
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
-        secret: crate::secret::SecretString::new(String::new()),
-        settings: Default::default(),
-        state: serde_json::Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let job = TransferJob {
         source_iban: "DE02120300000000202051".into(),

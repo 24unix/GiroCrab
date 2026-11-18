@@ -1339,10 +1339,8 @@ mod tests {
             connection_id: 1,
             login_name: token.into(),
             secret: crate::secret::SecretString::new(query.into()),
-            settings: HashMap::new(),
-            state: serde_json::Value::Null,
             since: "2026-01-01".into(),
-            since_by_account: HashMap::new(),
+            ..Default::default()
         }
     }
 

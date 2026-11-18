@@ -25,7 +25,7 @@ use serde_json::Value;
 use super::comdirect::ComdirectConnector;
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, SKIPPED_ACCOUNTS,
+    RemoteAccount,
 };
 use crate::documents::RemoteDocument;
 use crate::error::CoreResult;
@@ -255,15 +255,10 @@ impl BankConnector for FintsWithPostbox {
 
     async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let mut out = self.fints.fetch(ctx).await?;
-        let skipped: Vec<&str> = ctx
-            .settings
-            .get(SKIPPED_ACCOUNTS)
-            .map(|s| s.expose().lines().collect())
-            .unwrap_or_default();
         let accounts: Vec<&RemoteAccount> = out
             .accounts
             .iter()
-            .filter(|a| !skipped.contains(&a.external_ref.as_str()))
+            .filter(|a| !ctx.skipped_accounts.contains(&a.external_ref))
             .collect();
         let mut matched = 0usize;
         let mut docs = std::mem::take(&mut self.docs);
@@ -532,20 +527,12 @@ mod tests {
         }
     }
 
-    fn ctx(skipped: &str) -> ConnectContext {
-        let mut settings = std::collections::HashMap::new();
-        settings.insert(
-            SKIPPED_ACCOUNTS.to_string(),
-            SecretString::new(skipped.into()),
-        );
+    fn ctx(skipped: &[&str]) -> ConnectContext {
         ConnectContext {
             connection_id: 1,
-            login_name: String::new(),
             secret: SecretString::new("pin".into()),
-            settings,
-            state: serde_json::Value::Null,
-            since: String::new(),
-            since_by_account: Default::default(),
+            skipped_accounts: skipped.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
         }
     }
 
@@ -668,7 +655,7 @@ mod tests {
             ),
         ];
         let (mut w, log) = wrapped(false, Some(docs));
-        let c = ctx("");
+        let c = ctx(&[]);
         let Phase::Challenge(ch) = w.begin(&c).await.unwrap() else {
             panic!("expected the PostBox approval")
         };
@@ -721,7 +708,7 @@ mod tests {
     #[tokio::test]
     async fn failed_postbox_login_does_not_stop_the_fints_sync() {
         let (mut w, log) = wrapped(true, None);
-        let c = ctx("");
+        let c = ctx(&[]);
         assert!(matches!(w.begin(&c).await.unwrap(), Phase::Ready));
         let out = w.fetch(&c).await.unwrap();
         assert!(!out.postbox_fetched, "the PostBox stays due");
@@ -739,7 +726,7 @@ mod tests {
             .map(|i| doc(&format!("Information {i}"), "Neue Bedingungen"))
             .collect();
         let (mut w, _) = wrapped(false, Some(docs));
-        let c = ctx("");
+        let c = ctx(&[]);
         w.begin(&c).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();
         let mut seen = Vec::new();
@@ -766,7 +753,7 @@ mod tests {
             doc("Finanzreport", "x"),
         ];
         let (mut w, _) = wrapped(false, Some(docs));
-        let c = ctx("");
+        let c = ctx(&[]);
         w.begin(&c).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();
@@ -783,7 +770,7 @@ mod tests {
     #[tokio::test]
     async fn empty_postbox_goes_straight_to_fints() {
         let (mut w, log) = wrapped(false, Some(Vec::new()));
-        let c = ctx("");
+        let c = ctx(&[]);
         w.begin(&c).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();
         assert!(matches!(
@@ -800,7 +787,7 @@ mod tests {
     #[tokio::test]
     async fn failed_postbox_listing_keeps_the_postbox_due() {
         let (mut w, _) = wrapped(false, None);
-        let c = ctx("");
+        let c = ctx(&[]);
         w.begin(&c).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();
@@ -810,7 +797,7 @@ mod tests {
     #[tokio::test]
     async fn cancelled_postbox_approval_never_opens_the_fints_dialog() {
         let (mut w, log) = wrapped(false, Some(Vec::new()));
-        let c = ctx("");
+        let c = ctx(&[]);
         w.begin(&c).await.unwrap();
         w.finish(&c).await;
         assert_eq!(*log.lock().unwrap(), ["rest begin", "rest finish"]);
@@ -820,7 +807,7 @@ mod tests {
     async fn documents_of_skipped_accounts_go_to_the_default_account() {
         let docs = vec![doc("Kontoauszug", "IBAN DE75 2004 1155 0765 4321 00")];
         let (mut w, _) = wrapped(false, Some(docs));
-        let c = ctx(JOINT_IBAN);
+        let c = ctx(&[JOINT_IBAN]);
         w.begin(&c).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();
         w.respond(&c, ChallengeResponse::Poll).await.unwrap();

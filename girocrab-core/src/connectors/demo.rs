@@ -367,12 +367,8 @@ mod tests {
     fn ctx() -> ConnectContext {
         ConnectContext {
             connection_id: 1,
-            login_name: String::new(),
             secret: SecretString::new("pin".into()),
-            settings: Default::default(),
-            state: serde_json::Value::Null,
-            since: String::new(),
-            since_by_account: Default::default(),
+            ..Default::default()
         }
     }
 

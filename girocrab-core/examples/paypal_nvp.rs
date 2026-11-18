@@ -54,9 +54,8 @@ async fn main() {
         login_name: "PayPal".into(),
         secret: SecretString::default(),
         settings,
-        state: serde_json::Value::Null,
         since,
-        since_by_account: HashMap::new(),
+        ..Default::default()
     };
     if std::env::var("PAYPAL_NVP_RAW").is_ok_and(|v| v == "1") {
         raw(&ctx).await;
