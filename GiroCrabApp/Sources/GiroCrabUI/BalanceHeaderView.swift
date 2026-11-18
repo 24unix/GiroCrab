@@ -583,6 +583,14 @@ struct BalanceChart: View {
         var bar: BalanceBucket?
     }
 
+    /// A point of `AreaPlot`/`LinePlot`. `floor` is the area's lower edge, the same in every
+    /// point: the plots take only key paths.
+    private struct PlotPoint {
+        let date: Date
+        let euros: Double
+        let floor: Double
+    }
+
     fileprivate struct Point: Identifiable, Equatable {
         let id: Int
         let date: Date
@@ -619,12 +627,38 @@ struct BalanceChart: View {
         var pts: [Point] = []
         /// `pts` thinned to what the chart width can show (extremes of each stretch kept).
         var drawn: [Point] = []
+        /// `drawn` at `dayMiddle`.
+        var plotted: [PlotPoint] = []
+        /// Lowest and highest balance (axis labels) and the padded y-scale around them.
+        var low = 0.0
+        var high = 1.0
+        var yDomain: ClosedRange<Double> {
+            let pad = max((high - low) * 0.15, 1)
+            return (low - pad)...(high + pad)
+        }
+        /// Whole days from the first point to the last: the x-scale `unit: .day` marks get.
+        var xDomain: ClosedRange<Date> = Date.distantPast...Date.distantPast
         var buckets: [BalanceBucket] = []
     }
     @State private var prepared = Prepared()
 
-    /// More points than this are thinned; ~2 pixels per point at the usual chart width.
-    private static let maxDrawnPoints = 900
+    /// A year of days is drawn in full: 367 (both ends and a leap day), rounded up to whole
+    /// stretches of `thinned`. Longer histories are thinned, where the hover marker may sit off
+    /// the line. Charts lays out every point again at each new width (sidebar animation, window
+    /// resize), so the count sets the cost of each such frame.
+    private static let maxDrawnPoints = 368
+
+    /// Where `unit: .day` marks put a day, and so where the plots and the marker do.
+    private static func dayMiddle(_ date: Date) -> Date {
+        Calendar.current.dateInterval(of: .day, for: date).map { $0.start + $0.duration / 2 } ?? date
+    }
+
+    /// The day under `x` (days are drawn across their whole span), else the nearest one.
+    private static func day(atX x: CGFloat, proxy: ChartProxy, in all: [Point]) -> Point? {
+        guard let date: Date = proxy.value(atX: x) else { return nil }
+        let start = Calendar.current.startOfDay(for: date)
+        return all.min { abs($0.date.timeIntervalSince(start)) < abs($1.date.timeIntervalSince(start)) }
+    }
 
     /// "Mo. 9. Nov. 2026": the marker readout and the day bar's title.
     private static let dayFormat = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()
@@ -647,6 +681,18 @@ struct BalanceChart: View {
             }
             prepared.pts = all
             prepared.drawn = Self.thinned(all, to: Self.maxDrawnPoints)
+            prepared.low = all.map(\.euros).min() ?? 0
+            prepared.high = all.map(\.euros).max() ?? 1
+            let floor = prepared.yDomain.lowerBound
+            prepared.plotted = prepared.drawn.map { PlotPoint(date: Self.dayMiddle($0.date), euros: $0.euros, floor: floor) }
+            let calendar = Calendar.current
+            if let first = all.first.flatMap({ calendar.dateInterval(of: .day, for: $0.date) }),
+               let last = all.last.flatMap({ calendar.dateInterval(of: .day, for: $0.date) }) {
+                prepared.xDomain = first.start...last.end
+            } else {
+                let today = calendar.startOfDay(for: .now)
+                prepared.xDomain = today...today
+            }
             prepared.key = key
             prepared.unit = nil
         }
@@ -658,7 +704,6 @@ struct BalanceChart: View {
     }
 
     private var pts: [Point] { current.pts }
-    private var drawPts: [Point] { current.drawn }
     private var buckets: [BalanceBucket] { current.buckets }
 
     /// Keeps first, lowest, highest and last point of each stretch, so peaks and dips survive.
@@ -822,7 +867,7 @@ struct BalanceChart: View {
     /// overlay, outside the chart's marks, so moving it does not rebuild the line.
     @ViewBuilder private func marker(in all: [Point], proxy: ChartProxy, geo: GeometryProxy) -> some View {
         if let m = hover.point ?? followedPoint(in: all), let plot = proxy.plotFrame,
-           let x = proxy.position(forX: m.date), let y = proxy.position(forY: m.euros) {
+           let x = proxy.position(forX: Self.dayMiddle(m.date)), let y = proxy.position(forY: m.euros) {
             let frame = geo[plot]
             let left = m.id * 2 > all.count
             ZStack(alignment: .topLeading) {
@@ -840,13 +885,45 @@ struct BalanceChart: View {
         }
     }
 
+    private static let lineColor = Theme.accent.opacity(0.8)
+    private static let lineStroke = StrokeStyle(lineWidth: 1.5)
+
+    /// Area and line of the balance. On macOS 15 / iOS 18 one plot each instead of two marks per
+    /// point: Charts builds every mark again at each new width.
+    ///
+    /// Deliberately not a `@ChartContentBuilder` with `if #available` inside: `ChartContentBuilder`'s
+    /// `buildPartialBlock` is obsoleted from macOS 15 / iOS 18 on, and the Xcode on the CI runner
+    /// (macos-26 image) still picks it for a block inside such a check, then rejects it
+    /// ("'buildPartialBlock(first:)' is unavailable"). Newer compilers accept that code, so a local
+    /// build passing proves nothing. Here the plots are joined with an explicit call to the
+    /// macOS 15 `buildBlock`, and the type erasure matches what `buildLimitedAvailability` does.
+    private static func balanceSeries(_ cur: Prepared) -> AnyChartContent {
+        if #available(macOS 15, iOS 18, *) {
+            let area = AreaPlot(cur.plotted, x: .value("Tag", \.date), yStart: .value("Min", \.floor), yEnd: .value("Saldo", \.euros))
+                .foregroundStyle(Theme.chartAreaFill)
+                .interpolationMethod(.monotone)
+            let line = LinePlot(cur.plotted, x: .value("Tag", \.date), y: .value("Saldo", \.euros))
+                .foregroundStyle(lineColor)
+                .lineStyle(lineStroke)
+                .interpolationMethod(.monotone)
+            return AnyChartContent(erasing: ChartContentBuilder.buildBlock(area, line))
+        }
+        let floor = cur.yDomain.lowerBound
+        return AnyChartContent(erasing: ForEach(cur.drawn) { p in
+            AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", floor), yEnd: .value("Saldo", p.euros))
+                .foregroundStyle(Theme.chartAreaFill)
+                .interpolationMethod(.monotone)
+            LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
+                .foregroundStyle(lineColor)
+                .lineStyle(lineStroke)
+                .interpolationMethod(.monotone)
+        })
+    }
+
     @ViewBuilder private var lineChart: some View {
         let cur = current
         let pts = cur.pts
-        let drawn = cur.drawn
-        let minV = pts.map(\.euros).min() ?? 0
-        let maxV = pts.map(\.euros).max() ?? 1
-        let pad = max((maxV - minV) * 0.15, 1)
+        let yDomain = cur.yDomain
         let years = pts.first.flatMap { f in pts.last.map { BalanceBuckets.yearStarts(from: f.date, to: $0.date) } } ?? []
         Chart {
             ForEach(years, id: \.self) { y in
@@ -854,18 +931,11 @@ struct BalanceChart: View {
                     .foregroundStyle(Theme.tertiary.opacity(0.5))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
             }
-            ForEach(drawn) { p in
-                AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", minV - pad), yEnd: .value("Saldo", p.euros))
-                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.14), Theme.accent.opacity(0.01)], startPoint: .top, endPoint: .bottom))
-                    .interpolationMethod(.monotone)
-                LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
-                    .foregroundStyle(Theme.accent.opacity(0.8))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
-                    .interpolationMethod(.monotone)
-            }
+            Self.balanceSeries(cur)
         }
-        .chartYScale(domain: (minV - pad)...(maxV + pad))
-        .chartYAxis { yAxis(min: minV, max: maxV, domain: (minV - pad)...(maxV + pad)) }
+        .chartXScale(domain: cur.xDomain)
+        .chartYScale(domain: yDomain)
+        .chartYAxis { yAxis(min: cur.low, max: cur.high, domain: yDomain) }
         .chartXAxis { xAxis(span: spanDays(pts.first?.date, pts.last?.date)) }
         .chartOverlay { proxy in
             GeometryReader { geo in
@@ -875,9 +945,7 @@ struct BalanceChart: View {
                         switch phase {
                         case .active(let location):
                             guard let plot = proxy.plotFrame else { return }
-                            let x = location.x - geo[plot].origin.x
-                            guard let date: Date = proxy.value(atX: x) else { return }
-                            let nearest = pts.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
+                            let nearest = Self.day(atX: location.x - geo[plot].origin.x, proxy: proxy, in: pts)
                             if nearest != hover.point { hover.point = nearest }
                         case .ended:
                             hover.point = nil
@@ -885,8 +953,7 @@ struct BalanceChart: View {
                     }
                     .onTapGesture { location in
                         guard let onSelect, let plot = proxy.plotFrame,
-                              let date: Date = proxy.value(atX: location.x - geo[plot].origin.x),
-                              let nearest = pts.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+                              let nearest = Self.day(atX: location.x - geo[plot].origin.x, proxy: proxy, in: pts)
                         else { return }
                         onSelect(nearest.date)
                     }
