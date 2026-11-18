@@ -102,10 +102,7 @@ impl Vault {
         let date_from = request.date_from.as_deref().map(parse_day).transpose()?;
         let date_to = request.date_to.as_deref().map(parse_day).transpose()?;
         let currency = account_currency(&account.currency);
-        let today = chrono::Local::now()
-            .date_naive()
-            .format("%Y-%m-%d")
-            .to_string();
+        let today = crate::dates::today_iso();
         let db = self.db()?;
         // `list_accounts` replaces a stored 0 of a credit card with the open
         // cycle's amount, counted over every row; the balance walk below counts
@@ -189,16 +186,16 @@ impl Vault {
 
 fn parse_day(s: &str) -> CoreResult<String> {
     let day: String = s.trim().chars().take(10).collect();
-    chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d")
-        .map(|d| d.format("%Y-%m-%d").to_string())
+    jiff::civil::Date::strptime("%Y-%m-%d", &day)
+        .map(crate::dates::iso)
         .map_err(|_| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&s])))
 }
 
 fn previous_day(day: &str) -> String {
-    chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+    jiff::civil::Date::strptime("%Y-%m-%d", day)
         .ok()
-        .and_then(|d| d.pred_opt())
-        .map(|d| d.format("%Y-%m-%d").to_string())
+        .and_then(|d| d.yesterday().ok())
+        .map(crate::dates::iso)
         .unwrap_or_default()
 }
 
@@ -319,10 +316,7 @@ fn booked_balance(db: &Connection, a: &Account, currency: &str, day: &str) -> Co
     }
     let at: String = a.balance_date.chars().take(10).collect();
     let anchor = if at.is_empty() {
-        chrono::Local::now()
-            .date_naive()
-            .format("%Y-%m-%d")
-            .to_string()
+        crate::dates::today_iso()
     } else {
         at
     };

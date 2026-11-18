@@ -38,7 +38,7 @@
 //! Transfer templates: rows of type 12 in `payments`, see [`templates`]; the
 //! blobs of sent orders in that table are never read.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -46,7 +46,9 @@ use rusqlite::types::Value;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use zeroize::Zeroizing;
 
-use super::moneymoney_import::{find_or_create_category, merge_rows, MmRow, Stats};
+use super::moneymoney_import::{
+    find_or_create_category, merge_rows, with_known_parts, KnownKeys, MmRow, MmSplit, Stats,
+};
 use crate::asset_classification::{AssetClass, ClassificationValues, InstrumentKind};
 use crate::connectors::bank_directory::{match_psd2_bank, psd2_catalog, Psd2Bank};
 use crate::connectors::group_for;
@@ -90,7 +92,7 @@ pub struct MoneyMoneyDbAccount {
     /// account before) – the suggested merge target.
     pub existing_account_id: Option<i64>,
     pub existing_account_name: Option<String>,
-    /// Booked bookings that would be imported (split parts instead of parents).
+    /// Booked bookings that would be imported (a split booking once, #877).
     pub booking_count: u32,
     /// Pending (vorgemerkte) bookings – not imported.
     pub pending_count: u32,
@@ -191,6 +193,9 @@ pub struct MoneyMoneyDbPreview {
     pub total_bookings: u32,
     pub pending_bookings: u32,
     pub notes_count: u32,
+    /// Parts of split bookings imported as bookings of their own (#877): their
+    /// sum differs from the split booking's, a part has another currency, or the
+    /// split booking itself is not imported (pending).
     pub split_parts: u32,
     pub date_range_start: Option<String>,
     pub date_range_end: Option<String>,
@@ -291,8 +296,8 @@ pub struct MoneyMoneyDbAccountCheck {
     pub account_id: i64,
     pub name: String,
     pub currency: String,
-    /// Booked bookings MoneyMoney has for the account (split parts instead
-    /// of their parents) – what the import had to bring over.
+    /// Booked bookings MoneyMoney has for the account (a split booking once,
+    /// #877) – what the import had to bring over.
     pub mm_bookings: u32,
     /// Of those, found in the GiroCrab account.
     pub found_bookings: u32,
@@ -618,7 +623,9 @@ pub(crate) fn real_to_cents(x: f64) -> Option<i64> {
 
 /// MoneyMoney dates are Unix seconds at 12:00 UTC → `YYYY-MM-DD` (UTC).
 pub(crate) fn unix_to_date(ts: i64) -> Option<String> {
-    chrono::DateTime::from_timestamp(ts, 0).map(|d| d.date_naive().format("%Y-%m-%d").to_string())
+    jiff::Timestamp::from_second(ts)
+        .ok()
+        .map(|t| crate::dates::iso(crate::dates::utc_date(t)))
 }
 
 /// GiroCrab's colour for categories nobody has given one.
@@ -820,7 +827,9 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
     match code.as_str() {
         "52090000" => return Some(ConnectorKind::VolksbankKasselGoettingen),
         "50050201" => return Some(ConnectorKind::Direkt1822),
-        "20041111" | "20041133" | "20041144" | "20041155" => return Some(ConnectorKind::Comdirect),
+        c if crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&c) => {
+            return Some(ConnectorKind::Comdirect)
+        }
         // bunq's German branch code; GiroCrab talks to the bunq Public API.
         BUNQ_DE_BLZ => return Some(ConnectorKind::Bunq),
         c if c.len() == 8 && crate::connectors::fints_presets::known_fints_blz(c) => {
@@ -1935,8 +1944,8 @@ impl Source {
         })
     }
 
-    /// Normalised bookings of one account: booked only, split parts instead of
-    /// their parent, plus the balance (see module docs).
+    /// Normalised bookings of one account: booked only, a split booking with its
+    /// parts as splits (#877, see [`into_split`]), plus the balance (see module docs).
     fn rows_for(&self, a: &SrcAccount) -> AccountRows {
         let txs: Vec<&SrcTx> = self.txs.iter().filter(|t| t.account_key == a.id).collect();
         let ids: HashSet<i64> = txs.iter().map(|t| t.id).collect();
@@ -1959,6 +1968,9 @@ impl Source {
         // (date, cents) of the booked bookings that count for the balance:
         // parents (not their parts), account currency only.
         let mut counted: Vec<(String, i64)> = Vec::new();
+        // rows in order, each with its id if it is a split booking; the parts by parent
+        let mut staged: Vec<(MmRow, Option<i64>)> = Vec::new();
+        let mut parts_of: BTreeMap<i64, Vec<MmRow>> = BTreeMap::new();
         for t in &txs {
             let (Some(ts), Some(amount)) = (t.ts, t.amount) else {
                 continue;
@@ -1970,62 +1982,33 @@ impl Source {
                 out.pending += 1;
                 continue;
             }
-            let part = is_part(t);
-            if !part && (t.currency.is_empty() || t.currency == a.currency) {
+            let parent = t.split_key.filter(|_| is_part(t));
+            if parent.is_none() && (t.currency.is_empty() || t.currency == a.currency) {
                 counted.push((date.clone(), cents)); // the parent carries the full amount
             }
-            if parents.contains(&t.id) {
-                continue; // imported as its parts
+            let row = self.mm_row(a, t, date, cents);
+            match parent {
+                Some(k) => parts_of.entry(k).or_default().push(row),
+                None => staged.push((row, parents.contains(&t.id).then_some(t.id))),
             }
-            if part {
-                out.split_parts += 1;
-            }
-            let clean = |s: &str| crate::text::clean_bank_text(s.trim());
-            let own = self.own_counter_account(a, &t.cp_account, &t.cp_bankcode);
-            let mut path = t
-                .category_key
-                .and_then(|k| self.categories.by_id.get(&k))
-                .cloned()
-                .unwrap_or_default();
-            // Issue #94: a booking to / from another own account is a transfer,
-            // also when MoneyMoney only has the account number (pre-SEPA,
-            // cards, depots) – uncategorised ones go to "Umbuchungen".
-            if own.is_some() && path.is_empty() {
-                path = vec!["Umbuchungen".to_string()];
-            }
-            let iban = if validate_iban(&t.cp_account) {
-                normalize_iban(&t.cp_account)
-            } else {
-                own.map(|o| o.iban.clone())
-                    .filter(|i| validate_iban(i))
-                    .unwrap_or_default()
+        }
+        for (mut row, split) in staged {
+            let Some(id) = split else {
+                out.rows.push(row);
+                continue;
             };
-            out.rows.push(MmRow {
-                booking_date: date,
-                value_date: t.value_ts.and_then(unix_to_date).unwrap_or_default(),
-                amount_cents: cents,
-                currency: if t.currency.is_empty() {
-                    a.currency.clone()
-                } else {
-                    t.currency.clone()
-                },
-                name: clean(&t.name),
-                iban,
-                bic: if looks_like_bic(&t.cp_bankcode) {
-                    t.cp_bankcode.to_uppercase()
-                } else {
-                    String::new()
-                },
-                purpose: clean(&t.purpose),
-                booking_text: clean(&t.booking_text),
-                category: path.join("\\"),
-                category_parts: path,
-                note: t.comment.clone(),
-                checkmark: t.checkmark,
-                mandate_ref: t.mref.clone(),
-                creditor_id: t.cred.clone(),
-                end_to_end: t.eref.clone(),
-            });
+            match into_split(&mut row, parts_of.remove(&id).unwrap_or_default()) {
+                Ok(()) => out.rows.push(row),
+                Err(parts) => {
+                    out.split_parts += parts.len() as u32;
+                    out.rows.extend(parts);
+                }
+            }
+        }
+        // parts of a parent that is not imported (pending, no date or amount)
+        for parts in parts_of.into_values() {
+            out.split_parts += parts.len() as u32;
+            out.rows.extend(parts);
         }
         let last = out
             .rows
@@ -2089,6 +2072,120 @@ impl Source {
         out.balance_date = last.max(base_date);
         out
     }
+
+    /// One booked MoneyMoney booking as a row (`date` / `cents` already parsed).
+    fn mm_row(&self, a: &SrcAccount, t: &SrcTx, date: String, cents: i64) -> MmRow {
+        let clean = |s: &str| crate::text::clean_bank_text(s.trim());
+        let own = self.own_counter_account(a, &t.cp_account, &t.cp_bankcode);
+        let mut path = t
+            .category_key
+            .and_then(|k| self.categories.by_id.get(&k))
+            .cloned()
+            .unwrap_or_default();
+        // Issue #94: a booking to / from another own account is a transfer,
+        // also when MoneyMoney only has the account number (pre-SEPA,
+        // cards, depots) – uncategorised ones go to "Umbuchungen".
+        if own.is_some() && path.is_empty() {
+            path = vec!["Umbuchungen".to_string()];
+        }
+        let iban = if validate_iban(&t.cp_account) {
+            normalize_iban(&t.cp_account)
+        } else {
+            own.map(|o| o.iban.clone())
+                .filter(|i| validate_iban(i))
+                .unwrap_or_default()
+        };
+        MmRow {
+            booking_date: date,
+            value_date: t.value_ts.and_then(unix_to_date).unwrap_or_default(),
+            amount_cents: cents,
+            currency: if t.currency.is_empty() {
+                a.currency.clone()
+            } else {
+                t.currency.clone()
+            },
+            name: clean(&t.name),
+            iban,
+            bic: if looks_like_bic(&t.cp_bankcode) {
+                t.cp_bankcode.to_uppercase()
+            } else {
+                String::new()
+            },
+            purpose: clean(&t.purpose),
+            booking_text: clean(&t.booking_text),
+            category: path.join("\\"),
+            category_parts: path,
+            note: t.comment.clone(),
+            checkmark: t.checkmark,
+            mandate_ref: t.mref.clone(),
+            creditor_id: t.cred.clone(),
+            end_to_end: t.eref.clone(),
+            ..Default::default()
+        }
+    }
+}
+
+/// #877: lets `row`, a MoneyMoney split booking, carry its `parts` as GiroCrab
+/// splits; the booking itself keeps no category. GiroCrab needs the parts to
+/// add up exactly to the booking, at least two of them ≠ 0: parts of 0 are
+/// dropped, a single remaining part only passes on its category (and note).
+/// Otherwise the parts come back, to be imported as bookings of their own (as
+/// before #877). A part without a category takes the booking's. Only a split
+/// keeps its parts ([`MmRow::parts`]): a plain booking matches a part imported
+/// before by itself.
+fn into_split(row: &mut MmRow, parts: Vec<MmRow>) -> Result<(), Vec<MmRow>> {
+    let sum = parts
+        .iter()
+        .try_fold(0i64, |acc, p| acc.checked_add(p.amount_cents));
+    let live: Vec<&MmRow> = parts.iter().filter(|p| p.amount_cents != 0).collect();
+    if sum != Some(row.amount_cents)
+        || live.is_empty()
+        || parts.iter().any(|p| p.currency != row.currency)
+    {
+        return Err(parts);
+    }
+    let path = |p: &MmRow| {
+        if p.category_parts.is_empty() {
+            row.category_parts.clone()
+        } else {
+            p.category_parts.clone()
+        }
+    };
+    if let [p] = live[..] {
+        let (cat, note) = (path(p), p.note.clone());
+        row.category = cat.join("\\");
+        row.category_parts = cat;
+        if row.note.trim().is_empty() {
+            row.note = note;
+        }
+    } else {
+        // the part's own name / purpose, where it says more than the booking's
+        fn differs<'a>(own: &'a str, whole: &str) -> Option<&'a str> {
+            let own = own.trim();
+            (!own.is_empty() && !own.eq_ignore_ascii_case(whole.trim())).then_some(own)
+        }
+        let splits = live
+            .iter()
+            .map(|p| MmSplit {
+                amount_cents: p.amount_cents,
+                category_parts: path(p),
+                note: p.note.trim().to_string(),
+                text: [
+                    differs(&p.name, &row.name),
+                    differs(&p.purpose, &row.purpose),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" · "),
+            })
+            .collect();
+        row.splits = splits;
+        row.category.clear();
+        row.category_parts.clear();
+        row.parts = parts;
+    }
+    Ok(())
 }
 
 // ------------------------------------------------------------------ vault side
@@ -2308,7 +2405,12 @@ fn preview(
         let existing = existing_accounts.remove(&a.id);
         let f = r.rows.iter().map(|x| x.booking_date.clone()).min();
         let l = r.rows.iter().map(|x| x.booking_date.clone()).max();
-        let n = r.rows.iter().filter(|x| !x.note.trim().is_empty()).count() as u32;
+        let n = r
+            .rows
+            .iter()
+            .flat_map(|x| std::iter::once(&x.note).chain(x.splits.iter().map(|s| &s.note)))
+            .filter(|n| !n.trim().is_empty())
+            .count() as u32;
         total += r.rows.len() as u32;
         pending += r.pending;
         notes += n;
@@ -2556,8 +2658,9 @@ fn check_account(
         load_existing, match_bank_without_counterparty, match_by_fingerprint,
     };
     let existing = load_existing(conn, account_id)?;
-    let (mut matched, mut used) = match_by_fingerprint(&r.rows, &existing);
-    match_bank_without_counterparty(&r.rows, &existing, &mut matched, &mut used);
+    let rows = with_known_parts(&r.rows, || KnownKeys::from_existing(&existing));
+    let (mut matched, mut used) = match_by_fingerprint(&rows, &existing);
+    match_bank_without_counterparty(&rows, &existing, &mut matched, &mut used);
     let live_total = existing.iter().filter(|e| !e.deleted).count() as u32;
     let (mut found, mut deleted) = (0u32, 0u32);
     for j in matched.into_iter().flatten() {
@@ -2567,12 +2670,12 @@ fn check_account(
             found += 1;
         }
     }
+    let mm_bookings = rows.len() as u32;
     let girocrab_balance_cents: i64 = conn.query_row(
         "SELECT balance_cents FROM accounts WHERE id = ?1",
         [account_id],
         |row| row.get(0),
     )?;
-    let mm_bookings = r.rows.len() as u32;
     let complete = found + deleted == mm_bookings;
     let balance_ok = balance_from_bank || girocrab_balance_cents == r.balance_cents;
     Ok(MoneyMoneyDbAccountCheck {

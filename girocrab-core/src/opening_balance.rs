@@ -19,7 +19,6 @@
 
 use std::collections::HashMap;
 
-use chrono::NaiveDate;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::{CoreError, CoreResult};
@@ -49,8 +48,8 @@ fn normalize_date(date: &str) -> CoreResult<String> {
     if d.is_empty() {
         return Ok(String::new());
     }
-    NaiveDate::parse_from_str(d, "%Y-%m-%d")
-        .map(|d| d.format("%Y-%m-%d").to_string())
+    jiff::civil::Date::strptime("%Y-%m-%d", d)
+        .map(crate::dates::iso)
         .map_err(|_| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&d])))
 }
 

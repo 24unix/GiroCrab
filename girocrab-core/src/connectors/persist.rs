@@ -848,7 +848,11 @@ pub(crate) fn store_fetch(
                 documents_stored += 1;
             }
             match (added, acc_id) {
-                (Ok(Some(_)), _) if d.source_url.starts_with("comdirect:postbox:") => {
+                (Ok(Some(_)), _)
+                    if d.source_url.starts_with("comdirect:postbox:")
+                        || d.source_url
+                            .starts_with(super::consorsbank_archive::SOURCE_PREFIX) =>
+                {
                     postbox_added += 1
                 }
                 // stored before without an account: it gets the one found now
@@ -1103,6 +1107,8 @@ impl Vault {
 
     /// Turns the PostBox fetch through comdirect's REST API on or off for a
     /// comdirect FinTS login (#838). Needs the API's client id and secret.
+    /// For a Consorsbank FinTS login it switches the Online-Archiv (#1024),
+    /// which logs in with the login's own account number and PIN.
     pub fn set_comdirect_postbox(
         &self,
         connection_id: i64,
@@ -1126,6 +1132,14 @@ impl Vault {
             .ok_or_else(|| CoreError::NotFound {
                 what: trf("Bankzugang {0}", &[&connection_id]),
             })?;
+        if is_consorsbank_fints(&key) {
+            db.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, '1')
+                 ON CONFLICT(key) DO UPDATE SET value = '1'",
+                [postbox_key(connection_id)],
+            )?;
+            return Ok(());
+        }
         if !is_comdirect_fints(&key) {
             return Err(CoreError::invalid(tr(
                 "Die PostBox lässt sich nur für comdirect-Zugänge per FinTS zusätzlich abrufen.",
@@ -1315,15 +1329,15 @@ impl Vault {
         let accounts: Vec<(i64, String)> = stmt
             .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<Result<_, _>>()?;
-        let today = chrono::Local::now().date_naive();
+        let today = crate::dates::today();
         let mut due = Vec::new();
         for (id, ext) in accounts {
             if Vault::setting_inner(&db, &statements_auto_key(id))?.as_deref() != Some("1") {
                 continue;
             }
             let last = Vault::setting_inner(&db, &statements_last_key(id))?
-                .and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
-            if last.is_none_or(|d| (today - d).num_days() >= STATEMENTS_AUTO_DAYS) {
+                .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", &d).ok());
+            if last.is_none_or(|d| crate::dates::days_between(d, today) >= STATEMENTS_AUTO_DAYS) {
                 due.push(ext);
             }
         }
@@ -1471,7 +1485,7 @@ impl Vault {
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
-            let since = since_window(chrono::Local::now().date_naive(), days, &newest);
+            let since = since_window(crate::dates::today(), days, &newest);
             (kind, key_str, login, state, settings, since, demo)
         };
         let (since, since_by_account) = since;
@@ -1509,9 +1523,18 @@ impl Vault {
         };
         let mut connector = make_connector_for(kind, &key_str, demo);
         if !demo && is_comdirect_fints(&key_str) {
-            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox)? {
+            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox, true)? {
                 connector = Box::new(super::comdirect_postbox::FintsWithPostbox::new(
                     connector, since,
+                ));
+            }
+        } else if !demo && is_consorsbank_fints(&key_str) {
+            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)? {
+                let known = self.consorsbank_known_documents(connection_id)?;
+                connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
+                    connector,
+                    Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
+                    since,
                 ));
             }
         }
@@ -1533,6 +1556,7 @@ impl Vault {
         connection_id: i64,
         ctx: &ConnectContext,
         mode: PostboxMode,
+        needs_api_keys: bool,
     ) -> CoreResult<Option<String>> {
         if mode == PostboxMode::Off
             || !documents_fetch_on(&*self.db()?, connection_id)?
@@ -1540,7 +1564,12 @@ impl Vault {
         {
             return Ok(None);
         }
-        for k in ["comdirect.client_id", "comdirect.client_secret"] {
+        let api_keys: &[&str] = if needs_api_keys {
+            &["comdirect.client_id", "comdirect.client_secret"]
+        } else {
+            &[]
+        };
+        for &k in api_keys {
             if let Err(e) = ctx.setting(k) {
                 return if mode == PostboxMode::Now {
                     Err(e)
@@ -1552,13 +1581,9 @@ impl Vault {
         let last = {
             let db = self.db()?;
             Vault::setting_inner(&db, &postbox_last_key(connection_id))?
-                .and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())
+                .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", &d).ok())
         };
-        Ok(postbox_window(
-            last,
-            chrono::Local::now().date_naive(),
-            mode,
-        ))
+        Ok(postbox_window(last, crate::dates::today(), mode))
     }
 }
 
@@ -1568,21 +1593,54 @@ fn is_comdirect_fints(key: &str) -> bool {
         .is_some_and(|b| super::fints_directory::COMDIRECT_BLZ.contains(&b))
 }
 
+/// Is `key` a Consorsbank login via FinTS (Online-Archiv, #1024)?
+fn is_consorsbank_fints(key: &str) -> bool {
+    ConnectorKind::fints_blz(key) == Some("76030080")
+}
+
+impl Vault {
+    /// Stable ids (`_id<n>` of the bank's file name) of the Consorsbank
+    /// archive documents already stored for this login: fetched before, or
+    /// imported under the bank's file name. They are not downloaded again,
+    /// which would also mark them read at the bank.
+    pub(crate) fn consorsbank_known_documents(
+        &self,
+        connection_id: i64,
+    ) -> CoreResult<std::collections::HashSet<String>> {
+        let db = self.db()?;
+        // from the covering index only: the PDF bytes are never read
+        let mut st = db.prepare(
+            "SELECT d.file_name, d.source_url FROM booking_documents d INDEXED BY booking_documents_info
+              WHERE d.account_id IN (SELECT id FROM accounts WHERE connection_id = ?1)
+                 OR d.source_url LIKE 'consorsbank:archive:%'",
+        )?;
+        let rows = st.query_map([connection_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut known = std::collections::HashSet::new();
+        for row in rows {
+            let (file, source) = row?;
+            if let Some(id) = source.strip_prefix(super::consorsbank_archive::SOURCE_PREFIX) {
+                known.insert(id.to_string());
+            } else if let Some(id) = super::consorsbank_archive::stable_id(&file) {
+                known.insert(id.to_string());
+            }
+        }
+        Ok(known)
+    }
+}
+
 /// The PostBox window of a sync (see [`Vault::postbox_since`]).
 pub(crate) fn postbox_window(
-    last: Option<chrono::NaiveDate>,
-    today: chrono::NaiveDate,
+    last: Option<jiff::civil::Date>,
+    today: jiff::civil::Date,
     mode: PostboxMode,
 ) -> Option<String> {
     match (mode, last) {
         (PostboxMode::Off, _) => None,
         (_, None) => Some(String::new()),
-        (PostboxMode::Due, Some(d)) if (today - d).num_days() < POSTBOX_DAYS => None,
-        (_, Some(d)) => Some(
-            (d - chrono::Duration::days(POSTBOX_DAYS))
-                .format("%Y-%m-%d")
-                .to_string(),
-        ),
+        (PostboxMode::Due, Some(d)) if crate::dates::days_between(d, today) < POSTBOX_DAYS => None,
+        (_, Some(d)) => Some(crate::dates::iso(d - crate::dates::days(POSTBOX_DAYS))),
     }
 }
 
@@ -1634,10 +1692,10 @@ impl Vault {
             )));
         }
         if let Some(d) = &exec_date {
-            let parsed = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
+            let parsed = jiff::civil::Date::strptime("%Y-%m-%d", d).map_err(|_| {
                 CoreError::invalid(tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)."))
             })?;
-            if parsed <= chrono::Local::now().date_naive() {
+            if parsed <= crate::dates::today() {
                 return Err(CoreError::invalid(tr(
                     "Das Ausführungsdatum muss in der Zukunft liegen.",
                 )));
@@ -1730,10 +1788,10 @@ impl Vault {
             .filter(|d| !d.is_empty())
             .map(str::to_string);
         if let Some(d) = &exec_date {
-            let parsed = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
+            let parsed = jiff::civil::Date::strptime("%Y-%m-%d", d).map_err(|_| {
                 CoreError::invalid(tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)."))
             })?;
-            if parsed <= chrono::Local::now().date_naive() {
+            if parsed <= crate::dates::today() {
                 return Err(CoreError::invalid(tr(
                     "Das Ausführungsdatum muss in der Zukunft liegen.",
                 )));
@@ -1814,8 +1872,8 @@ impl Vault {
                 if request.amount_cents <= 0 {
                     return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
                 }
-                let today = chrono::Local::now().date_naive();
-                let date = |d: &str| chrono::NaiveDate::parse_from_str(d.trim(), "%Y-%m-%d").ok();
+                let today = crate::dates::today();
+                let date = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d.trim()).ok();
                 let first = date(&request.first_date).ok_or_else(|| {
                     CoreError::invalid(tr("Der erste Termin ist ungültig (JJJJ-MM-TT)."))
                 })?;

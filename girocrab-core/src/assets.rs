@@ -24,10 +24,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::dates::{iso, now_ms, parse_iso};
+use crate::dates::{iso, now_ms, parse_iso, today};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::*;
@@ -269,10 +269,6 @@ pub struct AssetPriceRefresh {
     pub error: Option<String>,
 }
 
-fn today() -> NaiveDate {
-    chrono::Local::now().date_naive()
-}
-
 fn is_manual(source: &str) -> bool {
     source == MANUAL_SOURCE
 }
@@ -417,9 +413,9 @@ fn manual_value_at(
     if interp == AssetInterpolation::Linear {
         if let Some((d1, v1)) = points.get(i) {
             if let (Some(a), Some(b), Some(x)) = (parse_iso(d0), parse_iso(d1), parse_iso(day)) {
-                let span = (b - a).num_days() as f64;
+                let span = crate::dates::days_between(a, b) as f64;
                 if span > 0.0 {
-                    let t = (x - a).num_days() as f64 / span;
+                    let t = crate::dates::days_between(a, x) as f64 / span;
                     return Some((*v0 as f64 + (*v1 - *v0) as f64 * t, day.to_string()));
                 }
             }
@@ -724,8 +720,8 @@ pub(crate) fn holdings(conn: &Connection, account_id: i64) -> CoreResult<Vec<Hol
 pub(crate) fn value_series(
     conn: &Connection,
     account_ids: &[i64],
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
 ) -> CoreResult<Option<Vec<i64>>> {
     let tangible: HashSet<i64> = tangible_account_ids(conn)?.into_iter().collect();
     let wanted: HashSet<i64> = account_ids
@@ -746,7 +742,8 @@ pub(crate) fn value_series(
     while day <= end {
         let key = iso(day);
         out.push(items.iter().map(|i| i.value_at(&key, &prices)).sum());
-        day += chrono::Duration::days(1);
+        let Ok(next) = day.tomorrow() else { break };
+        day = next;
     }
     Ok(Some(out))
 }
@@ -1079,7 +1076,7 @@ fn fetch_plan(conn: &Connection, force: bool) -> CoreResult<Vec<(String, String,
     for (symbol, oldest) in needed {
         // a week before the oldest purchase: a weekend or holiday has no rate of its own
         let min_date = parse_iso(&oldest)
-            .map(|d| iso(d - chrono::Duration::days(7)))
+            .map(|d| iso(d - crate::dates::days(7)))
             .unwrap_or(oldest);
         if !PRICE_SYMBOLS.contains(&symbol.as_str()) {
             continue;
@@ -1423,7 +1420,8 @@ impl Vault {
                 balance_cents: item.value_at(&key, &prices),
                 date: key,
             });
-            day += chrono::Duration::days(1);
+            let Ok(next) = day.tomorrow() else { break };
+            day = next;
         }
         Ok(out)
     }
@@ -1491,8 +1489,8 @@ impl Vault {
 /// with the real prices from the API like in a real vault (offline the gold
 /// items show a missing price); house and car carry their own values,
 /// roughly following the market. Returns the account id.
-pub(crate) fn seed_demo(conn: &Connection, today: NaiveDate) -> CoreResult<i64> {
-    let day = |ago: i64| iso(today - chrono::Duration::days(ago));
+pub(crate) fn seed_demo(conn: &Connection, today: Date) -> CoreResult<i64> {
+    let day = |ago: i64| iso(today - crate::dates::days(ago));
     let acc = create_account_in(conn, "Sachwerte")?;
     let values = |item: i64, points: &[(i64, i64)]| -> CoreResult<()> {
         for &(ago, cents) in points {

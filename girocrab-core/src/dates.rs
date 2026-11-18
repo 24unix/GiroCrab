@@ -1,43 +1,105 @@
 //! Date and time helpers. The vault stores dates as `YYYY-MM-DD` text and
 //! change stamps (`created_ms`, `updated_ms`, `deleted_ms`) as Unix
 //! milliseconds.
+//!
+//! "Today" is the calendar day in the system time zone. jiff falls back to
+//! UTC when it cannot find one (it logs a warning); on Android that needs the
+//! bundled zone data enabled in `Cargo.toml`.
 
 use std::sync::LazyLock;
 
-use chrono::NaiveDate;
+use jiff::civil::{Date, DateTime};
+use jiff::tz::TimeZone;
+use jiff::{Span, Timestamp, ZonedDateTime};
 use regex::Regex;
 
 /// The current time as a change stamp: Unix milliseconds, UTC.
 pub(crate) fn now_ms() -> i64 {
-    chrono::Utc::now().timestamp_millis()
+    Timestamp::now().as_millisecond()
+}
+
+/// Today's date in the system time zone.
+pub(crate) fn today() -> Date {
+    ZonedDateTime::now().date()
+}
+
+/// Today's date in the system time zone, as stored: `YYYY-MM-DD`.
+pub(crate) fn today_iso() -> String {
+    iso(today())
+}
+
+/// The current UTC wall-clock time, for APIs that send UTC without an offset.
+pub(crate) fn now_utc() -> DateTime {
+    TimeZone::UTC.to_datetime(Timestamp::now())
+}
+
+/// The date a Unix timestamp falls on in the system time zone.
+pub(crate) fn local_date(ts: Timestamp) -> Date {
+    TimeZone::system().to_datetime(ts).date()
+}
+
+/// The date a Unix timestamp falls on in UTC.
+pub(crate) fn utc_date(ts: Timestamp) -> Date {
+    TimeZone::UTC.to_datetime(ts).date()
+}
+
+/// The day `y`-`m`-`d`, or `None` if there is no such day. Out-of-range
+/// numbers are `None` too, never truncated into jiff's narrower fields.
+pub(crate) fn ymd(y: i32, m: u32, d: u32) -> Option<Date> {
+    Date::new(y.try_into().ok()?, m.try_into().ok()?, d.try_into().ok()?).ok()
+}
+
+/// A span of `n` calendar days, for date arithmetic (`today - days(7)`).
+/// `Date + Span` panics outside jiff's range (years -9999 to 9999): for a date
+/// read from bank, PDF or user data use [`add_days`] instead ("gültig bis
+/// 31.12.9999" is a real thing to find in a document).
+pub(crate) fn days(n: i64) -> Span {
+    Span::new().days(n)
+}
+
+/// `d` moved by `n` days, or `None` past jiff's range (years -9999 to 9999).
+pub(crate) fn add_days(d: Date, n: i64) -> Option<Date> {
+    d.checked_add(Span::new().try_days(n).ok()?).ok()
+}
+
+/// Whole days from `from` to `to`, negative when `to` is earlier.
+pub(crate) fn days_between(from: Date, to: Date) -> i64 {
+    // SignedDuration skips the Span rounding machinery; civil days are 24 h.
+    to.duration_since(from).as_hours() / 24
+}
+
+/// A running day count (0001-01-01 is day 1) for comparing dates as plain
+/// numbers; only differences between two counts mean anything.
+pub(crate) fn day_number(d: Date) -> i32 {
+    days_between(jiff::civil::date(1, 1, 1), d) as i32 + 1
 }
 
 /// `d` as stored: `YYYY-MM-DD`.
-pub(crate) fn iso(d: NaiveDate) -> String {
-    d.format("%Y-%m-%d").to_string()
+pub(crate) fn iso(d: Date) -> String {
+    d.strftime("%Y-%m-%d").to_string()
 }
 
 /// The `YYYY-MM-DD` at the start of `s`; a time after it is ignored.
-pub(crate) fn parse_iso(s: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(s.get(..10).unwrap_or(s), "%Y-%m-%d").ok()
+pub(crate) fn parse_iso(s: &str) -> Option<Date> {
+    Date::strptime("%Y-%m-%d", s.get(..10).unwrap_or(s)).ok()
 }
 
 /// `YYYY-MM-DD` or `DD.MM.YYYY`, blanks around it ignored.
-pub(crate) fn parse_de_or_iso(s: &str) -> Option<NaiveDate> {
+pub(crate) fn parse_de_or_iso(s: &str) -> Option<Date> {
     let s = s.trim();
-    NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .or_else(|_| NaiveDate::parse_from_str(s, "%d.%m.%Y"))
+    Date::strptime("%Y-%m-%d", s)
+        .or_else(|_| Date::strptime("%d.%m.%Y", s))
         .ok()
 }
 
 /// The first `D.M.YYYY` anywhere in `s` that is a real day ("31.02.2025" is
 /// skipped). Digits glued to it ("112.03.2025") don't count as one.
-pub(crate) fn find_de_date(s: &str) -> Option<NaiveDate> {
+pub(crate) fn find_de_date(s: &str) -> Option<Date> {
     static DE_DATE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap());
-    DE_DATE.captures_iter(s).find_map(|c| {
-        NaiveDate::from_ymd_opt(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?)
-    })
+    DE_DATE
+        .captures_iter(s)
+        .find_map(|c| ymd(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?))
 }
 
 /// Month names and abbreviations (German, English), lower case.
@@ -70,10 +132,7 @@ pub(crate) fn month_from_name(s: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn day(y: i32, m: u32, d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap()
-    }
+    use jiff::civil::date as day;
 
     #[test]
     fn iso_round_trip() {
@@ -89,6 +148,7 @@ mod tests {
     fn german_or_iso() {
         assert_eq!(parse_de_or_iso(" 2025-03-02 "), Some(day(2025, 3, 2)));
         assert_eq!(parse_de_or_iso("02.03.2025"), Some(day(2025, 3, 2)));
+        assert_eq!(parse_de_or_iso("1.3.2025"), Some(day(2025, 3, 1)));
         assert_eq!(parse_de_or_iso("31.02.2025"), None);
         assert_eq!(parse_de_or_iso("März 2025"), None);
     }
@@ -103,6 +163,19 @@ mod tests {
         );
         assert_eq!(find_de_date("Bestellung 112.03.2025"), None);
         assert_eq!(find_de_date("2025-03-02"), None);
+    }
+
+    #[test]
+    fn whole_days() {
+        assert_eq!(ymd(2024, 2, 29), Some(day(2024, 2, 29)));
+        assert_eq!(ymd(2025, 2, 29), None);
+        // 257 would wrap to 1 under an `as i8` cast.
+        assert_eq!(ymd(2025, 257, 1), None);
+        assert_eq!(ymd(40_000, 1, 1), None);
+        assert_eq!(add_days(day(2025, 12, 31), 1), Some(day(2026, 1, 1)));
+        assert_eq!(add_days(day(9999, 12, 31), 1), None);
+        assert_eq!(add_days(day(2025, 1, 1), i64::MAX), None);
+        assert_eq!(days_between(day(2025, 3, 1), day(2025, 2, 1)), -28);
     }
 
     #[test]

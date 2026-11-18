@@ -150,8 +150,8 @@ impl Rah10 {
         }
         let counter = self.next_signature;
         self.next_signature += 1; // consumed even if sending fails
-        let now = chrono::Local::now();
-        let timestamp = format!("1:{}:{}", now.format("%Y%m%d"), now.format("%H%M%S"));
+        let now = jiff::ZonedDateTime::now();
+        let timestamp = format!("1:{}:{}", now.strftime("%Y%m%d"), now.strftime("%H%M%S"));
         let reference = counter.to_string();
         let i = &self.identity;
         let keyname = |kind, number, version| {

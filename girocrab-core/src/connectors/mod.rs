@@ -23,6 +23,7 @@ pub mod broker_documents;
 pub mod bunq;
 pub mod comdirect;
 pub(crate) mod comdirect_postbox;
+pub(crate) mod consorsbank_archive;
 pub mod demo;
 pub mod dpop;
 pub mod easybank;
@@ -196,9 +197,7 @@ pub(crate) async fn read_json_or_null(resp: reqwest::Response) -> serde_json::Va
     }
 }
 
-pub(crate) fn today() -> String {
-    chrono::Local::now().format("%Y-%m-%d").to_string()
-}
+pub(crate) use crate::dates::today_iso as today;
 
 #[cfg(test)]
 mod tests;

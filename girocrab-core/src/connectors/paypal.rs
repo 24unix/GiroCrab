@@ -13,7 +13,7 @@
 //! and transaction ids are the same, so switching keeps the stored bookings.
 
 use async_trait::async_trait;
-use chrono::{Duration, NaiveDate, Utc};
+use jiff::civil::Date;
 use serde_json::Value;
 
 use super::paypal_nvp::{NvpClient, NvpCredentials};
@@ -192,9 +192,9 @@ impl BankConnector for PayPalConnector {
             out.accounts.push(fallback_account(ctx));
         }
         let mut start = since_date(ctx);
-        let end_all = Utc::now().date_naive();
+        let end_all = crate::dates::utc_date(jiff::Timestamp::now());
         while start <= end_all {
-            let end = (start + Duration::days(30)).min(end_all);
+            let end = (start + crate::dates::days(30)).min(end_all);
             let mut page = 1;
             loop {
                 let q = format!(
@@ -269,16 +269,16 @@ impl BankConnector for PayPalConnector {
                 }
                 page += 1;
             }
-            start = end + Duration::days(1);
+            start = end + crate::dates::days(1);
         }
         retain_known(&mut out);
         Ok(out)
     }
 }
 
-fn since_date(ctx: &ConnectContext) -> NaiveDate {
-    NaiveDate::parse_from_str(&ctx.since, "%Y-%m-%d")
-        .unwrap_or_else(|_| Utc::now().date_naive() - Duration::days(90))
+fn since_date(ctx: &ConnectContext) -> Date {
+    Date::strptime("%Y-%m-%d", &ctx.since)
+        .unwrap_or_else(|_| crate::dates::utc_date(jiff::Timestamp::now()) - crate::dates::days(90))
 }
 
 fn fallback_account(ctx: &ConnectContext) -> RemoteAccount {

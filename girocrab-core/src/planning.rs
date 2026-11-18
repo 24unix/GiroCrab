@@ -228,21 +228,12 @@ impl Vault {
                 )));
             }
         }
+        let lines: Vec<_> = splits
+            .iter()
+            .map(|s| (s.category_id, s.amount_cents, s.note.as_str()))
+            .collect();
         let tx = db.transaction()?;
-        tx.execute(
-            "DELETE FROM transaction_splits WHERE transaction_id = ?1",
-            [transaction_id],
-        )?;
-        for s in &splits {
-            tx.execute(
-                "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents, note) VALUES (?1, ?2, ?3, ?4)",
-                params![transaction_id, s.category_id, s.amount_cents, s.note.trim()],
-            )?;
-        }
-        tx.execute(
-            "UPDATE transactions SET splits_ms = ?1 WHERE id = ?2",
-            params![crate::dates::now_ms(), transaction_id],
-        )?;
+        store_splits(&tx, transaction_id, &lines)?;
         tx.commit()?;
         Ok(())
     }
@@ -284,15 +275,14 @@ impl Vault {
         count: u32,
         account_ids: Option<Vec<i64>>,
     ) -> Result<Vec<PeriodCashflow>, CoreError> {
-        use chrono::{Datelike, Local};
-        let today = Local::now().date_naive();
+        let today = crate::dates::today();
         crate::planning::cashflow_for(
             self,
             granularity,
             count,
             account_ids.as_deref().unwrap_or_default(),
-            today.year(),
-            today.month(),
+            today.year().into(),
+            today.month() as u32,
         )
     }
 
@@ -461,6 +451,39 @@ pub(crate) fn cashflow_for(
             }
         })
         .collect())
+}
+
+/// Replaces the splits of booking `id` with `lines` (category, amount, note)
+/// and stamps `splits_ms`. The amounts are the caller's to check.
+pub(crate) fn store_splits(
+    conn: &rusqlite::Connection,
+    id: i64,
+    lines: &[(Option<i64>, i64, impl AsRef<str>)],
+) -> Result<(), CoreError> {
+    conn.execute(
+        "DELETE FROM transaction_splits WHERE transaction_id = ?1",
+        [id],
+    )?;
+    let mut insert = conn.prepare_cached(
+        "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents, note) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for (category, cents, note) in lines {
+        insert.execute(params![id, category, cents, note.as_ref().trim()])?;
+    }
+    conn.prepare_cached("UPDATE transactions SET splits_ms = ?2 WHERE id = ?1")?
+        .execute(params![id, crate::dates::now_ms()])?;
+    Ok(())
+}
+
+/// A booking turned into a split booking by an import keeps no category of its
+/// own (its splits carry them, #654), unless the user set it.
+pub(crate) fn clear_split_category(conn: &rusqlite::Connection, id: i64) -> Result<(), CoreError> {
+    conn.prepare_cached(
+        "UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL, category_ms = ?2
+          WHERE id = ?1 AND category_id IS NOT NULL AND category_source != 'manual'",
+    )?
+    .execute(params![id, crate::dates::now_ms()])?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -745,10 +768,9 @@ mod tests {
 
     #[test]
     fn cashflow_ignores_transfers_between_own_accounts() {
-        use chrono::{Datelike, Local};
         let (v, dir) = vault();
-        let today = Local::now().date_naive();
-        let date = today.format("%Y-%m-%d").to_string();
+        let today = crate::dates::today();
+        let date = crate::dates::iso(today);
         {
             let c = v.db().unwrap();
             c.execute(
@@ -769,8 +791,8 @@ mod tests {
             PeriodGranularity::Month,
             1,
             &[],
-            today.year(),
-            today.month(),
+            today.year().into(),
+            today.month() as u32,
         )
         .unwrap();
         assert_eq!(cf.last().unwrap().expense_cents, 1_000);

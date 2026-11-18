@@ -1425,6 +1425,17 @@
         }
       }
     },
+    "%lld neue Dokumente aus dem Online-Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld new documents from the online archive"
+          }
+        }
+      }
+    },
     "%lld neue PostBox-Dokumente" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19552,6 +19563,17 @@
         }
       }
     },
+    "Kontoauszüge, Abrechnungen, Depotauszüge und Steuerdokumente aus dem Online-Archiv der Consorsbank, höchstens einmal pro Woche beim Abruf. GiroCrab meldet sich dafür mit Kontonummer und PIN dieses Zugangs im Online-Banking an, die Anmeldung geben Sie in der Consorsbank App frei. Die Schnittstelle ist inoffiziell. Gespeicherte Dokumente werden nicht erneut geladen, denn jeder Abruf markiert ein Dokument bei der Bank als gelesen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statements, trade confirmations, depot statements and tax documents from the Consorsbank online archive, at most once a week during a sync. GiroCrab signs in to online banking with this connection's account number and PIN; you approve the login in the Consorsbank app. The interface is unofficial. Stored documents are not downloaded again, because every download marks a document as read at the bank."
+          }
+        }
+      }
+    },
     "Kontoauszüge, Belege und PostBox-Dokumente werden nach jedem Sync als Kopie abgelegt: <Ordner>/<Konto>/<Jahr>/. Vorhandene Dateien werden nie überschrieben. Achtung: Im Ordner liegen die PDFs unverschlüsselt – in iCloud Drive also auch in Ihrer iCloud." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20652,6 +20674,17 @@
         }
       }
     },
+    "Manuell mit TAN bestätigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm manually with a TAN"
+          }
+        }
+      }
+    },
     "Manuell zugeordnet – die Regel ändert das nicht" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21088,6 +21121,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "With AND, OR, NOT, parentheses, “phrases”, * and ?, /regex/, fields such as name: or purpose: and amounts such as amount<0."
+          }
+        }
+      }
+    },
+    "Mit Consorsbank App bestätigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm with the Consorsbank app"
           }
         }
       }
@@ -23856,6 +23900,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Linked Booking"
+          }
+        }
+      }
+    },
+    "Online-Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online archive"
+          }
+        }
+      }
+    },
+    "Online-Archiv abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch online archive"
+          }
+        }
+      }
+    },
+    "Online-Archiv jetzt abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch online archive now"
+          }
+        }
+      }
+    },
+    "Online-Archiv nicht abgerufen. Bitte PIN und Freigabe in der Consorsbank App prüfen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online archive not fetched. Please check the PIN and the approval in the Consorsbank app."
           }
         }
       }
@@ -32929,6 +33017,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "no consent stored"
+          }
+        }
+      }
+    },
+    "keine neuen Dokumente aus dem Online-Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no new documents from the online archive"
           }
         }
       }

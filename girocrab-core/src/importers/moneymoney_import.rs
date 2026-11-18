@@ -11,7 +11,8 @@
 //!   FinTS, never duplicates – existing rows are enriched instead. A later
 //!   FinTS sync adopts imported rows (see [`adopt_import`]).
 
-use std::collections::HashMap;
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -53,6 +54,25 @@ pub struct MmRow {
     pub mandate_ref: String,
     pub creditor_id: String,
     pub end_to_end: String,
+    /// Parts of a split booking (database import, #877): the row is stored as a
+    /// GiroCrab split booking. Empty = no split.
+    pub splits: Vec<MmSplit>,
+    /// The rows the parts were imported as before #877. Taken instead of this
+    /// row when one of them is already in the account (earlier import), so the
+    /// whole booking is never added next to its parts.
+    pub parts: Vec<MmRow>,
+}
+
+/// One part of a split booking.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MmSplit {
+    pub amount_cents: i64,
+    /// Category path (empty = uncategorised).
+    pub category_parts: Vec<String>,
+    /// The part's own note.
+    pub note: String,
+    /// The part's name / purpose where it differs from the booking's.
+    pub text: String,
 }
 
 // ------------------------------------------------------------ fingerprinting
@@ -93,6 +113,24 @@ impl MmRow {
             &self.name,
             &self.purpose,
         )
+    }
+
+    /// Key without the purpose (see `Existing::weak`).
+    fn weak_fp(&self) -> String {
+        fingerprint(
+            &self.booking_date,
+            self.amount_cents,
+            &self.iban,
+            &self.name,
+            "",
+        )
+    }
+
+    /// Date, amount and name (see `Existing::named`); only for a row without
+    /// counterparty IBAN but with a name.
+    fn named_fp(&self) -> Option<String> {
+        (self.iban.trim().is_empty() && !self.name.trim().is_empty())
+            .then(|| fingerprint(&self.booking_date, self.amount_cents, "", &self.name, ""))
     }
 
     /// Purpose as stored: the original text plus SEPA references that MoneyMoney
@@ -283,6 +321,7 @@ fn build_row(get: impl Fn(Field) -> String) -> Option<MmRow> {
         mandate_ref: get(Field::Mandate).trim().to_string(),
         creditor_id: get(Field::Creditor).trim().to_string(),
         end_to_end: get(Field::EndToEnd).trim().to_string(),
+        ..Default::default()
     })
 }
 
@@ -531,18 +570,18 @@ pub(crate) struct Existing {
     pub(crate) deleted: bool,
     booking_date: String,
     amount_cents: i64,
-    /// Normalised purpose of a bank booking without counterparty (no name, no
-    /// IBAN – e.g. comdirect's interest statement via FinTS), else `None`:
-    /// only such rows take part in [`match_bank_without_counterparty`].
     bare_bank_purpose: Option<String>,
+    split_set: bool,
+    imported: Option<(String, i64)>,
+    from_import: bool,
 }
 
-/// The account's bookings (incl. soft-deleted ones: a deleted booking is
-/// matched, never re-imported) with the keys [`match_existing`] compares.
 pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Vec<Existing>> {
     let mut q = conn.prepare(
         "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
-                import_fp, category_source, note, deleted_ms IS NOT NULL, external_id
+                import_fp, category_source, note, deleted_ms IS NOT NULL, external_id,
+                splits_ms != 0 OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id),
+                external_id LIKE 'mm-%', external_id LIKE 'mm-%' OR import_fp != ''
          FROM transactions WHERE account_id = ?1 ORDER BY id",
     )?;
     let it = q.query_map([account_id], |r| {
@@ -565,11 +604,129 @@ pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Ve
             note: r.get(8)?,
             deleted: r.get(9)?,
             bare_bank_purpose: bare.then(|| norm(&purpose)),
-            booking_date: date,
+            booking_date: date.clone(),
             amount_cents: cents,
+            split_set: r.get(11)?,
+            imported: r.get::<_, bool>(12)?.then_some((date, cents)),
+            from_import: r.get(13)?,
         })
     })?;
     Ok(it.collect::<Result<_, _>>()?)
+}
+
+#[derive(Default)]
+pub(crate) struct KnownKeys {
+    fp: HashSet<String>,
+    weak: HashSet<String>,
+    named: HashSet<String>,
+    imported: HashMap<(String, i64), u32>,
+}
+
+impl KnownKeys {
+    pub(crate) fn from_existing(existing: &[Existing]) -> Self {
+        let mut keys = Self::default();
+        for e in existing.iter().filter(|e| e.from_import) {
+            keys.fp.insert(e.fp.clone());
+            keys.weak.insert(e.weak.clone());
+            keys.named.insert(e.named.clone());
+            if let Some((date, cents)) = &e.imported {
+                keys.insert_imported(date.clone(), *cents);
+            }
+        }
+        keys
+    }
+
+    pub(crate) fn insert_imported(&mut self, date: String, cents: i64) {
+        *self.imported.entry((date, cents)).or_default() += 1;
+    }
+
+    fn contains(&self, r: &MmRow) -> bool {
+        self.fp.contains(&r.fp())
+            || self.weak.contains(&r.weak_fp())
+            || r.named_fp().is_some_and(|k| self.named.contains(&k))
+    }
+
+    fn has_parts(&self, parts: &[MmRow]) -> bool {
+        if parts.iter().any(|p| self.contains(p)) {
+            return true;
+        }
+        if parts.len() < 2 {
+            return false;
+        }
+        let mut need: HashMap<(&str, i64), u32> = HashMap::new();
+        for p in parts {
+            *need.entry((&p.booking_date, p.amount_cents)).or_default() += 1;
+        }
+        need.iter().all(|(&(date, cents), n)| {
+            self.imported
+                .get(&(date.to_string(), cents))
+                .is_some_and(|have| have >= n)
+        })
+    }
+}
+
+pub(crate) fn with_known_parts(
+    rows: &[MmRow],
+    keys: impl FnOnce() -> KnownKeys,
+) -> Cow<'_, [MmRow]> {
+    if rows.iter().all(|r| r.parts.is_empty()) {
+        return Cow::Borrowed(rows);
+    }
+    let keys = keys();
+    let taken_apart = |r: &MmRow| keys.has_parts(&r.parts);
+    if !rows.iter().any(taken_apart) {
+        return Cow::Borrowed(rows);
+    }
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        if taken_apart(r) {
+            out.extend(r.parts.iter().filter(|p| keys.contains(p)).cloned());
+        } else {
+            out.push(r.clone());
+        }
+    }
+    Cow::Owned(out)
+}
+
+fn write_splits(
+    conn: &Connection,
+    id: i64,
+    splits: &[MmSplit],
+    preserve_notes: bool,
+    cat_cache: &mut HashMap<String, i64>,
+    st: &mut Stats,
+) -> CoreResult<()> {
+    let mut lines = Vec::with_capacity(splits.len());
+    for s in splits {
+        let cat = if s.category_parts.is_empty() {
+            None
+        } else {
+            Some(find_or_create_category(
+                conn,
+                &s.category_parts,
+                cat_cache,
+                &mut st.categories_created,
+            )?)
+        };
+        if preserve_notes && !s.note.trim().is_empty() {
+            st.notes += 1;
+        }
+        lines.push((cat, s.amount_cents, split_note(s, preserve_notes)));
+    }
+    crate::planning::store_splits(conn, id, &lines)
+}
+
+fn split_note(s: &MmSplit, own_note: bool) -> String {
+    let own = if own_note { s.note.trim() } else { "" };
+    join_notes([own, s.text.trim()].map(str::to_string))
+}
+
+fn join_notes(notes: impl IntoIterator<Item = String>) -> String {
+    notes
+        .into_iter()
+        .filter(|n| !n.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// For each row the existing booking it duplicates (index into `existing`).
@@ -587,8 +744,10 @@ pub(crate) fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Optio
         by_weak.entry(e.weak.as_str()).or_default().push_back(j);
     }
     for (r, m) in rows.iter().zip(out.iter_mut()).filter(|(_, m)| m.is_none()) {
-        let weak = fingerprint(&r.booking_date, r.amount_cents, &r.iban, &r.name, "");
-        if let Some(j) = by_weak.get_mut(weak.as_str()).and_then(|q| q.pop_front()) {
+        if let Some(j) = by_weak
+            .get_mut(r.weak_fp().as_str())
+            .and_then(|q| q.pop_front())
+        {
             used[j] = true;
             *m = Some(j);
         }
@@ -597,14 +756,12 @@ pub(crate) fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Optio
     for (j, e) in existing.iter().enumerate().filter(|(j, _)| !used[*j]) {
         by_name.entry(e.named.as_str()).or_default().push_back(j);
     }
-    for (r, m) in rows.iter().zip(out.iter_mut()) {
-        if m.is_some() || !r.iban.trim().is_empty() || r.name.trim().is_empty() {
-            continue;
-        }
-        let key = fingerprint(&r.booking_date, r.amount_cents, "", &r.name, "");
-        if let Some(j) = by_name.get_mut(key.as_str()).and_then(|q| q.pop_front()) {
-            used[j] = true;
-            *m = Some(j);
+    for (r, m) in rows.iter().zip(out.iter_mut()).filter(|(_, m)| m.is_none()) {
+        if let Some(key) = r.named_fp() {
+            if let Some(j) = by_name.get_mut(key.as_str()).and_then(|q| q.pop_front()) {
+                used[j] = true;
+                *m = Some(j);
+            }
         }
     }
     match_bank_without_counterparty(rows, existing, &mut out, &mut used);
@@ -647,8 +804,8 @@ pub(crate) fn match_bank_without_counterparty(
     used: &mut [bool],
 ) {
     let days = |a: &str, b: &str| {
-        let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
-        Some((d(a)? - d(b)?).num_days().abs())
+        let d = |s: &str| jiff::civil::Date::strptime("%Y-%m-%d", s).ok();
+        Some(crate::dates::days_between(d(a)?, d(b)?).abs())
     };
     for (r, m) in rows.iter().zip(out.iter_mut()) {
         if m.is_some() {
@@ -968,7 +1125,8 @@ pub(crate) fn merge_rows(
     st: &mut Stats,
 ) -> CoreResult<()> {
     let existing = load_existing(conn, st.account_id)?;
-    let match_of = match_existing(rows, &existing);
+    let rows = with_known_parts(rows, || KnownKeys::from_existing(&existing));
+    let match_of = match_existing(&rows, &existing);
 
     let mut seen: HashMap<String, usize> = HashMap::new();
     for (i, r) in rows.iter().enumerate() {
@@ -994,7 +1152,22 @@ pub(crate) fn merge_rows(
         } else {
             None
         };
-        let note = if preserve_notes { r.note.as_str() } else { "" };
+        // #877: without categories a split booking has no splits; it takes the
+        // parts' notes. `notes`: how many MoneyMoney notes `note` carries.
+        let (note_text, notes): (Cow<str>, u32) = if !preserve_notes {
+            (Cow::Borrowed(""), 0)
+        } else if preserve_categories || r.splits.is_empty() {
+            (Cow::Borrowed(&r.note), u32::from(!r.note.is_empty()))
+        } else {
+            let own = std::iter::once(&r.note).chain(r.splits.iter().map(|s| &s.note));
+            let lines = std::iter::once(r.note.trim().to_string())
+                .chain(r.splits.iter().map(|s| split_note(s, true)));
+            (
+                Cow::Owned(join_notes(lines)),
+                own.filter(|n| !n.trim().is_empty()).count() as u32,
+            )
+        };
+        let note: &str = &note_text;
         if let Some(e) = match_of[i].map(|j| &existing[j]) {
             st.duplicates += 1;
             if e.deleted {
@@ -1008,12 +1181,23 @@ pub(crate) fn merge_rows(
                 )?;
                 changed = true;
             }
+            // #877: a booking already here (e.g. from the bank) becomes the split
+            // booking, unless the user categorised or split it.
+            if preserve_categories
+                && !r.splits.is_empty()
+                && !e.split_set
+                && e.category_source != "manual"
+            {
+                write_splits(conn, e.id, &r.splits, preserve_notes, cat_cache, st)?;
+                crate::planning::clear_split_category(conn, e.id)?;
+                changed = true;
+            }
             if !note.is_empty() && e.note.trim().is_empty() {
                 conn.execute(
                     "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
                     params![note, e.id, now_ms()],
                 )?;
-                st.notes += 1;
+                st.notes += notes;
                 changed = true;
             }
             if changed {
@@ -1044,11 +1228,13 @@ pub(crate) fn merge_rows(
             if cat_id.is_some() { now_ms() } else { 0 },
             if note.is_empty() { 0 } else { now_ms() }
         ])?;
+        if preserve_categories && !r.splits.is_empty() {
+            let id = conn.last_insert_rowid();
+            write_splits(conn, id, &r.splits, preserve_notes, cat_cache, st)?;
+        }
         st.new += 1;
         st.balance_cents = st.balance_cents.saturating_add(r.amount_cents);
-        if !note.is_empty() {
-            st.notes += 1;
-        }
+        st.notes += notes;
     }
     Ok(())
 }

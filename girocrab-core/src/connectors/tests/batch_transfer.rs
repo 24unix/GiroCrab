@@ -128,7 +128,7 @@ async fn single_bookings_record_one_booking_per_payment() {
 
 #[tokio::test]
 async fn scheduled_batches_go_to_planned_not_to_bookings() {
-    let date = (chrono::Local::now().date_naive() + chrono::Duration::days(10)).to_string();
+    let date = (crate::dates::today() + crate::dates::days(10)).to_string();
     assert_eq!(run(true, Some(&date)).await, (0, 0, 1, 3_550));
     assert_eq!(run(false, Some(&date)).await, (0, 0, 3, 3_550));
 }

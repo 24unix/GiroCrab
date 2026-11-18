@@ -60,7 +60,7 @@ impl ComdirectConnector {
     }
 
     fn request_info(&self) -> String {
-        let req_id = chrono::Local::now().format("%H%M%S%3f").to_string();
+        let req_id = jiff::ZonedDateTime::now().strftime("%H%M%S%3f").to_string();
         json!({"clientRequestId": {"sessionId": self.session_uuid, "requestId": req_id}})
             .to_string()
     }

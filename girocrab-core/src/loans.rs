@@ -12,7 +12,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::dates::parse_iso;
@@ -140,7 +140,7 @@ fn validate(setup: &LoanSetup) -> CoreResult<LoanSetup> {
     let Some(date) = parse_iso(&setup.anchor_date) else {
         return Err(CoreError::invalid(tr("Ungültiges Stichtagsdatum.")));
     };
-    if date > chrono::Local::now().date_naive() {
+    if date > crate::dates::today() {
         return Err(CoreError::invalid(tr(
             "Der Stichtag darf nicht in der Zukunft liegen.",
         )));
@@ -166,7 +166,7 @@ fn validate(setup: &LoanSetup) -> CoreResult<LoanSetup> {
     compile_expr(&setup.match_expr)?;
     Ok(LoanSetup {
         name,
-        anchor_date: date.format("%Y-%m-%d").to_string(),
+        anchor_date: crate::dates::iso(date),
         match_expr: setup.match_expr.trim().to_string(),
         interest_rate_ppm: setup.interest_rate_ppm.filter(|r| *r > 0),
         ..setup.clone()
@@ -215,7 +215,7 @@ fn months_left(balance: i64, payment: i64, ppm: i64) -> Option<u32> {
 /// the linked bookings as seen from the paying account (debit = negative).
 pub(crate) fn compute_status(setup: &LoanSetup, bookings: &[(String, i64)]) -> LoanStatus {
     let ppm = setup.interest_rate_ppm.unwrap_or(0);
-    let mut events: Vec<(NaiveDate, &str, i64)> = Vec::new();
+    let mut events: Vec<(Date, &str, i64)> = Vec::new();
     let mut before = 0u32;
     let anchor = parse_iso(&setup.anchor_date);
     for (d, amount) in bookings {
@@ -234,7 +234,7 @@ pub(crate) fn compute_status(setup: &LoanSetup, bookings: &[(String, i64)]) -> L
     let mut balance = setup.anchor_balance_cents;
     let mut last = anchor;
     for (date, raw, payment) in events {
-        let days = last.map_or(0, |l| (date - l).num_days());
+        let days = last.map_or(0, |l| crate::dates::days_between(l, date));
         let int = interest(balance, ppm, days);
         balance = balance + int - payment;
         last = Some(date);

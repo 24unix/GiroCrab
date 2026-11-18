@@ -55,8 +55,8 @@ fn err_code(v: &Vault, method: &str, params: Value) -> String {
 
 /// The longest summary range, ending a few days from now.
 fn summary_range() -> (String, String) {
-    let to = chrono::Local::now().date_naive() + chrono::Duration::days(5);
-    let from = to - chrono::Duration::days(MAX_SUMMARY_DAYS);
+    let to = crate::dates::today() + crate::dates::days(5);
+    let from = to - crate::dates::days(MAX_SUMMARY_DAYS);
     (from.to_string(), to.to_string())
 }
 

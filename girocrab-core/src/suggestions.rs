@@ -39,7 +39,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use chrono::{Datelike, NaiveDate};
 use rusqlite::Connection;
 
 use crate::error::{CoreError, CoreResult};
@@ -186,9 +185,9 @@ fn merchant_key(m: &MerchantInfo) -> Option<String> {
 }
 
 fn day_number(date: &str) -> Option<i32> {
-    NaiveDate::parse_from_str(date, "%Y-%m-%d")
+    jiff::civil::Date::strptime("%Y-%m-%d", date)
         .ok()
-        .map(|d| d.num_days_from_ce())
+        .map(crate::dates::day_number)
 }
 
 fn load_targets(vault: &Vault, conn: &Connection, ids: &[i64]) -> CoreResult<Vec<Target>> {

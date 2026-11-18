@@ -116,7 +116,7 @@ fn overview(v: &Value) -> CoreResult<FetchResult> {
             },
             balance_cents: cents,
             // The overview has no valuation timestamp: this is the retrieval date.
-            balance_date: chrono::Utc::now().date_naive().to_string(),
+            balance_date: crate::dates::utc_date(jiff::Timestamp::now()).to_string(),
         });
     }
     if accounts.is_empty() {
@@ -240,7 +240,7 @@ impl Vault {
             .as_str()
             .unwrap_or_default()
             .get(..10)
-            .filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok())
+            .filter(|d| jiff::civil::Date::strptime("%Y-%m-%d", d).is_ok())
             .unwrap_or_default();
         let db = self.db()?;
         let (account_id, excluded) = db.query_row(

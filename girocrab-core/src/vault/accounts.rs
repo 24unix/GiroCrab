@@ -603,8 +603,8 @@ impl Vault {
             .collect();
         let mut balance: i64 = chosen.iter().map(|a| a.balance_cents).sum();
         let ids: Vec<i64> = chosen.iter().map(|a| a.id).collect();
-        let today = chrono::Local::now().date_naive();
-        let start = today - chrono::Duration::days(days.max(1) as i64 - 1);
+        let today = crate::dates::today();
+        let start = today - crate::dates::days(days.max(1) as i64 - 1);
         // Securities depots with a valuation history (`depot_values`) take their course from it;
         // the walk back over bookings is only for the other accounts, so nothing counts twice.
         let depot_series = crate::depot_values::series(&*self.db()?, &ids, start, today)?;
@@ -625,7 +625,7 @@ impl Vault {
                 .map(|a| a.balance_cents)
                 .sum();
         }
-        let from = start.format("%Y-%m-%d").to_string();
+        let from = crate::dates::iso(start);
         let per_day = {
             let db = self.db()?;
             for a in chosen.iter().filter(|a| book_ids.contains(&a.id)) {
@@ -645,13 +645,14 @@ impl Vault {
         let mut out = Vec::with_capacity(days as usize);
         let mut day = today;
         while day >= start {
-            let key = day.format("%Y-%m-%d").to_string();
+            let key = crate::dates::iso(day);
             out.push(DailyBalance {
                 date: key.clone(),
                 balance_cents: balance,
             });
             balance -= per_day.get(&key).copied().unwrap_or(0);
-            day -= chrono::Duration::days(1);
+            let Ok(prev) = day.yesterday() else { break };
+            day = prev;
         }
         out.reverse();
         // Depot values enter directly. Before its first point a depot walks back over its own
@@ -665,10 +666,10 @@ impl Vault {
             }
             let db = self.db()?;
             for (id, first_day, first_value) in &depots.firsts {
-                let Ok(first) = chrono::NaiveDate::parse_from_str(first_day, "%Y-%m-%d") else {
+                let Ok(first) = jiff::civil::Date::strptime("%Y-%m-%d", first_day) else {
                     continue;
                 };
-                let k = (first - start).num_days();
+                let k = crate::dates::days_between(start, first);
                 if k <= 0 {
                     continue;
                 }
@@ -720,8 +721,8 @@ impl Vault {
             })
             .map(|a| a.id)
             .collect();
-        let today = chrono::Local::now().date_naive();
-        let start = today - chrono::Duration::days(days.max(1) as i64 - 1);
+        let today = crate::dates::today();
+        let start = today - crate::dates::days(days.max(1) as i64 - 1);
         let Some(series) = crate::depot_values::series(&*self.db()?, &ids, start, today)? else {
             return Ok(vec![]);
         };
@@ -730,9 +731,7 @@ impl Vault {
         };
         Ok((first..series.values.len())
             .map(|i| DepotValuePoint {
-                date: (start + chrono::Duration::days(i as i64))
-                    .format("%Y-%m-%d")
-                    .to_string(),
+                date: crate::dates::iso(start + crate::dates::days(i as i64)),
                 value_cents: series.values[i],
                 covered_depots: series.covered[i],
                 total_depots: series.total_depots,

@@ -8,6 +8,7 @@ use base64::Engine;
 
 use super::syntax::{escape, parse_response, SegmentBuilder};
 use super::{rah10, BankReply, FinTsConnector, CONSORSBANK_BLZ, COUNTRY};
+use crate::connectors::fints_directory::COMDIRECT_BLZ;
 use crate::connectors::{
     ensure_secure_fints_url, http_client_no_redirect, read_text_limited, Challenge, ChallengeKind,
     ConnectContext, Phase,
@@ -36,6 +37,20 @@ fn init_rejected_as_malformed(reply: &BankReply) -> bool {
     reply.has("9010") && !reply.has("9931") && !reply.has("9942")
 }
 
+/// The bank code does not belong to the login: 9210 "Bankleitzahl passt nicht
+/// zum Benutzer" (comdirect). 9210 alone is any rejected order, so the text decides.
+pub(super) fn blz_mismatch(reply: &BankReply) -> bool {
+    reply.codes.iter().any(|c| {
+        let text = c.2.to_lowercase();
+        c.0 == "9210" && text.contains("bankleitzahl") && text.contains("benutzer")
+    })
+}
+
+/// One of comdirect's bank codes.
+pub(super) fn is_comdirect(blz: &str) -> bool {
+    COMDIRECT_BLZ.contains(&blz)
+}
+
 fn clean_challenge(s: &str) -> String {
     s.replace("<br>", "\n")
         .replace("<br/>", "\n")
@@ -58,10 +73,10 @@ fn strip_mime_header(b: Vec<u8>) -> Vec<u8> {
 
 impl FinTsConnector {
     pub(super) fn now() -> (String, String) {
-        let n = chrono::Local::now();
+        let n = jiff::ZonedDateTime::now();
         (
-            n.format("%Y%m%d").to_string(),
-            n.format("%H%M%S").to_string(),
+            n.strftime("%Y%m%d").to_string(),
+            n.strftime("%H%M%S").to_string(),
         )
     }
 
@@ -409,6 +424,44 @@ impl FinTsConnector {
         Ok(None)
     }
 
+    /// Synchronisation (if needed) and the authenticated dialog. comdirect
+    /// has several bank codes, and the one in an account's IBAN is not always
+    /// the one the login is known under: when the bank answers 9210 "Bankleitzahl
+    /// passt nicht zum Benutzer", its other codes are tried in turn (same
+    /// address, same PIN) and the one that works is kept in the state. Any
+    /// other answer ends the search; all codes failing reports the first error.
+    pub(super) async fn login(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
+        let first = self.login_attempt(ctx).await;
+        if first.is_ok() || !self.blz_rejected || self.rah.is_some() || !is_comdirect(&self.blz) {
+            return first;
+        }
+        let tried = self.blz.clone();
+        for blz in COMDIRECT_BLZ.iter().filter(|b| **b != tried) {
+            self.blz = (*blz).to_string();
+            crate::depot_debug::log(&format!(
+                "fints: comdirect bank code {tried} rejected, trying {blz}"
+            ));
+            let attempt = self.login_attempt(ctx).await;
+            if attempt.is_ok() {
+                self.st.login_blz = self.blz.clone();
+                return attempt;
+            }
+            if !self.blz_rejected {
+                return attempt;
+            }
+        }
+        self.blz = tried;
+        first
+    }
+
+    async fn login_attempt(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
+        self.blz_rejected = false;
+        if self.st.system_id.is_empty() || self.st.sec_func.is_empty() {
+            self.sync_dialog(ctx).await?;
+        }
+        self.open_dialog(ctx).await
+    }
+
     pub(super) async fn sync_dialog(&mut self, ctx: &ConnectContext) -> CoreResult<()> {
         self.reset_dialog();
         let payload = vec![
@@ -417,6 +470,7 @@ impl FinTsConnector {
             SegmentBuilder::new("HKSYN", 5, 3).raw("0").build(),
         ];
         let reply = self.send(ctx, payload, "999", None).await?;
+        self.blz_rejected = blz_mismatch(&reply);
         reply.check()?;
         self.learn_bpd(&reply);
         // Optional: TAN media list (needed by some banks for HKTAN).
@@ -527,6 +581,12 @@ impl FinTsConnector {
         self.reset_dialog();
         let sec = self.sec();
         let mut reply = self.send_dialog_init(ctx, &sec).await?;
+        // wrong bank code for this login: nothing below can help (`login` may
+        // try another one)
+        if blz_mismatch(&reply) {
+            self.blz_rejected = true;
+            reply.check()?;
+        }
         // Some banks reject HKTAN in the dialog init as malformed (9010 without a
         // PIN/TAN/system-id code): retry once one-step and remember it.
         if sec != "999" && init_rejected_as_malformed(&reply) {
