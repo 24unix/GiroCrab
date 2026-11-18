@@ -39,7 +39,8 @@ Other UI files live in the same `GiroCrabUI/` dir. A view with its own design pa
 ## Builds
 - **Swift-only change** (only `GiroCrabApp/**/*.swift`): NEVER rebuild `girocrab-core` or run `./build-xcframework.sh`. Run only `swift build -q` (in `GiroCrabApp/`) or `xcodebuild -quiet`.
 - Rust change: `cargo check -q -p girocrab-core`; rebuild the xcframework only if the UniFFI API changed.
-- Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`.
+- Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`
+  (pre-push runs every cheap CI lint via `scripts/verify-fast.sh --lint-only`, ~10 s; without the flag it adds clippy and the serde check for the changed files, `--tests` the unit tests).
 - Always pass `-q`/`--quiet` to `cargo check`, `cargo test`, `xcodebuild`. If output is still long, pipe through `tail -n 40`.
 - Before pushing a PR (also Swift-only ones; CI runs these on every PR): `cargo fmt --all -- --check` and `cargo clippy -q --workspace --all-targets -- -D warnings`. After pushing, check `gh pr checks`.
   Under clippy the root `build.rs` skips the xcframework + Swift app build (~8 s instead of ~90 s after a core
@@ -238,3 +239,12 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 ## Data tables
 `girocrab-core/data/*.tsv` are embedded at compile time and parsed by `src/data_tables.rs`: `bic_directory.tsv` (BIC),
 `fints_directory.tsv` (FinTS endpoints), `merchants.tsv` (merchant dictionary). Never read them whole; `grep -n` a key instead.
+
+## Bank-Konnektoren: End-to-End-Pflicht (kein reiner Core-Merge)
+- Ein neuer Bank- oder Depot-Konnektor gilt **nicht** als fertig und darf sein Feature-Issue nicht schließen, solange er nur als Parser in `girocrab-core/src/connectors/` existiert.
+- Jeder Konnektor-PR muss zwingend alle vier Ebenen verdrahten:
+  1. Core-Konnektor (`girocrab-core/src/connectors/`)
+  2. Bankenkatalog / Preset-Registrierung
+  3. FFI-Anbindung (`girocrab-core` / UniFFI)
+  4. UI-Einrichtung & Tests in `GiroCrabApp`
+- Vor jedem PR `bash scripts/lint-connectors.sh` ausführen (und bei Nacharbeit an `finpension` / `paypal_nvp` deren Eintrag aus der Allowlist entfernen).

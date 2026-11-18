@@ -13,7 +13,7 @@ pub(super) fn legacy_id(pending: bool, reference: &str) -> String {
         } else {
             "advanzia-post-"
         },
-        super::super::fnv1a64(reference)
+        crate::fnv::fnv1a64(reference)
     )
 }
 fn legacy_reference(reference: &str) -> bool {

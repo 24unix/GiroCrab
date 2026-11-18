@@ -58,6 +58,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::connectors::group_for;
 use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
+use crate::fnv::Fnv1a64;
 use crate::i18n::{tr, trf};
 use crate::models::{Account, UserGroup};
 use crate::schema::has_column;
@@ -140,14 +141,10 @@ pub(crate) fn account_color_hash(
     login: &str,
     external_ref: &str,
 ) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for part in [connector, bank_code, login, external_ref] {
-        for b in part.bytes().chain(std::iter::once(0x1f)) {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-    h
+    [connector, bank_code, login, external_ref]
+        .into_iter()
+        .fold(Fnv1a64::default(), |h, part| h.field(part))
+        .finish()
 }
 
 /// Default colours for accounts without a chosen one (`hashes`: account id →
@@ -248,9 +245,9 @@ fn not_found(uuid: &str) -> CoreError {
 fn valid_name(conn: &Connection, name: &str, except: Option<&str>) -> CoreResult<String> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err(CoreError::InvalidInput {
-            message: tr("Der Gruppenname darf nicht leer sein").into(),
-        });
+        return Err(CoreError::invalid(tr(
+            "Der Gruppenname darf nicht leer sein",
+        )));
     }
     let clash: Option<i64> = conn
         .query_row(
@@ -260,9 +257,10 @@ fn valid_name(conn: &Connection, name: &str, except: Option<&str>) -> CoreResult
         )
         .optional()?;
     if clash.is_some() {
-        return Err(CoreError::InvalidInput {
-            message: trf("Es gibt schon eine Gruppe „{0}“", &[&name]),
-        });
+        return Err(CoreError::invalid(trf(
+            "Es gibt schon eine Gruppe „{0}“",
+            &[&name],
+        )));
     }
     Ok(name)
 }
@@ -865,9 +863,7 @@ impl Vault {
         }
         if let Some(p) = &parent_uuid {
             if subtree(&effective_parents(&db)?, &uuid).contains(p) {
-                return Err(CoreError::InvalidInput {
-                    message: tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden").into(),
-                });
+                return Err(CoreError::invalid(tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden")));
             }
         }
         set_parent(&db, &uuid, parent_uuid.as_deref(), now_ms())
@@ -1005,9 +1001,7 @@ impl Vault {
     pub fn set_account_symbol(&self, account_id: i64, sf_symbol: String) -> Result<(), CoreError> {
         let symbol = sf_symbol.trim();
         if symbol.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Kein Symbol angegeben").into(),
-            });
+            return Err(CoreError::invalid(tr("Kein Symbol angegeben")));
         }
         let n = self.db()?.execute(
             "UPDATE accounts SET sf_symbol = ?2, symbol_ms = ?3 WHERE id = ?1",
@@ -1151,9 +1145,7 @@ fn valid_color(color_hex: Option<String>) -> Result<Option<String>, CoreError> {
         {
             Ok(Some(h))
         }
-        Some(h) => Err(CoreError::InvalidInput {
-            message: trf("Ungültige Farbe: {0}", &[&h]),
-        }),
+        Some(h) => Err(CoreError::invalid(trf("Ungültige Farbe: {0}", &[&h]))),
         None => Ok(None),
     }
 }

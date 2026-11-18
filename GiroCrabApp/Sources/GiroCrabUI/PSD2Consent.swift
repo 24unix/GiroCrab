@@ -78,7 +78,7 @@ extension AppModel {
     /// 0 = off). Falls back to the former hidden vault setting `sync.psd2_auto_hours`
     /// until the picker has been used once.
     var autoSyncHours: Int {
-        if let stored = UserDefaults.standard.object(forKey: AutoSync.hoursKey) as? Int {
+        if let stored = AppDefaults.store.object(forKey: AutoSync.hoursKey) as? Int {
             return AutoSync.hours(stored: stored)
         }
         return Int(settingEntry("sync.psd2_auto_hours")?.value.trimmingCharacters(in: .whitespaces) ?? "") ?? 0
@@ -108,12 +108,12 @@ extension AppModel {
         // a transfer waiting for its TAN shows `activeChallenge` / `transferBusy`
         guard vault != nil, !isDemo, syncingConnectionID == nil, activeChallenge == nil,
               !transferBusy, pendingLogin == nil, webLoginConnection == nil,
-              setupRequest == nil else { return }
+              setupRequest == nil, syncQueue.isEmpty else { return }
         let hours = autoSyncHours
         guard hours > 0 else { return }
         // Sachwerte: missing gold prices (at most one request a day, none without gold items)
         refreshAssetPrices()
-        let defaults = UserDefaults.standard
+        let defaults = AppDefaults.store
         guard let due = connections.first(where: { c in
             // never a login prompt: PSD2 needs a valid consent, the others a stored PIN or session
             guard !usesPortal(c), !c.allAccountsArchived, bankingGate(for: c) == nil else { return false }
@@ -148,8 +148,8 @@ extension AppModel {
             let stage = PSD2Consent.stage(until: end, now: now, warnDays: PSD2Consent.notifyDays)
             guard stage == .expiringSoon || stage == .expired else { continue }
             let key = "consentNotice.\(c.id).\(raw).\(stage == .expired ? "expired" : "soon")"
-            guard !UserDefaults.standard.bool(forKey: key) else { continue }
-            UserDefaults.standard.set(true, forKey: key)
+            guard !AppDefaults.store.bool(forKey: key) else { continue }
+            AppDefaults.store.set(true, forKey: key)
             let body = stage == .expired
                 ? String(localized: "Die PSD2-Zustimmung für \(c.displayName) ist abgelaufen. Bitte in GiroCrab neu verbinden.")
                 : String(localized: "Die PSD2-Zustimmung für \(c.displayName) läuft in \(max(0, PSD2Consent.daysLeft(until: end, now: now))) Tagen ab. Bitte in GiroCrab neu verbinden.")

@@ -184,7 +184,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa, .advanzia: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus, .ffb, .fordMoney, .opelDirektbank: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus, .ffb, .fordMoney, .opelDirektbank, .finpension: return []
         }
     }
 
@@ -247,10 +247,15 @@ struct ConnectionEditSheet: View {
 
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
     @State private var importingStatement = false
+    @State private var importingFinpension = false
     @State private var confirmSwitch = false
     /// comdirect via FinTS: PostBox through the bank's API as well (#838).
     @State private var postbox = false
     /// comdirect logins can switch between FinTS and comdirect's own API.
+    /// Consorsbank via FinTS: documents from the Online-Archiv as well (#1024).
+    private var isConsorsbankFinTS: Bool {
+        connection.connector == .finTsGeneric && connection.bankCode == "76030080"
+    }
     private var isComdirect: Bool {
         connection.connector == .comdirect
             || (connection.connector == .finTsGeneric && ["20041111", "20041133", "20041144", "20041155"].contains(connection.bankCode))
@@ -326,6 +331,22 @@ struct ConnectionEditSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             ForEach(advancedKeys, id: \.self) { key in field(key) }
                         }
+                    }
+                }
+                if connection.connector == .finpension {
+                    Section {
+                        Text("Finpension hat keine Schnittstelle: Laden Sie in Ihrem Finpension-Konto den Export (CSV oder JSON) mit Positionen und Cash-Buchungen herunter und lesen Sie ihn hier ein. Säule 3a, Freizügigkeit und 1e werden gleich behandelt. Es gibt keine Anmeldung und keinen Netzwerkzugriff.")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button { importingFinpension = true } label: { Label("Finpension-Export importieren …", systemImage: "doc.badge.plus") }
+                            .buttonStyle(.borderedProminent)
+                            .fileImporter(isPresented: $importingFinpension, allowedContentTypes: [.commaSeparatedText, .json, .plainText, .data]) { result in
+                                if case .success(let url) = result {
+                                    save()
+                                    model.importFinpension(connection, url: url)
+                                    dismiss()
+                                }
+                            }
                     }
                 }
                 if isPortal {
@@ -428,6 +449,35 @@ struct ConnectionEditSheet: View {
                                 .appFont(.caption).foregroundStyle(Theme.secondary)
                                 .leadingFooter()
                         }
+                    }
+                }
+                if isConsorsbankFinTS {
+                    Section {
+                        Toggle("Online-Archiv abrufen", isOn: Binding(
+                            get: { postbox },
+                            set: { on in
+                                model.setComdirectPostbox(connection.id, on)
+                                postbox = model.comdirectPostboxEnabled(connection.id)
+                            }))
+                            .disabled(documentsBlocked)
+                        if documentsBlocked {
+                            Label("Wird nicht abgerufen, solange „Dokumente abrufen“ oben ausgeschaltet ist.", systemImage: "info.circle")
+                                .appFont(.caption).foregroundStyle(Theme.secondary)
+                        }
+                        if postbox {
+                            Button {
+                                save()
+                                dismiss()
+                                model.fetchComdirectPostbox(model.connections.first { $0.id == connection.id } ?? connection)
+                            } label: { Label("Online-Archiv jetzt abrufen", systemImage: "tray.and.arrow.down") }
+                                .disabled(model.syncingConnectionID != nil || documentsBlocked)
+                        }
+                    } header: {
+                        Text("Online-Archiv").appSectionHeader()
+                    } footer: {
+                        Text("Kontoauszüge, Abrechnungen, Depotauszüge und Steuerdokumente aus dem Online-Archiv der Consorsbank, höchstens einmal pro Woche beim Abruf. GiroCrab meldet sich dafür mit Kontonummer und PIN dieses Zugangs im Online-Banking an, die Anmeldung geben Sie in der Consorsbank App frei. Die Schnittstelle ist inoffiziell. Gespeicherte Dokumente werden nicht erneut geladen, denn jeder Abruf markiert ein Dokument bei der Bank als gelesen.")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .leadingFooter()
                     }
                 }
                 Section {
@@ -676,7 +726,7 @@ struct ConnectionEditSheet: View {
         login = connection.loginName
         status = model.connectionStatus(connection.id)
         storePin = status?.hasPin ?? false
-        if isComdirect, connection.connector == .finTsGeneric { postbox = model.comdirectPostboxEnabled(connection.id) }
+        if isComdirect || isConsorsbankFinTS, connection.connector == .finTsGeneric { postbox = model.comdirectPostboxEnabled(connection.id) }
         documentsSupported = model.documentsFetchSupported(connection.id)
         documentsFetch = model.documentsFetchEnabled(connection.id)
         initialDocumentsFetch = documentsFetch

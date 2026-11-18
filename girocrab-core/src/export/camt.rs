@@ -97,17 +97,12 @@ impl Vault {
                 what: trf("Konto {0}", &[&request.account_id]),
             })?;
         if matches!(account.kind, AccountKind::Loan | AccountKind::Brokerage) {
-            return Err(CoreError::InvalidInput {
-                message: tr("CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen.").to_string(),
-            });
+            return Err(CoreError::invalid(tr("CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen.")));
         }
         let date_from = request.date_from.as_deref().map(parse_day).transpose()?;
         let date_to = request.date_to.as_deref().map(parse_day).transpose()?;
         let currency = account_currency(&account.currency);
-        let today = chrono::Local::now()
-            .date_naive()
-            .format("%Y-%m-%d")
-            .to_string();
+        let today = crate::dates::today_iso();
         let db = self.db()?;
         // `list_accounts` replaces a stored 0 of a credit card with the open
         // cycle's amount, counted over every row; the balance walk below counts
@@ -161,9 +156,9 @@ impl Vault {
         // "everything up to <past day>" stays a valid, empty statement.
         let from = date_from.or(first).unwrap_or_else(|| to.clone());
         if to < from {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Zeitraum endet vor seinem Beginn.").to_string(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Der Zeitraum endet vor seinem Beginn.",
+            )));
         }
         // Marked bookings: OPBD + entries = CLBD only holds when no booked
         // booking between the first and the last day is left out.
@@ -172,9 +167,7 @@ impl Vault {
                 .iter()
                 .any(|(id, e)| !e.pending && !ids.contains(id));
             if gap {
-                return Err(CoreError::InvalidInput {
-                    message: tr("CAMT.053 erfordert eine lückenlose Auswahl. Markiere alle Umsätze eines zusammenhängenden Zeitraums.").to_string(),
-                });
+                return Err(CoreError::invalid(tr("CAMT.053 erfordert eine lückenlose Auswahl. Markiere alle Umsätze eines zusammenhängenden Zeitraums.")));
             }
         }
         let opening = booked_balance(&db, &account, &currency, &previous_day(&from))?;
@@ -193,18 +186,16 @@ impl Vault {
 
 fn parse_day(s: &str) -> CoreResult<String> {
     let day: String = s.trim().chars().take(10).collect();
-    chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d")
-        .map(|d| d.format("%Y-%m-%d").to_string())
-        .map_err(|_| CoreError::InvalidInput {
-            message: trf("Ungültiges Datum: {0}", &[&s]),
-        })
+    jiff::civil::Date::strptime("%Y-%m-%d", &day)
+        .map(crate::dates::iso)
+        .map_err(|_| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&s])))
 }
 
 fn previous_day(day: &str) -> String {
-    chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+    jiff::civil::Date::strptime("%Y-%m-%d", day)
         .ok()
-        .and_then(|d| d.pred_opt())
-        .map(|d| d.format("%Y-%m-%d").to_string())
+        .and_then(|d| d.yesterday().ok())
+        .map(crate::dates::iso)
         .unwrap_or_default()
 }
 
@@ -325,10 +316,7 @@ fn booked_balance(db: &Connection, a: &Account, currency: &str, day: &str) -> Co
     }
     let at: String = a.balance_date.chars().take(10).collect();
     let anchor = if at.is_empty() {
-        chrono::Local::now()
-            .date_naive()
-            .format("%Y-%m-%d")
-            .to_string()
+        crate::dates::today_iso()
     } else {
         at
     };

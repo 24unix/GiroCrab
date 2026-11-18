@@ -99,6 +99,8 @@ enum Theme {
     /// sees the brand blue; if someone picks another accent in System Settings ›
     /// Appearance, macOS applies that one app-wide instead.
     static let accent = Color.accentColor
+    /// Fill under a value line (balance history, depot value): the accent fading out downwards.
+    static let chartAreaFill = LinearGradient(colors: [accent.opacity(0.14), accent.opacity(0.01)], startPoint: .top, endPoint: .bottom)
     /// Soft selection/highlight fill in the current accent colour – brand blue by
     /// default, and it follows a user-chosen system accent.
     static let selection: Color = {
@@ -496,6 +498,7 @@ extension ConnectorKind {
         case .ffb: return "FFB (FIL Fondsbank)"
         case .fordMoney: return "Ford Money"
         case .opelDirektbank: return "Opel Direktbank"
+        case .finpension: return "Finpension"
         }
     }
 
@@ -527,6 +530,7 @@ extension ConnectorKind {
         case .ffb: return "#1C5A8C"
         case .fordMoney: return "#20396E"
         case .opelDirektbank: return "#1A1A1A"
+        case .finpension: return "#00A68C"
         }
     }
 
@@ -565,6 +569,7 @@ extension ConnectorKind {
         case .ffb: return "FFB"
         case .fordMoney: return "FM"
         case .opelDirektbank: return "OD"
+        case .finpension: return "FP"
         }
     }
 }

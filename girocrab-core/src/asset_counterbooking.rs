@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+use crate::fnv::Fnv1a64;
+
 /// What kind of asset an asset account holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -136,18 +138,13 @@ fn proposal_id(
     amount_cents: i64,
     fee_cents: i64,
 ) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    let mut feed = |bytes: &[u8]| {
-        for b in bytes.iter().copied().chain(std::iter::once(0x1f)) {
-            hash ^= u64::from(b);
-            hash = hash.wrapping_mul(0x0100_0000_01b3);
-        }
-    };
-    feed(source_booking_id.as_bytes());
-    feed(asset_account_id.as_bytes());
-    feed(kind.tag().as_bytes());
-    feed(&amount_cents.to_le_bytes());
-    feed(&fee_cents.to_le_bytes());
+    let hash = Fnv1a64::default()
+        .field(source_booking_id)
+        .field(asset_account_id)
+        .field(kind.tag())
+        .field(amount_cents.to_le_bytes())
+        .field(fee_cents.to_le_bytes())
+        .finish();
     format!("asset-cb-{hash:016x}")
 }
 
@@ -242,7 +239,8 @@ mod tests {
         let c = build(-100_000, 1_600).unwrap();
         assert_eq!(a.proposal_id, b.proposal_id);
         assert_ne!(a.proposal_id, c.proposal_id);
-        assert!(a.proposal_id.starts_with("asset-cb-"));
+        // Stored proposals are recognised by their id: it must never change.
+        assert_eq!(a.proposal_id, "asset-cb-20e329b7daf36b22");
     }
 
     #[test]

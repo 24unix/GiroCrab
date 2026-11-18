@@ -8,8 +8,19 @@ extension AppModel {
     }
 
     static func storedExpandedCategories(demo: Bool) -> Set<Int64> {
-        Set(UserDefaults.standard.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
+        Set(AppDefaults.store.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
     }
+
+    #if os(macOS)
+    func selectFromSidebar(_ selection: SidebarItem?) {
+        let previous = sidebarSelection
+        interactiveSidebarSelection = selection
+        if autoReviewDelay == .onAccountSwitch, previous != selection,
+           case .account(let id)? = previous, case .account? = selection {
+            markAllChecked(accountIDs: [id], quietWhenEmpty: true)
+        }
+    }
+    #endif
 
     /// Marks the selected booking as checked after `autoReviewDelay`, unless
     /// the selection moved on (or became a multiple one) in the meantime.
@@ -28,6 +39,15 @@ extension AppModel {
 
     var isMultiSelection: Bool { selectedBookingIDs.count > 1 }
 
+    /// The selected-state flag of one sidebar row; a row reads `isSelected` instead of
+    /// `sidebarSelection`, so a click re-runs only the rows whose state changes.
+    func sidebarRowSelection(for item: SidebarItem) -> SidebarRowSelection {
+        if let flag = sidebarRowSelections[item] { return flag }
+        let flag = SidebarRowSelection(isSelected: untrackedSidebarSelection == item)
+        sidebarRowSelections[item] = flag
+        return flag
+    }
+
     /// Sum of the selected bookings over all accounts, one entry per currency (#878).
     /// Currencies are never added together; the entries are sorted by currency code.
     var selectionTotals: [SelectionTotal] {
@@ -40,7 +60,7 @@ extension AppModel {
 
     /// Click on a booking row: plain = only this one, `toggle` (⌘) adds or
     /// removes it, `extend` (⇧) selects the range from the current booking.
-    func selectBooking(_ id: Booking.ID, toggle: Bool = false, extend: Bool = false) {
+    func selectBooking(_ id: Booking.ID, toggle: Bool = false, extend: Bool = false, fromListClick: Bool = false) {
         let list = visibleBookings.map(\.id)
         if extend, let anchor = selectedBookingID, let a = list.firstIndex(of: anchor), let b = list.firstIndex(of: id) {
             selectedBookingIDs = Set(list[min(a, b)...max(a, b)])
@@ -59,6 +79,12 @@ extension AppModel {
             selectedBookingIDs = [id]
             selectedBookingID = id
         }
+        #if os(macOS)
+        if fromListClick, autoReviewDelay == .onAccountSwitch, !isMultiSelection,
+           selectedBookingID == id, let booking = selectedBooking, !booking.checked {
+            setChecked(true, for: booking)
+        }
+        #endif
     }
 
     /// Bearbeiten › Alles auswählen (⌘A) in the booking list.
@@ -71,8 +97,11 @@ extension AppModel {
 
     // MARK: - Selection change (account, group, category, period)
 
+    /// A selection or period change now loads in the background (`reloadSelection`).
+    var selectionLoadsInBackground: Bool { loadsSelectionInBackground && vault != nil }
+
     func reloadSelection(periodChanged: Bool) {
-        if loadsSelectionInBackground, vault != nil {
+        if selectionLoadsInBackground {
             startSelectionLoad()
         } else if selectionLoadTask != nil {
             settlePendingSelectionLoad() // reloads everything
@@ -94,6 +123,7 @@ extension AppModel {
     func settlePendingSelectionLoad() {
         guard selectionLoadTask != nil else { return }
         endSelectionLoad()
+        if streamTopPending { scrollStreamTop() }
         refreshSalaryCycle()
         refreshRecurring()
         reloadCategories()
@@ -109,6 +139,22 @@ extension AppModel {
         selectionPlaceholderTask = nil
         isLoadingSelection = false
         selectionLoadStamp &+= 1
+    }
+
+    /// Back to the top of the booking stream for a new sidebar selection or period. When the
+    /// list loads in the background the scroll waits for the new data (`streamTopPending`, taken
+    /// where the load publishes or a synchronous reload takes over). Scrolling the old list at
+    /// the click cost a layout pass of its own, and clearing the chart marker's day then re-ran
+    /// every day header on screen, all for data about to be replaced.
+    func requestStreamTop() {
+        if selectionLoadsInBackground { streamTopPending = true } else { scrollStreamTop() }
+    }
+
+    private func scrollStreamTop() {
+        streamTopPending = false
+        // before the publish selects a booking: its day becomes the marker's day (#593)
+        scrollFocusDay = nil
+        streamTopRequest &+= 1
     }
 
     /// The load is slow: empty list and chart, so nothing of the previous
@@ -190,6 +236,7 @@ extension AppModel {
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
+                if self.streamTopPending { self.scrollStreamTop() }
                 let publish = Perf.signposter.beginInterval("publishSelection")
                 self.publish(loaded.page)
                 self.selectionFlow = (loaded.flow.consumptionCents, loaded.flow.investedCents, loaded.flow.incomeCents)
@@ -443,8 +490,8 @@ extension AppModel {
         let (a, b) = from <= to ? (from, to) : (to, from)
         customPeriodFrom = DateText.iso(a)
         customPeriodTo = DateText.iso(b)
-        UserDefaults.standard.set(customPeriodFrom, forKey: "period.customFrom")
-        UserDefaults.standard.set(customPeriodTo, forKey: "period.customTo")
+        AppDefaults.store.set(customPeriodFrom, forKey: "period.customFrom")
+        AppDefaults.store.set(customPeriodTo, forKey: "period.customTo")
         if period == .custom { periodDidChange() } else { period = .custom }
         rememberPeriod()
     }
@@ -453,26 +500,26 @@ extension AppModel {
 
     /// The period last chosen in the period menu (#840); `.custom` uses the saved start/end.
     static var storedPeriod: Period? {
-        UserDefaults.standard.string(forKey: lastPeriodKey).flatMap { Period(lastChoiceKey: $0) }
+        AppDefaults.store.string(forKey: lastPeriodKey).flatMap { Period(lastChoiceKey: $0) }
     }
 
     func rememberPeriod() {
-        UserDefaults.standard.set(period.lastChoiceKey(), forKey: Self.lastPeriodKey)
+        AppDefaults.store.set(period.lastChoiceKey(), forKey: Self.lastPeriodKey)
     }
 
     private static let categoryPeriodsKey = "period.byCategory"
 
     /// The period the user last chose for this category (#425); `nil` = follows the current one.
     func categoryPeriod(_ id: Int64) -> Period? {
-        let map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String]
+        let map = AppDefaults.store.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String]
         return map?[String(id)].flatMap { Period(storageKey: $0) }
     }
 
     func setCategoryPeriod(_ period: Period, for id: Int64) {
         guard let key = period.storageKey() else { return }
-        var map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String] ?? [:]
+        var map = AppDefaults.store.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String] ?? [:]
         map[String(id)] = key
-        UserDefaults.standard.set(map, forKey: Self.categoryPeriodsKey)
+        AppDefaults.store.set(map, forKey: Self.categoryPeriodsKey)
     }
 
     func periodDidChange() {

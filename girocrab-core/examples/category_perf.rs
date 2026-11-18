@@ -422,10 +422,10 @@ fn main() {
             r#"{"method":"summary","params":{"date_from":"2025-01-01","date_to":"2025-12-31"}}"#,
         )
     });
-    let to = chrono::Local::now().date_naive();
+    let to = jiff::ZonedDateTime::now().date();
     let three = format!(
         r#"{{"method":"summary","params":{{"date_from":"{}","date_to":"{to}"}}}}"#,
-        to - chrono::Duration::days(3 * 366)
+        to - jiff::Span::new().days(3 * 366)
     );
     time("local_api summary (three years, the maximum)", || {
         vault.local_api_request(&three)
@@ -534,8 +534,7 @@ fn env_usize(name: &str, default: usize) -> usize {
 /// The core calls of `AppModel.startSelectionLoad` for the busiest top-level
 /// category, for the periods "all" and current year.
 fn category_selection(vault: &Vault, cats: &[girocrab_core::models::Category]) {
-    use chrono::Datelike;
-    let today = chrono::Local::now().date_naive();
+    let today = jiff::ZonedDateTime::now().date();
     let cat = cats
         .iter()
         .filter(|c| c.parent_id.is_none())
@@ -549,8 +548,8 @@ fn category_selection(vault: &Vault, cats: &[girocrab_core::models::Category]) {
         ("all", None, None, 4u32),
         (
             "year",
-            Some(format!("{}-01-01", today.format("%Y"))),
-            Some(today.format("%Y-%m-%d").to_string()),
+            Some(format!("{}-01-01", today.year())),
+            Some(today.to_string()),
             7,
         ),
     ] {
@@ -577,7 +576,7 @@ fn category_selection(vault: &Vault, cats: &[girocrab_core::models::Category]) {
             vault.selection_flow(vec![], from.clone(), to.clone())
         });
         total += time(&format!("[{label}] recurring_snapshot"), || {
-            vault.recurring_snapshot(vec![], today.year(), today.month())
+            vault.recurring_snapshot(vec![], today.year().into(), today.month() as u32)
         });
         total += time(&format!("[{label}] list_categories(period)"), || {
             vault.list_categories(from.clone(), to.clone())

@@ -47,6 +47,21 @@ Auch die Web-Logins (Trade Republic, Amex, Amazon, FNZ, quirion) brauchen nur `q
 `cpp/webcookies.cpp` liest den Cookie-Speicher von QtWebEngine ohne gegen QtWebEngine zu linken (QtNetwork aus
 `qt6-base-dev` genügt zum Bauen); fehlt das Modul, startet die App trotzdem und meldet es erst beim Web-Login.
 
+Fedora (der erste Befehl genügt zum Bauen und Starten, geprüft mit Fedora 43 in einem frischen Container;
+`qt6-qtpdf` enthält auch das PDF-Plugin für den Druck):
+
+```sh
+sudo dnf install rust cargo gcc-c++ perl dbus-devel pkgconf-pkg-config \
+  qt6-qtbase-devel qt6-qtdeclarative-devel kf6-kirigami breeze-icon-theme
+# optional: Web-Logins, PDF-Vorschau und Drucken / Texterkennung / schnelleres Linken
+sudo dnf install qt6-qtwebengine qt6-qtpdf tesseract tesseract-langpack-deu mold
+```
+
+`perl` ist das vollständige Paket, nicht nur `perl-interpreter`: SQLCipher bringt ein eigenes OpenSSL mit, dessen
+`Configure` Perl-Module wie `lib`, `Time::Piece` und `IPC::Cmd` braucht (sonst bricht der Build bei `openssl-sys` ab).
+`libdbus-sys` (Schlüsselbund, Secret Service) braucht `dbus-devel`. Ohne `kf6-kirigami` lässt sich die App bauen,
+startet aber nicht (`module "org.kde.kirigami" is not installed`).
+
 ```sh
 cd GiroCrabLinux
 cargo run                                  # startet mit dem Demo-Tresor
@@ -105,7 +120,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | AppModel, AccountGroupsModel | AppModel.qml | Auswahl, Zeitraum, Filter, Laden, Tagesgruppen, Marker, KPIs, Bearbeiten, Abruf, Überweisung, Import |
 | Formatting | Theme.qml, Fmt.qml | Tokens, Money, DateText, IBAN |
 | TextSize | Theme.qml, GeneralSettings.qml, Main.qml | Schriftgröße ×1 / ×1,15 / ×1,3 (Einstellungen › Allgemein, Darstellung › Größer Strg++ / Kleiner Strg+- / Originalgröße Strg+0; QSettings `textSize`). Skaliert die Textstile, die Standardschrift der Steuerelemente, Seitenleisten-, Sheet- und Einstellungsbreite sowie die Signets wie auf dem Mac; Menüs bleiben in Systemgröße |
-| SidebarView, AllAccountsRoot, AccountGroupsUI, AccountEditSheet, AppModel+CategoryDuplicate | SidebarView.qml, SidebarModel.qml, SidebarRow.qml, SidebarChevron.qml, AccountRow.qml, NewCountBadge.qml, AccountsSectionHeader.qml, AccountEditSheet.qml, DropSlot.qml | „Neue Umsätze“ und „Vermögen“ oben, einklappbare Abschnitte Konten / Zahlungen (Geplant, Lastschriften mit Zählern) / Dokumente / Kategorien (Zustand gemerkt), eine Chevron- und Icon-Spalte, „Alle Konten“ mit Summe je Währung, Gruppen/Banken/Kontoart, Kontosuche, Konten mit Zähler am Signet (Inhaber als Tooltip, archivierte ohne Saldo), „Hinzufügen …“-Menü, Drag & Drop, Kontextmenüs (Konto bearbeiten mit Notiz, Kontoart, Kontoinhaber, Kategorie duplizieren, „Ohne Kategorie“ umbenennen), aufgeklappte Kategorien je Tresor gemerkt |
+| SidebarView, AllAccountsRoot, AccountGroupsUI, AccountSettingsView, AppModel+CategoryDuplicate | SidebarView.qml, SidebarModel.qml, SidebarRow.qml, SidebarChevron.qml, AccountRow.qml, NewCountBadge.qml, AccountsSectionHeader.qml, AccountEditSheet.qml, DropSlot.qml | „Neue Umsätze“ und „Vermögen“ oben, einklappbare Abschnitte Konten / Zahlungen (Geplant, Lastschriften mit Zählern) / Dokumente / Kategorien (Zustand gemerkt), eine Chevron- und Icon-Spalte, „Alle Konten“ mit Summe je Währung, Gruppen/Banken/Kontoart, Kontosuche, Konten mit Zähler am Signet (Inhaber als Tooltip, archivierte ohne Saldo), „Hinzufügen …“-Menü, Drag & Drop, Kontextmenüs (Konto bearbeiten mit Notiz, Kontoart, Kontoinhaber, Kategorie duplizieren, „Ohne Kategorie“ umbenennen), aufgeklappte Kategorien je Tresor gemerkt |
 | NewBookingsView, NewBookings | BookingStreamView.qml (NewBookingsCardHeader), AppModel.qml (newBookingSections) | „Neue Umsätze“: eine Karte je Konto mit den ungeprüften Buchungen |
 | BookingListView | BookingStreamView.qml | Tageskarten, Zeilen, Chips (Kategorie-Chip je Konto abschaltbar im Kontomenü, QSettings `hiddenCategoryChipAccounts`, #336; Gegenkonto „⇄ Name“, #523), Mehrfachauswahl, Kontextmenü, Tastatur (Pfeile, C, R), „Weitere Buchungen laden“. Nur unter Linux: Beim Scrollen zeigt eine Blase am Griff den Tag der obersten Buchung, im noch nicht geladenen Bereich geschätzt („ca. März 2021“) |
 | BookingDensity, BookingInlineDetails, ListPurpose (BookingListView) | BookingPrefs.qml, BookingDetails.qml, BookingInlineDetails.qml, BookingStreamView.qml, GeneralSettings.qml | Buchungsdichte Kompakt / Standard / Großzügig (QSettings `bookingDensity`, Einstellungen › Allgemein): Kompakt ohne Tageskarten mit Datum in der Zeile, die aktive Buchung klappt mit allen Details auf; Verwendungszweck in der Zeile (#497) |

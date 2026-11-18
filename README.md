@@ -567,13 +567,16 @@ EN: Every PR automatically gets an AI provenance card. Real financial data never
 
 ### 1. Wie richte ich den Abgleich mit meinen Banken ein?
 1. **Bankverbindung hinterlegen:** Klicke unten in der linken Seitenleiste (oder über die Befehlspalette `⌘K`) auf **„Bankverbindungen“** (*Connections*) → **„Bankverbindung hinzufügen“**.
-   - **Klassische Banken (Sparkassen, Volksbanken, DKB, ING, Comdirect, Deutsche Bank etc.):** Wähle **FinTS / HBCI** und melde dich mit deiner BLZ/BIC sowie deiner Online-Banking-Kennung und PIN an.
-   - **Neobroker & Direktbanken (Trade Republic, Scalable Capital, N26, Revolut etc.):** Wähle den jeweiligen Direkt-Konnektor aus und melde dich mit deinen regulären Zugangsdaten an.
-2. **2FA bestätigen:** Bestätige die Freigabe (Push-TAN / App-Freigabe / PhotoTAN) einmalig auf deinem Smartphone. GiroCrab legt alle gefundenen Konten automatisch an.
+   - **Klassische Banken (Sparkassen, Volksbanken, DKB, ING, Comdirect, Consorsbank, Deutsche Bank etc.):** Wähle **FinTS / HBCI** und melde dich direkt mit deiner BLZ/BIC sowie deiner Online-Banking-Kennung und PIN an (keine Registrierung bei Drittanbietern nötig).
+   - **Neobroker & Direkt-Konnektoren (Trade Republic, Scalable Capital, bunq, PayPal, FNZ, quirion etc.):** Wähle den jeweiligen Direkt-Konnektor aus und melde dich mit deinen regulären Zugangsdaten an.
+   - **PSD2-Banken über Enable Banking (N26, C24, Revolut, American Express, Amazon Visa, Trade Republic ohne ständige 2FA etc.):** Für den offiziellen PSD2-/XS2A-Abruf benötigst du einmalig einen kostenlosen persönlichen API-Schlüssel im *Restricted Mode* von Enable Banking (`https://localhost/girocrab/callback`). 👉 **[Interaktive Schritt-für-Schritt-Anleitung (3 Min.)](https://girocrab.de/girocrab_psd2_anleitung.html)** · **[Markdown-Guide](docs/enable-banking-setup.md)**
+2. **2FA bestätigen:** Bestätige die Freigabe (Push-TAN / App-Freigabe / PhotoTAN) auf deinem Smartphone. GiroCrab legt alle gefundenen Konten automatisch an.
 3. **Umsätze abrufen (Rundruf):** Klicke oben in der Symbolleiste auf **Synchronisieren (`↻`)** oder drücke **`⌘R`**. GiroCrab ruft neue Umsätze und Salden ab, wendet deine Kategorien-Regeln an und verhindert über deterministische Buchungs-Fingerprints zuverlässig Duplikate (auch nach einem vorherigen CSV-/CAMT-Import).
 
 ### 2. Läuft der Abgleich technisch über einen Drittanbieter-Service oder über Webscraping?
-**Weder noch!** GiroCrab arbeitet zu **100 % direkt (Point-to-Point)** zwischen deinem Gerät und der Bank – ohne Cloud-Backend, ohne PSD2-Kontoinformationsdienst (wie FinAPI, Tink oder GoCardless) dazwischen und ohne Headless-Browser/HTML-Scraping:
+GiroCrab betreibt **kein eigenes Cloud-Backend** und nutzt kein Headless-Browser-Scraping:
+- **FinTS 3.0 & Direkt-Konnektoren (100 % Point-to-Point):** Dein Gerät spricht direkt mit dem Server deiner Bank – ohne zwischengeschalteten Dienst.
+- **PSD2 / XS2A (Bring-Your-Own-Key über Enable Banking):** Weil Banken für die PSD2-Schnittstelle gesetzlich ein qualifiziertes eIDAS-Zertifikat (AISP-Zulassung) verlangen, das nicht in einer Open-Source-App ausgeliefert werden kann, nutzt GiroCrab hierfür optional deinen eigenen, kostenlosen Personal-Zugang bei Enable Banking ([interaktive Einrichtungs-Anleitung](https://girocrab.de/girocrab_psd2_anleitung.html)):
 
 * **Natives FinTS 3.0 / HBCI:** Klassische Banken werden direkt aus dem Rust-Kern (`girocrab-core`) über die offiziellen FinTS-3.0-HTTPS-Endpunkte angesprochen (inkl. starker Kundenauthentifizierung nach TAN-Prozess 996/997, Decoupled-TAN, PushTAN & PhotoTAN sowie Abruf von MT940 / CAMT.052 / CAMT.053 und SEPA-Überweisungen via HKCCS).
 * **Direkte Mobile-/Web-API-Clients in Rust:** Für Banken und Broker ohne FinTS-Schnittstelle (wie Trade Republic oder Scalable Capital) nutzt GiroCrab keine fragilen Browser-Scraper, sondern spricht über `reqwest` + `rustls` direkt die nativen JSON-, GraphQL- und WebSocket-Endpunkte der Banken an (z. B. lokales ECDSA-P256-Device-Pairing und signierte Requests bei Trade Republic).

@@ -128,7 +128,7 @@ struct Rah10AddForm: View {
         fileError = nil
         Task {
             do { info = try await model.inspectRah10File(bytes: bytes, password: password) }
-            catch { info = nil; fileError = error.localizedDescription }
+            catch { info = nil; fileError = describe(error) }
             busy = false
             submit.update(ready, commit)
         }
@@ -142,7 +142,7 @@ struct Rah10AddForm: View {
         expected = [:]
         Task {
             do { candidates = try await model.fetchRah10BankKeys(blz: info.blz) }
-            catch { fileError = error.localizedDescription }
+            catch { fileError = describe(error) }
             busy = false
             submit.update(ready, commit)
         }

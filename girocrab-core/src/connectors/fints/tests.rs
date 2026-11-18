@@ -36,10 +36,9 @@ fn test_ctx() -> ConnectContext {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        settings: Default::default(),
         state: serde_json::json!({}),
         since: "2025-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     }
 }
 
@@ -114,6 +113,92 @@ fn two_step_connector(url: &str, state: serde_json::Value) -> FinTsConnector {
 
 fn has_hktan(ids: &[String]) -> bool {
     ids.iter().any(|i| i == "HKTAN")
+}
+
+/// comdirect's answer when the bank code does not belong to the login.
+const WRONG_BLZ: &str = "HNHBK:1:3+000000000000+300+0+1'HIRMG:2:2+9050::Die Nachricht enthaelt Fehler.+9800::Dialog abgebrochen'HIRMS:3:2:3+9210::Bankleitzahl passt nicht zum Benutzer.+9340::Ungueltige Auftragsnachricht: Ungueltige Signatur.'";
+
+fn comdirect_connector(key_blz: &str, url: &str, state: serde_json::Value) -> FinTsConnector {
+    let mut c = two_step_connector(url, state);
+    c.blz = key_blz.into();
+    c
+}
+
+/// Synchronised one-step state: the dialog init is the first request.
+fn synced() -> serde_json::Value {
+    serde_json::json!({"system_id": "123", "sec_func": "999", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}})
+}
+
+#[test]
+fn wrong_bank_code_is_told_apart_from_other_9210() {
+    let r = |raw: &str| reply(raw.as_bytes());
+    assert!(super::dialog::blz_mismatch(&r(WRONG_BLZ)));
+    for other in [
+        "HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+9210::Auftrag abgelehnt.'",
+        "HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+9340::Bankleitzahl ungueltig.'",
+    ] {
+        assert!(!super::dialog::blz_mismatch(&r(other)), "{other}");
+    }
+}
+
+#[tokio::test]
+async fn comdirect_login_tries_its_other_bank_codes_and_keeps_the_one_that_works() {
+    // IBAN code 20041177, the login is known under 20041111 (the first one tried)
+    let (url, seen) = mock_bank(vec![WRONG_BLZ, ACCEPT]);
+    let mut c = comdirect_connector("20041177", &url, synced());
+    assert!(matches!(c.login(&test_ctx()).await.unwrap(), Phase::Ready));
+    assert_eq!(seen.lock().unwrap().len(), 2);
+    assert_eq!(c.blz, "20041111");
+    let persisted = serde_json::to_value(&c.st).unwrap();
+    assert_eq!(persisted["login_blz"], "20041111");
+
+    // the next sync logs in under the found code straight away
+    let (url2, seen2) = mock_bank(vec![ACCEPT]);
+    let mut c2 = FinTsConnector::for_key("fints:20041177");
+    let mut ctx = test_ctx();
+    for (k, v) in [
+        ("fints.url.20041177", url2.as_str()),
+        ("fints.product_id", "TESTPRODUCT"),
+    ] {
+        ctx.settings.insert(k.into(), SecretString::new(v.into()));
+    }
+    ctx.state = persisted;
+    assert!(matches!(c2.begin(&ctx).await.unwrap(), Phase::Ready));
+    assert_eq!(c2.blz, "20041111");
+    assert_eq!(seen2.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn comdirect_login_gives_up_with_the_first_error_when_no_code_fits() {
+    let (url, seen) = mock_bank(vec![WRONG_BLZ]);
+    let mut c = comdirect_connector("20041177", &url, synced());
+    let err = c.login(&test_ctx()).await.unwrap_err();
+    assert!(
+        err.to_string().contains("Bankleitzahl passt nicht"),
+        "{err}"
+    );
+    // every comdirect code once, then back to the connector's
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        crate::connectors::fints_directory::COMDIRECT_BLZ.len()
+    );
+    assert_eq!(c.blz, "20041177");
+    assert!(c.st.login_blz.is_empty());
+}
+
+#[tokio::test]
+async fn other_banks_and_other_errors_are_not_retried() {
+    // not comdirect: the bank code is the bank's, nothing to try
+    let (url, seen) = mock_bank(vec![WRONG_BLZ, ACCEPT]);
+    let mut c = comdirect_connector("50010517", &url, synced());
+    assert!(c.login(&test_ctx()).await.is_err());
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    // comdirect, but a wrong PIN: trying other codes would only repeat it
+    let (url, seen) = mock_bank(vec![STALE_SYSTEM_ID, ACCEPT]);
+    let mut c = comdirect_connector("20041177", &url, synced());
+    assert!(c.login(&test_ctx()).await.is_err());
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    assert_eq!(c.blz, "20041177");
 }
 
 #[tokio::test]
@@ -254,10 +339,9 @@ fn message_has_correct_length_and_structure() {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        settings: Default::default(),
         state: serde_json::json!({}),
         since: "2025-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let payload = vec![c.hkidn(&ctx, 3), c.hkvvb(4), c.hktan_process4(5, "HKIDN")];
     let msg = c.build_message(&ctx, &payload, "946", None);
@@ -488,7 +572,7 @@ fn hiekp_details_follow_the_dkb_layout() {
 }
 
 #[test]
-fn hiekp_period_comes_from_its_dates_and_pdf_ids_are_stable() {
+fn hiekp_period_comes_from_its_dates() {
     let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261001:20261031+20261102'");
     let s = r.all("HIEKP").next().unwrap();
     assert_eq!(
@@ -498,8 +582,6 @@ fn hiekp_period_comes_from_its_dates_and_pdf_ids_are_stable() {
             "2026-11-02".to_string()
         )
     );
-    assert_eq!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.7"));
-    assert_ne!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.6"));
 }
 
 fn reply(raw: &[u8]) -> BankReply {
@@ -836,8 +918,9 @@ fn order_for(c: &mut FinTsConnector) {
 
 #[test]
 fn reads_vop_parameters_from_bpd() {
-    // HIVPPS as sent by comdirect.
-    let raw = b"HIVPPS:7:1:3+1+1+0+20:J:S:N:N:sepade.pain.002.001.10.xsd:HKIPZ:HKCUI:HKCCS:HKCDE'";
+    // HIVPPS as sent by comdirect, plus a DK code: the name check covers HK orders only.
+    let raw =
+        b"HIVPPS:7:1:3+1+1+0+20:J:S:N:N:sepade.pain.002.001.10.xsd:HKIPZ:HKCUI:HKCCS:HKCDE:DKKKU'";
     let mut c = FinTsConnector::new("20041111");
     c.learn_bpd(&reply(raw));
     assert_eq!(c.st.vop_format, "sepade.pain.002.001.10.xsd");
@@ -1008,7 +1091,7 @@ fn debit_lead_time_is_checked_per_sequence() {
         max_days_first: 30,
         ..Default::default()
     };
-    let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+    let d = |s: &str| jiff::civil::Date::strptime("%Y-%m-%d", s).unwrap();
     let today = d("2026-11-02");
     assert!(check_debit_lead_time(&p, Recurring, today, d("2026-11-04")).is_ok());
     assert!(check_debit_lead_time(&p, First, today, d("2026-11-04")).is_err());
@@ -1219,5 +1302,84 @@ fn fints_date_needs_eight_ascii_digits() {
     assert_eq!(fints_date("20261107").as_deref(), Some("2026-11-07"));
     assert_eq!(fints_date("202ä1107"), None); // 8 bytes, not 8 digits
     assert_eq!(fints_date("2026110"), None);
+    assert_eq!(fints_date("20260230"), None);
     assert_eq!(fints_date(""), None);
+}
+
+#[test]
+fn pain_header_is_well_formed_and_always_names_the_owner() {
+    let h = sepa::PainHeader::new("  Max Mustermann ");
+    assert_eq!(h.owner, "Max Mustermann");
+    assert_eq!(sepa::PainHeader::new(" ").owner, "Kontoinhaber");
+    assert!(
+        jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", &h.created).is_ok(),
+        "{}",
+        h.created
+    );
+    assert!(jiff::civil::Date::strptime("%Y-%m-%d", h.date()).is_ok());
+    // GC + timestamp + 8 hex digits, within the 35 characters pain allows.
+    assert!(h.message_id.starts_with("GC") && h.message_id.len() == 24);
+}
+
+#[test]
+fn orders_need_a_two_step_tan_method() {
+    let mut c = FinTsConnector::new("20041111");
+    assert!(matches!(
+        c.require_tan_method("refused"),
+        Err(CoreError::Bank { code, message }) if code == "HKTAN" && message == "refused"
+    ));
+    c.st.sec_func = "946".into();
+    assert!(c.require_tan_method("refused").is_ok());
+}
+
+fn order_connector(url: &str) -> FinTsConnector {
+    let state = serde_json::json!({"system_id": "123", "sec_func": "946", "tan_method_name": "", "tan_medium": "", "versions": {"HKSPA": [1]}, "tan_required": {}});
+    two_step_connector(url, state)
+}
+
+#[tokio::test]
+async fn order_source_account_honours_the_upd_and_says_why_it_is_missing() {
+    // The bank offers HKSPA but rejects it: the UPD alone still lists the account.
+    let (url, _) = mock_bank(vec![REJECT_9010]);
+    let mut c = order_connector(&url);
+    c.upd = vec![upd_acc(
+        "0532013000",
+        "",
+        IBAN_A,
+        "Girokonto",
+        &["HKSAL", "HKCCS"],
+    )];
+    let ctx = test_ctx();
+
+    let acc = c
+        .source_account(&ctx, "DE89 3704 0044 0532 0130 00", "HKCCS")
+        .await
+        .unwrap();
+    assert_eq!(acc.map(|a| a.iban).as_deref(), Some(IBAN_A));
+    assert!(c
+        .source_account(&ctx, IBAN_A, "HKIPZ")
+        .await
+        .unwrap()
+        .is_none());
+    // The HKSPA error explains the missing account.
+    match c.source_account(&ctx, IBAN_B, "HKCCS").await {
+        Err(CoreError::NotFound { what }) => assert!(what.contains("HKSPA"), "{what}"),
+        other => panic!("{:?}", other.map(|a| a.map(|a| a.iban))),
+    }
+}
+
+#[tokio::test]
+async fn order_source_account_without_upd_restrictions_allows_every_order() {
+    // IBAN_B is known only from HKSPA (no UPD entry); IBAN_A's UPD lists nothing.
+    let (url, _) = mock_bank(vec![
+        "HNHBK:1:3+000000000000+300+DIALOG1+1'HIRMG:2:2+0010::Nachricht entgegengenommen.'HISPA:3:1:3+J:DE02120300000000202051:BYLADEM1001:202051::280:12030000'",
+    ]);
+    let mut c = order_connector(&url);
+    c.upd = vec![upd_acc("0532013000", "", IBAN_A, "Girokonto", &[])];
+    let ctx = test_ctx();
+
+    for iban in [IBAN_A, IBAN_B] {
+        let acc = c.source_account(&ctx, iban, "HKCCS").await.unwrap();
+        assert_eq!(acc.map(|a| a.iban).as_deref(), Some(iban));
+    }
 }

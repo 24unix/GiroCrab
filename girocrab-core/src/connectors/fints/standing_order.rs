@@ -17,7 +17,6 @@ use super::{sepa, FinTsConnector, PreparedOrder, Vop};
 use crate::connectors::{ConnectContext, Phase, StandingOrderJob};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::iban::normalize_iban;
 use crate::models::StandingOrderAction;
 
 /// Execution date in the pain.001 of a standing order: the schedule carries the real ones.
@@ -126,15 +125,15 @@ pub(crate) fn limits_from_state(
 pub(super) fn check_schedule(
     rules: &StandingRules,
     job: &StandingOrderJob,
-    today: chrono::NaiveDate,
+    today: jiff::civil::Date,
 ) -> CoreResult<()> {
     let invalid = |m: String| Err(CoreError::InvalidInput { message: m });
-    let first = chrono::NaiveDate::parse_from_str(&job.first_date, "%Y-%m-%d").map_err(|_| {
+    let first = jiff::civil::Date::strptime("%Y-%m-%d", &job.first_date).map_err(|_| {
         CoreError::InvalidInput {
             message: tr("Der erste Termin ist ungültig (JJJJ-MM-TT).").into(),
         }
     })?;
-    let ahead = (first - today).num_days();
+    let ahead = crate::dates::days_between(today, first);
     if ahead < i64::from(rules.min_pretime) {
         return invalid(trf(
             "Der erste Termin muss mindestens {0} Tage in der Zukunft liegen.",
@@ -236,36 +235,10 @@ impl FinTsConnector {
                 message: tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.").into(),
             });
         }
-        if self.sec() == "999" {
-            return Err(CoreError::Bank {
-                code: "HKTAN".into(),
-                message: tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
-            });
-        }
-        let mut errors = Vec::new();
-        let accounts = self.account_list(ctx, &mut errors).await;
-        let want = normalize_iban(&job.source_iban);
-        let (acc, upd) = accounts
-            .into_iter()
-            .find(|(a, _)| normalize_iban(&a.iban) == want)
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf(
-                    "Konto {0} bei der Bank{1}",
-                    &[
-                        &job.source_iban,
-                        &if errors.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" ({})", errors.join(" / "))
-                        },
-                    ],
-                ),
-            })?;
-        if let Some(u) = &upd {
-            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
-                return Err(not_allowed());
-            }
-        }
+        self.require_tan_method(tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen."))?;
+        let Some(acc) = self.source_account(ctx, &job.source_iban, seg_id).await? else {
+            return Err(not_allowed());
+        };
         // The bank's limits, when it stated them (a delete has none to check).
         let rules = match job.action {
             StandingOrderAction::Create => self.st.standing_params.create.clone(),
@@ -273,30 +246,15 @@ impl FinTsConnector {
             StandingOrderAction::Delete => None,
         };
         if let Some(rules) = rules {
-            check_schedule(&rules, job, chrono::Local::now().date_naive())?;
+            check_schedule(&rules, job, crate::dates::today())?;
         }
         let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
-        let (date, time) = Self::now();
-        let created = format!(
-            "{}-{}-{}T{}:{}:{}",
-            &date[..4],
-            &date[4..6],
-            &date[6..],
-            &time[..2],
-            &time[2..4],
-            &time[4..]
-        );
-        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
-        let owner = if job.source_owner.trim().is_empty() {
-            "Kontoinhaber"
-        } else {
-            job.source_owner.trim()
-        };
+        let header = sepa::PainHeader::new(&job.source_owner);
         let xml = sepa::build_pain001(&sepa::Pain001 {
-            message_id: &msg_id,
-            created: &created,
+            message_id: &header.message_id,
+            created: &header.created,
             execution_date: PAIN_PLACEHOLDER_DATE,
-            debtor_name: owner,
+            debtor_name: header.owner,
             debtor_iban: &acc.iban,
             debtor_bic: &acc.bic,
             creditor_name: &job.recipient_name,
@@ -325,9 +283,6 @@ impl FinTsConnector {
                 schedule: schedule_components(job, with_time),
             }),
         });
-        self.vop_id = None;
-        self.vop_with_tan = false;
-        self.vop_pending = None;
         let reply = self.send_order(ctx, Vop::None).await?;
         self.finish_submit(&reply)
     }
@@ -357,8 +312,8 @@ mod tests {
         }
     }
 
-    fn day(s: &str) -> chrono::NaiveDate {
-        chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    fn day(s: &str) -> jiff::civil::Date {
+        jiff::civil::Date::strptime("%Y-%m-%d", s).unwrap()
     }
 
     #[test]

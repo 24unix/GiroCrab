@@ -3,13 +3,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::sepa::PainHeader;
 use super::syntax::Segment;
 use super::transfer::is_auth_error;
 use super::{pain008, FinTsConnector, PreparedOrder, Vop};
 use crate::connectors::{ConnectContext, DebitJob, Phase};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::iban::normalize_iban;
 
 /// What the bank allows for batch direct debits (BPD HIDMES/HIDMCS/HIBMES).
 /// Lead times in calendar days before the due date.
@@ -50,8 +50,8 @@ pub(super) fn parse_debit_params(seg: &Segment) -> DebitParams {
 pub(super) fn check_debit_lead_time(
     p: &DebitParams,
     sequence: pain008::SequenceType,
-    today: chrono::NaiveDate,
-    due: chrono::NaiveDate,
+    today: jiff::civil::Date,
+    due: jiff::civil::Date,
 ) -> CoreResult<()> {
     use pain008::SequenceType::*;
     let (min, max) = match sequence {
@@ -65,13 +65,13 @@ pub(super) fn check_debit_lead_time(
     // enforced where it is too early in either unit; the maximum gets the
     // longer reading (TARGET days are at most 7/5 calendar days) plus a margin.
     // The bank has the last word.
-    let earliest = today + chrono::Duration::days(i64::from(min));
-    let latest = today + chrono::Duration::days(i64::from(max) * 7 / 5 + 3);
+    let earliest = today + crate::dates::days(i64::from(min));
+    let latest = today + crate::dates::days(i64::from(max) * 7 / 5 + 3);
     if due < earliest {
         return Err(CoreError::InvalidInput {
             message: trf(
                 "Die Bank braucht für diese Lastschrift mindestens {0} Tage Vorlauf; frühestens möglich: {1}.",
-                &[&min, &earliest.format("%d.%m.%Y").to_string()],
+                &[&min, &earliest.strftime("%d.%m.%Y").to_string()],
             ),
         });
     }
@@ -79,7 +79,7 @@ pub(super) fn check_debit_lead_time(
         return Err(CoreError::InvalidInput {
             message: trf(
                 "Die Bank nimmt diese Lastschrift höchstens {0} Tage im Voraus an; spätestens möglich: {1}.",
-                &[&max, &today.checked_add_signed(chrono::Duration::days(i64::from(max))).unwrap_or(latest).format("%d.%m.%Y").to_string()],
+                &[&max, &today.checked_add(crate::dates::days(i64::from(max))).unwrap_or(latest).strftime("%d.%m.%Y").to_string()],
             ),
         });
     }
@@ -138,33 +138,14 @@ impl FinTsConnector {
         }
         if let (Some(p), Ok(due)) = (
             &params,
-            chrono::NaiveDate::parse_from_str(&job.collection_date, "%Y-%m-%d"),
+            jiff::civil::Date::strptime("%Y-%m-%d", &job.collection_date),
         ) {
-            check_debit_lead_time(p, job.sequence, chrono::Local::now().date_naive(), due)?;
+            check_debit_lead_time(p, job.sequence, crate::dates::today(), due)?;
         }
-        if self.sec() == "999" {
-            return Err(CoreError::Bank {
-                code: "HKTAN".into(),
-                message: tr("Für Lastschriften ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
-            });
-        }
-        let mut errors = Vec::new();
-        let accounts = self.account_list(ctx, &mut errors).await;
-        let want = normalize_iban(&job.source_iban);
-        let (acc, upd) = accounts
-            .into_iter()
-            .find(|(a, _)| normalize_iban(&a.iban) == want)
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf(
-                    "Konto {0} bei der Bank{1}",
-                    &[&job.source_iban, &String::new()],
-                ),
-            })?;
-        if let Some(u) = &upd {
-            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
-                return Err(not_allowed());
-            }
-        }
+        self.require_tan_method(tr("Für Lastschriften ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen."))?;
+        let Some(acc) = self.source_account(ctx, &job.source_iban, seg_id).await? else {
+            return Err(not_allowed());
+        };
         let version = pain008::DebitVersion::pick(
             self.st
                 .pain_formats
@@ -176,27 +157,12 @@ impl FinTsConnector {
             code: seg_id.into(),
             message: tr("Die Bank akzeptiert keines der unterstützten pain.008-Formate.").into(),
         })?;
-        let (date, time) = Self::now();
-        let created = format!(
-            "{}-{}-{}T{}:{}:{}",
-            &date[..4],
-            &date[4..6],
-            &date[6..],
-            &time[..2],
-            &time[2..4],
-            &time[4..]
-        );
-        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
-        let owner = if job.creditor_name.trim().is_empty() {
-            "Kontoinhaber"
-        } else {
-            job.creditor_name.trim()
-        };
+        let header = PainHeader::new(&job.creditor_name);
         let xml = pain008::build_pain008(&pain008::Pain008 {
-            message_id: &msg_id,
-            created: &created,
+            message_id: &header.message_id,
+            created: &header.created,
             collection_date: &job.collection_date,
-            creditor_name: owner,
+            creditor_name: header.owner,
             creditor_iban: &acc.iban,
             creditor_bic: &acc.bic,
             creditor_id: &job.creditor_id,
@@ -221,9 +187,6 @@ impl FinTsConnector {
             debit_layout: Some((p.sum_required, p.single_booking_allowed)),
             standing: None,
         });
-        self.vop_id = None;
-        self.vop_with_tan = false;
-        self.vop_pending = None;
         let reply = self.send_order(ctx, Vop::None).await?;
         // The bank lists HKCCM among the orders that need a name check (VoP): batches are
         // sent without one, so a refusal most likely means exactly that. Say so instead

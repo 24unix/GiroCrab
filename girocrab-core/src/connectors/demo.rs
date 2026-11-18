@@ -128,7 +128,7 @@ impl BankConnector for DemoConnector {
                 expires_in_seconds: Some(900),
                 poll_interval_seconds: 0,
             },
-            ConnectorKind::PayPal | ConnectorKind::Bunq | ConnectorKind::Ibkr | ConnectorKind::AlteLeipziger | ConnectorKind::Uberspace | ConnectorKind::Ffb => return Ok(Phase::Ready),
+            ConnectorKind::PayPal | ConnectorKind::Bunq | ConnectorKind::Ibkr | ConnectorKind::AlteLeipziger | ConnectorKind::Uberspace | ConnectorKind::Ffb | ConnectorKind::Finpension => return Ok(Phase::Ready),
         };
         self.challenge = Some(c.clone());
         Ok(Phase::Challenge(c))
@@ -296,7 +296,7 @@ impl BankConnector for DemoConnector {
 
     async fn fetch(&mut self, _ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let today = super::today();
-        let stamp = chrono::Local::now().timestamp();
+        let stamp = jiff::Timestamp::now().as_second();
         let mut out = FetchResult::default();
         // A magic-login connection at a bank without own demo accounts (generic
         // FinTS, comdirect, …) shows the demo giro bank's accounts.
@@ -367,12 +367,8 @@ mod tests {
     fn ctx() -> ConnectContext {
         ConnectContext {
             connection_id: 1,
-            login_name: String::new(),
             secret: SecretString::new("pin".into()),
-            settings: Default::default(),
-            state: serde_json::Value::Null,
-            since: String::new(),
-            since_by_account: Default::default(),
+            ..Default::default()
         }
     }
 

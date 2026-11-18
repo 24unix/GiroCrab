@@ -674,6 +674,17 @@
         }
       }
     },
+    "%lld Bestellungen gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld orders found"
+          }
+        }
+      }
+    },
     "%lld Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1410,6 +1421,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld new transactions imported. Bank balance updated."
+          }
+        }
+      }
+    },
+    "%lld neue Dokumente aus dem Online-Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld new documents from the online archive"
           }
         }
       }
@@ -2341,6 +2363,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1% Saveback"
+          }
+        }
+      }
+    },
+    "1 Bestellung gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 order found"
           }
         }
       }
@@ -3525,6 +3558,17 @@
         }
       }
     },
+    "Alle Bankzugänge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Bank Connections"
+          }
+        }
+      }
+    },
     "Alle Belege exportieren …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4495,6 +4539,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Opening and closing balances always appear in the header."
+          }
+        }
+      }
+    },
+    "Angeklickte Umsätze werden sofort als gelesen markiert. Beim Wechsel auf ein anderes Konto werden alle übrigen ungelesenen Umsätze des vorherigen Kontos als gelesen markiert, unabhängig von Zeitraum und Filtern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicking a transaction marks it as read immediately. When you switch to another account, all remaining unread transactions in the previous account are marked as read, regardless of the date range or filters."
           }
         }
       }
@@ -6314,6 +6369,17 @@
         }
       }
     },
+    "Bankzugang" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank Connection"
+          }
+        }
+      }
+    },
     "Bankzugang %lld von %lld" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6563,6 +6629,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Command Palette…"
+          }
+        }
+      }
+    },
+    "Bei Kontoauswahl" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On account selection"
           }
         }
       }
@@ -7128,6 +7205,28 @@
         }
       }
     },
+    "Bestelldetails" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order details"
+          }
+        }
+      }
+    },
+    "Bestelldetails aus %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order details from %@"
+          }
+        }
+      }
+    },
     "Bestellliste %@ …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7135,6 +7234,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Order list %@ …"
+          }
+        }
+      }
+    },
+    "Bestellliste %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order list %lld of %lld"
           }
         }
       }
@@ -7168,6 +7278,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Order"
+          }
+        }
+      }
+    },
+    "Bestellung %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order %lld of %lld"
           }
         }
       }
@@ -7207,6 +7328,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetch orders"
+          }
+        }
+      }
+    },
+    "Bestellungen werden abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching orders"
           }
         }
       }
@@ -7974,13 +8106,13 @@
         }
       }
     },
-    "Blendet Beträge aus, wenn du die App jemandem zeigst. Auf Wunsch auch Namen, Kontonummern und Verwendungszwecke." : {
+    "Blendet Beträge, Namen, Kontonummern und Verwendungszwecke aus, wenn du die App jemandem zeigst. Auf Wunsch nur die Beträge." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hides amounts when showing the app to someone. Optionally also names, account numbers, and purposes."
+            "value" : "Hides amounts, names, account numbers, and purposes when showing the app to someone. Optionally only the amounts."
           }
         }
       }
@@ -8978,6 +9110,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The account is permanently deleted along with %u bookings, documents and securities positions – also from analyses and category totals. If it is the last account of its bank connection, the connection and its stored credentials are removed too."
+          }
+        }
+      }
+    },
+    "Das Konto wurde aufgelöst" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account has been closed"
           }
         }
       }
@@ -10052,13 +10195,13 @@
         }
       }
     },
-    "Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Startsaldo …“ im Kontextmenü des Kontos." : {
+    "Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Einstellungen …“ im Kontextmenü des Kontos." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The difference is booked as a “Balance correction” dated today. You can change the starting balance with “Starting Balance…” in the account’s context menu."
+            "value" : "The difference is booked as a “Balance correction” dated today. You can change the starting balance with “Settings…” in the account’s context menu."
           }
         }
       }
@@ -11406,6 +11549,16 @@
         }
       }
     },
+    "Dock & Menüleiste" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dock & Menu Bar"
+          }
+        }
+      }
+    },
     "Dokument auswählen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11479,6 +11632,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatically save documents to a folder"
+          }
+        }
+      }
+    },
+    "Dokumente eines Bankzugangs anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show documents for a bank connection"
           }
         }
       }
@@ -15093,6 +15257,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab signs in using the saved credentials. Then enter the SMS code or approve in the Advanzia app. Transactions are imported automatically afterwards."
+          }
+        }
+      }
+    },
+    "GiroCrab nach Fensterschließen geöffnet lassen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep GiroCrab open after closing the window"
           }
         }
       }
@@ -19422,6 +19596,17 @@
         }
       }
     },
+    "Kontoauszüge, Abrechnungen, Depotauszüge und Steuerdokumente aus dem Online-Archiv der Consorsbank, höchstens einmal pro Woche beim Abruf. GiroCrab meldet sich dafür mit Kontonummer und PIN dieses Zugangs im Online-Banking an, die Anmeldung geben Sie in der Consorsbank App frei. Die Schnittstelle ist inoffiziell. Gespeicherte Dokumente werden nicht erneut geladen, denn jeder Abruf markiert ein Dokument bei der Bank als gelesen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statements, trade confirmations, depot statements and tax documents from the Consorsbank online archive, at most once a week during a sync. GiroCrab signs in to online banking with this connection's account number and PIN; you approve the login in the Consorsbank app. The interface is unofficial. Stored documents are not downloaded again, because every download marks a document as read at the bank."
+          }
+        }
+      }
+    },
     "Kontoauszüge, Belege und PostBox-Dokumente werden nach jedem Sync als Kopie abgelegt: <Ordner>/<Konto>/<Jahr>/. Vorhandene Dateien werden nie überschrieben. Achtung: Im Ordner liegen die PDFs unverschlüsselt – in iCloud Drive also auch in Ihrer iCloud." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19440,6 +19625,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Statements, Finanzreport and securities confirmations from the comdirect PostBox, at most once a week during a sync. This needs the client ID and client secret of the comdirect API and a separate approval in the photoTAN app. Securities documents go to the depot, the others to the first checking account. The context menu in “Documents & PostBox” moves a document to another account."
+          }
+        }
+      }
+    },
+    "Kontoeinstellungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Settings"
           }
         }
       }
@@ -19528,6 +19724,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account Name"
+          }
+        }
+      }
+    },
+    "Kontonummer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account number"
           }
         }
       }
@@ -20500,6 +20707,17 @@
         }
       }
     },
+    "Manuell mit TAN bestätigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm manually with a TAN"
+          }
+        }
+      }
+    },
     "Manuell zugeordnet – die Regel ändert das nicht" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20936,6 +21154,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "With AND, OR, NOT, parentheses, “phrases”, * and ?, /regex/, fields such as name: or purpose: and amounts such as amount<0."
+          }
+        }
+      }
+    },
+    "Mit Consorsbank App bestätigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm with the Consorsbank app"
           }
         }
       }
@@ -22415,6 +22644,17 @@
         }
       }
     },
+    "Nicht alle Karten ließen sich öffnen – übernommen werden die bisher geladenen Karten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not every card could be opened – the cards loaded so far will be imported."
+          }
+        }
+      }
+    },
     "Nicht als Gehalt erkannt. Markieren Sie den Eingang, damit der Zeitraum „Seit letztem Gehalt“ ihn nutzt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23708,6 +23948,50 @@
         }
       }
     },
+    "Online-Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online archive"
+          }
+        }
+      }
+    },
+    "Online-Archiv abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch online archive"
+          }
+        }
+      }
+    },
+    "Online-Archiv jetzt abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch online archive now"
+          }
+        }
+      }
+    },
+    "Online-Archiv nicht abgerufen. Bitte PIN und Freigabe in der Consorsbank App prüfen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online archive not fetched. Please check the PIN and the approval in the Consorsbank app."
+          }
+        }
+      }
+    },
     "Online-Banking (FinTS)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24722,6 +25006,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Privacy Mode: Hide amounts (⇧⌘H)"
+          }
+        }
+      }
+    },
+    "Privatmodus: Beträge und persönliche Angaben ausblenden (⇧⌘H)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy Mode: Hide amounts and personal details (⇧⌘H)"
           }
         }
       }
@@ -27458,6 +27753,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Balance date"
+          }
+        }
+      }
+    },
+    "Stichtag und Kalibrierung …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cut-off date and calibration …"
           }
         }
       }
@@ -31703,6 +32009,16 @@
         }
       }
     },
+    "Zeigt das GiroCrab-Symbol oben in der Menüleiste." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows the GiroCrab icon in the menu bar at the top of the screen."
+          }
+        }
+      }
+    },
     "Zeigt den Kontostand nach jeder Buchung und am Ende jedes Tages, zum Abgleich mit dem Kontoauszug. Bei mehreren Konten die Summe der Euro-Konten ohne Depots und Darlehen. Innerhalb eines Tages kann die Reihenfolge von der Bank abweichen, der Tagessaldo stimmt immer. Auch im Menü Ansicht umschaltbar." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -32804,6 +33120,17 @@
         }
       }
     },
+    "keine neuen Dokumente aus dem Online-Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no new documents from the online archive"
+          }
+        }
+      }
+    },
     "keine neuen PostBox-Dokumente" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -32987,6 +33314,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "quirion: The portal response could not be read."
+          }
+        }
+      }
+    },
+    "schließt das Fenster. GiroCrab läuft weiter." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "closes the window. GiroCrab keeps running."
           }
         }
       }
@@ -33471,6 +33808,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Review Change"
+          }
+        }
+      }
+    },
+    "Änderungen werden beim Beenden zurückgesetzt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changes are reset when you quit."
           }
         }
       }

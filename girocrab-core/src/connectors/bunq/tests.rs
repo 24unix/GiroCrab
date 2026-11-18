@@ -85,8 +85,7 @@ fn card_action_refusals() {
 #[test]
 fn card_holds_and_foreign_amounts() {
     let now =
-        chrono::NaiveDateTime::parse_from_str("2026-11-10 12:00:00.0", "%Y-%m-%d %H:%M:%S%.f")
-            .unwrap();
+        jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S%.f", "2026-11-10 12:00:00.0").unwrap();
     let mut a = json!({
         "id": 99, "created": "2026-11-08 10:00:00.000000",
         "amount_local": {"value": "20.00", "currency": "USD"},
@@ -227,12 +226,8 @@ async fn failing_draft_polls_end_as_unknown() {
     });
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
-        secret: crate::secret::SecretString::new(String::new()),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     for _ in 1..MAX_DRAFT_POLL_FAILURES {
         let p = c.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
@@ -270,7 +265,7 @@ fn older_receipt_checks_rotate() {
 
 #[test]
 fn receipts_and_statement_documents() {
-    let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+    let d = |s: &str| jiff::civil::Date::strptime("%Y-%m-%d", s).unwrap();
     let months = completed_months(d("2026-03-15"), 3);
     assert_eq!(
         months,
@@ -401,12 +396,10 @@ async fn bunq_sandbox_live() {
     );
     let mut ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
         settings,
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));
@@ -506,10 +499,9 @@ async fn bunq_sandbox_live() {
     assert!(receipt.bytes.starts_with(&png_ref[..8]), "PNG expected");
     assert_eq!(receipt.mime_type, "image/png");
     // Statement for the current month (the account is too new for a completed one).
-    let today = chrono::Local::now().date_naive();
-    use chrono::Datelike;
+    let today = crate::dates::today();
     let pdf = c
-        .export_statement(acc_id, today.with_day(1).unwrap(), today)
+        .export_statement(acc_id, today.first_of_month(), today)
         .await
         .unwrap_or_else(|e| panic!("statement: {} {}", e.status, e.message));
     assert!(pdf.starts_with(b"%PDF"));
@@ -615,19 +607,14 @@ async fn bunq_card_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
-    let window = (chrono::Local::now().date_naive() - chrono::Duration::days(HOLD_WINDOW_DAYS))
-        .format("%Y-%m-%d")
-        .to_string();
-    let now = chrono::Utc::now().naive_utc();
+    let window = crate::dates::iso(crate::dates::today() - crate::dates::days(HOLD_WINDOW_DAYS));
+    let now = crate::dates::now_utc();
     let mut seen = std::collections::BTreeMap::new();
     for (id, acc) in c.accounts().await.unwrap() {
         let actions = match c.card_actions(id, &window).await {
@@ -653,8 +640,8 @@ async fn bunq_card_survey() {
             // Days relative to now (negative = past), rounded; "-" if absent.
             let rel = |k: &str| match a[k].as_str() {
                 None => "none".to_string(),
-                Some(t) => match chrono::NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S%.f") {
-                    Ok(t) => format!("{:+}d", (t - now).num_days()),
+                Some(t) => match jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S%.f", t) {
+                    Ok(t) => format!("{:+}d", t.duration_since(now).as_hours() / 24),
                     Err(_) => format!("unparsed({})", t.len()),
                 },
             };
@@ -692,16 +679,13 @@ async fn bunq_direct_debit_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
-    let now = chrono::Utc::now().naive_utc();
+    let now = crate::dates::now_utc();
     let uid = c.state.user_id;
     // (path below the account, object key, label)
     let lists = [
@@ -787,19 +771,14 @@ async fn bunq_receipt_survey() {
         .abs();
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
-    let since = (chrono::Local::now().date_naive() - chrono::Duration::days(180))
-        .format("%Y-%m-%d")
-        .to_string();
-    let today = chrono::Local::now().date_naive();
+    let since = crate::dates::iso(crate::dates::today() - crate::dates::days(180));
+    let today = crate::dates::today();
     let shape = |v: &Value| match v {
         Value::Null => "null".to_string(),
         Value::Array(a) => format!("array[{}]", a.len()),
@@ -830,8 +809,8 @@ async fn bunq_receipt_survey() {
                 .as_str()
                 .and_then(local_date)
                 .unwrap_or_default();
-            let age = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-                .map(|d| (today - d).num_days())
+            let age = jiff::civil::Date::strptime("%Y-%m-%d", &date)
+                .map(|d| crate::dates::days_between(d, today))
                 .unwrap_or(-1);
             println!(
                 "\nPAYMENT id={pid} date={date} age={age}d amount={cents} type={} sub_type={} updated={} payment.attachment={}",
@@ -960,21 +939,15 @@ async fn bunq_notes_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
-    let since = (chrono::Local::now().date_naive() - chrono::Duration::days(RECEIPT_WINDOW_DAYS))
-        .format("%Y-%m-%d")
-        .to_string();
+    let since = crate::dates::iso(crate::dates::today() - crate::dates::days(RECEIPT_WINDOW_DAYS));
     let uid = c.state.user_id;
-    let ts =
-        |v: &Value| chrono::NaiveDateTime::parse_from_str(v.as_str()?, "%Y-%m-%d %H:%M:%S%.f").ok();
+    let ts = |v: &Value| jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S%.f", v.as_str()?).ok();
     let cents_of = |v: &Value| json_number_to_cents(v).map(i64::abs).unwrap_or(-1);
     // "ok:N" (N files) or "404" etc. per probed object
     async fn probe(c: &mut BunqConnector, path: String) -> (String, usize) {
@@ -1065,7 +1038,10 @@ async fn bunq_notes_survey() {
                             || cents_of(&r["amount_inquired"]["value"]) == cents.abs()
                     })
                     .filter_map(|r| {
-                        let gap = (ts(&r["time_responded"])? - paid?).num_seconds().abs();
+                        let gap = ts(&r["time_responded"])?
+                            .duration_since(paid?)
+                            .as_secs()
+                            .abs();
                         (gap <= 120).then_some((gap, r["id"].as_i64()?))
                     })
                     .min();
@@ -1083,7 +1059,7 @@ async fn bunq_notes_survey() {
                             || cents_of(&a["amount_local"]["value"]) == cents.abs()
                     })
                     .filter(|a| match (ts(&a["created"]), paid) {
-                        (Some(a), Some(p)) => (p - a).num_days().abs() <= 10,
+                        (Some(a), Some(p)) => (p.duration_since(a).as_hours() / 24).abs() <= 10,
                         _ => false,
                     })
                     .filter_map(|a| a["id"].as_i64())
@@ -1177,21 +1153,15 @@ async fn bunq_refused_notes_survey() {
     let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
-    let since = (chrono::Local::now().date_naive() - chrono::Duration::days(RECEIPT_WINDOW_DAYS))
-        .format("%Y-%m-%d")
-        .to_string();
+    let since = crate::dates::iso(crate::dates::today() - crate::dates::days(RECEIPT_WINDOW_DAYS));
     let uid = c.state.user_id;
-    let ts =
-        |v: &Value| chrono::NaiveDateTime::parse_from_str(v.as_str()?, "%Y-%m-%d %H:%M:%S%.f").ok();
+    let ts = |v: &Value| jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S%.f", v.as_str()?).ok();
     // object type -> endpoint segment that takes notes
     let segment = |t: &str| match t {
         "Payment" => Some("payment"),
@@ -1272,7 +1242,7 @@ async fn bunq_refused_notes_survey() {
                     continue;
                 };
                 let near = match (ts(&e["created"]), paid) {
-                    (Some(a), Some(b)) => (a - b).num_minutes().abs() <= 3 * 24 * 60,
+                    (Some(a), Some(b)) => a.duration_since(b).as_mins().abs() <= 3 * 24 * 60,
                     _ => false,
                 };
                 let same_id = obj["id"].as_i64() == Some(pid);
@@ -1325,12 +1295,9 @@ async fn bunq_live_transfer() {
     let to_name = std::env::var("BUNQ_TO_NAME").expect("BUNQ_TO_NAME");
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));
@@ -1418,12 +1385,9 @@ async fn bunq_pending_drafts() {
         .and_then(|v| v.trim().parse().ok());
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
         secret: SecretString::new(key),
-        settings: Default::default(),
-        state: Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let mut c = BunqConnector::new();
     c.begin(&ctx).await.unwrap();
@@ -1533,7 +1497,7 @@ async fn bunq_pending_drafts() {
 
 /// Privacy-safe outline of a bunq object for the live surveys: field names,
 /// a few enumerated values, amount signs and dates relative to `now`.
-fn survey_shape(o: &Value, now: chrono::NaiveDateTime, prefix: &str) -> String {
+fn survey_shape(o: &Value, now: jiff::civil::DateTime, prefix: &str) -> String {
     const ENUMS: [&str; 9] = [
         "status",
         "sub_status",
@@ -1552,14 +1516,12 @@ fn survey_shape(o: &Value, now: chrono::NaiveDateTime, prefix: &str) -> String {
     for (k, v) in map {
         let name = format!("{prefix}{k}");
         let part = match v {
-            Value::String(t) => {
-                match chrono::NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S%.f") {
-                    Ok(t) => format!("{name}={:+}d", (t - now).num_days()),
-                    Err(_) if ENUMS.contains(&k.as_str()) => format!("{name}={t}"),
-                    Err(_) if t.is_empty() => format!("{name}=\"\""),
-                    Err(_) => name,
-                }
-            }
+            Value::String(t) => match jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S%.f", t) {
+                Ok(t) => format!("{name}={:+}d", t.duration_since(now).as_hours() / 24),
+                Err(_) if ENUMS.contains(&k.as_str()) => format!("{name}={t}"),
+                Err(_) if t.is_empty() => format!("{name}=\"\""),
+                Err(_) => name,
+            },
             Value::Number(n) if ENUMS.contains(&k.as_str()) => format!("{name}={n}"),
             Value::Null => format!("{name}=null"),
             Value::Object(m) if m.contains_key("value") && m.contains_key("currency") => {

@@ -1,8 +1,9 @@
 //! Connector trait and the data types exchanged with connectors and the app.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
+use serde::Deserialize;
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
@@ -243,7 +244,7 @@ pub enum Phase {
 }
 
 /// Everything a connector needs to log in. Secrets are wiped on drop.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ConnectContext {
     pub connection_id: i64,
     pub login_name: String,
@@ -259,6 +260,63 @@ pub struct ConnectContext {
     /// Per-account start (account external ref → YYYY-MM-DD): the account's
     /// own newest booking minus 10 days. Accounts not listed use `since`.
     pub since_by_account: HashMap<String, String>,
+    /// Which documents (PDF statements, receipts, PostBox) this sync fetches.
+    pub documents: Documents,
+    /// Accounts (external refs) whose data this sync does not store: switched
+    /// off or pending in the account selection, archived or deleted.
+    /// Connectors that remember what they downloaded must not remember
+    /// anything of these, or it is never fetched again once the account is back.
+    pub skipped_accounts: HashSet<String>,
+}
+
+/// Document retrieval of one sync, set from the connection's settings.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Documents {
+    /// Switched off for this connection: download nothing and remember
+    /// nothing, so a later sync can fetch what is missing.
+    Off,
+    On {
+        /// Accounts (external refs) whose PDF statements are due for the
+        /// opt-in automatic fetch.
+        statements: Vec<String>,
+        /// `YYYY-MM-DD` retrieval was switched off on, while the documents
+        /// since then are not all fetched yet. Connectors that read documents
+        /// from a window (timeline, receipts) reach back to it.
+        catchup_since: Option<String>,
+    },
+    /// "Kontoauszüge abrufen" for one account (external ref): its statements,
+    /// no bookings.
+    StatementsOnly(String),
+}
+
+impl Default for Documents {
+    fn default() -> Self {
+        Documents::On {
+            statements: Vec::new(),
+            catchup_since: None,
+        }
+    }
+}
+
+impl Documents {
+    pub fn enabled(&self) -> bool {
+        !matches!(self, Documents::Off)
+    }
+
+    /// Accounts whose statements a regular sync also fetches.
+    pub fn due_statements(&self) -> &[String] {
+        match self {
+            Documents::On { statements, .. } => statements,
+            _ => &[],
+        }
+    }
+
+    pub fn catchup_since(&self) -> Option<&str> {
+        match self {
+            Documents::On { catchup_since, .. } => catchup_since.as_deref(),
+            _ => None,
+        }
+    }
 }
 
 /// Start dates of an incremental sync. `newest` = (account external ref,
@@ -271,23 +329,23 @@ pub struct ConnectContext {
 /// bookings (new ones, depots) get that lower bound but do not pull the
 /// connection-wide `since` back.
 pub(crate) fn since_window(
-    today: chrono::NaiveDate,
+    today: jiff::civil::Date,
     days: i64,
     newest: &[(String, Option<String>)],
 ) -> (String, HashMap<String, String>) {
     let parse = |d: &Option<String>| {
         d.as_deref()
-            .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+            .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", d).ok())
     };
-    let back10 = |d: chrono::NaiveDate| d - chrono::Duration::days(10);
-    let fmt = |d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string();
-    let default_start = today - chrono::Duration::days(days);
+    let back10 = |d: jiff::civil::Date| d - crate::dates::days(10);
+    let fmt = |d: jiff::civil::Date| crate::dates::iso(d);
+    let default_start = today - crate::dates::days(days);
     let floor = match newest.iter().filter_map(|(_, d)| parse(d)).max() {
         Some(g) => default_start.min(back10(g)),
         None => default_start,
     };
     let mut per = HashMap::new();
-    let mut earliest: Option<chrono::NaiveDate> = None;
+    let mut earliest: Option<jiff::civil::Date> = None;
     for (r, d) in newest {
         let start = match parse(d) {
             Some(d) => {
@@ -397,7 +455,7 @@ impl RemoteTransaction {
     pub fn content_id(&self, occurrence: u32) -> String {
         format!(
             "{CONTENT_ID_PREFIX}{:016x}",
-            fnv1a64(&format!("{}\u{1f}{occurrence}", self.content_key()))
+            crate::fnv::fnv1a64(format!("{}\u{1f}{occurrence}", self.content_key()))
         )
     }
 }
@@ -406,16 +464,6 @@ impl RemoteTransaction {
 /// (`h` + 16 hex digits, `DefaultHasher`) are adopted on the next sync, see
 /// [`adopt_legacy_content_id`].
 pub(crate) const CONTENT_ID_PREFIX: char = 'c';
-
-/// FNV-1a 64-bit hash.
-pub(crate) fn fnv1a64(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(0x0100_0000_01b3);
-    }
-    h
-}
 
 /// Hands out content ids, counting occurrences per identical content (not
 /// per list position): the ids stay the same when the fetch window moves or
@@ -429,6 +477,33 @@ impl ContentIds {
         let id = t.content_id(*n);
         *n += 1;
         id
+    }
+}
+
+/// Ids of documents a connector already downloaded, kept in its state under
+/// `"documents"` so later syncs skip them. Only the newest ids are kept: a
+/// portal lists far fewer documents than that.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct KnownDocuments(Vec<String>);
+
+impl KnownDocuments {
+    const MAX: usize = 2000;
+
+    pub(crate) fn from_state(state: &serde_json::Value) -> Self {
+        Self(Vec::deserialize(&state["documents"]).unwrap_or_default())
+    }
+
+    pub(crate) fn contains(&self, id: &str) -> bool {
+        self.0.iter().any(|k| k == id)
+    }
+
+    pub(crate) fn insert(&mut self, id: String) {
+        self.0.push(id);
+    }
+
+    pub(crate) fn to_state(&self) -> serde_json::Value {
+        let keep = self.0.len().saturating_sub(Self::MAX);
+        serde_json::json!({ "documents": self.0[keep..] })
     }
 }
 
@@ -689,4 +764,25 @@ pub struct TransferJob {
     pub execution_date: Option<String>,
     /// Stable per-transfer EndToEndId (max. 35 chars, `[A-Z0-9]`).
     pub end_to_end_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_documents_keep_the_newest_ids() {
+        assert_eq!(
+            KnownDocuments::from_state(&serde_json::Value::Null),
+            KnownDocuments::default()
+        );
+        let mut known = KnownDocuments::from_state(&serde_json::json!({"documents": ["a"]}));
+        assert!(known.contains("a") && !known.contains("b"));
+        for i in 0..KnownDocuments::MAX {
+            known.insert(i.to_string());
+        }
+        let kept = KnownDocuments::from_state(&known.to_state());
+        assert!(!kept.contains("a"));
+        assert!(kept.contains("0") && kept.contains(&(KnownDocuments::MAX - 1).to_string()));
+    }
 }

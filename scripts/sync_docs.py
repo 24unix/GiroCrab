@@ -31,6 +31,7 @@ INTERFACES = {
     "RestApi": "REST-API",
     "EnableBanking": "Enable Banking (PSD2)",
     "WebPortal": "Web-Portal",
+    "FileImport": "Datei-Import",
 }
 STATUSES = ["Verified", "TestingWanted", "Limited"]
 

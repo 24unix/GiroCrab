@@ -30,17 +30,22 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use super::{
-    http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    FetchResult, Phase, RemoteAccount, RemoteTransaction,
+    http_client, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
+    ConnectContext, FetchResult, Paged, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
 use crate::vault::Vault;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const API: &str = "https://api.enablebanking.com";
+/// Page limits of a transaction listing; the pending one is only summed
+/// (card balance), so it spends less of the bank's daily request quota.
+const TX_MAX_PAGES: usize = 100;
+const PENDING_MAX_PAGES: usize = 20;
 /// external_id prefix of pending (not yet booked) bookings in generic mode.
 const HOLD_PREFIX: &str = "pending-hold-eb-";
 /// Upper bound for a consent, whatever the bank reports.
@@ -443,14 +448,16 @@ fn psu_type_for(list: &Value, name: &str) -> &'static str {
 
 /// Consent end to request: the bank's maximum (≤ 180 days) minus an hour of
 /// slack, else 90 days.
-fn consent_valid_until(now: chrono::DateTime<chrono::Utc>, max_secs: Option<i64>) -> String {
+fn consent_valid_until(now: jiff::Timestamp, max_secs: Option<i64>) -> String {
     let secs = match max_secs {
         Some(s) => s.min(MAX_CONSENT_SECS) - 3600,
         None => DEFAULT_CONSENT_DAYS * 86_400,
     }
     .max(3600);
     // Whole seconds and a "Z" suffix: some banks (Revolut) reject fractions.
-    (now + chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    (now + jiff::SignedDuration::from_secs(secs))
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 /// Revolut grants at most 90 days: never ask for more, whatever the list says.
@@ -700,14 +707,11 @@ impl EnableBankingConnector {
 
     /// RS256 JWT for the Enable Banking API from the user's own application.
     pub(crate) fn make_jwt_for(app_id: &str, private_key_pem: &str) -> CoreResult<String> {
-        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).map_err(|e| {
-            CoreError::InvalidInput {
-                message: format!("Enable Banking private key: {e}"),
-            }
-        })?;
+        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
+            .map_err(|e| CoreError::invalid(format!("Enable Banking private key: {e}")))?;
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(app_id.to_string());
-        let now = chrono::Utc::now().timestamp();
+        let now = jiff::Timestamp::now().as_second();
         encode(
             &header,
             &Claims {
@@ -718,9 +722,7 @@ impl EnableBankingConnector {
             },
             &key,
         )
-        .map_err(|e| CoreError::InvalidInput {
-            message: format!("JWT: {e}"),
-        })
+        .map_err(|e| CoreError::invalid(format!("JWT: {e}")))
     }
 
     /// Accounts of a session / account-details response. Accepts account
@@ -844,43 +846,40 @@ impl EnableBankingConnector {
         Ok(v)
     }
 
-    /// All pages of `/accounts/{uid}/transactions?{query}`. A failing first
-    /// page is an error; a later failing page ends the listing (logged).
-    /// The flag is `true` only when every page was read.
-    async fn list_transactions(&self, uid: &str, query: &str) -> CoreResult<(Vec<Value>, bool)> {
-        let mut all = Vec::new();
-        let mut continuation: Option<String> = None;
-        let mut complete = false;
-        for page_no in 1..=100u32 {
+    /// Up to `max_pages` pages of `/accounts/{uid}/transactions?{query}` (see
+    /// [`paginate`] for a failing page).
+    async fn list_transactions(
+        &self,
+        uid: &str,
+        query: &str,
+        max_pages: usize,
+    ) -> CoreResult<Paged<Value>> {
+        let listed = paginate(max_pages, None, |continuation: Option<String>| async move {
             let mut path = format!("/accounts/{uid}/transactions?{query}");
-            if let Some(c) = &continuation {
-                path.push_str(&format!(
-                    "&continuation_key={}",
-                    url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>()
-                ));
+            if let Some(c) = continuation {
+                path.push_str("&continuation_key=");
+                path.extend(url::form_urlencoded::byte_serialize(c.as_bytes()));
             }
-            let page = match self.call(reqwest::Method::GET, &path, None).await {
-                Ok(p) => p,
-                Err(e) if page_no == 1 => return Err(e),
-                Err(e) => {
-                    crate::depot_debug::log(&format!(
-                        "enable_banking tx page {page_no} ({query}): ERROR {e}; keeping {} items",
-                        all.len()
-                    ));
-                    break;
-                }
-            };
-            all.extend(page["transactions"].as_array().cloned().unwrap_or_default());
-            continuation = page["continuation_key"]
+            let mut page = self.call(reqwest::Method::GET, &path, None).await?;
+            // the cursor is the continuation key, `None` on the first page
+            let next = page["continuation_key"]
                 .as_str()
                 .filter(|s| !s.is_empty())
-                .map(|s| s.to_string());
-            if continuation.is_none() {
-                complete = true;
-                break;
-            }
+                .map(|s| Some(s.to_string()));
+            let items = match page["transactions"].take() {
+                Value::Array(items) => items,
+                _ => Vec::new(),
+            };
+            Ok((items, next))
+        })
+        .await?;
+        if let Some(e) = &listed.stopped {
+            crate::depot_debug::log(&format!(
+                "enable_banking transactions ({query}): stopped after {} items: {e}",
+                listed.items.len()
+            ));
         }
-        Ok((all, complete))
+        Ok(listed)
     }
 
     /// Bank account (generic mode, not a card): balance, booked and pending
@@ -903,12 +902,15 @@ impl EnableBankingConnector {
         let balances = bal["balances"].as_array().cloned().unwrap_or_default();
         let (balance_cents, ref_date) = pick_account_balance(&balances);
         let since_query = format!("date_from={}", ctx.since_for(&acc.ext_ref));
-        let (items, complete) = if acc.history_done {
-            let (items, _) = self.list_transactions(&acc.uid, &since_query).await?;
-            (items, true)
+        let listed = if acc.history_done {
+            self.list_transactions(&acc.uid, &since_query, TX_MAX_PAGES)
+                .await?
         } else {
             // First sync: as much history as the consent allows.
-            match self.list_transactions(&acc.uid, "strategy=longest").await {
+            match self
+                .list_transactions(&acc.uid, "strategy=longest", TX_MAX_PAGES)
+                .await
+            {
                 Ok(v) => v,
                 Err(e @ CoreError::Authentication { .. }) => return Err(e),
                 Err(e) if is_rate_limit(&e) => return Err(e),
@@ -916,10 +918,13 @@ impl EnableBankingConnector {
                     crate::depot_debug::log(&format!(
                         "enable_banking strategy=longest failed ({e}); falling back to {since_query}"
                     ));
-                    self.list_transactions(&acc.uid, &since_query).await?
+                    self.list_transactions(&acc.uid, &since_query, TX_MAX_PAGES)
+                        .await?
                 }
             }
         };
+        let complete = listed.stopped.is_none();
+        let items = listed.items;
         let txs = split_transactions(&items, &acc.ext_ref);
         // Bank labels only (no names / numbers): to learn how a bank types its accounts.
         crate::depot_debug::log(&format!(
@@ -1148,14 +1153,13 @@ fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
                     .into(),
             });
         }
-        return code.ok_or_else(|| CoreError::InvalidInput {
-            message: tr("Kein „code“ in der eingefügten Adresse").into(),
-        });
+        return code
+            .ok_or_else(|| CoreError::invalid(tr("Kein „code“ in der eingefügten Adresse")));
     }
     if input.is_empty() {
-        return Err(CoreError::InvalidInput {
-            message: tr("Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden").into(),
-        });
+        return Err(CoreError::invalid(tr(
+            "Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden",
+        )));
     }
     Ok(input.to_string())
 }
@@ -1169,7 +1173,7 @@ impl BankConnector for EnableBankingConnector {
         if let Ok(st) = serde_json::from_value::<PsdState>(ctx.state.clone()) {
             self.st = st;
         }
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = jiff::Timestamp::now().to_string();
         if !self.st.session_id.is_empty() && self.st.valid_until > now {
             if self.card_mode() {
                 return Ok(Phase::Ready);
@@ -1238,7 +1242,7 @@ impl BankConnector for EnableBankingConnector {
             let body = if self.card_mode() {
                 // unchanged card request
                 json!({
-                    "access": {"valid_until": consent_valid_until(chrono::Utc::now(), None)},
+                    "access": {"valid_until": consent_valid_until(jiff::Timestamp::now(), None)},
                     "aspsp": {"name": name, "country": country},
                     "state": self.expected_state,
                     "redirect_url": ctx.setting("enablebanking.redirect_url")?,
@@ -1248,7 +1252,7 @@ impl BankConnector for EnableBankingConnector {
                 let max = effective_max_secs(name, max_consent_secs(&aspsp_list, name));
                 let mut body = json!({
                     "access": {
-                        "valid_until": consent_valid_until(chrono::Utc::now(), max),
+                        "valid_until": consent_valid_until(jiff::Timestamp::now(), max),
                         "balances": true,
                         "transactions": true,
                     },
@@ -1290,9 +1294,9 @@ impl BankConnector for EnableBankingConnector {
         if let Some(e) = last_err {
             return Err(e);
         }
-        let url = v["url"].as_str().ok_or_else(|| CoreError::Protocol {
-            message: "no consent URL".into(),
-        })?;
+        let url = v["url"]
+            .as_str()
+            .ok_or_else(|| CoreError::protocol("no consent URL"))?;
         Ok(Phase::Challenge(Challenge {
             kind: ChallengeKind::Redirect,
             title: if self.card_mode() {
@@ -1316,9 +1320,9 @@ impl BankConnector for EnableBankingConnector {
         response: ChallengeResponse,
     ) -> CoreResult<Phase> {
         let ChallengeResponse::Code(input) = response else {
-            return Err(CoreError::InvalidInput {
-                message: tr("Bitte die Weiterleitungsadresse einfügen").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Bitte die Weiterleitungsadresse einfügen",
+            )));
         };
         let code = extract_code(input.expose(), &self.expected_state)
             .map_err(|e| with_auth_diag(e, &self.auth_diag))?;
@@ -1400,7 +1404,8 @@ impl BankConnector for EnableBankingConnector {
             .filter(|a| !a.name.is_empty() && a.name != display_name(a))
             .map(|a| (a.ext_ref.clone(), a.name.clone(), display_name(a)))
             .collect();
-        let mut done: Vec<String> = Vec::new();
+        // uid → every page of the account's bookings was read
+        let mut listed: HashMap<String, bool> = HashMap::new();
         let mut stopped_early = false;
         for a in self.st.accounts.clone() {
             let res = if kind_of(&a) == AccountKind::CreditCard {
@@ -1413,12 +1418,10 @@ impl BankConnector for EnableBankingConnector {
                 self.fetch_bank_account(ctx, &a, &mut out).await
             };
             match res {
-                Ok(true) => done.push(a.uid.clone()),
-                // Some page failed: keep what was read, but fetch the whole
-                // history again next time instead of only `date_from`.
-                Ok(false) => crate::depot_debug::log(
-                    "enable_banking: history incomplete (page error), retrying next sync",
-                ),
+                // a cut-off listing was logged by `list_transactions`
+                Ok(complete) => {
+                    listed.insert(a.uid.clone(), complete);
+                }
                 Err(e) if is_account_unavailable(&e) => {
                     crate::depot_debug::log(&format!(
                         "enable_banking: account not accessible, marked as revoked ({e})"
@@ -1434,11 +1437,7 @@ impl BankConnector for EnableBankingConnector {
                 Err(e) => return Err(e),
             }
         }
-        for a in &mut self.st.accounts {
-            if done.contains(&a.uid) {
-                a.history_done = true;
-            }
-        }
+        note_history(&mut self.st.accounts, &listed);
         // The vault uses the fetched name when inserting a new account.
         if let Some(label) =
             paypal_account_label(&self.aspsp_default, self.st.accounts.len(), &ctx.login_name)
@@ -1519,185 +1518,130 @@ impl EnableBankingConnector {
                 balance_cents,
                 balance_date: ref_date.unwrap_or_else(super::today),
             });
-            let mut continuation: Option<String> = None;
-            let mut n = 0u32;
-            let mut pages = 0u32;
             // Card cycles span months: look back at least 180 days.
-            let floor = (chrono::Local::now().date_naive() - chrono::Duration::days(180))
-                .format("%Y-%m-%d")
-                .to_string();
+            let floor = crate::dates::iso(crate::dates::today() - crate::dates::days(180));
             let since = if ctx.since > floor {
                 floor
             } else {
                 ctx.since.clone()
             };
-            let mut raw_items = 0usize;
+            let mut n = 0u32;
             let mut skipped_non_book = 0u32;
             let mut skipped_unreadable = 0u32;
             let mut ids = super::ContentIds::default();
-            for _ in 0..100 {
-                pages += 1;
-                let mut path = format!("/accounts/{uid}/transactions?date_from={since}");
-                if let Some(c) = &continuation {
-                    path.push_str(&format!(
-                        "&continuation_key={}",
-                        url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>()
-                    ));
+            // A later page failing keeps the earlier ones (logged by `list_transactions`).
+            let booked = self
+                .list_transactions(&uid, &format!("date_from={since}"), TX_MAX_PAGES)
+                .await?
+                .items;
+            for t in &booked {
+                if t["status"].as_str().map(|s| s != "BOOK").unwrap_or(false) {
+                    skipped_non_book += 1;
+                    continue;
                 }
-                let page = match self.call(reqwest::Method::GET, &path, None).await {
-                    Ok(p) => p,
-                    Err(e) => {
-                        crate::depot_debug::log(&format!(
-                            "amex tx page {pages}: ERROR {e} (date_from={since}, had_continuation={}); keeping {n} already parsed",
-                            continuation.is_some()
-                        ));
-                        // Page 1 failing is fatal; a later page failing must not hide
-                        // the earlier ones silently (it is logged above).
-                        if pages == 1 {
-                            return Err(e);
-                        }
-                        break;
-                    }
+                // Unreadable amount or no date: skip (counted, logged) instead
+                // of storing a 0 € booking without a date.
+                let Ok(amount) = json_number_to_cents(&t["transaction_amount"]["amount"]) else {
+                    skipped_unreadable += 1;
+                    continue;
                 };
-                let page_items = page["transactions"].as_array().map_or(0, Vec::len);
-                raw_items += page_items;
-                crate::depot_debug::log(&format!(
-                    "amex tx page {pages}: GET /accounts/<uid>/transactions?date_from={since}{} -> status=200 items={page_items} continuation_key_present={}",
-                    if continuation.is_some() { "&continuation_key=<set>" } else { "" },
-                    page["continuation_key"].as_str().is_some_and(|s| !s.is_empty())
-                ));
-                for t in page["transactions"].as_array().cloned().unwrap_or_default() {
-                    if t["status"].as_str().map(|s| s != "BOOK").unwrap_or(false) {
-                        skipped_non_book += 1;
-                        continue;
-                    }
-                    // Unreadable amount or no date: skip (counted, logged) instead
-                    // of storing a 0 € booking without a date.
-                    let Ok(amount) = json_number_to_cents(&t["transaction_amount"]["amount"])
-                    else {
-                        skipped_unreadable += 1;
-                        continue;
-                    };
-                    let mut amount = amount.abs();
-                    if t["credit_debit_indicator"].as_str() == Some("DBIT") {
-                        amount = -amount;
-                    }
-                    let party = if amount < 0 {
-                        &t["creditor"]
-                    } else {
-                        &t["debtor"]
-                    };
-                    let party_acc = if amount < 0 {
-                        &t["creditor_account"]
-                    } else {
-                        &t["debtor_account"]
-                    };
-                    let Some(date) = t["booking_date"]
-                        .as_str()
-                        .or(t["transaction_date"].as_str())
-                        .map(str::trim)
-                        .filter(|d| !d.is_empty())
-                        .map(str::to_string)
-                    else {
-                        skipped_unreadable += 1;
-                        continue;
-                    };
-                    let mut rt = RemoteTransaction {
-                        account_ref: external_ref.clone(),
-                        external_id: t["entry_reference"]
-                            .as_str()
-                            .or(t["transaction_id"].as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        booking_date: date.clone(),
-                        value_date: t["value_date"].as_str().unwrap_or(&date).to_string(),
-                        amount_cents: amount,
-                        currency: t["transaction_amount"]["currency"]
-                            .as_str()
-                            .unwrap_or("EUR")
-                            .to_string(),
-                        counterparty: party["name"].as_str().unwrap_or_default().to_string(),
-                        counterparty_iban: party_acc["iban"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .to_string(),
-                        purpose: t["remittance_information"]
-                            .as_array()
-                            .map(|a| {
-                                a.iter()
-                                    .filter_map(|x| x.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            })
-                            .unwrap_or_default(),
-                        booking_text: t["bank_transaction_code"]["description"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .to_string(),
-                        ..Default::default()
-                    };
-                    if rt.counterparty.is_empty() {
-                        rt.counterparty = rt
-                            .purpose
-                            .split_whitespace()
-                            .take(4)
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                    }
-                    if rt.external_id.is_empty() {
-                        rt.external_id = ids.next(&rt);
-                    }
-                    n += 1;
-                    out.transactions.push(rt);
+                let mut amount = amount.abs();
+                if t["credit_debit_indicator"].as_str() == Some("DBIT") {
+                    amount = -amount;
                 }
-                continuation = page["continuation_key"]
+                let party = if amount < 0 {
+                    &t["creditor"]
+                } else {
+                    &t["debtor"]
+                };
+                let party_acc = if amount < 0 {
+                    &t["creditor_account"]
+                } else {
+                    &t["debtor_account"]
+                };
+                let Some(date) = t["booking_date"]
                     .as_str()
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string());
-                if continuation.is_none() {
-                    break;
+                    .or(t["transaction_date"].as_str())
+                    .map(str::trim)
+                    .filter(|d| !d.is_empty())
+                    .map(str::to_string)
+                else {
+                    skipped_unreadable += 1;
+                    continue;
+                };
+                let mut rt = RemoteTransaction {
+                    account_ref: external_ref.clone(),
+                    external_id: t["entry_reference"]
+                        .as_str()
+                        .or(t["transaction_id"].as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    booking_date: date.clone(),
+                    value_date: t["value_date"].as_str().unwrap_or(&date).to_string(),
+                    amount_cents: amount,
+                    currency: t["transaction_amount"]["currency"]
+                        .as_str()
+                        .unwrap_or("EUR")
+                        .to_string(),
+                    counterparty: party["name"].as_str().unwrap_or_default().to_string(),
+                    counterparty_iban: party_acc["iban"].as_str().unwrap_or_default().to_string(),
+                    purpose: t["remittance_information"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|x| x.as_str())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
+                        .unwrap_or_default(),
+                    booking_text: t["bank_transaction_code"]["description"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                    ..Default::default()
+                };
+                if rt.counterparty.is_empty() {
+                    rt.counterparty = rt
+                        .purpose
+                        .split_whitespace()
+                        .take(4)
+                        .collect::<Vec<_>>()
+                        .join(" ");
                 }
+                if rt.external_id.is_empty() {
+                    rt.external_id = ids.next(&rt);
+                }
+                n += 1;
+                out.transactions.push(rt);
             }
             // Pending authorizations (not yet booked) are part of what the card
             // currently owes. Summed only (never stored as bookings), so nothing
             // has to be reconciled when they get booked later.
             let mut pending_sum = 0i64;
             let mut pending_n = 0u32;
-            let mut pcont: Option<String> = None;
-            for _ in 0..20 {
-                let mut path = format!(
-                    "/accounts/{uid}/transactions?date_from={since}&transaction_status=PDNG"
-                );
-                if let Some(c) = &pcont {
-                    path.push_str(&format!(
-                        "&continuation_key={}",
-                        url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>()
-                    ));
+            // Optional: without them the balance only lacks the pending part.
+            let pending = self
+                .list_transactions(
+                    &uid,
+                    &format!("date_from={since}&transaction_status=PDNG"),
+                    PENDING_MAX_PAGES,
+                )
+                .await
+                .map(|p| p.items)
+                .unwrap_or_default();
+            for t in &pending {
+                if t["status"].as_str().is_some_and(|s| s == "BOOK") {
+                    continue;
                 }
-                let Ok(page) = self.call(reqwest::Method::GET, &path, None).await else {
-                    break;
+                let a = json_number_to_cents(&t["transaction_amount"]["amount"])
+                    .unwrap_or(0)
+                    .abs();
+                pending_sum += if t["credit_debit_indicator"].as_str() == Some("DBIT") {
+                    -a
+                } else {
+                    a
                 };
-                for t in page["transactions"].as_array().cloned().unwrap_or_default() {
-                    if t["status"].as_str().is_some_and(|s| s == "BOOK") {
-                        continue;
-                    }
-                    let a = json_number_to_cents(&t["transaction_amount"]["amount"])
-                        .unwrap_or(0)
-                        .abs();
-                    pending_sum += if t["credit_debit_indicator"].as_str() == Some("DBIT") {
-                        -a
-                    } else {
-                        a
-                    };
-                    pending_n += 1;
-                }
-                pcont = page["continuation_key"]
-                    .as_str()
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string());
-                if pcont.is_none() {
-                    break;
-                }
+                pending_n += 1;
             }
             // Booked-type balances exclude pending authorizations; XPCD/OTHR include them.
             let excludes_pending = matches!(picked_type.as_deref(), Some("ITBD" | "CLBD" | "OPBD"));
@@ -1711,12 +1655,25 @@ impl EnableBankingConnector {
             }
             out.accounts[acct_idx].balance_cents = balance_cents;
             crate::depot_debug::log(&format!(
-                "amex transactions: since={since} pages={pages} raw={raw_items} skipped_non_book={skipped_non_book} skipped_unreadable={skipped_unreadable} booked_kept={n} pending={pending_n} pending_sign={} final_balance_sign={}",
+                "amex transactions: since={since} raw={} skipped_non_book={skipped_non_book} skipped_unreadable={skipped_unreadable} booked_kept={n} pending={pending_n} pending_sign={} final_balance_sign={}",
+                booked.len(),
                 pending_sum.signum(),
                 balance_cents.signum()
             ));
         }
         Ok(())
+    }
+}
+
+/// Records whose booking history is complete after a fetch (`listed`: uid →
+/// every page was read). A cut-off listing reads the whole history again next
+/// time instead of only `date_from`, which could skip the bookings behind the
+/// failed page for good (see [`Paged::complete`]).
+fn note_history(accounts: &mut [EbAccount], listed: &HashMap<String, bool>) {
+    for a in accounts {
+        if let Some(&complete) = listed.get(&a.uid) {
+            a.history_done = complete;
+        }
     }
 }
 
@@ -2282,6 +2239,20 @@ mod tests {
     }
 
     #[test]
+    fn a_cut_off_listing_reads_the_whole_history_again() {
+        let account = |uid: &str| EbAccount {
+            uid: uid.into(),
+            history_done: true,
+            ..Default::default()
+        };
+        let mut accounts = vec![account("ok"), account("cut"), account("unread")];
+        let listed = HashMap::from([("ok".to_string(), true), ("cut".to_string(), false)]);
+        note_history(&mut accounts, &listed);
+        let done: Vec<bool> = accounts.iter().map(|a| a.history_done).collect();
+        assert_eq!(done, [true, false, true]);
+    }
+
+    #[test]
     fn error_codes_are_mapped() {
         for code in [
             "EXPIRED_SESSION",
@@ -2310,9 +2281,7 @@ mod tests {
 
     #[test]
     fn consent_length_follows_the_bank() {
-        let now = chrono::DateTime::parse_from_rfc3339("2026-11-11T00:00:00+00:00")
-            .unwrap()
-            .with_timezone(&chrono::Utc);
+        let now: jiff::Timestamp = "2026-11-11T00:00:00+00:00".parse().unwrap();
         let list = json!({"aspsps": [
             {"name": "C24", "country": "DE", "maximum_consent_validity": 15552000},
             {"name": "Long", "country": "DE", "maximum_consent_validity": 31536000}
@@ -2464,9 +2433,7 @@ mod tests {
 
     #[test]
     fn consent_valid_until_has_whole_seconds_and_z() {
-        let now = chrono::DateTime::parse_from_rfc3339("2026-11-11T00:00:00.123456789+00:00")
-            .unwrap()
-            .with_timezone(&chrono::Utc);
+        let now: jiff::Timestamp = "2026-11-11T00:00:00.123456789+00:00".parse().unwrap();
         for max in [None, Some(7_776_000), Some(31_536_000)] {
             let v = consent_valid_until(now, max);
             assert!(

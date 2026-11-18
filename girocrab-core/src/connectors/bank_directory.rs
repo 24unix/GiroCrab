@@ -168,6 +168,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "opel direktbank opelbank opel-direktbank stellantis tagesgeld festgeld",
         ),
         (
+            ConnectorKind::Finpension,
+            "Finpension",
+            "finpension saeule 3a säule 3a freizuegigkeit freizügigkeit 1e schweiz vorsorge",
+        ),
+        (
             ConnectorKind::Ffb,
             "FFB (FIL Fondsbank)",
             "ffb fil fondsbank fidelity fondsdepot fonds vl sparplan",
@@ -455,9 +460,7 @@ impl Vault {
         if !country.is_empty()
             && !(country.len() == 2 && country.bytes().all(|b| b.is_ascii_uppercase()))
         {
-            return Err(CoreError::InvalidInput {
-                message: "country must be a two-letter code".into(),
-            });
+            return Err(CoreError::invalid("country must be a two-letter code"));
         }
         let mut req = super::http_client()?
             .get("https://api.enablebanking.com/aspsps")

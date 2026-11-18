@@ -16,8 +16,8 @@ use base64::Engine;
 use serde_json::{json, Value};
 
 use super::{
-    http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    FetchResult, Phase, RemoteAccount, RemoteTransaction,
+    http_client, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
+    ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -60,7 +60,7 @@ impl ComdirectConnector {
     }
 
     fn request_info(&self) -> String {
-        let req_id = chrono::Local::now().format("%H%M%S%3f").to_string();
+        let req_id = jiff::ZonedDateTime::now().strftime("%H%M%S%3f").to_string();
         json!({"clientRequestId": {"sessionId": self.session_uuid, "requestId": req_id}})
             .to_string()
     }
@@ -131,13 +131,27 @@ impl ComdirectConnector {
         Ok(())
     }
 
-    async fn get(&mut self, path: &str) -> CoreResult<Value> {
+    /// Booked transactions of one account since `since`; a failing page fails
+    /// the sync (see [`super::Paged::complete`]).
+    async fn booked(&self, account_id: &str, since: &str) -> CoreResult<Vec<Value>> {
+        paginate(TX_MAX_PAGES, 0, |first| async move {
+            let page = self
+                .get(&format!(
+                    "/api/banking/v1/accounts/{account_id}/transactions?transactionState=BOOKED&paging-first={first}&paging-count={TX_PAGE}&min-bookingDate={since}"
+                ))
+                .await?;
+            Ok(next_page(page, first, TX_PAGE))
+        })
+        .await?
+        .complete()
+    }
+
+    /// GET after `begin` (which creates the client).
+    async fn get(&self, path: &str) -> CoreResult<Value> {
         if !is_api_path(path) {
-            return Err(CoreError::InvalidInput {
-                message: "unsafe comdirect API path".into(),
-            });
+            return Err(CoreError::invalid("unsafe comdirect API path"));
         }
-        let client = self.client()?;
+        let client = self.client.as_ref().ok_or(CoreError::SessionClosed)?;
         let resp = client
             .get(format!("{BASE}{path}"))
             .bearer_auth(self.token.expose())
@@ -201,37 +215,26 @@ impl ComdirectConnector {
 
     /// The PostBox PDFs created on or after `since` (empty = all), as listed by
     /// the bank; advertisements are left out. `None` when the listing failed.
-    pub(crate) async fn postbox_entries(&mut self, since: &str) -> Option<Vec<Value>> {
-        let mut entries: Vec<Value> = Vec::new();
-        // The v2 route may be missing for some contracts: the first page picks the route.
-        let mut route = None;
-        let mut first = 0usize;
-        for _ in 0..POSTBOX_MAX_PAGES {
-            let page = match route {
-                Some(r) => self.get(&postbox_path(r, first)).await.ok(),
-                None => {
-                    let mut found = None;
-                    for r in [POSTBOX_V2, POSTBOX_V1] {
-                        if let Ok(v) = self.get(&postbox_path(r, first)).await {
-                            route = Some(r);
-                            found = Some(v);
-                            break;
-                        }
-                    }
-                    found
-                }
+    pub(crate) async fn postbox_entries(&self, since: &str) -> Option<Vec<Value>> {
+        // A later page failing keeps the earlier ones. The cursor carries the
+        // route: v2 may be missing for some contracts, so the first page picks it.
+        let listed = paginate(POSTBOX_MAX_PAGES, (None, 0), |(route, first)| async move {
+            let (route, page) = match route {
+                Some(r) => (r, self.get(&postbox_path(r, first)).await?),
+                None => match self.get(&postbox_path(POSTBOX_V2, first)).await {
+                    Ok(page) => (POSTBOX_V2, page),
+                    Err(_) => (
+                        POSTBOX_V1,
+                        self.get(&postbox_path(POSTBOX_V1, first)).await?,
+                    ),
+                },
             };
-            let Some(page) = page else {
-                route?;
-                break;
-            };
-            let got = page["values"].as_array().map_or(0, Vec::len);
-            entries.extend(page["values"].as_array().cloned().unwrap_or_default());
-            first += got;
-            if !has_more_pages(&page, first, got, POSTBOX_PAGE) {
-                break;
-            }
-        }
+            let (values, next) = next_page(page, first, POSTBOX_PAGE);
+            Ok((values, next.map(|next| (Some(route), next))))
+        })
+        .await
+        .ok()?;
+        let mut entries = listed.items;
         entries.retain(|d| {
             let date = postbox_date(d);
             d["mimeType"].as_str().unwrap_or("application/pdf") == "application/pdf"
@@ -414,9 +417,7 @@ impl BankConnector for ComdirectConnector {
             .and_then(|h| h.to_str().ok())
             .map(serde_json::from_str)
             .transpose()?
-            .ok_or_else(|| CoreError::Protocol {
-                message: "missing x-once-authentication-info".into(),
-            })?;
+            .ok_or_else(|| CoreError::protocol("missing x-once-authentication-info"))?;
         self.challenge_id = info["id"].as_str().unwrap_or_default().to_string();
         self.challenge_link = info["link"]["href"].as_str().map(|s| s.to_string());
         let typ = info["typ"].as_str().unwrap_or("");
@@ -461,9 +462,9 @@ impl BankConnector for ComdirectConnector {
                 poll_interval_seconds: 0,
             },
             other => {
-                return Err(CoreError::Protocol {
-                    message: format!("unsupported comdirect TAN type '{other}'"),
-                })
+                return Err(CoreError::protocol(format!(
+                    "unsupported comdirect TAN type '{other}'"
+                )))
             }
         };
         self.challenge = Some(c.clone());
@@ -489,9 +490,9 @@ impl BankConnector for ComdirectConnector {
             }
             ChallengeResponse::Code(tan) => self.activate_session(Some(tan.expose())).await?,
             ChallengeResponse::ConfirmPayee => {
-                return Err(CoreError::Protocol {
-                    message: "comdirect: no payee confirmation pending".into(),
-                })
+                return Err(CoreError::protocol(
+                    "comdirect: no payee confirmation pending",
+                ))
             }
         }
         self.secondary_token(ctx).await?;
@@ -541,27 +542,13 @@ impl BankConnector for ComdirectConnector {
                 balance_cents: json_number_to_cents(&item["balance"]["value"]).unwrap_or(0),
                 balance_date: super::today(),
             });
-            let mut index = 0usize;
             let mut ids = super::ContentIds::default();
-            loop {
-                let page = self
-                    .get(&format!(
-                        "/api/banking/v1/accounts/{id}/transactions?transactionState=BOOKED&paging-first={index}&paging-count={TX_PAGE}&min-bookingDate={}",
-                        ctx.since
-                    ))
-                    .await?;
-                let values = page["values"].as_array().cloned().unwrap_or_default();
-                for t in &values {
-                    let mut rt = map_transaction(t, &id);
-                    if rt.external_id.is_empty() {
-                        rt.external_id = ids.next(&rt);
-                    }
-                    out.transactions.push(rt);
-                    index += 1;
+            for t in &self.booked(&id, &ctx.since).await? {
+                let mut rt = map_transaction(t, &id);
+                if rt.external_id.is_empty() {
+                    rt.external_id = ids.next(&rt);
                 }
-                if !has_more_pages(&page, index, values.len(), TX_PAGE) {
-                    break;
-                }
+                out.transactions.push(rt);
             }
             // Not yet booked (card holds, pending transfers). Best effort: an error or a
             // missing right just means no holds; the booked bookings stay untouched.
@@ -592,10 +579,11 @@ impl BankConnector for ComdirectConnector {
             }
         }
         // PostBox documents (optional, errors are ignored; not when document retrieval is off)
-        if ctx.settings.contains_key(super::DOCUMENTS_OFF) {
-        } else if let Some(first) = out.accounts.first().map(|a| a.external_ref.clone()) {
-            let docs = self.postbox(&first, &ctx.since).await;
-            out.documents.extend(docs);
+        if ctx.documents.enabled() {
+            if let Some(first) = out.accounts.first().map(|a| a.external_ref.clone()) {
+                let docs = self.postbox(&first, &ctx.since).await;
+                out.documents.extend(docs);
+            }
         }
         // Securities accounts (value only)
         crate::depot_debug::log("comdirect REST: fetching depots");
@@ -705,6 +693,8 @@ impl BankConnector for ComdirectConnector {
 }
 
 const TX_PAGE: usize = 500;
+/// Upper bound for booking pages per account (100,000 bookings).
+const TX_MAX_PAGES: usize = 200;
 const POSTBOX_PAGE: usize = 50;
 /// Upper bound for PostBox listing pages (500 documents).
 const POSTBOX_MAX_PAGES: usize = 10;
@@ -715,17 +705,21 @@ fn postbox_path(route: &str, first: usize) -> String {
     format!("{route}?paging-first={first}&paging-count={POSTBOX_PAGE}")
 }
 
-/// Whether another page follows. `fetched` = entries received so far, `got` = size
-/// of this page. Without `paging.matches` a full page means "maybe more" (the
-/// next request then ends with an empty page).
-fn has_more_pages(page: &Value, fetched: usize, got: usize, page_size: usize) -> bool {
-    if got == 0 {
-        return false;
-    }
-    match page["paging"]["matches"].as_u64() {
-        Some(total) => (fetched as u64) < total,
-        None => got >= page_size,
-    }
+/// The entries of one offset-paged answer that started at `first`, and the
+/// offset of the next page (`None` after the last one). Without
+/// `paging.matches` a full page means "maybe more" (the next request then
+/// ends with an empty page).
+fn next_page(mut page: Value, first: usize, page_size: usize) -> (Vec<Value>, Option<usize>) {
+    let Value::Array(values) = page["values"].take() else {
+        return (Vec::new(), None);
+    };
+    let fetched = first + values.len();
+    let more = !values.is_empty()
+        && match page["paging"]["matches"].as_u64() {
+            Some(total) => (fetched as u64) < total,
+            None => values.len() >= page_size,
+        };
+    (values, more.then_some(fetched))
 }
 
 /// A SEPA reference; the placeholder `NOTPROVIDED` counts as "unknown".
@@ -1045,13 +1039,21 @@ mod tests {
 
     #[test]
     fn paging_continues_without_matches_only_on_full_page() {
-        let with = |m: u64| serde_json::json!({"paging": {"matches": m}});
-        assert!(super::has_more_pages(&with(1200), 500, 500, 500));
-        assert!(!super::has_more_pages(&with(500), 500, 500, 500));
-        let none = serde_json::json!({});
-        assert!(super::has_more_pages(&none, 500, 500, 500));
-        assert!(!super::has_more_pages(&none, 120, 120, 500));
-        assert!(!super::has_more_pages(&none, 500, 0, 500));
+        let next = |first: usize, got: usize, matches: Option<u64>| {
+            let page = serde_json::json!({
+                "values": vec![serde_json::json!({}); got],
+                "paging": {"matches": matches},
+            });
+            let (values, next) = super::next_page(page, first, 500);
+            assert_eq!(values.len(), got);
+            next
+        };
+        assert_eq!(next(0, 500, Some(1200)), Some(500));
+        assert_eq!(next(500, 500, Some(1200)), Some(1000));
+        assert_eq!(next(0, 500, Some(500)), None);
+        assert_eq!(next(0, 500, None), Some(500));
+        assert_eq!(next(0, 120, None), None);
+        assert_eq!(next(500, 0, None), None);
     }
 
     #[test]

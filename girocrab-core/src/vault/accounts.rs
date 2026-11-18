@@ -277,14 +277,14 @@ impl Vault {
         let blz = blz.trim().to_string();
         let url = url.trim().to_string();
         if ConnectorKind::fints_blz(&ConnectorKind::fints_key(&blz)).is_none() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die BLZ muss aus genau 8 Ziffern bestehen.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die BLZ muss aus genau 8 Ziffern bestehen.",
+            )));
         }
         if !crate::connectors::fints_presets::is_valid_fints_url(&url) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die FinTS-URL muss mit https:// beginnen.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die FinTS-URL muss mit https:// beginnen.",
+            )));
         }
         let key = ConnectorKind::fints_key(&blz);
         if !crate::demo::is_magic_demo_login(&login_name) {
@@ -330,9 +330,7 @@ impl Vault {
         let country = country.trim().to_uppercase();
         let key = ConnectorKind::enable_banking_key(&country, &aspsp);
         if aspsp.is_empty() || ConnectorKind::enable_banking_target(&key).is_none() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Bank oder Ländercode ungültig.").into(),
-            });
+            return Err(CoreError::invalid(tr("Bank oder Ländercode ungültig.")));
         }
         if !crate::demo::is_magic_demo_login(&login_name) {
             crate::banking_gate::check_connector(&key)?;
@@ -391,10 +389,7 @@ impl Vault {
             });
         };
         if !archived {
-            return Err(CoreError::InvalidInput {
-                message: tr("Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.")
-                    .to_string(),
-            });
+            return Err(CoreError::invalid(tr("Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.")));
         }
         Self::delete_account_rows(&tx, account_id)?;
         // linked loan payments of this account are gone with it
@@ -608,8 +603,8 @@ impl Vault {
             .collect();
         let mut balance: i64 = chosen.iter().map(|a| a.balance_cents).sum();
         let ids: Vec<i64> = chosen.iter().map(|a| a.id).collect();
-        let today = chrono::Local::now().date_naive();
-        let start = today - chrono::Duration::days(days.max(1) as i64 - 1);
+        let today = crate::dates::today();
+        let start = today - crate::dates::days(days.max(1) as i64 - 1);
         // Securities depots with a valuation history (`depot_values`) take their course from it;
         // the walk back over bookings is only for the other accounts, so nothing counts twice.
         let depot_series = crate::depot_values::series(&*self.db()?, &ids, start, today)?;
@@ -630,7 +625,7 @@ impl Vault {
                 .map(|a| a.balance_cents)
                 .sum();
         }
-        let from = start.format("%Y-%m-%d").to_string();
+        let from = crate::dates::iso(start);
         let per_day = {
             let db = self.db()?;
             for a in chosen.iter().filter(|a| book_ids.contains(&a.id)) {
@@ -650,13 +645,14 @@ impl Vault {
         let mut out = Vec::with_capacity(days as usize);
         let mut day = today;
         while day >= start {
-            let key = day.format("%Y-%m-%d").to_string();
+            let key = crate::dates::iso(day);
             out.push(DailyBalance {
                 date: key.clone(),
                 balance_cents: balance,
             });
             balance -= per_day.get(&key).copied().unwrap_or(0);
-            day -= chrono::Duration::days(1);
+            let Ok(prev) = day.yesterday() else { break };
+            day = prev;
         }
         out.reverse();
         // Depot values enter directly. Before its first point a depot walks back over its own
@@ -670,10 +666,10 @@ impl Vault {
             }
             let db = self.db()?;
             for (id, first_day, first_value) in &depots.firsts {
-                let Ok(first) = chrono::NaiveDate::parse_from_str(first_day, "%Y-%m-%d") else {
+                let Ok(first) = jiff::civil::Date::strptime("%Y-%m-%d", first_day) else {
                     continue;
                 };
-                let k = (first - start).num_days();
+                let k = crate::dates::days_between(start, first);
                 if k <= 0 {
                     continue;
                 }
@@ -725,8 +721,8 @@ impl Vault {
             })
             .map(|a| a.id)
             .collect();
-        let today = chrono::Local::now().date_naive();
-        let start = today - chrono::Duration::days(days.max(1) as i64 - 1);
+        let today = crate::dates::today();
+        let start = today - crate::dates::days(days.max(1) as i64 - 1);
         let Some(series) = crate::depot_values::series(&*self.db()?, &ids, start, today)? else {
             return Ok(vec![]);
         };
@@ -735,9 +731,7 @@ impl Vault {
         };
         Ok((first..series.values.len())
             .map(|i| DepotValuePoint {
-                date: (start + chrono::Duration::days(i as i64))
-                    .format("%Y-%m-%d")
-                    .to_string(),
+                date: crate::dates::iso(start + crate::dates::days(i as i64)),
                 value_cents: series.values[i],
                 covered_depots: series.covered[i],
                 total_depots: series.total_depots,
@@ -761,11 +755,15 @@ impl Vault {
     /// Changes the account type (Kontoart), e.g. a checking account that is really a card.
     pub fn set_account_kind(&self, account_id: i64, kind: AccountKind) -> Result<(), CoreError> {
         let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        // valued by its items or loan terms until now (see below)
+        let valued = crate::assets::is_tangible(&tx, account_id)?
+            || crate::loans::is_manual_loan(&tx, account_id)?;
         // The "by kind" sidebar sections are the `account_groups`: move the
         // account into the section of its new kind (#575).
         let (group, sym, order) = crate::connectors::group_for(kind);
-        let gid = Self::ensure_group(&db, group, sym, order)?;
-        let n = db.execute(
+        let gid = Self::ensure_group(&tx, group, sym, order)?;
+        let n = tx.execute(
             "UPDATE accounts SET kind = ?1, group_id = ?2 WHERE id = ?3",
             params![kind.as_str(), gid, account_id],
         )?;
@@ -775,7 +773,17 @@ impl Vault {
             });
         }
         // a depot's value history counts only while it is one (#578)
-        crate::depot_values::rebuild(&db, account_id, None)?;
+        crate::depot_values::rebuild(&tx, account_id, None)?;
+        // Sachwerte accounts and manual loans value themselves only while
+        // they keep their kind: recompute the balance on the way in and out.
+        crate::assets::refresh_balances(&tx)?;
+        crate::loans::refresh_all(&tx)?;
+        let still = crate::assets::is_tangible(&tx, account_id)?
+            || crate::loans::is_manual_loan(&tx, account_id)?;
+        if valued && !still {
+            crate::opening_balance::recompute(&tx, account_id)?;
+        }
+        tx.commit()?;
         Ok(())
     }
 

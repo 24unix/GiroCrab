@@ -57,7 +57,7 @@ public final class AppModel {
     var userGroups: [UserGroup] = []
     /// Lookups for booking rows (see `rebuildAccountIndex`).
     var accountsByID: [Int64: Account] = [:]
-    var accountMarkers: [Int64: AccountMarker] = [:]
+    var accountMarkers: [Int64: AccountMarker] = [:] { didSet { refreshAccountMarkerVisibility() } }
     /// Account notes (vault setting `account.note.<id>`), loaded with the account index.
     var accountNotes: [Int64: String] = [:]
     /// Custom label for „Ohne Kategorie“ (vault setting `ui.uncategorized_name`, #597); empty = default.
@@ -66,11 +66,19 @@ public final class AppModel {
     /// Live tags in list order with their booking counts (#228).
     var tags: [GiroCrabCore.Tag] = []
     var categoryTree: [CategoryNode] = []
-    var bookings: [Booking] = [] { didSet { rebuildBookingIndex(); loadListSuggestions() } }
+    var bookings: [Booking] = [] { didSet { rebuildBookingIndex(); loadListSuggestions(); refreshAccountMarkerVisibility() } }
+    /// Booking rows show which account they belong to (more than one account in the list).
+    /// Stored and set with the list instead of computed from `sidebarSelection`: every row reads
+    /// it, so a computed value made all visible rows re-run at the click, with the old bookings.
+    var showsAccountMarkers = false
     /// Derived from `bookings` once per reload instead of on every view access.
-    var dayGroups: [DayGroup] = [] { didSet { streamItems = StreamItem.flatten(dayGroups) } }
+    var dayGroups: [DayGroup] = [] {
+        didSet { (streamItems, streamSlots) = StreamItem.flatten(dayGroups) }
+    }
     /// `dayGroups` flattened into headers and rows for the lazy booking stream.
     private(set) var streamItems: [StreamItem] = []
+    /// Scroll targets of days and bookings in `streamItems` (read in actions, not observed).
+    @ObservationIgnored private(set) var streamSlots = StreamSlots()
     @ObservationIgnored var bookingIndexByID: [Booking.ID: Int] = [:]
     var page: BookingPage?
     /// Balance after each loaded booking and per loaded day (#577); empty unless
@@ -117,6 +125,12 @@ public final class AppModel {
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts {
         didSet {
+            mainColumn = MainColumn(sidebarSelection)
+            if oldValue != sidebarSelection {
+                oldValue.flatMap { sidebarRowSelections[$0] }?.isSelected = false
+                sidebarSelection.flatMap { sidebarRowSelections[$0] }?.isSelected = true
+                requestStreamTop()
+            }
             // Any other choice in the sidebar ends the merchant list (#495).
             if !appliesMerchantFocus { merchantFocus = nil; merchantFocusReturn = nil }
             listLimit = Self.defaultListLimit
@@ -130,6 +144,22 @@ public final class AppModel {
             reloadSelection(periodChanged: false)
         }
     }
+    /// The kind of view the booking column shows; follows `sidebarSelection`. The split view
+    /// and other window-level views read this instead of the selection: assigning an equal
+    /// value does not notify, so a switch between accounts or categories leaves them alone
+    /// (re-running them re-created and re-laid out every column of the window).
+    private(set) var mainColumn: MainColumn = .bookings
+    /// Per sidebar row: is it the selected one (`sidebarRowSelection(for:)`), kept in step by
+    /// `sidebarSelection`.
+    @ObservationIgnored var sidebarRowSelections: [SidebarItem: SidebarRowSelection] = [:]
+    /// `sidebarSelection` for code that must not observe it (a row's first lookup of its flag):
+    /// the macro's untracked backing store.
+    var untrackedSidebarSelection: SidebarItem? { _sidebarSelection }
+    /// Bumped when the booking stream should scroll back to its top for a new selection
+    /// (`requestStreamTop`).
+    var streamTopRequest = 0
+    /// A background selection load still has to bring the stream to the top when it publishes.
+    @ObservationIgnored var streamTopPending = false
     /// Set while a vault is adopted: `reloadAll()` follows at once, so the selection's own
     /// reload (the same queries again, on the main thread) is skipped.
     @ObservationIgnored var resetsSelectionBeforeReloadAll = false
@@ -163,10 +193,15 @@ public final class AppModel {
             reloadListInBackground()
         }
     }
-    var period: Period = .all { didSet { periodDidChange() } }
+    var period: Period = .all {
+        didSet {
+            if oldValue != period { requestStreamTop() }
+            periodDidChange()
+        }
+    }
     /// Start/end of the `.custom` period (ISO, inclusive); remembered across launches.
-    var customPeriodFrom: String = UserDefaults.standard.string(forKey: "period.customFrom") ?? AppModel.defaultCustomPeriod.from
-    var customPeriodTo: String = UserDefaults.standard.string(forKey: "period.customTo") ?? AppModel.defaultCustomPeriod.to
+    var customPeriodFrom: String = AppDefaults.store.string(forKey: "period.customFrom") ?? AppModel.defaultCustomPeriod.from
+    var customPeriodTo: String = AppDefaults.store.string(forKey: "period.customTo") ?? AppModel.defaultCustomPeriod.to
     /// Shows the start/end date dialog of the period filter.
     var showCustomPeriod = false
     /// Shows the tag filter popover of the stream header (#228).
@@ -351,8 +386,15 @@ public final class AppModel {
         }
     }
     var autoReviewDelay: AutoReviewDelay = .stored {
-        didSet { UserDefaults.standard.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey) }
-    }
+        didSet {
+            AppDefaults.store.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey)
+            #if os(macOS)
+            if autoReviewDelay == .onAccountSwitch {
+                autoReviewTask?.cancel()
+                autoReviewTask = nil
+            }
+            #endif
+        }    }
     @ObservationIgnored var autoReviewTask: Task<Void, Never>?
 
     /// All selected bookings (⌘-click adds/removes, ⇧-click selects a range,
@@ -369,30 +411,30 @@ public final class AppModel {
     var lingeringBookingID: Booking.ID?
     /// iPhone: set by a tap on a booking row, presents the detail sheet.
     var showBookingSheet = false
-    var collapsedGroups: Set<Int64> = Set(UserDefaults.standard.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
-        didSet { UserDefaults.standard.set(Array(collapsedGroups), forKey: "sidebar.collapsedKindGroups") }
+    var collapsedGroups: Set<Int64> = Set(AppDefaults.store.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
+        didSet { AppDefaults.store.set(Array(collapsedGroups), forKey: "sidebar.collapsedKindGroups") }
     }
     /// „Alle Konten“ (the sidebar's root row) folded away with every group.
-    var allAccountsCollapsed: Bool = UserDefaults.standard.bool(forKey: AppModel.allAccountsCollapsedKey) {
-        didSet { UserDefaults.standard.set(allAccountsCollapsed, forKey: AppModel.allAccountsCollapsedKey) }
+    var allAccountsCollapsed: Bool = AppDefaults.store.bool(forKey: AppModel.allAccountsCollapsedKey) {
+        didSet { AppDefaults.store.set(allAccountsCollapsed, forKey: AppModel.allAccountsCollapsedKey) }
     }
     /// The sidebar's category tree, „Ohne Kategorie“ included, folded away under its header.
-    var categoriesCollapsed: Bool = UserDefaults.standard.bool(forKey: "sidebar.categoriesCollapsed") {
-        didSet { UserDefaults.standard.set(categoriesCollapsed, forKey: "sidebar.categoriesCollapsed") }
+    var categoriesCollapsed: Bool = AppDefaults.store.bool(forKey: "sidebar.categoriesCollapsed") {
+        didSet { AppDefaults.store.set(categoriesCollapsed, forKey: "sidebar.categoriesCollapsed") }
     }
-    var collapsedUserGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
-        didSet { UserDefaults.standard.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
+    var collapsedUserGroups: Set<String> = Set(AppDefaults.store.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
+        didSet { AppDefaults.store.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
     }
-    var collapsedBankGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedBankGroups") ?? []) {
-        didSet { UserDefaults.standard.set(Array(collapsedBankGroups), forKey: "sidebar.collapsedBankGroups") }
+    var collapsedBankGroups: Set<String> = Set(AppDefaults.store.stringArray(forKey: "sidebar.collapsedBankGroups") ?? []) {
+        didSet { AppDefaults.store.set(Array(collapsedBankGroups), forKey: "sidebar.collapsedBankGroups") }
     }
     /// Archived accounts stay in their group; this hides their sidebar rows.
-    var showArchivedAccounts: Bool = UserDefaults.standard.object(forKey: "sidebar.showArchived") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(showArchivedAccounts, forKey: "sidebar.showArchived") }
+    var showArchivedAccounts: Bool = AppDefaults.store.object(forKey: "sidebar.showArchived") as? Bool ?? true {
+        didSet { AppDefaults.store.set(showArchivedAccounts, forKey: "sidebar.showArchived") }
     }
     /// Explicit per-device choice; `nil` = "Nach Gruppe" once groups exist.
-    var accountViewChoice: AccountSidebarMode? = UserDefaults.standard.string(forKey: "sidebar.accountView").flatMap(AccountSidebarMode.init) {
-        didSet { UserDefaults.standard.set(accountViewChoice?.rawValue, forKey: "sidebar.accountView") }
+    var accountViewChoice: AccountSidebarMode? = AppDefaults.store.string(forKey: "sidebar.accountView").flatMap(AccountSidebarMode.init) {
+        didSet { AppDefaults.store.set(accountViewChoice?.rawValue, forKey: "sidebar.accountView") }
     }
     /// Settings tab on screen (set to `.groups` by "Gruppen bearbeiten …").
     var settingsTab: SettingsTab = .general
@@ -418,6 +460,9 @@ public final class AppModel {
     /// `documentsWithoutAccount` = documents without an account (e.g. PostBox, #838).
     var documentsScope: DocumentsScope = .all
     var documentsAccountFilter: Int64?
+    /// "Belege & PostBox" filtered to one bank connection (#1042); nil = all, `documentsWithoutAccount` =
+    /// documents without an account (they have no bank connection). Set it with `selectDocumentsConnection`.
+    var documentsConnectionFilter: Int64?
     static let documentsWithoutAccount: Int64 = -1
     /// „Geplant“ (#240): payments with a bank order, the filters and a reload
     /// marker (set by everything that can change them: transfers, syncs).
@@ -462,7 +507,7 @@ public final class AppModel {
     /// in by `demoActive`). Deleted categories are only soft-deleted, so a stale
     /// id never opens another category of the same vault.
     var expandedCategories = AppModel.storedExpandedCategories(demo: false) {
-        didSet { UserDefaults.standard.set(Array(expandedCategories), forKey: Self.expandedCategoriesKey(demo: demoActive)) }
+        didSet { AppDefaults.store.set(Array(expandedCategories), forKey: Self.expandedCategoriesKey(demo: demoActive)) }
     }
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }
@@ -567,8 +612,19 @@ public final class AppModel {
     var toast: String?
     /// Text of the error alert. Clearing it also clears title and retry.
     var errorMessage: String? {
-        didSet { if errorMessage == nil { errorTitle = nil; errorRetry = nil; errorAlternatives = [] } }
+        didSet {
+            guard errorMessage == nil else { return }
+            let onClose = errorOnClose
+            errorTitle = nil; errorRetry = nil; errorAlternatives = []
+            errorCloseTitle = nil; errorOnClose = nil
+            onClose?()
+        }
     }
+    /// Title of the closing button (nil = "OK").
+    var errorCloseTitle: String?
+    /// Runs when the alert is closed with that button (not with retry or an alternative):
+    /// "Alle abrufen" goes on with the next login only once the error was closed (#1041).
+    @ObservationIgnored var errorOnClose: (@MainActor () -> Void)?
     /// Alert title naming what failed (HIG: specific, not "something went wrong").
     var errorTitle: String?
     /// Optional "Erneut versuchen" action of the error alert.
@@ -712,7 +768,7 @@ public final class AppModel {
     // MARK: State used by AppModel+Documents.swift
 
     /// Folder that receives a copy of every document (nil = off). Per Mac, not per vault.
-    var documentMirrorPath: String? = UserDefaults.standard.string(forKey: "documents.mirrorDir")
+    var documentMirrorPath: String? = AppDefaults.store.string(forKey: "documents.mirrorDir")
     /// Result of the latest mirror run, for the settings.
     var documentMirrorStatus: String?
     var mirrorRunning = false
@@ -768,7 +824,7 @@ public final class AppModel {
     public init(options: LaunchOptions = .current) {
         self.options = options
         StartupClock.mark("AppModel.init begin")
-        runningBalanceObserver = UserDefaults.standard.observe(\.showRunningBalance, options: [.old, .new]) { [weak self] _, change in
+        runningBalanceObserver = AppDefaults.store.observe(\.showRunningBalance, options: [.old, .new]) { [weak self] _, change in
             guard let on = change.newValue, on != change.oldValue else { return }
             Task { @MainActor in self?.runningBalanceSettingChanged(on: on) }
         }
@@ -1246,7 +1302,7 @@ public final class AppModel {
         pendingOwnVaultAction = nil
         if isEmpty && pending == nil {
             // Nothing synced yet: show demo bookings so the UI can be judged.
-            UserDefaults.standard.set(false, forKey: Self.realDataKey)
+            AppDefaults.store.set(false, forKey: Self.realDataKey)
             await hop.value
             await openDemoVaultAsync()
             toast = String(localized: "Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
@@ -1397,7 +1453,7 @@ public final class AppModel {
         sidebarSelection = .allAccounts
         vault = v
         demoActive = false
-        UserDefaults.standard.set(true, forKey: Self.realDataKey)
+        AppDefaults.store.set(true, forKey: Self.realDataKey)
         logoCache = [:]
         // nothing of the vault shown before (demo) may appear under the new one
         page = nil; bookings = []; history = []; listBalances = ListBalances()
@@ -1425,7 +1481,7 @@ public final class AppModel {
     func useVault(_ v: Vault, demo: Bool) {
         vault = v
         demoActive = demo
-        if !demo { UserDefaults.standard.set(true, forKey: Self.realDataKey) }
+        if !demo { AppDefaults.store.set(true, forKey: Self.realDataKey) }
         vaultState = .open
         selectedBookingID = nil
         selectAllAccountsForReloadAll()
@@ -1474,7 +1530,7 @@ public final class AppModel {
     /// Real data may exist in the (encrypted, hence unreadable while locked) vault.
     /// Without a stored answer, an existing vault file counts as real data.
     nonisolated static var vaultMayHoldRealData: Bool {
-        if let v = UserDefaults.standard.object(forKey: realDataKey) as? Bool { return v }
+        if let v = AppDefaults.store.object(forKey: realDataKey) as? Bool { return v }
         return FileManager.default.fileExists(atPath: vaultURL.path)
     }
 

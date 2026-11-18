@@ -131,6 +131,9 @@ struct TagEntryField: View {
     /// Several bookings: the hint says „bei allen“.
     var multiple = false
     let add: (String) -> Void
+    /// The booking the field belongs to: the inspector reuses it for the next one, so what was
+    /// typed or unfolded for the previous booking is cleared.
+    var owner: Booking.ID?
     @State private var draft = ""
     @State private var showsAll = false
     /// Suggestions shown while the field is empty and folded.
@@ -185,6 +188,10 @@ struct TagEntryField: View {
                     }
                 }
             }
+        }
+        .onChange(of: owner) {
+            draft = ""
+            showsAll = false
         }
     }
 
@@ -275,13 +282,20 @@ struct TagsCard: View {
                     }
                 }
             }
-            TagEntryField(carried: Set(booking.tags.map(\.id)), focused: $focused) { name in
+            TagEntryField(carried: Set(booking.tags.map(\.id)), focused: $focused, add: { name in
                 model.addTag(named: name, to: [booking])
-            }
+            }, owner: booking.id)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
         .onAppear(perform: claimFocus)
+        // Reused for the next selected booking (no `.id`: rebuilding the text field on every
+        // selection was a large part of the inspector's update): leave the field, as a new card
+        // would, then take a focus requested for the new booking.
+        .onChange(of: booking.id) {
+            focused = false
+            claimFocus()
+        }
         .onChange(of: model.pendingTagFocus) { _, _ in claimFocus() }
     }
 

@@ -246,6 +246,9 @@ extension AppModel {
     /// After a rejected registration: switch to the own one, open Settings › Banks (FinTS registration)
     /// and put the cursor into its field (no extra field in the alert).
     func enterOwnProductID() {
+        // Off to Settings: a waiting "Alle abrufen" ends here instead of stalling (#1041);
+        // the login is fetched again by hand once the registration is in.
+        resetSyncBatch()
         // Mode `own` only once an ID is stored (`OwnProductIDField.commit`), or an existing one is replaced:
         // an empty field must not leave the user in a mode without a registration.
         if settingEntry("fints.product_id")?.hasValue == true { setFintsProductIDMode("own") }

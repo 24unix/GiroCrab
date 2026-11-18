@@ -23,6 +23,40 @@ extension AppModel {
             hasKey: app?.hasKey ?? false)
     }
 
+    /// Connections fed by an export file the user picks (no login, no sync).
+    func usesFileImport(_ c: BankConnection) -> Bool {
+        c.connector == .finpension && !isDemo && !Self.isMagicDemoLogin(c.loginName)
+    }
+
+    func importFinpension(_ c: BankConnection, url: URL) {
+        guard let pin = pinVault() else { return }
+        let ok = url.startAccessingSecurityScopedResource()
+        defer { if ok { url.stopAccessingSecurityScopedResource() } }
+        let fileName = url.lastPathComponent
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            showError(String(localized: "Finpension-Import fehlgeschlagen"), describe(error))
+            return
+        }
+        let id = c.id
+        Task {
+            do {
+                let s = try await pin.run { try $0.importFinpensionExport(connectionId: id, bytes: data) }
+                guard isCurrent(pin) else { return }
+                toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen aus \(fileName)")
+                reloadAll()
+            } catch where !isCurrent(pin) {
+                // Locked or switched vault meanwhile: no error over another vault.
+            } catch CoreError.InvalidInput {
+                showError(String(localized: "Nichts erkannt"), String(localized: "In \(fileName) wurden keine Finpension-Positionen oder -Buchungen erkannt. Erwartet: CSV oder JSON-Export mit ISIN, Anzahl, Kurs, Marktwert bzw. Datum, Beschreibung, Betrag."))
+            } catch {
+                showError(String(localized: "Finpension-Import fehlgeschlagen"), describe(error))
+            }
+        }
+    }
+
     static func enableBankingOptInKey(_ kind: ConnectorKind) -> String {
         kind == .amazonVisa ? "enablebanking.use.amazonvisa" : "enablebanking.use.amex"
     }
@@ -626,6 +660,8 @@ struct PortalWebSheet: View {
     @State private var cardQueue: [PortalBrowser.CardList.Entry]?
     /// Amex: the card the portal is switching to right now.
     @State private var loadingCard: String?
+    /// Amex: when the card round began waiting, for its time limit (#1010).
+    @State private var cardsSince: Date?
     /// Amex: the stored login was filled in (or there is none): not tried again.
     @State private var loginFilled = false
 
@@ -633,6 +669,18 @@ struct PortalWebSheet: View {
     /// take only the cards loaded so far and close the sheet, so it waits (#243).
     private var cardsPending: Bool {
         connection.connector == .americanExpress && (cardQueue.map { !$0.isEmpty } ?? true || loadingCard != nil)
+    }
+    /// Amex: the card round still running after this long gives up, so the page is not
+    /// hidden for good and the cards loaded so far can be imported (#1010).
+    static let cardRoundTimeout: TimeInterval = 90
+    static func cardRoundTimedOut(since: Date?, now: Date = Date()) -> Bool {
+        since.map { now.timeIntervalSince($0) > cardRoundTimeout } ?? false
+    }
+
+    /// Amex: whether to switch to the next card now. Also while older billing periods are
+    /// browsed: switching cards neither imports nor closes the sheet (#1010).
+    static func switchesCard(isAmex: Bool, recognized: Int, away: Bool, quietFor: TimeInterval) -> Bool {
+        isAmex && recognized > 0 && !away && quietFor > 4
     }
     /// The older history (SMS code) is offered once per connection; later syncs close on their own.
     private var historyOfferedKey: String { "portal.historyOffered.\(connection.id)" }
@@ -735,7 +783,7 @@ struct PortalWebSheet: View {
         }
         .task {
             // Billing-period portals: the first sync of a connection offers the older periods.
-            if connection.connector.portalHasBillingPeriods && !UserDefaults.standard.bool(forKey: historyOfferedKey) {
+            if connection.connector.portalHasBillingPeriods && !AppDefaults.store.bool(forKey: historyOfferedKey) {
                 browsingHistory = true
             }
             // Count recognised bookings live; auto-import only when >= 1 booking is
@@ -771,8 +819,17 @@ struct PortalWebSheet: View {
                     }
                 }
                 // Amex: open every card of the switcher once before importing (#243).
-                if !browsingHistory, connection.connector == .americanExpress, n > 0, !away,
-                   Date().timeIntervalSince(lastChange) > 4 {
+                if cardsPending, n > 0, !away {
+                    if cardsSince == nil { cardsSince = Date() }
+                    if Self.cardRoundTimedOut(since: cardsSince) {
+                        AppModel.debugLog("portal cards: gave up, \(cardQueue?.count ?? -1) left")
+                        cardQueue = []
+                        loadingCard = nil
+                        model.toast = String(localized: "Nicht alle Karten ließen sich öffnen – übernommen werden die bisher geladenen Karten.")
+                    }
+                }
+                if Self.switchesCard(isAmex: connection.connector == .americanExpress, recognized: n, away: away,
+                                     quietFor: Date().timeIntervalSince(lastChange)) {
                     if await openNextCard() { lastChange = Date(); continue }
                 }
                 if !browsingHistory, n > importedCount, !away, !pager.more, Date().timeIntervalSince(lastChange) > 4 {
@@ -786,7 +843,7 @@ struct PortalWebSheet: View {
                     }
                     // First sync with older history on offer: store what is there, but keep
                     // the sheet open so the user can unlock the rest (SMS code).
-                    let firstSync = importedCount == 0 && !UserDefaults.standard.bool(forKey: historyOfferedKey)
+                    let firstSync = importedCount == 0 && !AppDefaults.store.bool(forKey: historyOfferedKey)
                     let keepOpen = pager.older && firstSync
                     if await attempt(closing: !keepOpen) {
                         if !keepOpen && openHolds.isEmpty { return }
@@ -906,7 +963,7 @@ struct PortalWebSheet: View {
     }
 
     private func close() {
-        if importedCount > 0 { UserDefaults.standard.set(true, forKey: historyOfferedKey) }
+        if importedCount > 0 { AppDefaults.store.set(true, forKey: historyOfferedKey) }
         model.webLoginConnection = nil
         dismiss()
     }

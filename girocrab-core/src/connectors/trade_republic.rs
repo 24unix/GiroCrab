@@ -1123,7 +1123,7 @@ impl TradeRepublicConnector {
             "cookies": self.cookies,
             "session_token": self.session_token,
             "phone": self.phone,
-            "saved_unix": chrono::Utc::now().timestamp(),
+            "saved_unix": jiff::Timestamp::now().as_second(),
             "doc_items": keep,
         })
     }
@@ -1442,11 +1442,10 @@ impl BankConnector for TradeRepublicConnector {
         let mut trade_rows: Vec<TradeRow> = Vec::new();
         // After document retrieval was switched on again: reach back to the day it was switched off.
         let cutoff = ctx
-            .settings
-            .get(super::DOCUMENTS_CATCHUP)
-            .map(|d| d.expose().to_string())
-            .filter(|d| d.as_str() < ctx.since.as_str())
-            .unwrap_or_else(|| ctx.since.clone());
+            .documents
+            .catchup_since()
+            .map_or(ctx.since.as_str(), |d| d.min(&ctx.since))
+            .to_string();
         'pages: for _ in 0..200 {
             let mut payload = json!({"type": "timelineTransactions"});
             if let Some(c) = &cursor {
@@ -1548,7 +1547,7 @@ impl BankConnector for TradeRepublicConnector {
         }
         // Document retrieval switched off: no detail screens for documents, nothing remembered
         // (the securities page below fetches the trade screens it needs itself).
-        if ctx.settings.contains_key(super::DOCUMENTS_OFF) {
+        if !ctx.documents.enabled() {
             doc_candidates.clear();
         }
         // --- Beleg-Abruf: timelineDetailV2 -> "Dokumente" section -> PDF download
