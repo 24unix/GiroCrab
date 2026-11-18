@@ -275,15 +275,14 @@ impl Vault {
         count: u32,
         account_ids: Option<Vec<i64>>,
     ) -> Result<Vec<PeriodCashflow>, CoreError> {
-        use chrono::{Datelike, Local};
-        let today = Local::now().date_naive();
+        let today = crate::dates::today();
         crate::planning::cashflow_for(
             self,
             granularity,
             count,
             account_ids.as_deref().unwrap_or_default(),
-            today.year(),
-            today.month(),
+            today.year().into(),
+            today.month() as u32,
         )
     }
 
@@ -769,10 +768,9 @@ mod tests {
 
     #[test]
     fn cashflow_ignores_transfers_between_own_accounts() {
-        use chrono::{Datelike, Local};
         let (v, dir) = vault();
-        let today = Local::now().date_naive();
-        let date = today.format("%Y-%m-%d").to_string();
+        let today = crate::dates::today();
+        let date = crate::dates::iso(today);
         {
             let c = v.db().unwrap();
             c.execute(
@@ -793,8 +791,8 @@ mod tests {
             PeriodGranularity::Month,
             1,
             &[],
-            today.year(),
-            today.month(),
+            today.year().into(),
+            today.month() as u32,
         )
         .unwrap();
         assert_eq!(cf.last().unwrap().expense_cents, 1_000);

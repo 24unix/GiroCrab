@@ -59,7 +59,7 @@ fn required<'a>(v: &'a Value, key: &str) -> CoreResult<&'a str> {
 /// `YYYY-MM-DD` of an ISO timestamp; `None` for the portal's empty `0001-01-01`.
 fn date(v: &Value, key: &str) -> Option<String> {
     let s = text(v, key).get(..10)?;
-    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
+    jiff::civil::Date::strptime("%Y-%m-%d", s).ok()?;
     (!s.starts_with("0001-")).then(|| s.to_string())
 }
 
@@ -279,15 +279,16 @@ fn persistent_cookies(header: &str) -> Vec<String> {
 
 /// Request body for one page of bookings (all fields are required).
 fn transactions_query(account: &Value, days: i64, page: u32) -> Value {
-    let end = chrono::Utc::now();
-    let start = end - chrono::Duration::days(days);
+    let end = jiff::Timestamp::now();
+    let start = end - jiff::SignedDuration::from_hours(days * 24);
+    let millis = |t: jiff::Timestamp| t.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     json!({
         "SelectedApprovalRule": 0, "SelectedApprovalSubRule": 0, "DisableNonStp": false,
         "IsSourceFutureDated": false, "OpenCaseAndExecuteTransaction": false,
         "OpenConditionalCase": false, "OpenCaseAndNotExecute": false,
         "Account": account,
-        "StartDate": start.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-        "EndDate": end.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        "StartDate": millis(start),
+        "EndDate": millis(end),
         "HasStartAmountValue": false, "HasEndAmountValue": false, "TransactionFlag": "All",
         "TransactionTypeIndicator": 0, "Status": "ALL", "OTPAlreadyChecked": false,
         "IsExporting": false, "hasOptionDetail": false, "CardNetwork": "Undefined",
@@ -313,8 +314,8 @@ fn initial_account_list(flow: &Value) -> Vec<Value> {
 
 /// Days from `since` (YYYY-MM-DD) until today, within the portal's limits.
 fn days_since(since: &str) -> i64 {
-    chrono::NaiveDate::parse_from_str(since, "%Y-%m-%d")
-        .map(|d| (chrono::Local::now().date_naive() - d).num_days() + 1)
+    jiff::civil::Date::strptime("%Y-%m-%d", since)
+        .map(|d| crate::dates::days_between(d, crate::dates::today()) + 1)
         .unwrap_or(MAX_DAYS)
         .clamp(1, MAX_DAYS)
 }
@@ -762,7 +763,7 @@ impl EasybankConnector {
             "exportRequest": { "Account": account, "StatementDocument": statement },
             "isLandscape": false,
             "fileName": file_name,
-            "uniqueID": chrono::Utc::now().timestamp_millis(),
+            "uniqueID": crate::dates::now_ms(),
         });
         let client = self.client()?;
         let resp = client

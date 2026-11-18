@@ -1093,7 +1093,7 @@ fn debit_lead_time_is_checked_per_sequence() {
         max_days_first: 30,
         ..Default::default()
     };
-    let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+    let d = |s: &str| jiff::civil::Date::strptime("%Y-%m-%d", s).unwrap();
     let today = d("2026-11-02");
     assert!(check_debit_lead_time(&p, Recurring, today, d("2026-11-04")).is_ok());
     assert!(check_debit_lead_time(&p, First, today, d("2026-11-04")).is_err());
@@ -1313,11 +1313,11 @@ fn pain_header_is_well_formed_and_always_names_the_owner() {
     assert_eq!(h.owner, "Max Mustermann");
     assert_eq!(sepa::PainHeader::new(" ").owner, "Kontoinhaber");
     assert!(
-        chrono::NaiveDateTime::parse_from_str(&h.created, "%Y-%m-%dT%H:%M:%S").is_ok(),
+        jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", &h.created).is_ok(),
         "{}",
         h.created
     );
-    assert!(chrono::NaiveDate::parse_from_str(h.date(), "%Y-%m-%d").is_ok());
+    assert!(jiff::civil::Date::strptime("%Y-%m-%d", h.date()).is_ok());
     // GC + timestamp + 8 hex digits, within the 35 characters pain allows.
     assert!(h.message_id.starts_with("GC") && h.message_id.len() == 24);
 }

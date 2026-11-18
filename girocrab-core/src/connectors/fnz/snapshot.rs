@@ -36,7 +36,7 @@ fn array<'a>(v: &'a Value, key: &str) -> CoreResult<&'a [Value]> {
 
 fn date(v: &Value, key: &str) -> CoreResult<String> {
     let s = text(v, key)?;
-    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| incomplete())?;
+    jiff::civil::Date::strptime("%Y-%m-%d", s).map_err(|_| incomplete())?;
     Ok(s.into())
 }
 

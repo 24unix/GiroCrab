@@ -8,7 +8,7 @@ fn temp_vault() -> (Arc<Vault>, std::path::PathBuf) {
 }
 
 fn days_ago(n: i64) -> String {
-    iso(today() - chrono::Duration::days(n))
+    iso(today() - crate::dates::days(n))
 }
 
 fn gold(name: &str, purchase: &str, quantity: f64, paid: Option<i64>) -> AssetItemSetup {
@@ -317,7 +317,7 @@ fn validation_and_editing() {
     bad.purity_permille = 1001.0;
     assert!(v.save_asset_item(acc, None, bad.clone()).is_err());
     bad.purity_permille = 999.9;
-    bad.purchase_date = iso(today() + chrono::Duration::days(1));
+    bad.purchase_date = iso(today() + crate::dates::days(1));
     assert!(v.save_asset_item(acc, None, bad.clone()).is_err());
     let mut m = manual("Bild", &days_ago(1), 0, AssetInterpolation::Step);
     m.start_value_cents = None;

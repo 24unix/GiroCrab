@@ -1123,7 +1123,7 @@ impl TradeRepublicConnector {
             "cookies": self.cookies,
             "session_token": self.session_token,
             "phone": self.phone,
-            "saved_unix": chrono::Utc::now().timestamp(),
+            "saved_unix": jiff::Timestamp::now().as_second(),
             "doc_items": keep,
         })
     }

@@ -14,11 +14,10 @@
 //! offline accounts in this sense; accounts of a bank connection are synced and
 //! stay read-only.
 
-use chrono::NaiveDate;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::connectors::group_for;
-use crate::dates::now_ms;
+use crate::dates::{now_ms, today_iso as today};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
@@ -53,13 +52,6 @@ fn not_found(what: String) -> CoreError {
     CoreError::NotFound { what }
 }
 
-fn today() -> String {
-    chrono::Local::now()
-        .date_naive()
-        .format("%Y-%m-%d")
-        .to_string()
-}
-
 fn clean(text: &str, max: usize) -> CoreResult<String> {
     let t = text.trim();
     if t.chars().count() > max {
@@ -72,8 +64,8 @@ fn clean(text: &str, max: usize) -> CoreResult<String> {
 }
 
 fn parse_date(date: &str) -> CoreResult<String> {
-    NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d")
-        .map(|d| d.format("%Y-%m-%d").to_string())
+    jiff::civil::Date::strptime("%Y-%m-%d", date.trim())
+        .map(crate::dates::iso)
         .map_err(|_| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&date.trim()])))
 }
 

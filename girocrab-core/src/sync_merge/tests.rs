@@ -1261,7 +1261,7 @@ fn soft_delete_world(v: &Vault) {
     let id = |sql: &str| -> i64 { db.query_row(sql, [], |r| r.get(0)).unwrap() };
     let tagesgeld = id("SELECT id FROM accounts WHERE external_ref = 'demo-tagesgeld'");
     let depot = id("SELECT id FROM accounts WHERE external_ref = 'demo-depot'");
-    let today = chrono::Local::now().date_naive();
+    let today = crate::dates::today();
     for (i, (ago, cents, cp, iban, purpose)) in [
         (70, 1250, "Musterbank", "", "Zinsgutschrift"),
         (40, 1250, "Musterbank", "", "Zinsgutschrift"),
@@ -1284,9 +1284,7 @@ fn soft_delete_world(v: &Vault) {
     .into_iter()
     .enumerate()
     {
-        let date = (today - chrono::Duration::days(ago))
-            .format("%Y-%m-%d")
-            .to_string();
+        let date = crate::dates::iso(today - crate::dates::days(ago));
         db.execute(
             "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
                                       counterparty, counterparty_iban, purpose, booking_text)
@@ -1469,7 +1467,6 @@ fn files_under(dir: &std::path::Path) -> Vec<String> {
 #[test]
 fn soft_deleted_rows_appear_in_no_public_api() {
     use crate::models::{BookingFilter, BookingScope, PeriodGranularity};
-    use chrono::Datelike;
     let dir = temp_dir("invisible");
     let a = open(&dir, "soft.db");
     soft_delete_world(&a);
@@ -1542,12 +1539,8 @@ fn soft_deleted_rows_appear_in_no_public_api() {
     both!("list_rules", |v| v.list_rules());
     both!("list_settings", |v| v.list_settings());
     both!("list_categories", |v| v.list_categories(None, None));
-    let today = chrono::Local::now().date_naive();
-    let ago = |d: i64| {
-        (today - chrono::Duration::days(d))
-            .format("%Y-%m-%d")
-            .to_string()
-    };
+    let today = crate::dates::today();
+    let ago = |d: i64| crate::dates::iso(today - crate::dates::days(d));
     both!("list_categories(range)", |v| v
         .list_categories(Some(ago(40)), Some(ago(0))));
     both!("balance_history(all)", |v| v.balance_history(vec![], 120));
@@ -1559,12 +1552,13 @@ fn soft_deleted_rows_appear_in_no_public_api() {
     both!("list_ignored_recurring", |v| v
         .list_ignored_recurring(vec![]));
     both!("salary_cycle(all)", |v| v.salary_cycle(vec![]));
+    let (year, month) = (i32::from(today.year()), today.month() as u32);
     for (y, mo) in [
-        (today.year(), today.month()),
-        if today.month() == 1 {
-            (today.year() - 1, 12)
+        (year, month),
+        if month == 1 {
+            (year - 1, 12)
         } else {
-            (today.year(), today.month() - 1)
+            (year, month - 1)
         },
     ] {
         both!(format!("list_category_budget_progress({y}-{mo})"), |v| v

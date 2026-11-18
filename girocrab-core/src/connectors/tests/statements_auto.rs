@@ -37,9 +37,7 @@ fn auto_statements_are_due_weekly_and_only_when_enabled() {
     // fetched today -> not due; 8 days ago -> due again
     v.set_setting(statements_last_key(giro), today()).unwrap();
     assert!(v.statements_due(conn).unwrap().is_empty());
-    let old = (chrono::Local::now().date_naive() - chrono::Duration::days(8))
-        .format("%Y-%m-%d")
-        .to_string();
+    let old = crate::dates::iso(crate::dates::today() - crate::dates::days(8));
     v.set_setting(statements_last_key(giro), old).unwrap();
     assert_eq!(v.statements_due(conn).unwrap().len(), 1);
     v.set_auto_statements(giro, false).unwrap();

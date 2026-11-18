@@ -176,7 +176,7 @@ fn check(input: &MandateInput) -> CoreResult<()> {
             "Die Mandatsreferenz enthält Zeichen, die SEPA nicht erlaubt (nur Buchstaben ohne Umlaute, Ziffern und / - ? : ( ) . , ' + Leerzeichen).",
         )));
     }
-    if chrono::NaiveDate::parse_from_str(&input.signed_date, "%Y-%m-%d").is_err() {
+    if jiff::civil::Date::strptime("%Y-%m-%d", &input.signed_date).is_err() {
         return Err(CoreError::invalid(tr(
             "Das Datum der Mandatsunterschrift fehlt.",
         )));

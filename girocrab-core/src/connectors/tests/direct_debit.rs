@@ -92,7 +92,7 @@ async fn run(batch_booking: bool, last: bool, unknown: bool) -> (i64, i64, i64, 
             last_collection: last,
         })
         .collect();
-    let date = (chrono::Local::now().date_naive() + chrono::Duration::days(10)).to_string();
+    let date = (crate::dates::today() + crate::dates::days(10)).to_string();
     let plan = vault.plan_collection(account_id, &items, &date).unwrap();
     let group = plan.groups.into_iter().next().unwrap();
     let (ids, collections): (Vec<i64>, Vec<_>) = group.rows.into_iter().unzip();

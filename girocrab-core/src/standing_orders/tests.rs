@@ -1,7 +1,7 @@
 use super::*;
 
-fn d(s: &str) -> NaiveDate {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+fn d(s: &str) -> Date {
+    jiff::civil::Date::strptime("%Y-%m-%d", s).unwrap()
 }
 
 fn row(unit: &str, interval: u32, exec_day: u32, first: &str, last: Option<&str>) -> Row {
@@ -155,7 +155,7 @@ fn very_old_orders_still_reach_today() {
     let got = dates(&w2, "2026-11-01", "2026-12-31");
     assert!(!got.is_empty());
     for pair in got.windows(2) {
-        assert_eq!((d(&pair[1]) - d(&pair[0])).num_days(), 14);
+        assert_eq!(crate::dates::days_between(d(&pair[0]), d(&pair[1])), 14);
     }
     // monthly since 1990 on the 31st
     let m = row("M", 1, 31, "1990-01-31", None);

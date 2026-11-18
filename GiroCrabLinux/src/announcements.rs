@@ -96,8 +96,12 @@ fn day_ms(s: Option<&str>, end_of_day: bool) -> Option<f64> {
     if y.len() != 4 || m.len() != 2 || d.len() != 2 {
         return None;
     }
-    let date = chrono::NaiveDate::from_ymd_opt(y.parse().ok()?, m.parse().ok()?, d.parse().ok()?)?;
-    let ms = date.and_hms_opt(0, 0, 0)?.and_utc().timestamp_millis() as f64;
+    let date = jiff::civil::Date::new(y.parse().ok()?, m.parse().ok()?, d.parse().ok()?).ok()?;
+    let ms = date
+        .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+        .ok()?
+        .timestamp()
+        .as_millisecond() as f64;
     Some(if end_of_day {
         ms + (24.0 * 3600.0 - 1.0) * 1000.0
     } else {

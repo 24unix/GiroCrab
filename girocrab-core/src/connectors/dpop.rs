@@ -67,7 +67,7 @@ impl DpopKey {
         nonce: Option<&str>,
         access_token: Option<&str>,
     ) -> String {
-        let iat = chrono::Utc::now().timestamp();
+        let iat = jiff::Timestamp::now().as_second();
         let jti = uuid::Uuid::new_v4().simple().to_string();
         self.proof_at(method, url, nonce, access_token, iat, &jti)
     }

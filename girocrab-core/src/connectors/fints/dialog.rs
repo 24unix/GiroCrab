@@ -73,10 +73,10 @@ fn strip_mime_header(b: Vec<u8>) -> Vec<u8> {
 
 impl FinTsConnector {
     pub(super) fn now() -> (String, String) {
-        let n = chrono::Local::now();
+        let n = jiff::ZonedDateTime::now();
         (
-            n.format("%Y%m%d").to_string(),
-            n.format("%H%M%S").to_string(),
+            n.strftime("%Y%m%d").to_string(),
+            n.strftime("%H%M%S").to_string(),
         )
     }
 
