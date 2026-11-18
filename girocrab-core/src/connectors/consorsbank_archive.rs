@@ -57,6 +57,16 @@ const METHOD_TAN_OR_APP: &str = "Online-Archiv · TAN";
 const METHOD_TAN: &str = "Online-Archiv · SecurePlus TAN";
 /// Page size of the document list (the bank accepts 10 to 50).
 const PAGE_SIZE: usize = 50;
+/// Upper bound of list pages per account (10,000 documents), in case the
+/// bank sends full pages without a `totalSize`.
+const MAX_PAGES: usize = 200;
+
+/// Is there another list page after `page` (1-based) with `n` documents?
+/// A short page ends the list; without `totalSize` full pages go on (up to
+/// [`MAX_PAGES`]) instead of silently stopping after the first one.
+fn more_pages(page: usize, n: usize, total: Option<usize>) -> bool {
+    n >= PAGE_SIZE && page < MAX_PAGES && total.is_none_or(|t| page * PAGE_SIZE < t)
+}
 
 /// The stable document number in the bank's file name (`…_id1734868089.pdf`).
 pub(crate) fn stable_id(file_name: &str) -> Option<&str> {
@@ -123,7 +133,8 @@ fn has_number(account: &RemoteAccount, number: &str) -> bool {
         .chars()
         .filter(|c| !c.is_whitespace())
         .collect();
-    iban.len() == 22 && iban.starts_with("DE") && norm(&iban[12..]) == n
+    // `get`, not slicing: a non-ASCII byte in the bank's data must not panic
+    iban.len() == 22 && iban.starts_with("DE") && iban.get(12..).is_some_and(|t| norm(t) == n)
 }
 
 /// Words of `docSubtypeDesc` (upper case) that make a document a securities
@@ -633,8 +644,10 @@ impl ConsorsbankArchive {
                         });
                     }
                     let n = list["documents"].as_array().map_or(0, Vec::len);
-                    for e in entries(&list, owner_no, &kto, &depots) {
+                    for mut e in entries(&list, owner_no, &kto, &depots) {
                         listed += 1;
+                        // the download needs the customer number validated above
+                        e["crm"] = json!(crm);
                         let id = e["id"].as_str().unwrap_or_default().to_string();
                         if !seen.insert(id.clone()) {
                             continue; // owner-level documents are listed for every owner
@@ -645,8 +658,8 @@ impl ConsorsbankArchive {
                             out.push(e);
                         }
                     }
-                    let total = list["totalSize"].as_u64().unwrap_or(0) as usize;
-                    if n < PAGE_SIZE || page * PAGE_SIZE >= total {
+                    let total = list["totalSize"].as_u64().map(|t| t as usize);
+                    if !more_pages(page, n, total) {
                         break;
                     }
                 }
@@ -847,14 +860,9 @@ impl PostboxSource for ConsorsbankArchive {
         if !self.logged_in {
             return None;
         }
-        let crm = match self.get_json("/web-sec-service/api/user/info", &[]).await {
-            Ok((200, v)) => v["crmCustomerNo"].as_str().unwrap_or_default().to_string(),
-            _ => String::new(),
-        };
         match self.entries_since(since).await {
-            Ok(mut list) => {
-                for e in &mut list {
-                    e["crm"] = json!(crm);
+            Ok(list) => {
+                for e in &list {
                     if let Some(d) = stub(e) {
                         self.listed.insert(d.source_url, e.clone());
                     }
@@ -1084,6 +1092,28 @@ mod tests {
             qr_image(&json!({"authorizationMethod": "sp", "txId": "abc"})),
             None
         );
+    }
+
+    #[test]
+    fn iban_with_unexpected_bytes_does_not_panic() {
+        // 22 bytes, but a two-byte character across the slice boundary at 12
+        let odd = account(AccountKind::Checking, "", "DE007603008ä111111111");
+        assert_eq!(odd.iban.len(), 22);
+        assert!(!has_number(&odd, "111111111"));
+        let ok = account(AccountKind::Checking, "", "DE00 7603 0080 0111 1111 11");
+        assert!(has_number(&ok, "111111111"));
+    }
+
+    #[test]
+    fn list_pages_go_on_while_full() {
+        assert!(more_pages(1, 50, Some(106)));
+        assert!(more_pages(2, 50, Some(106)));
+        assert!(!more_pages(3, 6, Some(106)));
+        assert!(!more_pages(2, 50, Some(100)), "exactly two full pages");
+        // no totalSize: full pages go on, a short one ends the list
+        assert!(more_pages(1, 50, None));
+        assert!(!more_pages(4, 12, None));
+        assert!(!more_pages(MAX_PAGES, 50, None), "bounded");
     }
 
     #[test]

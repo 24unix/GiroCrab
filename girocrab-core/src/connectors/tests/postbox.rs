@@ -300,6 +300,17 @@ fn consorsbank_archive_switch_and_known_documents() {
     v.set_comdirect_postbox(c, true).unwrap();
     assert!(v.comdirect_postbox_enabled(c).unwrap());
     assert!(v.set_comdirect_postbox(other, true).is_err());
+    // switching off works the same way and forgets the last fetch
+    v.set_setting(postbox_last_key(c), "2026-11-01".into())
+        .unwrap();
+    v.set_comdirect_postbox(c, false).unwrap();
+    assert!(!v.comdirect_postbox_enabled(c).unwrap());
+    assert_eq!(v.get_setting(postbox_last_key(c)).unwrap(), None);
+    assert!(v
+        .clone()
+        .fetch_comdirect_postbox(c, String::new(), false)
+        .is_err());
+    v.set_comdirect_postbox(c, true).unwrap();
     let account = |iban: &str| RemoteAccount {
         external_ref: iban.into(),
         name: "Verrechnungskonto".into(),
