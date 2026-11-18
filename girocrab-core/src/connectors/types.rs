@@ -271,23 +271,23 @@ pub struct ConnectContext {
 /// bookings (new ones, depots) get that lower bound but do not pull the
 /// connection-wide `since` back.
 pub(crate) fn since_window(
-    today: chrono::NaiveDate,
+    today: jiff::civil::Date,
     days: i64,
     newest: &[(String, Option<String>)],
 ) -> (String, HashMap<String, String>) {
     let parse = |d: &Option<String>| {
         d.as_deref()
-            .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+            .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", d).ok())
     };
-    let back10 = |d: chrono::NaiveDate| d - chrono::Duration::days(10);
-    let fmt = |d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string();
-    let default_start = today - chrono::Duration::days(days);
+    let back10 = |d: jiff::civil::Date| d - crate::dates::days(10);
+    let fmt = |d: jiff::civil::Date| crate::dates::iso(d);
+    let default_start = today - crate::dates::days(days);
     let floor = match newest.iter().filter_map(|(_, d)| parse(d)).max() {
         Some(g) => default_start.min(back10(g)),
         None => default_start,
     };
     let mut per = HashMap::new();
-    let mut earliest: Option<chrono::NaiveDate> = None;
+    let mut earliest: Option<jiff::civil::Date> = None;
     for (r, d) in newest {
         let start = match parse(d) {
             Some(d) => {

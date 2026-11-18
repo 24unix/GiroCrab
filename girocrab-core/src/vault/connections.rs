@@ -421,7 +421,7 @@ impl Vault {
         let mut v: serde_json::Value =
             serde_json::from_str(&state).unwrap_or(serde_json::json!({}));
         v["cookies"] = serde_json::json!(cookies);
-        v["saved_unix"] = serde_json::json!(chrono::Utc::now().timestamp());
+        v["saved_unix"] = serde_json::json!(jiff::Timestamp::now().as_second());
         v["source"] = serde_json::json!("browser");
         db.execute(
             "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",

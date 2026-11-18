@@ -149,15 +149,15 @@ pub(crate) struct PainHeader<'a> {
 
 impl<'a> PainHeader<'a> {
     pub(crate) fn new(owner: &'a str) -> Self {
-        let now = chrono::Local::now();
+        let now = jiff::ZonedDateTime::now();
         let owner = owner.trim();
         Self {
             message_id: format!(
                 "GC{}{:08X}",
-                now.format("%Y%m%d%H%M%S"),
+                now.strftime("%Y%m%d%H%M%S"),
                 rand::random::<u32>()
             ),
-            created: now.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            created: now.strftime("%Y-%m-%dT%H:%M:%S").to_string(),
             owner: if owner.is_empty() {
                 "Kontoinhaber"
             } else {

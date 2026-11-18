@@ -337,10 +337,10 @@ fn cents_of(v: &Value) -> Option<i64> {
 fn date_of(v: &Value) -> Option<String> {
     let s = v.as_str()?.trim();
     let d = s.get(..10)?;
-    chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
-        .or_else(|_| chrono::NaiveDate::parse_from_str(d, "%d.%m.%Y"))
+    jiff::civil::Date::strptime("%Y-%m-%d", d)
+        .or_else(|_| jiff::civil::Date::strptime("%d.%m.%Y", d))
         .ok()
-        .map(|d| d.format("%Y-%m-%d").to_string())
+        .map(crate::dates::iso)
 }
 
 /// Booking objects of one transaction response: `{ items, total }` (what
@@ -488,8 +488,8 @@ fn attribute_value(a: &Value) -> String {
             .unwrap_or(text),
         "NUMBER" => number().map(|x| german_number(x, 0, 3)).unwrap_or(text),
         "DATE" => date_of(v)
-            .and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())
-            .map(|d| d.format("%d.%m.%Y").to_string())
+            .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", &d).ok())
+            .map(|d| d.strftime("%d.%m.%Y").to_string())
             .unwrap_or(text),
         "YEARS" => plural("Jahr", "Jahre"),
         "MONTHS" => plural("Monat", "Monate"),

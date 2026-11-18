@@ -13,7 +13,6 @@
 
 use std::sync::{Arc, LazyLock};
 
-use chrono::NaiveDate;
 use regex::Regex;
 use serde::Deserialize;
 
@@ -100,7 +99,7 @@ pub fn parse_date(s: &str) -> Option<String> {
         .collect();
     let year = *nums.iter().find(|n| **n >= 1990)?;
     let day = *nums.iter().find(|n| (1..=31).contains(*n))?;
-    NaiveDate::from_ymd_opt(i32::try_from(year).ok()?, month, day).map(iso)
+    crate::dates::ymd(i32::try_from(year).ok()?, month, day).map(iso)
 }
 
 /// First price found in free text ("EUR 12,99", "12,99 €", "Gesamt: 1.234,56 €").

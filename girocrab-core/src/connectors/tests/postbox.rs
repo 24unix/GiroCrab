@@ -1,6 +1,6 @@
 //! comdirect PostBox next to a FinTS login (#838): switch, due date, storage.
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 
 use crate::connectors::*;
 use crate::documents::RemoteDocument;
@@ -41,8 +41,8 @@ fn doc(account_ref: &str, id: &str) -> RemoteDocument {
     }
 }
 
-fn day(s: &str) -> NaiveDate {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+fn day(s: &str) -> Date {
+    Date::strptime("%Y-%m-%d", s).unwrap()
 }
 
 #[test]

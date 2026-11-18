@@ -259,7 +259,6 @@ fn log_lines(
     connectors: &HashMap<i64, girocrab_core::ConnectorKind>,
     catalog: &[BankDescriptor],
 ) -> Vec<LogLine> {
-    use chrono::TimeZone;
     entries
         .iter()
         .map(|e| {
@@ -269,10 +268,12 @@ fn log_lines(
                 .and_then(|id| connectors.get(&id))
                 .map(|k| connector_name(k, catalog))
                 .unwrap_or_else(|| "–".to_string());
-            let date = chrono::Local
-                .timestamp_millis_opt(e.timestamp_ms)
-                .single()
-                .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+            let date = jiff::Timestamp::from_millisecond(e.timestamp_ms)
+                .map(|t| {
+                    t.to_zoned_datetime(jiff::tz::TimeZone::system())
+                        .strftime("%Y-%m-%d %H:%M")
+                        .to_string()
+                })
                 .unwrap_or_default();
             let mut head = format!(
                 "{date} · {kind} · {} · {}",

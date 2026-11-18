@@ -1315,15 +1315,15 @@ impl Vault {
         let accounts: Vec<(i64, String)> = stmt
             .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<Result<_, _>>()?;
-        let today = chrono::Local::now().date_naive();
+        let today = crate::dates::today();
         let mut due = Vec::new();
         for (id, ext) in accounts {
             if Vault::setting_inner(&db, &statements_auto_key(id))?.as_deref() != Some("1") {
                 continue;
             }
             let last = Vault::setting_inner(&db, &statements_last_key(id))?
-                .and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
-            if last.is_none_or(|d| (today - d).num_days() >= STATEMENTS_AUTO_DAYS) {
+                .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", &d).ok());
+            if last.is_none_or(|d| crate::dates::days_between(d, today) >= STATEMENTS_AUTO_DAYS) {
                 due.push(ext);
             }
         }
@@ -1471,7 +1471,7 @@ impl Vault {
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
-            let since = since_window(chrono::Local::now().date_naive(), days, &newest);
+            let since = since_window(crate::dates::today(), days, &newest);
             (kind, key_str, login, state, settings, since, demo)
         };
         let (since, since_by_account) = since;
@@ -1552,13 +1552,9 @@ impl Vault {
         let last = {
             let db = self.db()?;
             Vault::setting_inner(&db, &postbox_last_key(connection_id))?
-                .and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())
+                .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", &d).ok())
         };
-        Ok(postbox_window(
-            last,
-            chrono::Local::now().date_naive(),
-            mode,
-        ))
+        Ok(postbox_window(last, crate::dates::today(), mode))
     }
 }
 
@@ -1570,19 +1566,15 @@ fn is_comdirect_fints(key: &str) -> bool {
 
 /// The PostBox window of a sync (see [`Vault::postbox_since`]).
 pub(crate) fn postbox_window(
-    last: Option<chrono::NaiveDate>,
-    today: chrono::NaiveDate,
+    last: Option<jiff::civil::Date>,
+    today: jiff::civil::Date,
     mode: PostboxMode,
 ) -> Option<String> {
     match (mode, last) {
         (PostboxMode::Off, _) => None,
         (_, None) => Some(String::new()),
-        (PostboxMode::Due, Some(d)) if (today - d).num_days() < POSTBOX_DAYS => None,
-        (_, Some(d)) => Some(
-            (d - chrono::Duration::days(POSTBOX_DAYS))
-                .format("%Y-%m-%d")
-                .to_string(),
-        ),
+        (PostboxMode::Due, Some(d)) if crate::dates::days_between(d, today) < POSTBOX_DAYS => None,
+        (_, Some(d)) => Some(crate::dates::iso(d - crate::dates::days(POSTBOX_DAYS))),
     }
 }
 
@@ -1634,10 +1626,10 @@ impl Vault {
             )));
         }
         if let Some(d) = &exec_date {
-            let parsed = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
+            let parsed = jiff::civil::Date::strptime("%Y-%m-%d", d).map_err(|_| {
                 CoreError::invalid(tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)."))
             })?;
-            if parsed <= chrono::Local::now().date_naive() {
+            if parsed <= crate::dates::today() {
                 return Err(CoreError::invalid(tr(
                     "Das Ausführungsdatum muss in der Zukunft liegen.",
                 )));
@@ -1730,10 +1722,10 @@ impl Vault {
             .filter(|d| !d.is_empty())
             .map(str::to_string);
         if let Some(d) = &exec_date {
-            let parsed = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
+            let parsed = jiff::civil::Date::strptime("%Y-%m-%d", d).map_err(|_| {
                 CoreError::invalid(tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)."))
             })?;
-            if parsed <= chrono::Local::now().date_naive() {
+            if parsed <= crate::dates::today() {
                 return Err(CoreError::invalid(tr(
                     "Das Ausführungsdatum muss in der Zukunft liegen.",
                 )));
@@ -1814,8 +1806,8 @@ impl Vault {
                 if request.amount_cents <= 0 {
                     return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
                 }
-                let today = chrono::Local::now().date_naive();
-                let date = |d: &str| chrono::NaiveDate::parse_from_str(d.trim(), "%Y-%m-%d").ok();
+                let today = crate::dates::today();
+                let date = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d.trim()).ok();
                 let first = date(&request.first_date).ok_or_else(|| {
                     CoreError::invalid(tr("Der erste Termin ist ungültig (JJJJ-MM-TT)."))
                 })?;

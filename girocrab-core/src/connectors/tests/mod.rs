@@ -532,7 +532,7 @@ fn pending_batch_booking_is_replaced_by_the_banks_booking_whatever_its_iban() {
     };
     assert_eq!(pending(), 2);
     // A single payment of the same size is no batch booking: both stay pending.
-    let today = chrono::Local::now().date_naive().to_string();
+    let today = crate::dates::today().to_string();
     let other = RemoteTransaction {
         account_ref: "f:1".into(),
         external_id: "bank-0".into(),
@@ -551,8 +551,8 @@ fn pending_batch_booking_is_replaced_by_the_banks_booking_whatever_its_iban() {
     let booked = RemoteTransaction {
         account_ref: "f:1".into(),
         external_id: "bank-1".into(),
-        booking_date: chrono::Local::now().date_naive().to_string(),
-        value_date: chrono::Local::now().date_naive().to_string(),
+        booking_date: crate::dates::today().to_string(),
+        value_date: crate::dates::today().to_string(),
         amount_cents: -3_550,
         currency: "EUR".into(),
         counterparty: "A".into(),

@@ -61,7 +61,7 @@ pub struct DebitFile {
 }
 
 fn check_date(d: &str) -> CoreResult<()> {
-    chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+    jiff::civil::Date::strptime("%Y-%m-%d", d)
         .map(|_| ())
         .map_err(|_| CoreError::invalid(tr("Das Fälligkeitsdatum ist ungültig.")))
 }

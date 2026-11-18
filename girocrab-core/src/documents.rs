@@ -124,9 +124,9 @@ pub(crate) const UNSEEN_DAYS: i64 = 45;
 /// `seen_at` of a document arriving with this date: now if it is old, else NULL (unread). An
 /// unreadable date counts as new.
 fn seen_on_arrival(date: &str) -> Option<i64> {
-    let d = chrono::NaiveDate::parse_from_str(date.get(..10)?, "%Y-%m-%d").ok()?;
-    let old = (chrono::Local::now().date_naive() - d).num_days() > UNSEEN_DAYS;
-    old.then(|| chrono::Utc::now().timestamp())
+    let d = jiff::civil::Date::strptime("%Y-%m-%d", date.get(..10)?).ok()?;
+    let old = crate::dates::days_between(d, crate::dates::today()) > UNSEEN_DAYS;
+    old.then(|| jiff::Timestamp::now().as_second())
 }
 
 /// Marks documents read (`seen` true) or unread; returns how many changed.
@@ -331,7 +331,7 @@ pub fn dates_in(text: &str) -> Vec<String> {
         } else {
             c[3].parse().unwrap_or(0)
         };
-        if chrono::NaiveDate::from_ymd_opt(y, m, d).is_some() {
+        if crate::dates::ymd(y, m, d).is_some() {
             let iso = format!("{y:04}-{m:02}-{d:02}");
             if !out.contains(&iso) {
                 out.push(iso);
@@ -347,7 +347,7 @@ pub fn dates_in(text: &str) -> Vec<String> {
             continue;
         }
         let s = format!("{}-{}-{}", &c[1], &c[2], &c[3]);
-        if chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").is_ok() && !out.contains(&s) {
+        if jiff::civil::Date::strptime("%Y-%m-%d", &s).is_ok() && !out.contains(&s) {
             out.push(s);
         }
     }
@@ -355,9 +355,9 @@ pub fn dates_in(text: &str) -> Vec<String> {
 }
 
 fn days_between(a: &str, b: &str) -> Option<i64> {
-    let a = chrono::NaiveDate::parse_from_str(a, "%Y-%m-%d").ok()?;
-    let b = chrono::NaiveDate::parse_from_str(b, "%Y-%m-%d").ok()?;
-    Some((a - b).num_days().abs())
+    let a = jiff::civil::Date::strptime("%Y-%m-%d", a).ok()?;
+    let b = jiff::civil::Date::strptime("%Y-%m-%d", b).ok()?;
+    Some(crate::dates::days_between(b, a).abs())
 }
 
 /// Days between a receipt date and a booking that score full date points; a
@@ -494,9 +494,12 @@ impl Vault {
         let amounts: Vec<i64> = amounts_in(text).iter().flat_map(|a| [*a, -a]).collect();
         let mut days: Vec<String> = dates_in(text)
             .iter()
-            .filter_map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-            .flat_map(|d| (-CLOSE_DAYS..=CLOSE_DAYS).map(move |k| d + chrono::Duration::days(k)))
-            .map(|d| d.format("'%Y-%m-%d'").to_string())
+            .filter_map(|d| jiff::civil::Date::strptime("%Y-%m-%d", d).ok())
+            // "gültig bis 31.12.9999" is common: jiff dates end there, so skip what lies past it.
+            .flat_map(|d| {
+                (-CLOSE_DAYS..=CLOSE_DAYS).filter_map(move |k| crate::dates::add_days(d, k))
+            })
+            .map(|d| d.strftime("'%Y-%m-%d'").to_string())
             .collect();
         days.sort_unstable();
         days.dedup();
@@ -665,7 +668,7 @@ impl Vault {
     ) -> Result<i64, CoreError> {
         let db = self.db()?;
         let mime = sniff_mime(&bytes, &file_name);
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = crate::dates::today_iso();
         let id = insert_doc(
             &db,
             None,
@@ -1197,9 +1200,9 @@ mod tests {
             .unwrap()
             .transactions;
         let de = |iso: &str, shift: i64| {
-            let d = chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d").unwrap();
-            (d + chrono::Duration::days(shift))
-                .format("%d.%m.%Y")
+            let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).unwrap();
+            (d + crate::dates::days(shift))
+                .strftime("%d.%m.%Y")
                 .to_string()
         };
         let mut name_date_hits = 0;
@@ -1224,14 +1227,23 @@ mod tests {
     }
 
     #[test]
+    fn a_date_at_the_end_of_the_calendar_does_not_panic() {
+        // jiff dates stop at 9999-12-31, so the days around it must be skipped.
+        let text = "Freistellungsauftrag gültig bis 31.12.9999";
+        assert!(dates_in(text).contains(&"9999-12-31".to_string()));
+        let (_dir, v) = demo_vault();
+        v.bookings_for_matching(text).unwrap();
+    }
+
+    #[test]
     fn thousands_of_dates_keep_the_prefilter_sql_valid() {
         let (_dir, v) = demo_vault();
-        let start = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        let start = jiff::civil::date(2000, 1, 1);
         let text: String = (0..3000)
             .map(|k| {
                 format!(
                     "{} ",
-                    (start + chrono::Duration::days(k * 2)).format("%d.%m.%Y")
+                    (start + crate::dates::days(k * 2)).strftime("%d.%m.%Y")
                 )
             })
             .collect();
@@ -1256,8 +1268,8 @@ mod tests {
         let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
-        let yesterday = (chrono::Local::now().date_naive() - chrono::Duration::days(1))
-            .format("%d.%m.%Y")
+        let yesterday = (crate::dates::today() - crate::dates::days(1))
+            .strftime("%d.%m.%Y")
             .to_string();
         let pdf = simple_pdf(&[
             "REWE Markt GmbH".into(),
@@ -1301,11 +1313,7 @@ mod tests {
             )
             .unwrap();
             let acc = db.last_insert_rowid();
-            let day = |ago: i64| {
-                (chrono::Local::now().date_naive() - chrono::Duration::days(ago))
-                    .format("%Y-%m-%d")
-                    .to_string()
-            };
+            let day = |ago: i64| crate::dates::iso(crate::dates::today() - crate::dates::days(ago));
             let add = |title: &str, url: &str, date: &str| {
                 insert_doc(
                     &db,
@@ -1391,7 +1399,7 @@ mod tests {
             )
             .unwrap();
             let deleted_booking = db.last_insert_rowid();
-            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let today = crate::dates::today_iso();
             let add = |booking: Option<i64>, account: Option<i64>, url: &str| {
                 insert_doc(
                     &db,
@@ -1429,8 +1437,8 @@ mod tests {
         let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
-        let yesterday = (chrono::Local::now().date_naive() - chrono::Duration::days(1))
-            .format("%d.%m.%Y")
+        let yesterday = (crate::dates::today() - crate::dates::days(1))
+            .strftime("%d.%m.%Y")
             .to_string();
         let pdf = simple_pdf(&[
             "REWE Markt GmbH".into(),

@@ -296,7 +296,7 @@ impl BankConnector for DemoConnector {
 
     async fn fetch(&mut self, _ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let today = super::today();
-        let stamp = chrono::Local::now().timestamp();
+        let stamp = jiff::Timestamp::now().as_second();
         let mut out = FetchResult::default();
         // A magic-login connection at a bank without own demo accounts (generic
         // FinTS, comdirect, …) shows the demo giro bank's accounts.

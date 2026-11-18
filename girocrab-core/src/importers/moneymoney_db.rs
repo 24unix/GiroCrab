@@ -618,7 +618,9 @@ pub(crate) fn real_to_cents(x: f64) -> Option<i64> {
 
 /// MoneyMoney dates are Unix seconds at 12:00 UTC → `YYYY-MM-DD` (UTC).
 pub(crate) fn unix_to_date(ts: i64) -> Option<String> {
-    chrono::DateTime::from_timestamp(ts, 0).map(|d| d.date_naive().format("%Y-%m-%d").to_string())
+    jiff::Timestamp::from_second(ts)
+        .ok()
+        .map(|t| crate::dates::iso(crate::dates::utc_date(t)))
 }
 
 /// GiroCrab's colour for categories nobody has given one.

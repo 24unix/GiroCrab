@@ -160,8 +160,8 @@ fn eur_and_native(s: &str) -> (Option<i64>, Option<(i64, String)>) {
 
 /// `YYYY-MM-DD` → `DD.MM.YYYY` (the site's date format).
 fn site_date(iso: &str) -> Option<String> {
-    let d = chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d").ok()?;
-    Some(d.format("%d.%m.%Y").to_string())
+    let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).ok()?;
+    Some(d.strftime("%d.%m.%Y").to_string())
 }
 
 /// Session id from a URL or page (`;jsessionid=…`).

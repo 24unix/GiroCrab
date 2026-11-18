@@ -1,7 +1,6 @@
 //! Conservative reconciliation inside the import transaction. Indexed seven-day
 //! candidate buckets avoid comparing every hold with every stored booking.
 use super::*;
-use chrono::{Datelike, NaiveDate};
 struct Row {
     id: i64,
     ext: String,
@@ -52,8 +51,8 @@ pub(crate) fn settle_holds(
                 Ok(Row {
                     id: r.get(0)?,
                     ext: r.get(1)?,
-                    day: NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-                        .map_or(i32::MIN, |d| d.num_days_from_ce()),
+                    day: jiff::civil::Date::strptime("%Y-%m-%d", &date)
+                        .map_or(i32::MIN, crate::dates::day_number),
                     cents: r.get(3)?,
                     merchant: merchant
                         .split_whitespace()

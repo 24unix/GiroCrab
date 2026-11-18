@@ -42,7 +42,7 @@ fn ids_count_per_content_not_per_position() {
 
 #[test]
 fn since_is_per_account_with_a_common_floor() {
-    let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+    let d = |s: &str| jiff::civil::Date::strptime("%Y-%m-%d", s).unwrap();
     let newest = vec![
         ("A".to_string(), Some("2026-11-01".to_string())),
         ("B".to_string(), Some("2026-10-01".to_string())), // lagging behind

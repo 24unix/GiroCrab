@@ -14,7 +14,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
-use chrono::{Datelike, NaiveDate};
 use regex::Regex;
 use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
@@ -135,7 +134,7 @@ pub fn parse_date(s: &str) -> Option<String> {
     static MONTH_NAME_DAY: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"(?i)^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})").unwrap());
     let s = s.trim();
-    let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).map(iso);
+    let ymd = |y, m, d| crate::dates::ymd(y, m, d).map(iso);
     let year = |y: &str| -> Option<i32> {
         let n: i32 = y.parse().ok()?;
         Some(if y.len() == 2 { 2000 + n } else { n })
@@ -864,7 +863,8 @@ pub fn parse_statement_text(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
         Regex::new(r"^\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+(?:(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+)?(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})\s*(-|CR|H|S|\+)?\s*$").unwrap()
     });
     // statement year from any full date or "Abrechnung … 2025"
-    let default_year = find_de_date(text).map_or_else(|| chrono::Local::now().year(), |d| d.year());
+    let default_year =
+        find_de_date(text).map_or_else(|| crate::dates::today().year(), |d| d.year());
     let mut out = Vec::new();
     for line in text.lines() {
         let Some(c) = LINE.captures(line) else {
