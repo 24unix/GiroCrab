@@ -145,6 +145,22 @@ fn eb_option(p: &MoneyMoneyDbPreview, bank: i64) -> Option<MoneyMoneyDbConnectio
         .cloned()
 }
 
+/// (amount, category name, note) of the splits of booking `id`.
+fn split_lines(v: &Vault, id: i64) -> Vec<(i64, String, String)> {
+    let db = v.db().unwrap();
+    let mut q = db
+        .prepare(
+            "SELECT s.amount_cents, IFNULL(c.name, ''), s.note FROM transaction_splits s
+               LEFT JOIN categories c ON c.id = s.category_id
+              WHERE s.transaction_id = ?1 ORDER BY s.id",
+        )
+        .unwrap();
+    q.query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
 fn bookings(v: &Vault, account_id: i64) -> Vec<crate::models::Booking> {
     v.list_transactions(BookingFilter {
         account_ids: vec![account_id],
@@ -306,8 +322,8 @@ fn preview_lists_accounts_banks_categories_and_totals() {
     assert_eq!(giro.group_name, "Privat");
     assert_eq!(giro.bank_name, "comdirect");
     assert_eq!(giro.suggested_kind, AccountKind::Checking);
-    // 5 = salary, REWE, bakery, 2 split parts (parent + pending not counted)
-    assert_eq!((giro.booking_count, giro.pending_count), (5, 1));
+    // 4 = salary, REWE, bakery, the split booking (its parts + pending not counted)
+    assert_eq!((giro.booking_count, giro.pending_count), (4, 1));
     assert_eq!(giro.first_date.as_deref(), Some("2005-01-01"));
     assert_eq!(giro.last_date.as_deref(), Some("2026-03-07"));
     // newest `balances` row (100,00, 2020-01-01) + booked bookings from that
@@ -338,7 +354,7 @@ fn preview_lists_accounts_banks_categories_and_totals() {
     );
     assert_eq!(
         (p.total_bookings, p.pending_bookings, p.split_parts),
-        (7, 1, 2)
+        (6, 1, 0)
     );
     assert_eq!(p.notes_count, 2);
     assert_eq!(p.date_range_start.as_deref(), Some("2005-01-01"));
@@ -369,7 +385,7 @@ fn import_categories_splits_pending_notes_and_balance() {
     assert_eq!((r.accounts_created, r.accounts_merged), (4, 0));
     assert_eq!(
         (r.bookings_new, r.bookings_duplicates, r.pending_skipped),
-        (7, 0, 1)
+        (6, 0, 1)
     );
     assert_eq!(r.notes_imported, 2);
     // Haushalt, Supermarkt, Gehalt, Wohnen, Nebenkosten, Strom, Steuern / Büro
@@ -382,7 +398,7 @@ fn import_categories_splits_pending_notes_and_balance() {
     assert_eq!(giro.balance_cents, 10_000 - 4567 - 1230 - 10_000);
     assert_eq!(giro.balance_date, "2026-03-07");
     let bs = bookings(&v, giro.id);
-    assert_eq!(bs.len(), 5);
+    assert_eq!(bs.len(), 4);
     let find = |name: &str, cents: i64| {
         bs.iter()
             .find(|b| b.counterparty == name && b.amount_cents == cents)
@@ -408,16 +424,19 @@ fn import_categories_splits_pending_notes_and_balance() {
     assert_eq!(salary.note, "erstes Gehalt");
     assert_eq!(salary.category_path, "Gehalt");
     assert_eq!(salary.booking_date, "2005-01-01");
-    // splits: parts with own categories, parent not imported
+    // #877: the split booking is one booking, its parts are splits with their
+    // categories and, as note, the purpose where it differs from the booking's
+    let whole = find("Kaufhaus Muster", -10_000);
     assert_eq!(
-        find("Kaufhaus Muster", -6000).category_path,
-        "Haushalt › Supermarkt"
+        split_lines(&v, whole.id),
+        vec![
+            (-6000, "Supermarkt".into(), "Einkauf Lebensmittel".into()),
+            (-4000, "Strom".into(), "Einkauf Lampe".into()),
+        ]
     );
-    assert_eq!(
-        find("Kaufhaus Muster", -4000).category_path,
-        "Wohnen › Nebenkosten › Strom"
-    );
-    assert!(!bs.iter().any(|b| b.amount_cents == -10_000));
+    assert!(!bs
+        .iter()
+        .any(|b| b.amount_cents == -6000 || b.amount_cents == -4000));
     // pending not imported
     assert!(!bs.iter().any(|b| b.counterparty == "Streaming AG"));
 
@@ -519,6 +538,312 @@ fn reimport_is_idempotent() {
     );
 }
 
+/// Imports `path` into a fresh vault; the Girokonto's id.
+fn import_giro(v: &Vault, path: &str, categories: bool) -> i64 {
+    import_with(v, path, |o| o.import_categories = categories);
+    account_by_name(v, "Girokonto").id
+}
+
+/// Preview + import of `path` with the UI's options, adjusted by `tweak`.
+fn import_with(
+    v: &Vault,
+    path: &str,
+    tweak: impl FnOnce(&mut MoneyMoneyDbImportOptions),
+) -> MoneyMoneyDbImportResult {
+    let p = v
+        .preview_moneymoney_database(path.into(), PW.into(), None)
+        .unwrap();
+    let mut o = options_from(&p, false);
+    tweak(&mut o);
+    v.import_moneymoney_database(path.into(), PW.into(), o)
+        .unwrap()
+}
+
+/// The Girokonto's only booking of `cents`.
+fn one_booking(v: &Vault, account: i64, cents: i64) -> crate::models::Booking {
+    let mut bs: Vec<_> = bookings(v, account)
+        .into_iter()
+        .filter(|b| b.amount_cents == cents)
+        .collect();
+    assert_eq!(bs.len(), 1, "{cents}");
+    bs.remove(0)
+}
+
+#[test]
+fn bank_adopts_the_split_booking() {
+    let v = vault();
+    let giro = import_giro(&v, &fake_db(), true);
+    let whole = one_booking(&v, giro, -10_000);
+    let db = v.db().unwrap();
+    // the bank delivers the whole amount, which no single part had (#877)
+    assert!(crate::importers::moneymoney_import::adopt_import(
+        &db,
+        giro,
+        "bank-9",
+        "2026-03-07",
+        -10_000,
+        "",
+        "Kaufhaus Muster",
+        "Einkauf",
+        "KARTENZAHLUNG"
+    )
+    .unwrap());
+    drop(db);
+    let after = one_booking(&v, giro, -10_000);
+    assert_eq!(after.id, whole.id);
+    assert_eq!(split_lines(&v, whole.id).len(), 2);
+}
+
+#[test]
+fn split_booking_goes_onto_a_bank_booking_already_there() {
+    let v = vault();
+    let acc = {
+        let db = v.db().unwrap();
+        let gid = Vault::ensure_group(&db, "Giro & Tagesgeld", "building.columns", 1).unwrap();
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name, iban, currency, kind, balance_cents)
+             VALUES (?1, 'abc-123', 'Mein Giro', 'DE89370400440532013000', 'EUR', 'checking', 0)",
+            [gid],
+        )
+        .unwrap();
+        let id = db.last_insert_rowid();
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+             VALUES (?1, 'bank-2', '2026-03-07', -10000, 'Kaufhaus Muster', 'Einkauf')",
+            [id],
+        )
+        .unwrap();
+        id
+    };
+    let path = fake_db();
+    let import = || import_with(&v, &path, |o| o.accounts.retain(|c| c.mm_id == 1));
+    import();
+    let whole = one_booking(&v, acc, -10_000);
+    assert_eq!(whole.external_id, "bank-2");
+    assert_eq!(
+        split_lines(&v, whole.id)
+            .iter()
+            .map(|l| (l.0, l.1.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(-6000, "Supermarkt"), (-4000, "Strom")]
+    );
+    // splits the user removed are not brought back
+    v.set_transaction_splits(whole.id, vec![]).unwrap();
+    import();
+    assert_eq!(one_booking(&v, acc, -10_000).id, whole.id);
+    assert!(split_lines(&v, whole.id).is_empty());
+}
+
+#[test]
+fn reimport_keeps_the_parts_of_an_earlier_import() {
+    let v = vault();
+    let path = fake_db();
+    let giro = import_giro(&v, &path, true);
+    // an account imported before #877: the split booking's parts as bookings
+    let whole = one_booking(&v, giro, -10_000);
+    {
+        let db = v.db().unwrap();
+        db.execute("DELETE FROM transactions WHERE id = ?1", [whole.id])
+            .unwrap();
+        for (ext, cents, purpose) in [
+            ("mm-a-0", -6000, "Einkauf Lebensmittel"),
+            ("mm-b-0", -4000, "Einkauf Lampe"),
+        ] {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+                 VALUES (?1, ?2, '2026-03-07', ?3, 'Kaufhaus Muster', ?4)",
+                params![giro, ext, cents, purpose],
+            )
+            .unwrap();
+        }
+    }
+    let reimport = || import_with(&v, &path, |_| {});
+    let r = reimport();
+    assert_eq!(r.bookings_new, 0);
+    assert!(!bookings(&v, giro).iter().any(|b| b.amount_cents == -10_000));
+    let check = r
+        .account_checks
+        .iter()
+        .find(|c| c.name == "Girokonto")
+        .unwrap();
+    assert_eq!(check.found_bookings, check.mm_bookings, "{check:?}");
+    // also when the user deleted the parts
+    v.db()
+        .unwrap()
+        .execute("UPDATE transactions SET deleted_ms = 1 WHERE external_id LIKE 'mm-%-0' AND account_id = ?1 AND amount_cents IN (-6000, -4000)", [giro])
+        .unwrap();
+    assert_eq!(reimport().bookings_new, 0);
+    assert!(!bookings(&v, giro).iter().any(|b| b.amount_cents == -10_000));
+}
+
+#[test]
+fn split_bookings_that_cannot_be_splits() {
+    let extra = r#"
+INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, currency, timestamp, value_timestamp, comment, booked, unformatted_type, unformatted_purpose, name, checkmark, splitted, split_key, category_key) VALUES
+  (20, 1, '', '', -50.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Rest offen', 'Markt A', 0, 1, 20, 1),
+  (21, 1, '', '', -30.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Rest offen', 'Markt A', 0, 0, 20, 2),
+  (22, 1, '', '', -10.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Rest offen', 'Markt A', 0, 0, 20, 4),
+  (23, 1, '', '', -25.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Ein Teil', 'Markt B', 0, 1, 23, 1),
+  (24, 1, '', '', -25.0, 'EUR', 1772884800, 0, 'Teilnotiz', 1, 'KARTENZAHLUNG', 'Ein Teil', 'Markt B', 0, 0, 23, 2),
+  (25, 1, '', '', 0.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Ein Teil', 'Markt B', 0, 0, 23, 4);
+"#;
+    let path = fake_db_with(false, extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    assert_eq!(p.split_parts, 2, "the parts that do not add up");
+    let giro = import_giro(&v, &path, true);
+    // parts not adding up to the booking stay bookings of their own
+    assert!(!bookings(&v, giro).iter().any(|b| b.amount_cents == -5000));
+    assert!(split_lines(&v, one_booking(&v, giro, -3000).id).is_empty());
+    one_booking(&v, giro, -1000);
+    // a single part ≠ 0: the booking takes its category and note, no split
+    let b = one_booking(&v, giro, -2500);
+    assert!(split_lines(&v, b.id).is_empty());
+    assert_eq!(b.category_path, "Haushalt › Supermarkt");
+    assert_eq!(b.note, "Teilnotiz");
+    // a second import adds nothing (not the part of 0 either)
+    let n = bookings(&v, giro).len();
+    assert_eq!(import_with(&v, &path, |_| {}).bookings_new, 0);
+    assert_eq!(bookings(&v, giro).len(), n);
+}
+
+#[test]
+fn reimport_keeps_parts_whose_texts_changed() {
+    let v = vault();
+    let path = fake_db();
+    let giro = import_giro(&v, &path, true);
+    // parts of an earlier import whose texts were cleaned differently back then
+    let whole = one_booking(&v, giro, -10_000);
+    {
+        let db = v.db().unwrap();
+        db.execute("DELETE FROM transactions WHERE id = ?1", [whole.id])
+            .unwrap();
+        for (ext, cents) in [("mm-a-0", -6000), ("mm-b-0", -4000)] {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+                 VALUES (?1, ?2, '2026-03-07', ?3, 'KAUFHAUS MUSTER GMBH', 'alt')",
+                params![giro, ext, cents],
+            )
+            .unwrap();
+        }
+    }
+    assert_eq!(import_with(&v, &path, |_| {}).bookings_new, 0);
+    assert!(!bookings(&v, giro).iter().any(|b| b.amount_cents == -10_000));
+}
+
+#[test]
+fn split_parts_inherit_currency_and_pending_rules() {
+    let extra = r#"
+INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, currency, timestamp, value_timestamp, comment, booked, unformatted_type, unformatted_purpose, name, checkmark, splitted, split_key, category_key) VALUES
+  (30, 1, '', '', -80.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Wocheneinkauf', 'Markt C', 0, 1, 30, 2),
+  (31, 1, '', '', -50.0, 'EUR', 1772884800, 0, 'Notiz A', 1, 'KARTENZAHLUNG', 'Wocheneinkauf', 'Markt C', 0, 0, 30, 1),
+  (32, 1, '', '', -30.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Batterien', 'Markt C', 0, 0, 30, 4),
+  (33, 1, '', '', -20.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Devisen', 'Markt D', 0, 1, 33, 1),
+  (34, 1, '', '', -12.0, 'USD', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Devisen', 'Markt D', 0, 0, 33, 1),
+  (35, 1, '', '', -8.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Devisen', 'Markt D', 0, 0, 33, 1),
+  (36, 1, '', '', -15.0, 'EUR', 1772884800, 0, '', 0, 'VORMERKUNG', 'Offen', 'Markt E', 0, 1, 36, 1),
+  (37, 1, '', '', -9.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Offen', 'Markt E', 0, 0, 36, 1),
+  (38, 1, '', '', -6.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Offen', 'Markt E', 0, 0, 36, 1);
+"#;
+    let path = fake_db_with(false, extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    assert_eq!(p.split_parts, 4, "another currency, pending parent");
+    let giro = import_giro(&v, &path, true);
+    // the uncategorised part takes the booking's category, notes and texts kept
+    let c = one_booking(&v, giro, -8000);
+    assert_eq!(
+        split_lines(&v, c.id),
+        vec![
+            (-5000, "Supermarkt".into(), "Notiz A".into()),
+            (-3000, "Strom".into(), "Batterien".into()),
+        ]
+    );
+    // a part in another currency: parts as bookings
+    assert!(!bookings(&v, giro).iter().any(|b| b.amount_cents == -2000));
+    one_booking(&v, giro, -1200);
+    one_booking(&v, giro, -800);
+    // pending split booking: its booked parts as bookings
+    one_booking(&v, giro, -900);
+    one_booking(&v, giro, -600);
+
+    // without notes the part's own note is left out, its differing purpose stays
+    let v = vault();
+    import_with(&v, &path, |o| o.import_notes = false);
+    let giro = account_by_name(&v, "Girokonto").id;
+    let c = one_booking(&v, giro, -8000);
+    assert_eq!(
+        split_lines(&v, c.id),
+        vec![
+            (-5000, "Supermarkt".into(), String::new()),
+            (-3000, "Strom".into(), "Batterien".into()),
+        ]
+    );
+}
+
+#[test]
+fn split_booking_without_categories_has_no_splits() {
+    let v = vault();
+    let giro = import_giro(&v, &fake_db(), false);
+    let whole = one_booking(&v, giro, -10_000);
+    assert!(split_lines(&v, whole.id).is_empty());
+    assert!(!bookings(&v, giro).iter().any(|b| b.amount_cents == -6000));
+    // the parts' texts are kept in the booking's note
+    assert_eq!(whole.note, "Einkauf Lebensmittel · Einkauf Lampe");
+}
+
+#[test]
+fn split_notes_are_counted_like_the_preview() {
+    let extra = r#"
+INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, currency, timestamp, value_timestamp, comment, booked, unformatted_type, unformatted_purpose, name, checkmark, splitted, split_key, category_key) VALUES
+  (40, 1, '', '', -30.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Markt', 'Markt D', 0, 1, 40, 1),
+  (41, 1, '', '', -20.0, 'EUR', 1772884800, 0, 'für Oma', 1, 'KARTENZAHLUNG', 'Markt', 'Markt D', 0, 0, 40, 2),
+  (42, 1, '', '', -10.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Markt', 'Markt D', 0, 0, 40, 4);
+"#;
+    let path = fake_db_with(false, extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let r = import_with(&v, &path, |_| {});
+    assert_eq!(r.notes_imported, p.notes_count);
+    let giro = account_by_name(&v, "Girokonto").id;
+    let lines = split_lines(&v, one_booking(&v, giro, -3000).id);
+    assert_eq!(lines[0].2, "für Oma");
+}
+
+#[test]
+fn a_bank_booking_like_a_part_does_not_take_the_split_apart() {
+    let v = vault();
+    let acc = {
+        let db = v.db().unwrap();
+        let gid = Vault::ensure_group(&db, "Giro & Tagesgeld", "building.columns", 1).unwrap();
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name, iban, currency, kind, balance_cents)
+             VALUES (?1, 'abc-123', 'Mein Giro', 'DE89370400440532013000', 'EUR', 'checking', 0)",
+            [gid],
+        )
+        .unwrap();
+        let id = db.last_insert_rowid();
+        // fetched from the bank: another purchase, same day, name and amount as a part
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+             VALUES (?1, 'bank-3', '2026-03-07', -6000, 'Kaufhaus Muster', 'Einkauf Lebensmittel')",
+            [id],
+        )
+        .unwrap();
+        id
+    };
+    import_with(&v, &fake_db(), |o| o.accounts.retain(|c| c.mm_id == 1));
+    let whole = one_booking(&v, acc, -10_000);
+    assert_eq!(split_lines(&v, whole.id).len(), 2);
+    assert_eq!(one_booking(&v, acc, -6000).external_id, "bank-3");
+}
+
 #[test]
 fn iban_match_merges_into_existing_synced_account() {
     let v = vault();
@@ -562,7 +887,7 @@ fn iban_match_merges_into_existing_synced_account() {
     assert_eq!((r.accounts_created, r.accounts_merged), (0, 1));
     assert_eq!(
         (r.bookings_new, r.bookings_duplicates, r.bookings_enriched),
-        (4, 1, 1)
+        (3, 1, 1)
     );
     assert_eq!((r.connections_created, r.connections_existing), (1, 1));
     let acc = v
@@ -575,7 +900,7 @@ fn iban_match_merges_into_existing_synced_account() {
     assert_eq!(acc.balance_cents, 123_456);
     assert_eq!(acc.name, "Mein Giro");
     let bs = bookings(&v, existing);
-    assert_eq!(bs.len(), 5);
+    assert_eq!(bs.len(), 4);
     let rewe = bs.iter().find(|b| b.counterparty == "REWE Markt").unwrap();
     assert_eq!(rewe.category_path, "Haushalt › Supermarkt");
     assert_eq!(v.list_accounts().unwrap().len(), 1);
@@ -2329,7 +2654,7 @@ fn account_checks_confirm_a_complete_import() {
         .iter()
         .find(|c| c.name == "Girokonto")
         .unwrap();
-    assert_eq!(giro.mm_bookings, 5);
+    assert_eq!(giro.mm_bookings, 4);
     let total: u32 = r.account_checks.iter().map(|c| c.mm_bookings).sum();
     assert_eq!(total, r.bookings_new);
 
@@ -2350,7 +2675,7 @@ fn account_checks_confirm_a_complete_import() {
         .find(|c| c.name == "Girokonto")
         .unwrap();
     assert!(giro.ok, "{giro:?}");
-    assert_eq!((giro.found_bookings, giro.deleted_bookings), (4, 1));
+    assert_eq!((giro.found_bookings, giro.deleted_bookings), (3, 1));
 }
 
 #[test]
@@ -2397,7 +2722,7 @@ fn account_check_flags_missing_bookings_and_a_wrong_balance() {
     )
     .unwrap();
     assert!(!c.ok);
-    assert_eq!((c.mm_bookings, c.found_bookings), (5, 4));
+    assert_eq!((c.mm_bookings, c.found_bookings), (4, 3));
     assert_eq!(c.girocrab_balance_cents, c.mm_balance_cents + 1);
     // a bank-synced account keeps the bank's balance: only the bookings count
     let c = check_account(&db, a, "Girokonto", giro.account_id, &src.rows_for(a), true).unwrap();
