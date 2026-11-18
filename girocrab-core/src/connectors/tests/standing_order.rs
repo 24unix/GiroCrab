@@ -102,12 +102,8 @@ fn job(action: Action, order_id: &str) -> StandingOrderJob {
 async fn run(vault: &Arc<Vault>, account_id: i64, order: StandingOrderJob) {
     let ctx = ConnectContext {
         connection_id: 1,
-        login_name: String::new(),
-        secret: crate::secret::SecretString::new(String::new()),
-        settings: Default::default(),
-        state: serde_json::Value::Null,
         since: "2020-01-01".into(),
-        since_by_account: Default::default(),
+        ..Default::default()
     };
     let s = TransferSession::new(
         Arc::clone(vault),

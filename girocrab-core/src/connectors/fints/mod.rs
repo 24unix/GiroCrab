@@ -509,16 +509,12 @@ impl BankConnector for FinTsConnector {
         // not yet booked entries ("vorgemerkt"), see `camt::HOLD_PREFIX`
         let (mut holds_listed, mut holds_complete) = (false, true);
         // Explicit statements fetch (Vault::fetch_account_statements): HKEKA of one account only.
-        let auto_statements: Vec<String> = ctx
-            .settings
-            .get(super::STATEMENTS_AUTO)
-            .map(|v| v.expose().split(',').map(str::to_string).collect())
-            .unwrap_or_default();
-        if let Some(wanted) = ctx.settings.get(super::STATEMENTS_ONLY) {
-            let wanted = wanted.expose().to_string();
-            let Some((acc, upd)) = accounts.iter().find(|(a, _)| account_label(a) == wanted) else {
+        let auto_statements = ctx.documents.due_statements();
+        if let super::Documents::StatementsOnly(wanted) = &ctx.documents {
+            let Some((acc, upd)) = accounts.iter().find(|(a, _)| account_label(a) == *wanted)
+            else {
                 return Err(CoreError::NotFound {
-                    what: trf("Konto {0}", &[&wanted]),
+                    what: trf("Konto {0}", &[wanted]),
                 });
             };
             // HKEKA, or HKEKP when the bank offers only that (DKB, #449)
@@ -530,7 +526,7 @@ impl BankConnector for FinTsConnector {
                 crate::depot_debug::log("statements: no PDF statements offered for this account");
                 return Ok(result);
             };
-            result.documents = match self.statements_pdf(ctx, acc, &wanted).await {
+            result.documents = match self.statements_pdf(ctx, acc, wanted).await {
                 Ok(d) => d,
                 Err(CoreError::Bank { code, .. }) if matches!(code.as_str(), "9130" | "9140") => {
                     crate::depot_debug::log(&format!("statements: {tx} unsupported ({code})"));

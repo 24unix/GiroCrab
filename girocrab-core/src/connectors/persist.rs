@@ -988,21 +988,6 @@ pub(crate) fn group_for(kind: AccountKind) -> (&'static str, &'static str, i32) 
     }
 }
 
-/// Setting key marking a statements-only session (value = external_ref of the account).
-pub(crate) const STATEMENTS_ONLY: &str = "__statements_only";
-/// Setting listing the accounts (external refs, comma-separated) whose PDF
-/// statements a regular sync should also fetch (opt-in, GitHub #57).
-pub(crate) const STATEMENTS_AUTO: &str = "__statements_auto";
-/// Context setting of a sync of a connection whose document retrieval is switched off
-/// ("Dokumente abrufen" in the connection's settings): connectors skip downloading documents and
-/// remember nothing of them, so a later sync can fetch what is missing.
-pub(crate) const DOCUMENTS_OFF: &str = "__documents_off";
-
-/// Context setting: the day document retrieval was switched off (oldest), while it was switched
-/// back on and the documents since are not all fetched yet. Connectors that read documents from a
-/// window (Trade Republic's timeline, bunq's receipts) reach back to it.
-pub(crate) const DOCUMENTS_CATCHUP: &str = "__documents_catchup";
-
 /// Day retrieval was switched off; moved to the catch-up key once it is switched on again.
 fn documents_off_since_key(connection_id: i64) -> String {
     format!("documents.fetch.off_since.{connection_id}")
@@ -1050,12 +1035,6 @@ pub(crate) fn documents_fetch_on(
 }
 /// Days between two automatic statement fetches of one account.
 const STATEMENTS_AUTO_DAYS: i64 = 7;
-/// Setting listing the accounts (external refs, one per line) whose data a
-/// sync does not store: switched off or pending in the account selection,
-/// archived or deleted. Connectors that remember what they downloaded
-/// (documents) must not remember anything of these accounts, or it is
-/// never fetched again once the account is back.
-pub(crate) const SKIPPED_ACCOUNTS: &str = "__skipped_accounts";
 
 /// Vault setting key: fetch PDF statements of this account automatically.
 pub(crate) fn statements_auto_key(account_id: i64) -> String {
@@ -1333,6 +1312,34 @@ impl Vault {
 }
 
 impl Vault {
+    /// The documents a sync of this connection fetches; `statements_only` =
+    /// external ref of the account whose statements were asked for.
+    pub(super) fn documents_request(
+        &self,
+        connection_id: i64,
+        statements_only: Option<String>,
+    ) -> CoreResult<Documents> {
+        if !documents_fetch_on(&*self.db()?, connection_id)? {
+            // an explicit request must not run for nothing: store_fetch would drop what it brings
+            if statements_only.is_some() {
+                return Err(CoreError::invalid(tr(
+                    "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
+                )));
+            }
+            return Ok(Documents::Off);
+        }
+        if let Some(account) = statements_only {
+            return Ok(Documents::StatementsOnly(account));
+        }
+        Ok(Documents::On {
+            statements: self.statements_due(connection_id)?,
+            catchup_since: Vault::setting_inner(
+                &*self.db()?,
+                &documents_catchup_key(connection_id),
+            )?,
+        })
+    }
+
     /// External refs of this connection's accounts whose automatic statement
     /// fetch is on and due (never, or more than `STATEMENTS_AUTO_DAYS` ago).
     pub(super) fn statements_due(&self, connection_id: i64) -> CoreResult<Vec<String>> {
@@ -1375,7 +1382,7 @@ impl Vault {
             secret
         };
         let secret = SecretString::new(secret);
-        let (kind, key_str, login, state_json, ctx_settings, since, demo) = {
+        let (kind, key_str, login, state_json, ctx_settings, since, skipped, demo) = {
             let db = self.db()?;
             let (kind, login, state): (String, String, String) = db
                 .query_row(
@@ -1490,42 +1497,14 @@ impl Vault {
                 rows
             };
             let skipped = super::account_selection::skipped_refs(&db, connection_id)?;
-            if !skipped.is_empty() {
-                settings.insert(
-                    SKIPPED_ACCOUNTS.to_string(),
-                    SecretString::new(skipped.join("\n")),
-                );
-            }
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
             let since = since_window(crate::dates::today(), days, &newest);
-            (kind, key_str, login, state, settings, since, demo)
+            (kind, key_str, login, state, settings, since, skipped, demo)
         };
         let (since, since_by_account) = since;
-        let mut ctx_settings = ctx_settings;
-        let documents_on = documents_fetch_on(&*self.db()?, connection_id)?;
-        if !documents_on {
-            ctx_settings.insert(DOCUMENTS_OFF.into(), SecretString::new("1".into()));
-        } else if let Some(day) =
-            Vault::setting_inner(&*self.db()?, &documents_catchup_key(connection_id))?
-        {
-            ctx_settings.insert(DOCUMENTS_CATCHUP.into(), SecretString::new(day));
-        }
-        if let Some(ext) = statements_only {
-            // an explicit request must not run for nothing: store_fetch would drop what it brings
-            if !documents_on {
-                return Err(CoreError::invalid(tr(
-                    "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
-                )));
-            }
-            ctx_settings.insert(STATEMENTS_ONLY.into(), SecretString::new(ext));
-        } else if documents_on {
-            let due = self.statements_due(connection_id)?;
-            if !due.is_empty() {
-                ctx_settings.insert(STATEMENTS_AUTO.into(), SecretString::new(due.join(",")));
-            }
-        }
+        let documents = self.documents_request(connection_id, statements_only)?;
         let ctx = ConnectContext {
             connection_id,
             login_name: login,
@@ -1534,6 +1513,8 @@ impl Vault {
             state: serde_json::from_str(&state_json).unwrap_or(serde_json::json!({})),
             since,
             since_by_account,
+            documents,
+            skipped_accounts: skipped.into_iter().collect(),
         };
         let mut connector = make_connector_for(kind, &key_str, demo);
         if !demo && is_comdirect_fints(&key_str) {

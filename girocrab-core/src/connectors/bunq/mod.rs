@@ -967,9 +967,9 @@ impl BankConnector for BunqConnector {
         // After document retrieval was switched on again: reach back to the day it was switched off.
         let mut receipt_window = RECEIPT_WINDOW_DAYS;
         if let Some(day) = ctx
-            .settings
-            .get(super::DOCUMENTS_CATCHUP)
-            .and_then(|d| jiff::civil::Date::strptime("%Y-%m-%d", d.expose()).ok())
+            .documents
+            .catchup_since()
+            .and_then(crate::dates::parse_iso)
         {
             let back = crate::dates::days_between(day, crate::dates::today());
             receipt_window = receipt_window.max(back);
@@ -993,7 +993,7 @@ impl BankConnector for BunqConnector {
                 .collect();
             // Receipts and statements are extras: a failure must not break the sync. Switched
             // off for the connection ("Dokumente abrufen"): nothing is asked for.
-            if !ctx.settings.contains_key(super::DOCUMENTS_OFF) {
+            if ctx.documents.enabled() {
                 let (receipts, incomplete) = self
                     .receipts(id, &account.external_ref, &raw, receipt_window)
                     .await;
