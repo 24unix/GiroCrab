@@ -62,6 +62,8 @@ pub enum ConnectorKind {
     FordMoney,
     /// Opel Direktbank savings accounts and Postbox PDFs via the web banking (TwoVerify approval).
     OpelDirektbank,
+    /// Finpension (CH): Säule 3a, Freizügigkeit, 1e – import of the CSV/JSON export (#300).
+    Finpension,
 }
 
 impl ConnectorKind {
@@ -92,6 +94,7 @@ impl ConnectorKind {
             ConnectorKind::Ffb => "ffb",
             ConnectorKind::FordMoney => "fordmoney",
             ConnectorKind::OpelDirektbank => "opeldirektbank",
+            ConnectorKind::Finpension => "finpension",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -151,6 +154,7 @@ impl ConnectorKind {
             ConnectorKind::Ffb,
             ConnectorKind::FordMoney,
             ConnectorKind::OpelDirektbank,
+            ConnectorKind::Finpension,
         ]
     }
 }

@@ -545,6 +545,13 @@ fn english(de: &str) -> Option<&'static str> {
         "Eine TAN wurde an {0} gesendet." => "A TAN was sent to {0}.",
         "Ihr Telefon" => "your phone",
         "Vorgemerkt" => "Pending",
+        // ------------------------------------------------------------ connectors/finpension.rs
+        "Datei-Import (CSV/JSON-Export)" => "File import (CSV/JSON export)",
+        "Bezeichnung" => "Label",
+        "Finpension (Schweiz): Säule 3a, Freizügigkeit und 1e. Die CSV- oder JSON-Exportdatei (Positionen und Cash-Buchungen) wird über „Datei importieren“ eingelesen; es gibt keine Anmeldung und keinen Netzwerkzugriff." => "Finpension (Switzerland): pillar 3a, vested benefits and 1e. The CSV or JSON export (holdings and cash transactions) is read with “Import file”; there is no login and no network access.",
+        "Bitte die Exportdatei über „Datei importieren“ einlesen." => "Please read the export file with “Import file”.",
+        "Die Verbindung gehört nicht zu Finpension." => "The connection does not belong to Finpension.",
+        "Keine Positionen oder Buchungen erkannt." => "No holdings or transactions recognised.",
         // ------------------------------------------------------------ connectors/scalable.rs
         "OAuth-Geräteanmeldung + GraphQL-API der offiziellen CLI" => "OAuth device login + GraphQL API of the official CLI",
         "(nicht nötig – Anmeldung im Browser)" => "(not needed – sign in in the browser)",
