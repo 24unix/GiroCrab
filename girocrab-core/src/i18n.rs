@@ -817,6 +817,7 @@ fn english(de: &str) -> Option<&'static str> {
         }
         "Der Kategoriename ist leer." => "The category name is empty.",
         "Eine Kategorie kann nicht in sich selbst verschoben werden." => "A category can’t be moved into itself.",
+        "Die Zielkategorie existiert nicht mehr." => "The target category no longer exists.",
         "Das Suchmuster ist leer." => "The pattern is empty.",
         "Die Regel braucht eine Kategorie oder mindestens einen Tag." => "The rule needs a category or at least one tag.",
         "Das Suchmuster ist zu lang." => "The pattern is too long.",

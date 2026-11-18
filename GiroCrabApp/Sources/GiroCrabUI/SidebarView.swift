@@ -532,9 +532,16 @@ struct SidebarView: View {
                 }
                 .padding(.leading, indent)
                 .listRowInsets(Self.rowInsets)
+                #if os(macOS)
+                // a category dragged here goes above this row, or into it (lower half)
+                .modifier(categoryDropSlot(node, indent: indent, takesBookings: false, freeLeading: 12))
+                #endif
                 .tag(SidebarItem.category(node.id))
                 .contextMenu { categoryMenu(node.category) }
                 .modifier(CategoryIconColorPopover(id: node.id))
+                #if os(macOS)
+                .draggable(GroupDrag.category(node.id))
+                #endif
                 if open {
                     categoryRows(kids, depth: depth + 1)
                 }
@@ -546,17 +553,38 @@ struct SidebarView: View {
                 .padding(.leading, indent)
                 .listRowInsets(Self.rowInsets)
                 #if os(macOS)
-                // only leaves take dragged bookings, as only leaves are assigned
-                .modifier(DropSlot(key: "c:\(node.id)", inset: 0, line: $dropLine, edge: { _ in .into }, perform: { items, _ in
-                    model.dropBookings(items, onCategory: node.id)
-                }, takesBookings: true))
+                // only leaves take dragged bookings, as only leaves are assigned;
+                // a dragged category goes above or below, or into a main category (#977)
+                .modifier(categoryDropSlot(node, indent: indent, takesBookings: true))
                 #endif
                 .tag(SidebarItem.category(node.id))
                 .contextMenu { categoryMenu(node.category) }
                 .modifier(CategoryIconColorPopover(id: node.id))
+                #if os(macOS)
+                .draggable(GroupDrag.category(node.id))
+                #endif
             }
         })
     }
+
+    #if os(macOS)
+    /// Drop zones of a category row (#977): a category goes above the row (upper
+    /// half), below it or – on a row with sub-categories or a main category – into
+    /// it as its last sub-category (lower half). Bookings (`takesBookings`, leaves
+    /// only) are assigned to the row's category.
+    private func categoryDropSlot(_ node: CategoryNode, indent: CGFloat, takesBookings: Bool, freeLeading: CGFloat = 0) -> DropSlot {
+        DropSlot(key: "c:\(node.id)", inset: indent, line: $dropLine, edge: { half in
+            guard let dragged = GroupDrag.draggedCategory else { return .into }
+            guard model.canDropCategory(dragged, on: node.id) else { return nil }
+            return half == .below && model.categoryTakesDropInto(node.id) ? .into : half
+        }, perform: { items, edge in
+            if items.contains(where: { GroupDrag.categoryID($0) != nil }) {
+                return model.dropCategory(items, onto: node.id, place: edge == .into ? .into : edge == .below ? .after : .before)
+            }
+            return takesBookings && model.dropBookings(items, onCategory: node.id)
+        }, freeLeading: freeLeading, takesBookings: takesBookings, takesCategories: true)
+    }
+    #endif
 
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
@@ -581,6 +609,10 @@ struct SidebarView: View {
                 }
             }
         }
+        Button("Nach oben", systemImage: "arrow.up") { model.shiftCategory(category.id, by: -1) }
+            .disabled(!model.canShiftCategory(category.id, by: -1))
+        Button("Nach unten", systemImage: "arrow.down") { model.shiftCategory(category.id, by: 1) }
+            .disabled(!model.canShiftCategory(category.id, by: 1))
         Button("Duplizieren", systemImage: "plus.square.on.square") { model.duplicateCategory(category.id) }
         Divider()
         Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
@@ -864,6 +896,17 @@ private struct DropSlot: ViewModifier {
     /// Mark only booking drags (category rows), else only account and group
     /// drags. Gates just the mark: `perform` ignores foreign payloads itself.
     var takesBookings = false
+    /// Also mark a category drag (#977; category rows).
+    var takesCategories = false
+
+    /// Whether the drag in progress is one this row marks: bookings only on
+    /// `takesBookings` rows, categories only on `takesCategories` rows, else only
+    /// account and group drags.
+    private var acceptsDrag: Bool {
+        if BookingDrag.isDragged { return takesBookings }
+        if GroupDrag.draggedCategory != nil { return takesCategories }
+        return !takesBookings && !takesCategories
+    }
 
     /// Zones a drag is over right now. Not state: changing it must not redraw.
     @MainActor private static var hovered: Set<String> = []
@@ -919,7 +962,7 @@ private struct DropSlot: ViewModifier {
         // zone: write only real changes and clear a tick later, unless the
         // zone came back meanwhile, so the mark doesn't flicker.
         let zone = key + (half == .above ? "↑" : "↓")
-        if targeted, let edge = edge(half), BookingDrag.isDragged == takesBookings {
+        if targeted, let edge = edge(half), acceptsDrag {
             Self.hovered.insert(zone)
             let next = DropLine(key: edge == .into ? intoKey ?? key : key, edge: edge, zone: zone)
             if line != next { line = next }

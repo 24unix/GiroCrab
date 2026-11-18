@@ -321,6 +321,69 @@ extension AppModel {
         if let parent { expandCategoryPath(to: parent) } // keep it in view
     }
 
+    /// Whether category `id` may be dropped on `target` (#977): never on itself
+    /// or on one of its own sub-categories, which would put it below itself.
+    func canDropCategory(_ id: Int64, on target: Int64) -> Bool {
+        categoryMoveTargets(for: id).contains { $0.id == target }
+    }
+
+    /// Whether a drop on the lower half of `target` goes into it (it has
+    /// sub-categories, or is a main category that may still get its first one)
+    /// instead of right below it.
+    func categoryTakesDropInto(_ target: Int64) -> Bool {
+        guard let c = categories.first(where: { $0.id == target }) else { return false }
+        return c.parentId == nil || categories.contains { $0.parentId == target }
+    }
+
+    /// Drag and drop of a sidebar category (#977): reorders it among its siblings
+    /// or hangs it under another category, in one core call. `false` when the
+    /// payload is no category or the drop is not allowed.
+    func dropCategory(_ items: [String], onto target: Int64, place: CategoryDropPlace) -> Bool {
+        guard let id = items.lazy.compactMap(GroupDrag.categoryID).first,
+              canDropCategory(id, on: target) else { return false }
+        placeCategory(id, relativeTo: target, place: place)
+        return true
+    }
+
+    /// Puts category `id` before/after `target` among its siblings, or last
+    /// below it (`.into`).
+    func placeCategory(_ id: Int64, relativeTo target: Int64, place: CategoryDropPlace) {
+        guard let vault, let t = categories.first(where: { $0.id == target }) else { return }
+        let parent: Int64? = place == .into ? target : t.parentId
+        // `categories` is in tree order, so a filter keeps the siblings' order
+        var ids = categories.filter { $0.parentId == parent && $0.id != id }.map(\.id)
+        switch place {
+        case .into: ids.append(id)
+        case .before: ids.insert(id, at: ids.firstIndex(of: target) ?? ids.endIndex)
+        case .after: ids.insert(id, at: ids.firstIndex(of: target).map { $0 + 1 } ?? ids.endIndex)
+        }
+        reorderCategories(parent, ids: ids, vault: vault)
+        if let parent { expandCategoryPath(to: parent) } // keep it in view
+    }
+
+    /// "Nach oben" / "Nach unten" of a category: one place among its siblings
+    /// (the menu twin of the drag, also for the keyboard and iOS).
+    func shiftCategory(_ id: Int64, by step: Int) {
+        guard let vault, let c = categories.first(where: { $0.id == id }) else { return }
+        var ids = categories.filter { $0.parentId == c.parentId }.map(\.id)
+        guard let i = ids.firstIndex(of: id), ids.indices.contains(i + step) else { return }
+        ids.swapAt(i, i + step)
+        reorderCategories(c.parentId, ids: ids, vault: vault)
+    }
+
+    /// Whether category `id` has a sibling above (`step` -1) or below (+1) it.
+    func canShiftCategory(_ id: Int64, by step: Int) -> Bool {
+        guard let c = categories.first(where: { $0.id == id }) else { return false }
+        let ids = categories.filter { $0.parentId == c.parentId }.map(\.id)
+        return ids.firstIndex(of: id).map { ids.indices.contains($0 + step) } ?? false
+    }
+
+    private func reorderCategories(_ parent: Int64?, ids: [Int64], vault: Vault) {
+        runCore { try vault.reorderCategories(parentId: parent, ids: ids) }
+        reloadCategories()
+        reloadBookings() // the booking list shows a category's path
+    }
+
     /// Opens `id` and every category above it, so what is placed under `id`
     /// shows in the sidebar even inside a folded main category.
     func expandCategoryPath(to id: Int64) {

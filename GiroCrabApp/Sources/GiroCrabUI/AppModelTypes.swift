@@ -475,6 +475,16 @@ struct PendingLogin: Identifiable {
     let connection: BankConnection
 }
 
+/// Where a dragged category lands relative to the row it is dropped on (#977).
+enum CategoryDropPlace {
+    /// Right above the row, as its sibling.
+    case before
+    /// Right below the row, as its sibling.
+    case after
+    /// Into the row's category, as its last sub-category.
+    case into
+}
+
 struct CategoryNode: Identifiable, Hashable {
     let category: GiroCrabCore.Category
     var children: [CategoryNode]?
