@@ -885,6 +885,25 @@ struct BalanceChart: View {
         }
     }
 
+    @available(macOS 15, iOS 18, *)
+    private static func vectorChart(years: [Date], plotted: [PlottedPoint]) -> some View {
+        // One plot instead of two marks per point: Charts builds every mark again at each new width.
+        Chart {
+            ForEach(years, id: \.self) { y in
+                RuleMark(x: .value("Jahr", y))
+                    .foregroundStyle(Theme.tertiary.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+            }
+            AreaPlot(plotted, x: .value("Tag", \.date), yStart: .value("Min", \.floor), yEnd: .value("Saldo", \.euros))
+                .foregroundStyle(Theme.chartAreaFill)
+                .interpolationMethod(.monotone)
+            LinePlot(plotted, x: .value("Tag", \.date), y: .value("Saldo", \.euros))
+                .foregroundStyle(Self.lineColor)
+                .lineStyle(Self.lineStroke)
+                .interpolationMethod(.monotone)
+        }
+    }
+
     private static let lineColor = Theme.accent.opacity(0.8)
     private static let lineStroke = StrokeStyle(lineWidth: 1.5)
 
@@ -893,30 +912,25 @@ struct BalanceChart: View {
         let pts = cur.pts
         let yDomain = cur.yDomain
         let years = pts.first.flatMap { f in pts.last.map { BalanceBuckets.yearStarts(from: f.date, to: $0.date) } } ?? []
-        Chart {
-            ForEach(years, id: \.self) { y in
-                RuleMark(x: .value("Jahr", y))
-                    .foregroundStyle(Theme.tertiary.opacity(0.5))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-            }
-            // One plot instead of two marks per point: Charts builds every mark again at each new width.
+        Group {
             if #available(macOS 15, iOS 18, *) {
-                AreaPlot(cur.plotted, x: .value("Tag", \.date), yStart: .value("Min", \.floor), yEnd: .value("Saldo", \.euros))
-                    .foregroundStyle(Theme.chartAreaFill)
-                    .interpolationMethod(.monotone)
-                LinePlot(cur.plotted, x: .value("Tag", \.date), y: .value("Saldo", \.euros))
-                    .foregroundStyle(Self.lineColor)
-                    .lineStyle(Self.lineStroke)
-                    .interpolationMethod(.monotone)
+                Self.vectorChart(years: years, plotted: cur.plotted)
             } else {
-                ForEach(cur.drawn) { p in
-                    AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", yDomain.lowerBound), yEnd: .value("Saldo", p.euros))
-                        .foregroundStyle(Theme.chartAreaFill)
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
-                        .foregroundStyle(Self.lineColor)
-                        .lineStyle(Self.lineStroke)
-                        .interpolationMethod(.monotone)
+                Chart {
+                    ForEach(years, id: \.self) { y in
+                        RuleMark(x: .value("Jahr", y))
+                            .foregroundStyle(Theme.tertiary.opacity(0.5))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+                    }
+                    ForEach(cur.drawn) { p in
+                        AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", yDomain.lowerBound), yEnd: .value("Saldo", p.euros))
+                            .foregroundStyle(Theme.chartAreaFill)
+                            .interpolationMethod(.monotone)
+                        LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
+                            .foregroundStyle(Self.lineColor)
+                            .lineStyle(Self.lineStroke)
+                            .interpolationMethod(.monotone)
+                    }
                 }
             }
         }
