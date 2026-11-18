@@ -607,7 +607,7 @@ pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Ve
             booking_date: date.clone(),
             amount_cents: cents,
             split_set: r.get(11)?,
-            imported: r.get::<_, bool>(12)?.then(|| (date, cents)),
+            imported: r.get::<_, bool>(12)?.then_some((date, cents)),
             from_import: r.get(13)?,
         })
     })?;
