@@ -321,6 +321,30 @@ extension AppModel {
         toast = String(localized: "Sitzung gelöscht")
     }
 
+    /// The connection's bank delivers documents (the switch is offered only then).
+    func documentsFetchSupported(_ id: Int64) -> Bool {
+        (try? vault?.documentsFetchSupported(connectionId: id)) ?? false
+    }
+
+    /// Syncs of this connection fetch documents (default on).
+    func documentsFetchEnabled(_ id: Int64) -> Bool {
+        (try? vault?.documentsFetchEnabled(connectionId: id)) ?? true
+    }
+
+    func setDocumentsFetch(_ id: Int64, _ on: Bool) {
+        guard let vault else { return }
+        runCore { try vault.setDocumentsFetch(connectionId: id, enabled: on) }
+        refreshDocumentsOff()
+    }
+
+    /// Reads the retrieval switch of every connection once (not from a view body): on a change of the
+    /// connections and of the switch.
+    func refreshDocumentsOff() {
+        documentsOffConnectionIDs = Set(connections.filter {
+            documentsFetchSupported($0.id) && !documentsFetchEnabled($0.id)
+        }.map(\.id))
+    }
+
     func revealSetting(_ key: String) -> String {
         ((try? vault?.getSetting(key: key)) ?? nil) ?? ""
     }

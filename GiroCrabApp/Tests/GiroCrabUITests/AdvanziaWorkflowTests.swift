@@ -103,4 +103,22 @@ final class AdvanziaWorkflowTests: XCTestCase {
         await reopened.removePassword(model: model)
         XCTAssertFalse(try AdvanziaLocalSecrets.hasPassword(profile.profileId, using: fake.client))
     }
+    /// "Speichern" in the connection dialog is enabled by a change of only these fields.
+    func testConnectionEditorReportsChangesOfPasswordSwitchAndMethod() async throws {
+        let pin = try XCTUnwrap(model.pinVault())
+        let id = try await pin.run { try $0.addBankConnection(connector: .advanzia, displayName: "Testkarte", loginName: "demo") }
+        let editor = AdvanziaConnectionSettingsState(keychain: FakeAdvanziaKeychain().client)
+        XCTAssertFalse(editor.hasChanges, "not loaded yet")
+        await editor.load(connectionID: id, model: model)
+        XCTAssertFalse(editor.hasChanges)
+        editor.authMethod = .app
+        XCTAssertTrue(editor.hasChanges)
+        editor.authMethod = .sms
+        XCTAssertFalse(editor.hasChanges)
+        editor.storePassword = true
+        XCTAssertTrue(editor.hasChanges)
+        editor.storePassword = false
+        editor.password = "invented-password"
+        XCTAssertTrue(editor.hasChanges)
+    }
 }

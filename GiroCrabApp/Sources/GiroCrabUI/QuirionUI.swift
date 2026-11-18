@@ -144,6 +144,8 @@ struct QuirionWebSheet: View {
     @State private var ready = false
     @State private var running = false
     @State private var includeDocuments = true
+    /// "Dokumente abrufen" of the connection (bank connection dialog): off = no list, no PDFs.
+    private var documentsOn: Bool { !model.documentsOffConnectionIDs.contains(connection.id) }
     @State private var progress = ""
     @State private var notice: String?
     @State private var task: Task<Void, Never>?
@@ -165,7 +167,7 @@ struct QuirionWebSheet: View {
             Divider()
             HStack {
                 Button("Schließen", role: .cancel) { task?.cancel(); close() }.keyboardShortcut(.cancelAction)
-                Toggle("PDF-Postbox inkl. Archiv", isOn: $includeDocuments).disabled(running)
+                if documentsOn { Toggle("PDF-Postbox inkl. Archiv", isOn: $includeDocuments).disabled(running) }
                 Spacer()
                 Button("Depot und Konten abrufen") { start() }.buttonStyle(.borderedProminent).disabled(!ready || running)
             }.padding(12)
@@ -205,7 +207,7 @@ struct QuirionWebSheet: View {
                 let summary = try await pin.run { try $0.importQuirionSnapshot(connectionId: connectionId, snapshotJson: snapshot) }
                 var downloaded = 0
                 var failed = 0
-                if includeDocuments {
+                if includeDocuments && documentsOn {
                     progress = String(localized: "Postbox und Archiv auflisten …")
                     let list = try await run("return await window.__gcQuirion.documents();")
                     let pending = try await pin.run { try $0.pendingQuirionDocuments(connectionId: connectionId, documentsJson: list) }

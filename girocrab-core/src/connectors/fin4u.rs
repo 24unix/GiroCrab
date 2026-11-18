@@ -146,6 +146,8 @@ pub struct Fin4uConnector {
     /// Accounts whose data GiroCrab does not store this time (switched off,
     /// archived …): their documents are neither downloaded nor remembered.
     skipped_accounts: std::collections::HashSet<String>,
+    /// Document retrieval switched off for this connection: no documents downloaded or remembered.
+    documents_off: bool,
     client: Option<reqwest::Client>,
     access_token: SecretString,
     refresh_token: SecretString,
@@ -156,6 +158,7 @@ impl Fin4uConnector {
         Fin4uConnector {
             known_documents: Vec::new(),
             skipped_accounts: Default::default(),
+            documents_off: false,
             client: None,
             access_token: SecretString::default(),
             refresh_token: SecretString::default(),
@@ -779,6 +782,7 @@ impl BankConnector for Fin4uConnector {
             .get(super::SKIPPED_ACCOUNTS)
             .map(|v| v.expose().lines().map(str::to_string).collect())
             .unwrap_or_default();
+        self.documents_off = ctx.settings.contains_key(super::DOCUMENTS_OFF);
         if ctx.login_name.trim().is_empty() || ctx.secret.expose().is_empty() {
             return Err(CoreError::Authentication {
                 message: tr("Benutzername (E-Mail) und Passwort für fin4u erforderlich").into(),
@@ -831,7 +835,9 @@ impl BankConnector for Fin4uConnector {
                 // „Dokumente einsehen“: download the ones not fetched before –
                 // but only for accounts that are stored now: remembered
                 // documents of a switched-off account would never come back.
-                let documents = if self.skipped_accounts.contains(&account.external_ref) {
+                let documents = if self.skipped_accounts.contains(&account.external_ref)
+                    || self.documents_off
+                {
                     Vec::new()
                 } else {
                     parse_documents(&detail)

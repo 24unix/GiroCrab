@@ -175,6 +175,10 @@ pub(crate) fn store_fetch(
 ) -> CoreResult<SyncSummary> {
     {
         let db = vault.db()?;
+        // Document retrieval switched off: whatever a connector still delivers is not stored.
+        if !documents_fetch_on(&db, connection_id)? {
+            data.documents.clear();
+        }
         let tx = db.unchecked_transaction()?;
         if kind == ConnectorKind::Advanzia {
             super::advanzia::prepare_import(&tx, connection_id, &mut data)?;
@@ -765,6 +769,8 @@ pub(crate) fn store_fetch(
             }
         }
         let mut postbox_added = 0u32;
+        let mut documents_stored = 0u32;
+        let documents_incomplete = data.documents_incomplete;
         for d in &data.documents {
             if archived_ids.contains_key(&d.account_ref) || blocked_refs.contains(&d.account_ref) {
                 continue;
@@ -822,6 +828,9 @@ pub(crate) fn store_fetch(
                     &d.date,
                 )
             };
+            if matches!(added, Ok(Some(_))) {
+                documents_stored += 1;
+            }
             match (added, acc_id) {
                 (Ok(Some(_)), _) if d.source_url.starts_with("comdirect:postbox:") => {
                     postbox_added += 1
@@ -911,6 +920,15 @@ pub(crate) fn store_fetch(
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(connection_id, (kind, data));
         }
+        // The catch-up after switching retrieval on again is done once a sync brings no new document
+        // and left none out (a failed request, a limit).
+        if documents_stored == 0 && !documents_incomplete && documents_fetch_on(&db, connection_id)?
+        {
+            db.execute(
+                "DELETE FROM settings WHERE key = ?1",
+                [documents_catchup_key(connection_id)],
+            )?;
+        }
         Ok(SyncSummary {
             accounts_updated,
             transactions_imported: imported,
@@ -941,6 +959,61 @@ pub(crate) const STATEMENTS_ONLY: &str = "__statements_only";
 /// Setting listing the accounts (external refs, comma-separated) whose PDF
 /// statements a regular sync should also fetch (opt-in, GitHub #57).
 pub(crate) const STATEMENTS_AUTO: &str = "__statements_auto";
+/// Context setting of a sync of a connection whose document retrieval is switched off
+/// ("Dokumente abrufen" in the connection's settings): connectors skip downloading documents and
+/// remember nothing of them, so a later sync can fetch what is missing.
+pub(crate) const DOCUMENTS_OFF: &str = "__documents_off";
+
+/// Context setting: the day document retrieval was switched off (oldest), while it was switched
+/// back on and the documents since are not all fetched yet. Connectors that read documents from a
+/// window (Trade Republic's timeline, bunq's receipts) reach back to it.
+pub(crate) const DOCUMENTS_CATCHUP: &str = "__documents_catchup";
+
+/// Day retrieval was switched off; moved to the catch-up key once it is switched on again.
+fn documents_off_since_key(connection_id: i64) -> String {
+    format!("documents.fetch.off_since.{connection_id}")
+}
+
+/// Oldest day still to catch up on after retrieval was switched on again.
+fn documents_catchup_key(connection_id: i64) -> String {
+    format!("documents.fetch.catchup.{connection_id}")
+}
+
+/// Vault setting key: document retrieval of this connection (`0` = off; absent = on).
+pub(crate) fn documents_fetch_key(connection_id: i64) -> String {
+    format!("documents.fetch.{connection_id}")
+}
+
+/// Forgets the document retrieval settings of a deleted connection.
+pub(crate) fn clear_documents_settings(
+    db: &rusqlite::Connection,
+    connection_id: i64,
+) -> CoreResult<()> {
+    db.execute(
+        "DELETE FROM settings WHERE key IN (?1, ?2, ?3)",
+        params![
+            documents_fetch_key(connection_id),
+            documents_off_since_key(connection_id),
+            documents_catchup_key(connection_id)
+        ],
+    )?;
+    Ok(())
+}
+
+/// Whether the connection fetches documents (default: yes).
+pub(crate) fn documents_fetch_on(
+    db: &rusqlite::Connection,
+    connection_id: i64,
+) -> CoreResult<bool> {
+    let value: Option<String> = db
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [documents_fetch_key(connection_id)],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(value.as_deref() != Some("0"))
+}
 /// Days between two automatic statement fetches of one account.
 const STATEMENTS_AUTO_DAYS: i64 = 7;
 /// Setting listing the accounts (external refs, one per line) whose data a
@@ -1075,7 +1148,68 @@ impl Vault {
                 message: tr("Der PostBox-Abruf ist für diesen Zugang nicht eingeschaltet.").into(),
             });
         }
+        if !documents_fetch_on(&*self.db()?, connection_id)? {
+            return Err(CoreError::InvalidInput {
+                message: tr("Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.").into(),
+            });
+        }
         self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Now)
+    }
+
+    /// Whether this connection's bank delivers documents at all (`Capability::Documents` of its
+    /// row in the bank matrix): only then the settings offer to switch the retrieval.
+    pub fn documents_fetch_supported(&self, connection_id: i64) -> Result<bool, CoreError> {
+        let (kind, _) = self.portal_connection(connection_id)?;
+        Ok(super::catalog::BANK_MATRIX.iter().any(|e| {
+            e.kind == Some(kind)
+                && e.capabilities
+                    .contains(&super::catalog::Capability::Documents)
+        }))
+    }
+
+    /// Whether syncs of this connection fetch documents (PDFs: receipts, statements, PostBox).
+    /// On unless switched off; what is stored stays either way.
+    pub fn documents_fetch_enabled(&self, connection_id: i64) -> Result<bool, CoreError> {
+        let db = self.db()?;
+        documents_fetch_on(&db, connection_id)
+    }
+
+    /// Switches the document retrieval of a connection on or off. Off: no new documents, nothing
+    /// remembered of them. On again: the next syncs reach back to the day it was switched off
+    /// (until a sync brings no new document), so what was left out is fetched.
+    pub fn set_documents_fetch(&self, connection_id: i64, enabled: bool) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let upsert = "INSERT INTO settings(key, value) VALUES (?1, ?2)
+                      ON CONFLICT(key) DO UPDATE SET value = excluded.value";
+        if enabled {
+            let off_since = Vault::setting_inner(&db, &documents_off_since_key(connection_id))?;
+            if let Some(off) = off_since {
+                // keep the oldest day if an earlier catch-up is still running
+                let oldest = match Vault::setting_inner(&db, &documents_catchup_key(connection_id))?
+                {
+                    Some(c) if c < off => c,
+                    _ => off,
+                };
+                db.execute(
+                    upsert,
+                    params![documents_catchup_key(connection_id), oldest],
+                )?;
+            }
+            db.execute(
+                "DELETE FROM settings WHERE key IN (?1, ?2)",
+                params![
+                    documents_fetch_key(connection_id),
+                    documents_off_since_key(connection_id)
+                ],
+            )?;
+        } else {
+            db.execute(upsert, params![documents_fetch_key(connection_id), "0"])?;
+            db.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES (?1, ?2)",
+                params![documents_off_since_key(connection_id), today()],
+            )?;
+        }
+        Ok(())
     }
 
     /// Turns the automatic PDF statement fetch (FinTS HKEKA, at most weekly,
@@ -1324,9 +1458,23 @@ impl Vault {
         };
         let (since, since_by_account) = since;
         let mut ctx_settings = ctx_settings;
+        let documents_on = documents_fetch_on(&*self.db()?, connection_id)?;
+        if !documents_on {
+            ctx_settings.insert(DOCUMENTS_OFF.into(), SecretString::new("1".into()));
+        } else if let Some(day) =
+            Vault::setting_inner(&*self.db()?, &documents_catchup_key(connection_id))?
+        {
+            ctx_settings.insert(DOCUMENTS_CATCHUP.into(), SecretString::new(day));
+        }
         if let Some(ext) = statements_only {
+            // an explicit request must not run for nothing: store_fetch would drop what it brings
+            if !documents_on {
+                return Err(CoreError::InvalidInput {
+                    message: tr("Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.").into(),
+                });
+            }
             ctx_settings.insert(STATEMENTS_ONLY.into(), SecretString::new(ext));
-        } else {
+        } else if documents_on {
             let due = self.statements_due(connection_id)?;
             if !due.is_empty() {
                 ctx_settings.insert(STATEMENTS_AUTO.into(), SecretString::new(due.join(",")));
@@ -1368,7 +1516,10 @@ impl Vault {
         ctx: &ConnectContext,
         mode: PostboxMode,
     ) -> CoreResult<Option<String>> {
-        if mode == PostboxMode::Off || !self.comdirect_postbox_enabled(connection_id)? {
+        if mode == PostboxMode::Off
+            || !documents_fetch_on(&*self.db()?, connection_id)?
+            || !self.comdirect_postbox_enabled(connection_id)?
+        {
             return Ok(None);
         }
         for k in ["comdirect.client_id", "comdirect.client_secret"] {

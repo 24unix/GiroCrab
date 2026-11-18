@@ -97,7 +97,12 @@ public final class AppModel {
     /// Bar width of the category chart (#557); `.automatic` follows the global setting (months if that is automatic too).
     var categoryBarUnit: BalanceBarUnit = .automatic
     var advanziaWorkflow: AdvanziaWorkflow?
-    var connections: [BankConnection] = []
+    var connections: [BankConnection] = [] {
+        didSet { refreshDocumentsOff() }
+    }
+    /// Connections whose bank delivers documents but whose retrieval is switched off ("Dokumente
+    /// abrufen"). Kept here so views never ask the core while they render (`refreshDocumentsOff`).
+    var documentsOffConnectionIDs: Set<Int64> = []
     /// Login with accounts that another login already delivers: asks which to fetch (#346).
     var accountSelectionConnection: BankConnection?
     var settings: [SettingEntry] = []

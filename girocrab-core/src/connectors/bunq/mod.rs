@@ -259,7 +259,8 @@ impl BunqConnector {
         account_id: i64,
         account_ref: &str,
         payments: &[Value],
-    ) -> Vec<crate::documents::RemoteDocument> {
+        window_days: i64,
+    ) -> (Vec<crate::documents::RemoteDocument>, bool) {
         let today = chrono::Local::now().date_naive();
         let days_ago = |p: &Value| {
             p["created"]
@@ -276,12 +277,14 @@ impl BunqConnector {
         let mut fresh = Vec::new();
         let mut recheck = Vec::new();
         let mut older = Vec::new();
+        // Payments never looked at stay for the next sync (a limit, a failed request).
+        let mut incomplete = false;
         for p in payments {
             let (Some(pid), age) = (p["id"].as_i64(), days_ago(p)) else {
                 continue;
             };
             let updated = p["updated"].as_str().unwrap_or_default();
-            if age > RECEIPT_WINDOW_DAYS {
+            if age > window_days {
                 continue;
             }
             if self.state.receipts_checked.get(&pid).map(String::as_str) != Some(updated) {
@@ -292,6 +295,7 @@ impl BunqConnector {
                 older.push(pid);
             }
         }
+        incomplete |= fresh.len() > MAX_RECEIPT_LOOKUPS;
         let cursor = self.state.receipt_cursor.get(&account_id).copied();
         let (rotated, next_cursor) = rotate_older(
             older,
@@ -408,6 +412,9 @@ impl BunqConnector {
                         None => Ok(Value::Null),
                     };
                 }
+                if result.is_err() {
+                    incomplete = true;
+                }
                 if let Ok(v) = result {
                     for item in v["Response"].as_array().into_iter().flatten() {
                         let note = item
@@ -432,6 +439,7 @@ impl BunqConnector {
                 }
                 let source_url = format!("bunq:attachment:{aid}");
                 let Ok((bytes, content_type)) = self.attachment(aid).await else {
+                    incomplete = true;
                     continue;
                 };
                 if bytes.is_empty() {
@@ -458,7 +466,7 @@ impl BunqConnector {
         while self.state.attachments_done.len() > MAX_RECEIPT_STATE {
             self.state.attachments_done.pop_first();
         }
-        docs
+        (docs, incomplete)
     }
 
     /// Monthly PDF statements of completed months not imported yet.
@@ -956,8 +964,18 @@ impl BankConnector for BunqConnector {
         let mut holds_ok = true;
         // Incremental syncs only ask for the last days, but receipts can be
         // added to older payments: list the whole receipt window.
+        // After document retrieval was switched on again: reach back to the day it was switched off.
+        let mut receipt_window = RECEIPT_WINDOW_DAYS;
+        if let Some(day) = ctx
+            .settings
+            .get(super::DOCUMENTS_CATCHUP)
+            .and_then(|d| chrono::NaiveDate::parse_from_str(d.expose(), "%Y-%m-%d").ok())
+        {
+            let back = (chrono::Local::now().date_naive() - day).num_days();
+            receipt_window = receipt_window.max(back);
+        }
         let receipt_since = (chrono::Local::now().date_naive()
-            - chrono::Duration::days(RECEIPT_WINDOW_DAYS))
+            - chrono::Duration::days(receipt_window))
         .format("%Y-%m-%d")
         .to_string();
         let list_since = receipt_since.as_str().min(ctx.since.as_str()).to_string();
@@ -975,11 +993,17 @@ impl BankConnector for BunqConnector {
                 })
                 .filter_map(|p| parse_payment(p, &account.external_ref))
                 .collect();
-            // Receipts and statements are extras: a failure must not break the sync.
-            let receipts = self.receipts(id, &account.external_ref, &raw).await;
-            out.documents.extend(receipts);
-            let statements = self.statements(id, &account).await;
-            out.documents.extend(statements);
+            // Receipts and statements are extras: a failure must not break the sync. Switched
+            // off for the connection ("Dokumente abrufen"): nothing is asked for.
+            if !ctx.settings.contains_key(super::DOCUMENTS_OFF) {
+                let (receipts, incomplete) = self
+                    .receipts(id, &account.external_ref, &raw, receipt_window)
+                    .await;
+                out.documents_incomplete |= incomplete;
+                out.documents.extend(receipts);
+                let statements = self.statements(id, &account).await;
+                out.documents.extend(statements);
+            }
             let holds = match self.card_details(id, &account, &mut txs).await {
                 Ok(holds) => holds,
                 // Accounts without a card can refuse this endpoint: they have no holds.

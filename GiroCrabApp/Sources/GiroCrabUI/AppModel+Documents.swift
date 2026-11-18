@@ -105,8 +105,24 @@ extension AppModel {
         return (try? vault?.listAllDocuments(filter: f)) ?? []
     }
 
+    /// Connections whose bank delivers documents but whose retrieval is switched off, for the whole
+    /// list or (`accountFilter`) the one account on screen. "Belege & PostBox" explains why nothing new comes.
+    func connectionsWithDocumentsOff(accountFilter: Int64?) -> [BankConnection] {
+        var ids: Set<Int64>?
+        if let accountFilter {
+            guard accountFilter != Self.documentsWithoutAccount else { return [] }
+            guard let cid = accountsByID[accountFilter]?.connectionId else { return [] }
+            ids = [cid]
+        }
+        return connections.filter { c in
+            (ids?.contains(c.id) ?? true) && documentsOffConnectionIDs.contains(c.id)
+        }
+    }
+
     func canFetchStatements(_ account: Account) -> Bool {
         guard let c = account.connector, account.kind != .loan else { return false }
+        // switched off per connection (bank connection dialog): the core would refuse it
+        if let cid = account.connectionId, documentsOffConnectionIDs.contains(cid) { return false }
         return [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .easybank, .fordMoney, .opelDirektbank].contains(c)
     }
 

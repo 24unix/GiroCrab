@@ -1473,3 +1473,235 @@ async fn credential_clients_still_follow_redirects_inside_the_host() {
     assert_eq!(r.status().as_u16(), 200);
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
+
+fn fetch_with_document() -> FetchResult {
+    FetchResult {
+        accounts: vec![RemoteAccount {
+            external_ref: "tr:cash".into(),
+            name: "Verrechnungskonto".into(),
+            owner: String::new(),
+            iban: String::new(),
+            account_number: String::new(),
+            currency: "EUR".into(),
+            kind: AccountKind::Checking,
+            balance_cents: 100,
+            balance_date: "2026-11-10".into(),
+        }],
+        documents: vec![crate::documents::RemoteDocument {
+            account_ref: "tr:cash".into(),
+            booking_external_id: None,
+            title: "Kosteninformation".into(),
+            doc_type: "postbox".into(),
+            mime_type: "application/pdf".into(),
+            file_name: "k.pdf".into(),
+            bytes: b"%PDF-1.4 x".to_vec(),
+            source_url: "tr:doc:1".into(),
+            date: "2026-11-01".into(),
+        }],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn document_retrieval_is_on_by_default_and_per_connection() {
+    let dir = crate::test_support::TempDir::new("girocrab-docs-switch");
+    let v = Vault::open(
+        dir.join("v.db").to_string_lossy().to_string(),
+        vec![3u8; 32],
+    )
+    .unwrap();
+    let a = v
+        .add_bank_connection(ConnectorKind::TradeRepublic, String::new(), "a".into())
+        .unwrap();
+    let b = v
+        .add_bank_connection(ConnectorKind::TradeRepublic, String::new(), "b".into())
+        .unwrap();
+    assert!(v.documents_fetch_enabled(a).unwrap());
+    // only banks that deliver documents offer the switch
+    assert!(v.documents_fetch_supported(a).unwrap());
+    let ibkr = v
+        .add_bank_connection(ConnectorKind::Ibkr, String::new(), "c".into())
+        .unwrap();
+    assert!(!v.documents_fetch_supported(ibkr).unwrap());
+    v.set_documents_fetch(a, false).unwrap();
+    assert!(!v.documents_fetch_enabled(a).unwrap());
+    assert!(
+        v.documents_fetch_enabled(b).unwrap(),
+        "another connection is not affected"
+    );
+    v.set_documents_fetch(a, true).unwrap();
+    assert!(v.documents_fetch_enabled(a).unwrap());
+}
+
+#[test]
+fn switching_retrieval_on_again_catches_up_until_a_sync_brings_nothing_new() {
+    let dir = crate::test_support::TempDir::new("girocrab-docs-catchup");
+    let v = Vault::open(
+        dir.join("v.db").to_string_lossy().to_string(),
+        vec![5u8; 32],
+    )
+    .unwrap();
+    let conn = v
+        .add_bank_connection(ConnectorKind::TradeRepublic, String::new(), "login".into())
+        .unwrap();
+    let catchup = format!("documents.fetch.catchup.{conn}");
+    let off_since = format!("documents.fetch.off_since.{conn}");
+    // never switched off: nothing to catch up
+    v.set_documents_fetch(conn, true).unwrap();
+    assert_eq!(v.get_setting(catchup.clone()).unwrap(), None);
+    // off: the day is noted; on again: it becomes the catch-up day
+    v.set_documents_fetch(conn, false).unwrap();
+    let day = v.get_setting(off_since.clone()).unwrap();
+    assert!(day.is_some());
+    v.set_documents_fetch(conn, true).unwrap();
+    assert_eq!(v.get_setting(catchup.clone()).unwrap(), day);
+    assert_eq!(v.get_setting(off_since.clone()).unwrap(), None);
+    // switched off again (and on) while it runs: the oldest day stays
+    v.set_setting(catchup.clone(), "2026-01-01".into()).unwrap();
+    v.set_documents_fetch(conn, false).unwrap();
+    v.set_documents_fetch(conn, true).unwrap();
+    assert_eq!(
+        v.get_setting(catchup.clone()).unwrap().as_deref(),
+        Some("2026-01-01")
+    );
+    // switched off twice in a row: the first day counts
+    v.set_documents_fetch(conn, false).unwrap();
+    v.set_setting(off_since.clone(), "2026-02-02".into())
+        .unwrap();
+    v.set_documents_fetch(conn, false).unwrap();
+    assert_eq!(
+        v.get_setting(off_since.clone()).unwrap().as_deref(),
+        Some("2026-02-02")
+    );
+    v.set_documents_fetch(conn, true).unwrap();
+    assert_eq!(
+        v.get_setting(catchup.clone()).unwrap().as_deref(),
+        Some("2026-01-01")
+    );
+    v.set_setting(catchup.clone(), day.clone().unwrap())
+        .unwrap();
+    // a sync that stores documents keeps the catch-up going …
+    store_fetch(
+        &v,
+        ConnectorKind::TradeRepublic,
+        conn,
+        fetch_with_document(),
+    )
+    .unwrap();
+    assert_eq!(v.get_setting(catchup.clone()).unwrap(), day);
+    // a sync that left documents out (failed request, limit) does not end it either
+    let mut left_out = fetch_with_document();
+    left_out.documents.clear();
+    left_out.documents_incomplete = true;
+    store_fetch(&v, ConnectorKind::TradeRepublic, conn, left_out).unwrap();
+    assert_eq!(v.get_setting(catchup.clone()).unwrap(), day);
+    // … and the first one with nothing new ends it
+    store_fetch(
+        &v,
+        ConnectorKind::TradeRepublic,
+        conn,
+        fetch_with_document(),
+    )
+    .unwrap();
+    assert_eq!(v.get_setting(catchup.clone()).unwrap(), None);
+    // while it is off, a sync does not end a running catch-up
+    v.set_documents_fetch(conn, false).unwrap();
+    v.set_documents_fetch(conn, true).unwrap();
+    v.set_documents_fetch(conn, false).unwrap();
+    store_fetch(
+        &v,
+        ConnectorKind::TradeRepublic,
+        conn,
+        fetch_with_document(),
+    )
+    .unwrap();
+    assert!(v.get_setting(catchup).unwrap().is_some());
+}
+
+#[test]
+fn a_deleted_connection_forgets_its_document_retrieval_settings() {
+    let dir = crate::test_support::TempDir::new("girocrab-docs-forget");
+    let v = Vault::open(
+        dir.join("v.db").to_string_lossy().to_string(),
+        vec![6u8; 32],
+    )
+    .unwrap();
+    let conn = v
+        .add_bank_connection(ConnectorKind::TradeRepublic, String::new(), "login".into())
+        .unwrap();
+    v.set_documents_fetch(conn, false).unwrap();
+    v.set_documents_fetch(conn, true).unwrap();
+    v.set_documents_fetch(conn, false).unwrap();
+    let keys = [
+        format!("documents.fetch.{conn}"),
+        format!("documents.fetch.off_since.{conn}"),
+        format!("documents.fetch.catchup.{conn}"),
+    ];
+    for key in &keys {
+        assert!(v.get_setting(key.clone()).unwrap().is_some(), "{key}");
+    }
+    v.delete_bank_connection(conn).unwrap();
+    for key in &keys {
+        assert_eq!(v.get_setting(key.clone()).unwrap(), None, "{key}");
+    }
+}
+
+#[test]
+fn a_fetch_stores_no_documents_while_retrieval_is_off() {
+    let dir = crate::test_support::TempDir::new("girocrab-docs-off");
+    let v = Vault::open(
+        dir.join("v.db").to_string_lossy().to_string(),
+        vec![4u8; 32],
+    )
+    .unwrap();
+    let conn = v
+        .add_bank_connection(ConnectorKind::TradeRepublic, String::new(), "login".into())
+        .unwrap();
+    v.set_documents_fetch(conn, false).unwrap();
+    store_fetch(
+        &v,
+        ConnectorKind::TradeRepublic,
+        conn,
+        fetch_with_document(),
+    )
+    .unwrap();
+    assert!(v
+        .list_all_documents(crate::documents::DocumentFilter::default())
+        .unwrap()
+        .is_empty());
+    // on again: the same delivery is stored
+    v.set_documents_fetch(conn, true).unwrap();
+    store_fetch(
+        &v,
+        ConnectorKind::TradeRepublic,
+        conn,
+        fetch_with_document(),
+    )
+    .unwrap();
+    assert_eq!(
+        v.list_all_documents(crate::documents::DocumentFilter::default())
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn portal_connections_list_nothing_to_download_while_retrieval_is_off() {
+    let dir = crate::test_support::TempDir::new("girocrab-docs-portal");
+    let v = Vault::open(
+        dir.join("v.db").to_string_lossy().to_string(),
+        vec![5u8; 32],
+    )
+    .unwrap();
+    let conn = v
+        .add_bank_connection(ConnectorKind::Fnz, String::new(), "login".into())
+        .unwrap();
+    v.set_documents_fetch(conn, false).unwrap();
+    // not even a list that would be invalid is looked at
+    assert!(v
+        .clone()
+        .pending_fnz_documents(conn, "kein json".into())
+        .unwrap()
+        .is_empty());
+}

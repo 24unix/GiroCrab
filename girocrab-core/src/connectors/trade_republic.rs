@@ -1440,6 +1440,13 @@ impl BankConnector for TradeRepublicConnector {
         let mut sub_id = 2u32;
         let mut doc_candidates: Vec<(String, String, String)> = Vec::new();
         let mut trade_rows: Vec<TradeRow> = Vec::new();
+        // After document retrieval was switched on again: reach back to the day it was switched off.
+        let cutoff = ctx
+            .settings
+            .get(super::DOCUMENTS_CATCHUP)
+            .map(|d| d.expose().to_string())
+            .filter(|d| d.as_str() < ctx.since.as_str())
+            .unwrap_or_else(|| ctx.since.clone());
         'pages: for _ in 0..200 {
             let mut payload = json!({"type": "timelineTransactions"});
             if let Some(c) = &cursor {
@@ -1454,7 +1461,7 @@ impl BankConnector for TradeRepublicConnector {
                     .chars()
                     .take(10)
                     .collect();
-                if !date.is_empty() && date.as_str() < ctx.since.as_str() {
+                if !date.is_empty() && date.as_str() < cutoff.as_str() {
                     break 'pages;
                 }
                 if item["amount"].is_null() || item["status"].as_str() == Some("CANCELED") {
@@ -1539,9 +1546,16 @@ impl BankConnector for TradeRepublicConnector {
                 break;
             }
         }
+        // Document retrieval switched off: no detail screens for documents, nothing remembered
+        // (the securities page below fetches the trade screens it needs itself).
+        if ctx.settings.contains_key(super::DOCUMENTS_OFF) {
+            doc_candidates.clear();
+        }
         // --- Beleg-Abruf: timelineDetailV2 -> "Dokumente" section -> PDF download
         let client = self.client()?;
         let mut details: std::collections::HashMap<String, Value> = Default::default();
+        // Documents not looked at (more than one pass takes, a failed request): a catch-up goes on.
+        let mut docs_incomplete = doc_candidates.len() > 40;
         for (item_id, date, title) in doc_candidates.into_iter().take(40) {
             sub_id += 2;
             let Ok(detail) = request(
@@ -1552,6 +1566,7 @@ impl BankConnector for TradeRepublicConnector {
             )
             .await
             else {
+                docs_incomplete = true;
                 continue;
             };
             details.insert(item_id.clone(), detail.clone());
@@ -1583,13 +1598,16 @@ impl BankConnector for TradeRepublicConnector {
                         req = req.header("Cookie", self.cookies.clone());
                     }
                     let Ok(resp) = req.send().await else {
+                        docs_incomplete = true;
                         continue;
                     };
                     if !resp.status().is_success() {
+                        docs_incomplete = true;
                         continue;
                     }
                     let Ok(bytes) = super::read_body_limited(resp, super::MAX_DOC_BYTES).await
                     else {
+                        docs_incomplete = true;
                         continue;
                     };
                     if !bytes.starts_with(b"%PDF") {
@@ -1625,6 +1643,7 @@ impl BankConnector for TradeRepublicConnector {
             }
             self.known_doc_items.push(item_id);
         }
+        out.documents_incomplete = docs_incomplete;
         // --- Wertpapierseite (#314): units, price, fees and taxes of the newest
         // trades from their detail screens (cached from the document pass).
         // A trade whose screen fails is skipped; the cash booking stays.

@@ -277,6 +277,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Unvollständige oder zu große Umsatzantwort." => "Incomplete or oversized transaction response.",
         "Widersprüchliche Buchungsreferenz." => "Conflicting transaction reference.",
         "Zugangsbezeichnung" => "Connection label",
+        "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet." => "Document retrieval is switched off for this connection.",
         "Der Name des Tags fehlt." => "The tag name is missing.",
         "Der Name des Tags ist länger als 64 Zeichen." => "The tag name is longer than 64 characters.",
         "Die Farbe ist ungültig (#RRGGBB)." => "The colour is invalid (#RRGGBB).",

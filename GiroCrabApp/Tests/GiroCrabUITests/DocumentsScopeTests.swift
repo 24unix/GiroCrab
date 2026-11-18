@@ -35,6 +35,30 @@ final class DocumentsScopeTests: XCTestCase {
         }
     }
 
+    func testConnectionsWithRetrievalOffAreNamedForTheListInView() throws {
+        clearBankingBlock() // the policy check cannot reach the network in a test run
+        defer { clearBankingBlock() }
+        let vault = try XCTUnwrap(model.vault)
+        let on = try vault.addBankConnection(connector: .tradeRepublic, displayName: "Depot A", loginName: "a")
+        let off = try vault.addBankConnection(connector: .tradeRepublic, displayName: "Depot B", loginName: "b")
+        let noDocs = try vault.addBankConnection(connector: .ibkr, displayName: "Ohne Dokumente", loginName: "c")
+        try vault.setDocumentsFetch(connectionId: off, enabled: false)
+        try vault.setDocumentsFetch(connectionId: noDocs, enabled: false)
+        model.connections = try vault.listBankConnections()
+        // whole list: only the connection that delivers documents and has retrieval off
+        XCTAssertEqual(model.connectionsWithDocumentsOff(accountFilter: nil).map(\.id), [off])
+        XCTAssertFalse(model.connectionsWithDocumentsOff(accountFilter: nil).contains { $0.id == on })
+        // no account: nothing to explain
+        XCTAssertTrue(model.connectionsWithDocumentsOff(accountFilter: AppModel.documentsWithoutAccount).isEmpty)
+        XCTAssertTrue(model.connectionsWithDocumentsOff(accountFilter: -42).isEmpty)
+        // the views read the cached set; the switch keeps it current
+        XCTAssertEqual(model.documentsOffConnectionIDs, [off])
+        model.setDocumentsFetch(off, true)
+        XCTAssertTrue(model.documentsOffConnectionIDs.isEmpty)
+        model.setDocumentsFetch(on, false)
+        XCTAssertEqual(model.documentsOffConnectionIDs, [on])
+    }
+
     func testAccountOriginSearchAndUnlinkedFiltersCombine() throws {
         let giro = try XCTUnwrap(model.allAccounts.first { $0.name == "Musterbank Girokonto" })
         let card = try XCTUnwrap(model.allAccounts.first { $0.name == "Visa Gold Kreditkarte" })

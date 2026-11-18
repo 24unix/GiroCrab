@@ -278,6 +278,7 @@ struct DocumentsView: View {
                     Text(docs.count == found.count ? String(localized: "\(docs.count) Dokumente")
                          : String(localized: "\(docs.count) von \(found.count) Dokumenten"))
                         .appFont(.caption).foregroundStyle(Theme.secondary)
+                    documentsOffHint
                     ViewThatFits(in: .horizontal) {
                         HStack {
                             importButton
@@ -303,7 +304,7 @@ struct DocumentsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(d.title).fontWeight(d.seen ? .medium : .bold).lineLimit(2)
                                     .frame(maxWidth: .infinity, alignment: .leading).sensitive()
-                                Text("\(d.originTitle) · \(d.accountName.isEmpty ? String(localized: "Ohne Konto") : d.accountName)")
+                                Text("\(d.originTitle) · \(accountText(d))")
                                     .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
                                 Text(d.bookingLabel.isEmpty ? String(localized: "Ohne zugeordneten Umsatz") : d.bookingLabel)
                                     .appFont(.caption).foregroundStyle(d.bookingLabel.isEmpty && !d.isBankDocument ? Theme.warning : Theme.secondary).lineLimit(1)
@@ -496,6 +497,31 @@ struct DocumentsView: View {
                        : String(localized: "Die gesamte Dokumentensammlung exportieren"))
     }
 
+    /// The account of a document; with its owner when another account has the same name.
+    private func accountText(_ d: DocumentInfo) -> String {
+        if let id = d.accountId, let account = model.accountsByID[id] { return model.accountLabel(account) }
+        return d.accountName.isEmpty ? String(localized: "Ohne Konto") : d.accountName
+    }
+
+    /// Retrieval switched off for a connection in view: otherwise nobody knows why nothing new arrives.
+    @ViewBuilder private var documentsOffHint: some View {
+        let off = model.connectionsWithDocumentsOff(accountFilter: model.documentsAccountFilter)
+        if !off.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Label {
+                    Text("Dokumentenabruf ausgeschaltet für: \(off.map(\.displayName).joined(separator: ", ")). Neue Dokumente kommen erst wieder, wenn er eingeschaltet ist.")
+                        .sensitive()
+                } icon: {
+                    Image(systemName: "info.circle")
+                }
+                .appFont(.caption).foregroundStyle(Theme.secondary)
+                Button("Einstellungen › Banken öffnen") { model.openSettings(.banks) }
+                    .buttonStyle(.link).appFont(.caption)
+                    .help("Beim Zugang „Dokumente abrufen“ einschalten")
+            }
+        }
+    }
+
     private var accountPicker: some View {
         @Bindable var model = model
         return Picker("Konto", selection: $model.documentsAccountFilter) {
@@ -505,7 +531,7 @@ struct DocumentsView: View {
             ForEach(model.accountMenuSections) { section in
                 Section(section.title) {
                     ForEach(section.accounts) { a in
-                        Label(a.name, systemImage: a.sfSymbol).tag(Int64?.some(a.id))
+                        Label(model.accountLabel(a), systemImage: a.sfSymbol).tag(Int64?.some(a.id))
                     }
                 }
             }

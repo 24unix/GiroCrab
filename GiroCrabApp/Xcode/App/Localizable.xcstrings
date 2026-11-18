@@ -5330,6 +5330,17 @@
         }
       }
     },
+    "Aus: Das Konto wird archiviert und ausgeblendet, seine Daten bleiben erhalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off: the account is archived and hidden, its data is kept."
+          }
+        }
+      }
+    },
     "Ausbildung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6578,6 +6589,17 @@
         }
       }
     },
+    "Beim Zugang „Dokumente abrufen“ einschalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch on “Fetch documents” in the connection"
+          }
+        }
+      }
+    },
     "Beim nächsten Abruf ist eine neue Anmeldung mit SMS-Freigabe erforderlich." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6827,6 +6849,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Documents arrive when fetching (Trade Republic, comdirect PostBox, FinTS statement) or via drag and drop."
+          }
+        }
+      }
+    },
+    "Belege, Kontoauszüge und PostBox-Dokumente werden bei jedem Abruf geladen. Aus: keine neuen Dokumente, bereits gespeicherte bleiben. Beim Einschalten lädt der nächste Abruf fehlende Dokumente nach." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receipts, statements and PostBox documents are fetched with every sync. Off: no new documents, stored ones stay. Switching it on again lets the next sync fetch missing documents."
           }
         }
       }
@@ -11351,6 +11384,17 @@
         }
       }
     },
+    "Dokumente abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch documents"
+          }
+        }
+      }
+    },
     "Dokumente ausgelassen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11402,6 +11446,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Documents are kept under “Belege & PostBox” (search: equateplus) and are not assigned to bookings or activities automatically. Only if the plan name in the document matches a plan does it also appear with that plan’s account."
+          }
+        }
+      }
+    },
+    "Dokumentenabruf ausgeschaltet für: %@. Neue Dokumente kommen erst wieder, wenn er eingeschaltet ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Document retrieval is switched off for: %@. New documents only arrive again once it is switched on."
           }
         }
       }
@@ -12382,6 +12437,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Settings… (⌘,)"
+          }
+        }
+      }
+    },
+    "Einstellungen › Banken öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings › Banks"
           }
         }
       }
@@ -31039,6 +31105,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Asked for after adding: %@"
+          }
+        }
+      }
+    },
+    "Wird nicht abgerufen, solange „Dokumente abrufen“ oben ausgeschaltet ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not fetched while “Fetch documents” above is switched off."
           }
         }
       }

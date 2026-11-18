@@ -481,6 +481,9 @@ pub struct FetchResult {
     /// PDFs fetched from the bank (trade confirmations, PostBox, statements).
     /// An empty `account_ref` stores the document without an account.
     pub documents: Vec<crate::documents::RemoteDocument>,
+    /// Some documents could not be looked at this time (a limit, a failed request): a catch-up
+    /// after switching document retrieval on again goes on with the next sync.
+    pub documents_incomplete: bool,
     /// The comdirect PostBox next to a FinTS login was fetched (#838): its
     /// last fetch date moves on.
     pub postbox_fetched: bool,

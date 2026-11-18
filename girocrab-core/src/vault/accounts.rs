@@ -177,6 +177,8 @@ impl Vault {
             "DELETE FROM settings WHERE key = ?1 OR substr(key, 1, length(?1) + 1) = ?1 || '.'",
             [super::connections::pin_key(connection_id)],
         )?;
+        // document retrieval switch and catch-up days of this login
+        crate::connectors::clear_documents_settings(db, connection_id)?;
         // the account choice of this login (#346): a re-added login starts fresh
         db.execute(
             "DELETE FROM settings WHERE key = ?1",

@@ -139,6 +139,15 @@ struct ConnectionEditSheet: View {
     @State private var status: ConnectionStatus?
     @State private var confirmRemove: BankConnection?
     @State private var selection = AccountSelectionDraft()
+    /// Document retrieval of this connection (only for banks that deliver documents).
+    @State private var documentsSupported = false
+    @State private var documentsFetch = true
+    /// "Dokumente abrufen" is off: nothing that fetches documents runs (PostBox included).
+    private var documentsBlocked: Bool { documentsSupported && !documentsFetch }
+    @State private var initialDocumentsFetch = true
+    /// The values as loaded: "Speichern" is only available once something differs.
+    @State private var initialValues: [String: String] = [:]
+    @State private var initialTanMedium = ""
     @State private var confirmClear: SessionClear?
 
     /// Session data whose deletion is being confirmed.
@@ -247,6 +256,8 @@ struct ConnectionEditSheet: View {
     private var savesPortalLogin: Bool { connection.connector == .americanExpress }
     @State private var storePortalLogin = false
     @State private var portalUser = ""
+    @State private var initialPortalUser = ""
+    @State private var initialStorePortalLogin = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -270,7 +281,7 @@ struct ConnectionEditSheet: View {
                         LabeledContent("Gespeichert als") { Text(normalizePhoneNumber(input: login)).sensitive() }
                     }
                     let blz = connection.bankCode.isEmpty ? (descriptor?.bankCode ?? "") : connection.bankCode
-                    if !blz.isEmpty {
+                    if !blz.isEmpty, isFinTs {
                         LabeledContent("BLZ", value: blz)
                     }
                     if usesPin {
@@ -284,6 +295,10 @@ struct ConnectionEditSheet: View {
                         // (Deutsche Bank / Postbank BestSign, error 9210).
                         TextField("TAN-Medium", text: $tanMedium, prompt: Text("Optional"))
                             .autocorrectionDisabled()
+                    }
+                    if documentsSupported {
+                        Toggle("Dokumente abrufen", isOn: $documentsFetch)
+                            .help("Belege, Kontoauszüge und PostBox-Dokumente werden bei jedem Abruf geladen. Aus: keine neuen Dokumente, bereits gespeicherte bleiben. Beim Einschalten lädt der nächste Abruf fehlende Dokumente nach.")
                     }
                 } header: { Text("Zugang").appSectionHeader() }
                 if connection.connector == .advanzia {
@@ -374,13 +389,18 @@ struct ConnectionEditSheet: View {
                                     model.setComdirectPostbox(connection.id, on)
                                     postbox = model.comdirectPostboxEnabled(connection.id)
                                 }))
+                                .disabled(documentsBlocked)
+                            if documentsBlocked {
+                                Label("Wird nicht abgerufen, solange „Dokumente abrufen“ oben ausgeschaltet ist.", systemImage: "info.circle")
+                                    .appFont(.caption).foregroundStyle(Theme.secondary)
+                            }
                             if postbox {
                                 Button {
                                     save()
                                     dismiss()
                                     model.fetchComdirectPostbox(model.connections.first { $0.id == connection.id } ?? connection)
                                 } label: { Label("PostBox jetzt abrufen", systemImage: "tray.and.arrow.down") }
-                                    .disabled(model.syncingConnectionID != nil)
+                                    .disabled(model.syncingConnectionID != nil || documentsBlocked)
                             }
                         } header: {
                             Text("PostBox").appSectionHeader()
@@ -427,14 +447,13 @@ struct ConnectionEditSheet: View {
                 // HIG: the default button (Return) is the rightmost one.
                 HStack { removeBtn; Spacer(); cancelBtn; fetchBtn; saveBtn }
                 VStack(spacing: 8) {
-                    HStack { cancelBtn; Spacer(); saveBtn }
-                    fetchBtn
+                    HStack { cancelBtn; Spacer(); fetchBtn; saveBtn }
                     removeBtn
                 }
             }
             .padding(14)
         }
-        .macFrame(minWidth: 560, minHeight: 560)
+        .macFrame(minWidth: 560, minHeight: 640)
         .onAppear(perform: load)
         .task {
             if connection.connector == .advanzia {
@@ -563,19 +582,42 @@ struct ConnectionEditSheet: View {
         Binding(get: { values[key] ?? "" }, set: { values[key] = $0 })
     }
 
-    private var removeBtn: some View {
-        Button("Bankzugang entfernen …", role: .destructive) { confirmRemove = connection }
-    }
     private var cancelBtn: some View {
-        Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+        Button(hasChanges ? "Abbrechen" : "Schließen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
     }
     private var saveBtn: some View {
         Button("Speichern") { saveAll() }
             .disabled(connection.connector == .advanzia && (advanziaSettings.busy || !advanziaSettings.loaded))
             .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+            .disabled(!hasChanges)
     }
+    /// Something in the sheet differs from what was loaded (name, login, PIN, settings, account selection).
+    private var hasChanges: Bool {
+        let l = isTR ? normalizePhoneNumber(input: login) : login.trimmingCharacters(in: .whitespaces)
+        if name != connection.displayName || l != connection.loginName { return true }
+        if usesPin, storePin != (status?.hasPin ?? false) || !pin.isEmpty { return true }
+        if values != initialValues { return true }
+        if isFinTs, tanMedium.trimmingCharacters(in: .whitespaces) != initialTanMedium { return true }
+        if documentsSupported, documentsFetch != initialDocumentsFetch { return true }
+        // Amex portal login (user name, password, save switch) and Advanzia (password, release method)
+        // are not in `values`.
+        if savesPortalLogin,
+           storePortalLogin != initialStorePortalLogin || !pin.isEmpty
+            || portalUser.trimmingCharacters(in: .whitespaces) != initialPortalUser { return true }
+        if connection.connector == .advanzia, advanziaSettings.hasChanges { return true }
+        return selection.hasChanges
+    }
+    /// Mac: the trash in the list of connections removes it, so the sheet has no button for that.
+    @ViewBuilder private var removeBtn: some View {
+        #if !os(macOS)
+        Button("Bankzugang entfernen …", role: .destructive) { confirmRemove = connection }
+        #endif
+    }
+    /// Icon only: "Speichern & abrufen".
     private var fetchBtn: some View {
-        Button("Speichern & abrufen") { saveAll(thenSync: true) }
+        Button { saveAll(thenSync: true) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+            .help("Speichern & abrufen")
+            .accessibilityLabel(Text("Speichern & abrufen"))
             .disabled(connection.connector == .advanzia && (advanziaSettings.busy || !advanziaSettings.loaded))
     }
 
@@ -609,10 +651,15 @@ struct ConnectionEditSheet: View {
         status = model.connectionStatus(connection.id)
         storePin = status?.hasPin ?? false
         if isComdirect, connection.connector == .finTsGeneric { postbox = model.comdirectPostboxEnabled(connection.id) }
+        documentsSupported = model.documentsFetchSupported(connection.id)
+        documentsFetch = model.documentsFetchEnabled(connection.id)
+        initialDocumentsFetch = documentsFetch
         if isFinTs { tanMedium = model.revealSetting(tanMediumKey) }
         if savesPortalLogin {
             portalUser = model.revealSetting(AppModel.portalLoginKey(connection.id))
             storePortalLogin = status?.hasPin == true || !portalUser.isEmpty
+            initialPortalUser = portalUser
+            initialStorePortalLogin = storePortalLogin
         }
         for key in keys + advancedKeys + postboxKeys {
             let e = model.settingEntry(key)
@@ -622,6 +669,8 @@ struct ConnectionEditSheet: View {
                 values[key] = e?.value ?? model.revealSetting(key)
             }
         }
+        initialValues = values
+        initialTanMedium = tanMedium.trimmingCharacters(in: .whitespaces)
     }
 
     private func saveSettings(_ keys: [String]) {
@@ -635,6 +684,10 @@ struct ConnectionEditSheet: View {
     }
 
     private func save() {
+        if documentsSupported, documentsFetch != initialDocumentsFetch {
+            model.setDocumentsFetch(connection.id, documentsFetch)
+            initialDocumentsFetch = documentsFetch
+        }
         let l = isTR ? normalizePhoneNumber(input: login) : login.trimmingCharacters(in: .whitespaces)
         model.updateConnection(connection.id, name: name, login: l)
         if usesPin {
@@ -661,6 +714,11 @@ struct ConnectionEditSheet: View {
             if medium != model.revealSetting(tanMediumKey) { model.saveSetting(tanMediumKey, medium) }
         }
         pin = ""
+        // the sheet can stay open (Speichern): what was saved is the new "unchanged"
+        initialValues = values
+        initialTanMedium = tanMedium.trimmingCharacters(in: .whitespaces)
+        initialPortalUser = portalUser.trimmingCharacters(in: .whitespaces)
+        initialStorePortalLogin = storePortalLogin
     }
 }
 
