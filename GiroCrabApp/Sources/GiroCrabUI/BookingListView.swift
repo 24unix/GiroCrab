@@ -1483,10 +1483,13 @@ private struct InspectorToolbarButton: View {
 
 private struct PrivacyToolbarToggle: View {
     @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
+    @AppStorage(PrivacyMode.scopeKey) private var privacyScope = PrivacyMode.defaultScope
 
     var body: some View {
         Toggle(isOn: $privacyMode) { Label("Privatmodus", systemImage: privacyMode ? "eye.slash" : "eye") }
-            .help(privacyMode ? String(localized: "Privatmodus beenden (⇧⌘H)") : String(localized: "Privatmodus: Beträge ausblenden (⇧⌘H)"))
+            .help(privacyMode ? String(localized: "Privatmodus beenden (⇧⌘H)")
+                : privacyScope == .personal ? String(localized: "Privatmodus: Beträge und persönliche Angaben ausblenden (⇧⌘H)")
+                : String(localized: "Privatmodus: Beträge ausblenden (⇧⌘H)"))
     }
 }
 
