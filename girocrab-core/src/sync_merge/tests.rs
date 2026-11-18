@@ -1602,6 +1602,7 @@ fn soft_deleted_rows_appear_in_no_public_api() {
                 doc_type: None,
                 search: None,
                 unlinked_only: false,
+                connection_id: None,
             }));
         both!(format!("preview_manual_loan({id})"), |v| v
             .preview_manual_loan(
@@ -1688,18 +1689,21 @@ fn soft_deleted_rows_appear_in_no_public_api() {
             doc_type: None,
             search: None,
             unlinked_only: false,
+            connection_id: None,
         },
         crate::documents::DocumentFilter {
             account_id: None,
             doc_type: None,
             search: None,
             unlinked_only: true,
+            connection_id: None,
         },
         crate::documents::DocumentFilter {
             account_id: None,
             doc_type: None,
             search: Some("Tagesgeld".into()),
             unlinked_only: false,
+            connection_id: None,
         },
     ]
     .into_iter()

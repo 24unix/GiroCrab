@@ -73,6 +73,9 @@ pub struct DocumentFilter {
     pub search: Option<String>,
     /// Only documents not linked to a booking (PostBox / unmatched).
     pub unlinked_only: bool,
+    /// Only documents of accounts of this bank connection (`accounts.connection_id` of the
+    /// document's account; documents without an account never match).
+    pub connection_id: Option<i64>,
 }
 
 /// Document delivered by a bank connector.
@@ -530,6 +533,7 @@ fn list_all_documents_sql() -> String {
             AND (?2 IS NULL OR d.doc_type = ?2)
             AND (?3 IS NULL OR d.title LIKE ?3 OR d.file_name LIKE ?3 OR t.counterparty LIKE ?3)
             AND (?4 = 0 OR t.id IS NULL)
+            AND (?5 IS NULL OR a.connection_id = ?5)
          ORDER BY COALESCE(NULLIF(d.doc_date,''), t.booking_date) DESC, d.id DESC"
     )
 }
@@ -566,7 +570,8 @@ impl Vault {
                     filter.account_id,
                     filter.doc_type,
                     search,
-                    filter.unlinked_only as i64
+                    filter.unlinked_only as i64,
+                    filter.connection_id
                 ],
                 row_to_info,
             )?
@@ -1153,7 +1158,7 @@ mod tests {
             let p = query_plan(
                 &db,
                 &list_all_documents_sql(),
-                params![None::<i64>, None::<String>, None::<String>, 0],
+                params![None::<i64>, None::<String>, None::<String>, 0, None::<i64>],
             );
             assert!(p.contains("COVERING INDEX booking_documents_info"), "{p}");
         }
@@ -1170,6 +1175,74 @@ mod tests {
             .unwrap();
         assert!(one.is_empty());
         let _ = std::fs::remove_file(path);
+    }
+
+    /// Bank connection filter (#1042): goes through the document's account, needs no
+    /// `booking_documents` column, and documents without an account never match.
+    #[test]
+    fn filters_documents_by_bank_connection() {
+        let dir = crate::test_support::TempDir::new("gc-docs-conn");
+        let path = dir.join("v.db");
+        let v = Vault::open(path.to_string_lossy().into(), vec![5u8; 32]).unwrap();
+        let ((a, conn_a), (b, conn_b)) = {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            let mut ids = vec![];
+            for r in ["A", "B"] {
+                db.execute(
+                    "INSERT INTO bank_connections(connector, display_name) VALUES ('demo', ?1)",
+                    [r],
+                )
+                .unwrap();
+                let conn = db.last_insert_rowid();
+                db.execute(
+                    "INSERT INTO accounts(group_id, external_ref, name, connection_id)
+                     VALUES ((SELECT id FROM account_groups), ?1, ?1, ?2)",
+                    params![r, conn],
+                )
+                .unwrap();
+                ids.push((db.last_insert_rowid(), conn));
+            }
+            (ids[0], ids[1])
+        };
+        for (acc, title) in [(a, "Von A"), (b, "Von B")] {
+            v.attach_document_to_account(
+                acc,
+                title.into(),
+                format!("{title}.pdf"),
+                simple_pdf(&[title.to_string()]),
+                "kontoauszug".into(),
+            )
+            .unwrap();
+        }
+        let by = |connection_id, account_id| {
+            v.list_all_documents(DocumentFilter {
+                connection_id,
+                account_id,
+                ..Default::default()
+            })
+            .unwrap()
+            .into_iter()
+            .map(|d| d.title)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(by(Some(conn_a), None), ["Von A"]);
+        assert_eq!(by(Some(conn_b), None), ["Von B"]);
+        assert!(by(Some(conn_b + 100), None).is_empty());
+        assert_eq!(by(None, None).len(), 2);
+        // both filters combine (AND)
+        assert_eq!(by(Some(conn_a), Some(a)), ["Von A"]);
+        assert!(by(Some(conn_a), Some(b)).is_empty());
+        {
+            let db = v.db().unwrap();
+            let p = query_plan(
+                &db,
+                &list_all_documents_sql(),
+                params![None::<i64>, None::<String>, None::<String>, 0, Some(conn_a)],
+            );
+            assert!(p.contains("COVERING INDEX booking_documents_info"), "{p}");
+        }
     }
 
     #[test]
