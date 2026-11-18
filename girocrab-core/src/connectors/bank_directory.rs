@@ -116,6 +116,7 @@ pub fn psd2_catalog() -> Vec<Psd2Bank> {
         psd2("Hanseatic Bank", "DE", "Hanseatic Bank", None),
         psd2("Santander", "DE", "Santander", None),
         psd2("Commerzbank", "DE", "Commerzbank", None),
+        psd2("Trade Republic", "DE", "Trade Republic", None),
         psd2("Raiffeisen Bank (Österreich)", "AT", "Raiffeisen", None),
         psd2("Erste Bank (Österreich)", "AT", "Erste Bank", None),
         psd2("Bank Austria", "AT", "Bank Austria", None),
@@ -637,6 +638,8 @@ mod tests {
         let r = search("n26", vec![], 10);
         assert!(r.iter().all(|b| b.mode == BankAccessMode::Psd2));
         assert!(ids(&r).contains(&"psd2:DE:N26".to_string()));
+        let tr_res = search("trade republic", vec![], 10);
+        assert!(ids(&tr_res).contains(&"psd2:DE:Trade Republic".to_string()));
 
         let r = search("bunq", vec![], 10);
         assert_eq!(ids(&r), vec!["api:bunq"]);
