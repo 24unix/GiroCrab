@@ -108,7 +108,8 @@ struct CompositionRing: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 28) {
+            // a long legend (all positions unfolded) starts at the top; the ring is not centred beside it
+            HStack(alignment: slices.count > 9 ? .top : .center, spacing: 28) {
                 ring
                 CompositionLegend(slices: slices, total: total, currency: currency, selected: selected, select: select)
                     .frame(maxWidth: 560 * textScale, alignment: .leading)
@@ -132,10 +133,12 @@ struct CompositionRankBars: View {
     let currency: String
     var selected: String?
     var select: ((DepotSlice) -> Void)?
+    /// Entries listed before the rest is folded into one line.
+    var keep = DepotComposition.maxRankedSlices
 
     var body: some View {
         // every slice is either listed or in the rest: with eleven positions all eleven are listed
-        let (shown, rest) = DepotComposition.ranked(slices, keep: DepotComposition.maxRankedSlices)
+        let (shown, rest) = DepotComposition.ranked(slices, keep: keep)
         let scale = max(shown.map(\.cents).max() ?? 1, 1)
         VStack(alignment: .leading, spacing: 8) {
             ForEach(shown) { s in
@@ -210,6 +213,8 @@ struct CompositionTreemap: View {
     let currency: String
     var selected: String?
     var select: ((DepotSlice) -> Void)?
+    /// A fixed height where the width is not measured (the shared picture), else derived from the width.
+    var fixedHeight: CGFloat?
     @State private var hovered: String?
     @State private var width: CGFloat = 0
     /// Width of one digit of the small tile font (Dynamic Type on the iPhone, the app's text size on the Mac).
@@ -217,7 +222,7 @@ struct CompositionTreemap: View {
     private var charWidth: CGFloat { digitWidth * textScale }
 
     /// About 210 pt; narrower areas get less, so the tiles stay blocks.
-    private var height: CGFloat { min(210 * textScale, max(150 * textScale, width * 0.6)) }
+    private var height: CGFloat { fixedHeight ?? min(210 * textScale, max(150 * textScale, width * 0.6)) }
 
     private var focus: DepotSlice? {
         let id = hovered ?? selected

@@ -794,6 +794,7 @@ public final class AppModel {
             if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {
                 sidebarSelection = .account(a.id)
                 if options.depotTab == "activities" { depotTab = .activities }
+                if options.depotTab == "plans" { depotTab = .plans }
                 selectedBookingID = bookings.first?.id
             }
             switch options.demoFilter {

@@ -49,7 +49,7 @@ import Foundation
 ///  --expand-rows          unfold the first two rows of compact position/activity lists
 ///  --window-height <pt>   (macOS, with --screenshot) window height, to see the end of long lists
 ///  --window-width <pt>    (macOS, with --screenshot) resize the main window first, to check narrow layouts
-///  --depot-tab activities (demo) open a securities depot on its activities tab
+///  --depot-tab activities|plans (demo) open a securities depot on its activities or savings plans tab
 ///  --privacy[=all]        (developer) draw every window as in privacy mode: amounts
 ///                         hidden, with `=all` personal data too
 ///  --demo-menu <title>    (macOS, with --screenshot and GIROCRAB_SCREENSHOT_NATIVE=1)
@@ -78,7 +78,7 @@ public struct LaunchOptions: Sendable {
     public var selectAccount: String?
     /// (demo) preselect the booking whose merchant/counterparty contains this text
     public var pickBooking: String?
-    /// (demo) `--depot-tab activities`: tab of the securities depot view
+    /// (demo) `--depot-tab activities|plans`: tab of the securities depot view
     public var depotTab: String?
     /// (developer) `--window-height`: window height for a screenshot
     let windowHeight: Double?

@@ -309,6 +309,8 @@ pub enum Capability {
     Balances,
     /// Depot / securities positions.
     Securities,
+    /// Securities transactions of a depot (buys, sells, distributions as their own entries).
+    SecurityTransactions,
     /// SEPA credit transfers (incl. SEPA Instant where the bank offers it).
     Transfers,
     /// Standing orders (not implemented by any connector yet).
@@ -442,6 +444,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
             Capability::Documents,
         ],
         status: Status::Verified,
@@ -479,6 +482,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
         ],
         status: Status::TestingWanted,
         issues: &[],
@@ -492,6 +496,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
         ],
         status: Status::TestingWanted,
         issues: &[45],
@@ -616,6 +621,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
             Capability::Documents,
         ],
         status: Status::Limited,
@@ -665,6 +671,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
+            Capability::SecurityTransactions,
         ],
         status: Status::TestingWanted,
         issues: &[],
@@ -692,6 +699,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Balances,
             Capability::Transactions,
             Capability::Securities,
+            Capability::SecurityTransactions,
             Capability::Documents,
         ],
         status: Status::Verified,
@@ -838,6 +846,39 @@ mod matrix_tests {
                 proto.starts_with("FinTS"),
                 e.interface == Interface::Fints,
                 "{}: interface vs protocol {proto:?}",
+                e.name
+            );
+        }
+    }
+
+    /// The README column "Depot-Aktivitäten" comes from this: exactly the connectors that fill
+    /// `FetchResult::security_transactions` (search for it in `connectors/` when one is added).
+    #[test]
+    fn security_transactions_are_listed_for_the_connectors_that_deliver_them() {
+        let mut kinds: Vec<String> = BANK_MATRIX
+            .iter()
+            .filter(|e| e.capabilities.contains(&Capability::SecurityTransactions))
+            .map(|e| format!("{:?}", e.kind.expect("a connector")))
+            .collect();
+        kinds.sort();
+        assert_eq!(
+            kinds,
+            [
+                "Comdirect",
+                "Ffb",
+                "Fnz",
+                "Ibkr",
+                "ScalableCapital",
+                "TradeRepublic"
+            ]
+        );
+        for e in BANK_MATRIX
+            .iter()
+            .filter(|e| e.capabilities.contains(&Capability::SecurityTransactions))
+        {
+            assert!(
+                e.capabilities.contains(&Capability::Securities),
+                "{}: activities without positions",
                 e.name
             );
         }

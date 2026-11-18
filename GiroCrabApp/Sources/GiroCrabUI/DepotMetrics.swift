@@ -627,6 +627,21 @@ enum DepotActivities {
         t.direction == .tax ? abs(t.valueCents != 0 ? t.valueCents : t.taxesCents) : t.taxesCents
     }
 
+    /// The bank's note as people read it: internal event codes (`ssp_corporate_action_cash`) that older
+    /// syncs stored behind the text are dropped, the first letter is capital. Empty: nothing worth showing.
+    static func noteText(_ t: SecurityTransaction) -> String {
+        let words = t.bookingText.split(separator: " ").filter { !$0.contains("_") }
+        guard let first = words.first else { return "" }
+        let text = words.joined(separator: " ")
+        return first.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// Only the activities of one calendar year (by booking date); nil keeps all.
+    static func inYear(_ items: [SecurityTransaction], _ year: Int?) -> [SecurityTransaction] {
+        guard let year else { return items }
+        return items.filter { $0.bookingDate.hasPrefix("\(year)-") }
+    }
+
     /// ISO dates compare as strings; an open end is `nil`. A transaction without a date has no place in a bounded period.
     static func inPeriod(_ date: String, from: String?, to: String?) -> Bool {
         if from == nil && to == nil { return true }
@@ -687,12 +702,13 @@ struct SecurityActivityTotals: Equatable {
 
 /// Segmented switch of the depot view.
 enum DepotTab: String, CaseIterable, Identifiable {
-    case positions, activities
+    case positions, activities, plans
     var id: String { rawValue }
     var title: LocalizedStringKey {
         switch self {
         case .positions: "Positionen"
         case .activities: "Aktivitäten"
+        case .plans: "Sparpläne"
         }
     }
     /// For menus and the command palette, which take a String.
@@ -700,6 +716,7 @@ enum DepotTab: String, CaseIterable, Identifiable {
         switch self {
         case .positions: String(localized: "Positionen")
         case .activities: String(localized: "Aktivitäten")
+        case .plans: String(localized: "Sparpläne")
         }
     }
 }
@@ -709,5 +726,18 @@ extension Holding {
     /// `currentPriceCents` / `valueCents` stay in the account currency so sums remain correct.
     func nativeCurrency(accountCurrency: String) -> String? {
         currency.isEmpty || currency.caseInsensitiveCompare(accountCurrency) == .orderedSame ? nil : currency
+    }
+}
+
+/// The savings plans of a depot that match the search (name, ISIN or WKN); the totals follow.
+enum DepotPlans {
+    static func matching(_ dashboard: InvestmentDashboard, query: String) -> InvestmentDashboard {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return dashboard }
+        var d = dashboard
+        d.plans = dashboard.plans.filter {
+            DepotMetrics.matches(query: query, name: $0.merchant.name, isin: $0.merchant.isin, wkn: $0.merchant.wkn)
+        }
+        d.totalMonthlyCents = d.plans.filter(\.active).reduce(0) { $0 + $1.monthlyCents }
+        return d
     }
 }

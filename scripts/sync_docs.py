@@ -25,7 +25,7 @@ START, END = "<!-- sync:connectors:start -->", "<!-- sync:connectors:end -->"
 SITE_START, SITE_END = "<!-- BEGIN GENERATED BANKS TABLE -->", "<!-- END GENERATED BANKS TABLE -->"
 REPO_URL = "https://github.com/GiroCrab/GiroCrab"
 
-CAPS = ["Transactions", "Balances", "Securities", "Transfers", "StandingOrders", "Documents"]
+CAPS = ["Transactions", "Balances", "Securities", "SecurityTransactions", "Transfers", "StandingOrders", "Documents"]
 INTERFACES = {
     "Fints": "FinTS 3.0",
     "RestApi": "REST-API",
@@ -46,27 +46,31 @@ NAMES = {
 
 TEXT = {
     "de": {
-        "heading": ["Bank", "Schnittstelle", "Umsätze", "Salden", "Depot", "Überweisung",
+        "heading": ["Bank", "Schnittstelle", "Umsätze", "Salden", "Depot", "Depot-Aktivitäten", "Überweisung",
                     "Dauerauftrag", "PDF/Postfach", "Status"],
         "status": {"Verified": "✅ Verifiziert", "TestingWanted": "🧪 Test gesucht",
                    "Limited": "⚠️ Mit Einschränkungen"},
         "legend": ("✅ mit echten Konten getestet · 🧪 implementiert, Rückmeldungen aus der Praxis "
                    "willkommen (Issue verlinkt) · ⚠️ bekannte Einschränkungen · ✓ umgesetzt · "
                    "– nicht umgesetzt. Bei FinTS hängen Depot und PDF-Kontoauszüge vom Angebot "
-                   "der jeweiligen Bank ab."),
+                   "der jeweiligen Bank ab. Depot: Positionen; Depot-Aktivitäten: Käufe, Verkäufe und "
+                   "Ausschüttungen als eigene Einträge. Anlageklasse und Instrument ermittelt GiroCrab "
+                   "für jedes Depot selbst, einige Konnektoren übernehmen sie von der Bank."),
         "more": ("Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und "
                  "FinTS-URL anbinden ({n} Institute im FinTS-Verzeichnis); europäische "
                  "PSD2-Banken über Enable Banking mit einer eigenen, kostenlosen Anwendung."),
     },
     "en": {
-        "heading": ["Bank", "Interface", "Transactions", "Balances", "Securities", "Transfers",
+        "heading": ["Bank", "Interface", "Transactions", "Balances", "Securities", "Securities activity", "Transfers",
                     "Standing orders", "PDF/post box", "Status"],
         "status": {"Verified": "✅ Verified", "TestingWanted": "🧪 Testing wanted",
                    "Limited": "⚠️ Limited"},
         "legend": ("✅ tested with real accounts · 🧪 implemented, feedback from real accounts "
                    "welcome (issue linked) · ⚠️ known limitations · ✓ implemented · – not "
                    "implemented. For FinTS, securities and PDF statements depend on what the "
-                   "individual bank offers."),
+                   "individual bank offers. Securities: positions; securities activity: buys, sells "
+                   "and distributions as entries of their own. GiroCrab works out asset class and "
+                   "instrument for every depot itself; some connectors take them over from the bank."),
         "more": ("Further German banks with FinTS 3.0 (PIN/TAN) can be connected via bank code "
                  "and FinTS URL ({n} institutions in the FinTS directory); European PSD2 banks "
                  "via Enable Banking with your own free application."),
@@ -102,6 +106,7 @@ CONNECTOR_DOCS = {
     "miles-and-more": ("Miles & More Kreditkarte (Deutsche Bank)", "Deutsche Bank / Miles & More"),
     "quirion": ("quirion", "quirion"),
     "scalable-capital": ("Scalable Capital", "Scalable Capital"),
+    "trade-republic": ("Trade Republic", "Trade Republic"),
     "volkswagen-bank": ("Volkswagen Bank", "Volkswagen Bank"),
     "uberspace": ("Uberspace", "Uberspace"),
     "schwaebisch-hall": ("Schwäbisch Hall (Bausparen)", "Schwäbisch Hall"),

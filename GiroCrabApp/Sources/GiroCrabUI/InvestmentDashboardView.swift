@@ -38,6 +38,8 @@ extension InvestmentDashboard {
 
 struct PlanGrid: View {
     let dashboard: InvestmentDashboard
+    /// The currency of the amounts (the depot's for a depot's plans; the booking based grid is in euro).
+    var currency = "EUR"
     @Environment(\.reportRedaction) private var redaction
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -71,10 +73,13 @@ struct PlanGrid: View {
                     Divider().gridCellUnsizedAxes(.horizontal)
                     GridRow {
                         HStack(spacing: 8) {
-                            MerchantSignet(merchant: plan.merchant, size: 28)
+                            // names, ISINs and initials of securities: hidden when the report asks for labels
+                            MerchantSignet(merchant: plan.merchant, size: 28).sensitive(.labels)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(plan.merchant.name).appFont(compact ? .footnote : .callout, weight: .medium).lineLimit(compact ? 2 : 1).minimumScaleFactor(0.85)
+                                    .sensitive(.labels)
                                 Text(planSubtitle(plan)).appFont(.caption2, design: .monospaced).foregroundStyle(Theme.secondary).lineLimit(1)
+                                    .sensitive(.labels)
                             }
                         }
                         ForEach(plan.executions.filter { shownMonths.contains($0.month) }, id: \.month) { e in
@@ -86,9 +91,9 @@ struct PlanGrid: View {
                                 }
                             }
                             .frame(width: cell)
-                            .help(e.amountCents > 0 ? "\(DateText.monthLabel(e.month)): \(redaction.masking(Money.format(e.amountCents), .amounts))" : String(localized: "nicht ausgeführt"))
+                            .help(e.amountCents > 0 ? "\(DateText.monthLabel(e.month)): \(redaction.masking(Money.format(e.amountCents, currency: currency), .amounts))" : String(localized: "nicht ausgeführt"))
                         }
-                        Text(Money.format(plan.monthlyCents))
+                        Text(Money.format(plan.monthlyCents, currency: currency))
                             .sensitive(.amounts)
                             .appFont(.callout, monospacedDigit: true)
                             .lineLimit(1).fixedSize(horizontal: true, vertical: false)
@@ -101,7 +106,7 @@ struct PlanGrid: View {
                 GridRow {
                     Text("Summe aktive Pläne").appFont(.callout, weight: .semibold).lineLimit(compact ? 2 : 1)
                     ForEach(shownMonths, id: \.self) { _ in Color.clear.frame(width: cell, height: 1) }
-                    Text(Money.format(dashboard.totalMonthlyCents)).sensitive(.amounts).appFont(.callout, weight: .semibold, monospacedDigit: true).lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(minWidth: compact ? 64 : nil, alignment: .trailing)
+                    Text(Money.format(dashboard.totalMonthlyCents, currency: currency)).sensitive(.amounts).appFont(.callout, weight: .semibold, monospacedDigit: true).lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(minWidth: compact ? 64 : nil, alignment: .trailing)
                 }
                 .padding(.top, 8)
             }
@@ -114,7 +119,13 @@ struct PlanGrid: View {
         if !p.merchant.isin.isEmpty { parts.append(p.merchant.isin) }
         if !p.merchant.wkn.isEmpty { parts.append("WKN \(p.merchant.wkn)") }
         if parts.isEmpty { parts.append(p.merchant.assetClass.isEmpty ? String(localized: "Sparplan") : p.merchant.assetClass) }
-        parts.append(String(localized: "am \(p.dayOfMonth).", comment: "Savings plan execution day of month"))
+        if p.runDays.count > 3 {
+            parts.append(String(localized: "\(p.runDays.count)× im Monat", comment: "Savings plan that runs often in a month"))
+        } else if p.runDays.count > 1 {
+            parts.append(String(localized: "am \(p.runDays.map { "\($0)." }.joined(separator: ", "))", comment: "Savings plan execution days of the month"))
+        } else {
+            parts.append(String(localized: "am \(p.dayOfMonth).", comment: "Savings plan execution day of month"))
+        }
         return parts.joined(separator: " · ")
     }
 }

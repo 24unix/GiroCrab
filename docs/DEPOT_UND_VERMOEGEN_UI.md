@@ -20,8 +20,17 @@ gleich anfühlen:
 3. **Zusammensetzung** (`AssetCompositionCard`): Gruppierung (Nach Position / Anlageklasse / Instrument) ×
    Darstellung (Kreis | Balken | Kacheln). Alle Darstellungen verwenden dieselben Farben (`DepotColors`) und
    dieselbe Datenbasis (`DepotComposition`).
-4. **Positionen | Aktivitäten** (nur Wertpapierdepots): eine sortierbare Positionstabelle
-   (`DepotPositionsTable`) bzw. die Aktivitätenliste (`DepotActivitiesView`). Eine Position mit Wertverlauf hat einen
+4. **Positionen | Aktivitäten | Sparpläne** (nur Wertpapierdepots; ⌘1, ⌘2, ⌘3): eine sortierbare Positionstabelle
+   (`DepotPositionsTable`), die Aktivitätenliste (`DepotActivitiesView`) bzw. die Sparpläne (`plansTab`: aus den
+   Sparplan-Käufen der Aktivitäten erkannt (Text „Sparplan“ oder der englische Ereigniscode `savings_plan`), im Raster
+   von „Sparpläne & Perks“; `Vault.depot_savings_plans`). Es zählen nur Ausführungen in der Währung des Depots, es wird
+   nichts umgerechnet; das Raster zeigt die Beträge in dieser Währung.
+   „Monatlich investiert“ ist die Summe der Ausführungen des letzten Monats (zwei Ausführungen zu 50 € sind 100 €);
+   ein laufender Monat mit weniger Ausführungen als der Monat davor zählt noch nicht. Es ist die Rate des letzten
+   Monats, kein Durchschnitt; „Investiert im Zeitraum“ daneben summiert die Ausführungen der gezeigten Monate. Läuft ein
+   Plan mehrmals im Monat, nennt die Zeile die Tage („am 16., 26.“, ab vier Ausführungen „4× im Monat“). Das Raster zeigt immer eine Seite von
+   Monaten (6, auf dem iPhone 4); die Pfeile darüber blättern zurück (`end_offset_months`). Eine frühere Seite wird zu
+   ihrem letzten Monat gerechnet: nur was bis dahin lief, zählt für Rate und „aktiv“. Eine Position mit Wertverlauf hat einen
    Diagramm-Knopf, der den Tageswert der Position zeigt (`PositionHistorySheet`); Positionen, die nicht mehr im
    Bestand sind, aber einen Verlauf haben, stehen eingeklappt unter „Verkaufte Positionen“.
 
@@ -70,6 +79,22 @@ Regeln:
   und Klickfilter (dort: ein Bereich bzw. ein Konto). Der Umschalter ist wie am Kontodiagramm (#634) ein kleines
   Icon-Segment. Der Cash-Verlauf nutzt ebenfalls das Diagramm des Konto-Headers (Ausblenden, Linie, Balken,
   Kreis als Anteile der Konten).
+
+- **Alle anzeigen**: Bei einer langen Legende faltet die Karte den Rest zu „Weitere (n)“; „Alle n anzeigen“ klappt ihn
+  in seine Positionen auf („Weniger anzeigen“ faltet wieder).
+- **Teilen** (`CompositionShare.swift`): Ein Knopf neben dem Umschalter gibt die Darstellung als Bild an das
+  System-Teilen (`ShareLink`, PNG). Das Bild wird erst gezeichnet, wenn jemand ein Ziel wählt, mit
+  derselben Zeichnung (`CompositionDrawing`) wie die Karte, im aktuellen Erscheinungsbild und in der Textgröße der App.
+
+## Export und Filter der Tabellen
+
+- **Als CSV exportieren** (`DepotCSV`): Positionen und Aktivitäten, genau was die Tabelle zeigt (Suche, Zeitraum, Art
+  und Klickfilter der Zusammensetzung). Bei Positionen stehen Mengen- und Kurseinheit mit in der Datei (Anleihen: Nominal und Kurs in %, Positionen in
+  Fremdwährung: Kurs in deren Währung). Die Sparpläne haben keinen Export. Der Knopf der Positionen steht über der
+  Tabelle, der der Aktivitäten in deren Filterzeile.
+- **Jahr** (nur Aktivitäten): Menü mit den Jahren, in denen es Aktivitäten im gewählten Zeitraum gibt, zusätzlich zu
+  Art und Suche; es setzt sich beim Wechsel des Depots und des Zeitraums zurück. Die Zeile unter dem Filter nennt
+  „Jahr: 2026“ neben dem Zeitraum.
 
 ## Positionstabelle
 

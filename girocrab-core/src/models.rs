@@ -912,6 +912,11 @@ pub struct SavingsPlan {
     pub active: bool,
     pub total_invested_cents: i64,
     pub executions: Vec<PlanExecution>,
+    /// The days of the month the plan ran on in the month its rate is taken from, oldest first (a plan
+    /// can run more than once a month, on different days). Empty: only `day_of_month` is known.
+    #[uniffi(default = [])]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub run_days: Vec<u32>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

@@ -15,7 +15,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         kind: Some(ConnectorKind::A),
         interface: Interface::Fints,
         official: Some(true),
-        capabilities: &[Capability::Transactions, Capability::Balances, Capability::Transfers],
+        capabilities: &[Capability::Transactions, Capability::Balances, Capability::Securities, Capability::SecurityTransactions, Capability::Transfers],
         status: Status::Verified,
         issues: &[],
     },
@@ -46,7 +46,7 @@ class SyncDocs(unittest.TestCase):
     def test_parse_matrix(self):
         m = sd.parse_matrix(CATALOG)
         self.assertEqual([e["name"] for e in m], ["Volksbank X", "ING", "Amazon Bestellungen"])
-        self.assertEqual(m[0]["capabilities"], ["Transactions", "Balances", "Transfers"])
+        self.assertEqual(m[0]["capabilities"], ["Transactions", "Balances", "Securities", "SecurityTransactions", "Transfers"])
         self.assertEqual((m[1]["status"], m[1]["issues"]), ("TestingWanted", [313]))
         self.assertEqual(m[2]["issues"], [1, 2])
 
@@ -68,8 +68,11 @@ class SyncDocs(unittest.TestCase):
     def test_matrix_markdown(self):
         m = sd.parse_matrix(CATALOG)
         de = sd.matrix_text("de", m, 2010)
-        self.assertIn("| Volksbank X | FinTS 3.0 | ✓ | ✓ | – | ✓ | – | – | ✅ Verifiziert |", de)
+        self.assertIn("| Volksbank X | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | ✅ Verifiziert |", de)
         self.assertIn("🧪 Test gesucht [#313](https://github.com/GiroCrab/GiroCrab/issues/313)", de)
+        self.assertIn("Depot-Aktivitäten", de)
+        # a bank with positions only has no depot activities
+        self.assertNotIn("| ING | FinTS 3.0 | ✓ | – | ✓ | ✓ |", de)
         self.assertIn("2.010 Institute", de)
         en = sd.matrix_text("en", m, 2010)
         self.assertIn("| Amazon orders | Web-Portal |", en)
