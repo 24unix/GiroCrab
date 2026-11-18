@@ -225,9 +225,7 @@ fn occurrences(o: &Row, from: Date, to: Date) -> Vec<Date> {
         for k in k0..k0 + 1000 {
             let months = first_months + step * k;
             let (y, m) = ((months / 12) as i32, (months % 12) as u32 + 1);
-            let last_day = last_day_of_month(y, m);
-            let day = o.exec_day.clamp(1, 31).min(last_day);
-            let Some(d) = crate::dates::ymd(y, m, day) else {
+            let Some(d) = crate::dates::clamped_ymd(y, m, o.exec_day.clamp(1, 31)) else {
                 continue;
             };
             if d > end {
@@ -239,10 +237,6 @@ fn occurrences(o: &Row, from: Date, to: Date) -> Vec<Date> {
         }
     }
     out
-}
-
-fn last_day_of_month(y: i32, m: u32) -> u32 {
-    crate::dates::ymd(y, m, 1).map_or(28, |d| d.days_in_month() as u32)
 }
 
 /// A stored standing order as the bank reported it (#496): what the editor shows
