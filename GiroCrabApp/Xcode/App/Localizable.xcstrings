@@ -33449,6 +33449,17 @@
         }
       }
     },
+    "Änderungen werden beim Beenden zurückgesetzt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changes are reset when you quit."
+          }
+        }
+      }
+    },
     "Öffnen Sie im Portal frühere Abrechnungszeiträume. „Umsätze übernehmen“ übernimmt alle erkannten Umsätze und schließt das Fenster." : {
       "extractionState" : "manual",
       "localizations" : {

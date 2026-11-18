@@ -46,7 +46,7 @@ use rusqlite::types::Value;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use zeroize::Zeroizing;
 
-use super::moneymoney_import::{find_or_create_category, fingerprint, merge_rows, MmRow, Stats};
+use super::moneymoney_import::{find_or_create_category, merge_rows, MmRow, Stats};
 use crate::asset_classification::{AssetClass, ClassificationValues, InstrumentKind};
 use crate::connectors::bank_directory::{match_psd2_bank, psd2_catalog, Psd2Bank};
 use crate::connectors::group_for;
@@ -2550,46 +2550,22 @@ fn check_account(
     r: &AccountRows,
     balance_from_bank: bool,
 ) -> CoreResult<MoneyMoneyDbAccountCheck> {
-    // fingerprint -> deleted flags of the account's bookings
-    let mut have: HashMap<String, Vec<bool>> = HashMap::new();
-    {
-        let mut q = conn.prepare(
-            "SELECT booking_date, amount_cents, counterparty_iban, counterparty, purpose,
-                    import_fp, deleted_ms IS NOT NULL
-             FROM transactions WHERE account_id = ?1 ORDER BY id",
-        )?;
-        let rows = q.query_map([account_id], |row| {
-            let fp: String = row.get(5)?;
-            let fp = if fp.is_empty() {
-                fingerprint(
-                    &row.get::<_, String>(0)?,
-                    row.get(1)?,
-                    &row.get::<_, String>(2)?,
-                    &row.get::<_, String>(3)?,
-                    &row.get::<_, String>(4)?,
-                )
-            } else {
-                fp
-            };
-            Ok((fp, row.get::<_, bool>(6)?))
-        })?;
-        for row in rows {
-            let (fp, deleted) = row?;
-            have.entry(fp).or_default().push(deleted);
-        }
-    }
-    let live_total = have.values().flatten().filter(|d| !**d).count() as u32;
+    // every MoneyMoney row matched once (multiset): exact fingerprint, plus a
+    // bank booking without counterparty the import took as the same booking
+    use super::moneymoney_import::{
+        load_existing, match_bank_without_counterparty, match_by_fingerprint,
+    };
+    let existing = load_existing(conn, account_id)?;
+    let (mut matched, mut used) = match_by_fingerprint(&r.rows, &existing);
+    match_bank_without_counterparty(&r.rows, &existing, &mut matched, &mut used);
+    let live_total = existing.iter().filter(|e| !e.deleted).count() as u32;
     let (mut found, mut deleted) = (0u32, 0u32);
-    let mut seen: HashMap<String, usize> = HashMap::new();
-    for row in &r.rows {
-        let fp = row.fp();
-        let k = seen.entry(fp.clone()).or_insert(0);
-        match have.get(&fp).and_then(|v| v.get(*k)) {
-            Some(true) => deleted += 1,
-            Some(false) => found += 1,
-            None => {}
+    for j in matched.into_iter().flatten() {
+        if existing[j].deleted {
+            deleted += 1;
+        } else {
+            found += 1;
         }
-        *k += 1;
     }
     let girocrab_balance_cents: i64 = conn.query_row(
         "SELECT balance_cents FROM accounts WHERE id = ?1",
