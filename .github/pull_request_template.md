@@ -16,8 +16,8 @@
 <!-- Nur bei KI-Unterstützung behalten und ausfüllen (docs/ai-transparency.md), sonst löschen.
      Only with AI help: keep and fill in (docs/ai-transparency.md), otherwise delete. -->
 ### 🤖 AI Process Reflection
-- **Human-Steering:** 
-- **AI-Agency:** 
-- **Review-Focus:** 
-- **Security-Check:** 
-- **Perf-Check:** 
+- **Human-Steering:**
+- **AI-Agency:**
+- **Review-Focus:**
+- **Security-Check:**
+- **Perf-Check:**
