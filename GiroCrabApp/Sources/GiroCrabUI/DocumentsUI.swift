@@ -257,7 +257,7 @@ struct DocumentsView: View {
                     if isCompact {
                         VStack(alignment: .leading, spacing: 8) {
                             connectionPicker
-                            accountPicker
+                                accountPicker
                             unlinkedToggle
                             unseenRow(docs)
                         }
@@ -265,13 +265,13 @@ struct DocumentsView: View {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 12) {
                                 connectionPicker
-                            accountPicker
+                                accountPicker
                                 Spacer(minLength: 0)
                                 unlinkedToggle
                             }
                             VStack(alignment: .leading, spacing: 8) {
                                 connectionPicker
-                            accountPicker
+                                accountPicker
                                 unlinkedToggle
                             }
                         }
