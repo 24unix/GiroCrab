@@ -110,7 +110,13 @@ struct BookingStreamView: View {
                     #endif
                     .padding(.bottom, 18)
                     .frame(maxWidth: .infinity)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+                    #if os(macOS)
+                    // One value, so the view re-runs only when a scroller comes or goes, not at every
+                    // step of a resize or sidebar animation.
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.bounds(of: .named(StreamDayTracker.space)).map { max(0, $0.width - proxy.size.width) } ?? 0
+                    } action: { scrollerInset = $0 }
+                    #endif
                 }
                 .coordinateSpace(name: StreamDayTracker.space)
                 .frame(minHeight: 0, maxHeight: .infinity)
@@ -126,7 +132,6 @@ struct BookingStreamView: View {
                 }
             }
             .background(Theme.canvas)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
             #if os(iOS)
             // iPhone: the detail column is not reachable by tapping, so show it as a sheet.
             .capturableSheet(isPresented: Binding(
@@ -271,15 +276,7 @@ struct BookingStreamView: View {
 
     /// macOS: width a scroller takes from the scroll area; the pinned header
     /// (outside the ScrollView) gets the same trailing inset to stay aligned.
-    @State private var columnWidth: CGFloat = 0
-    @State private var contentWidth: CGFloat = 0
-    private var scrollerInset: CGFloat {
-        #if os(macOS)
-        (columnWidth > 0 && contentWidth > 0) ? max(0, columnWidth - contentWidth) : 0
-        #else
-        0
-        #endif
-    }
+    @State private var scrollerInset: CGFloat = 0
 
     private static let topID = "stream-top"
     #if !os(iOS)
