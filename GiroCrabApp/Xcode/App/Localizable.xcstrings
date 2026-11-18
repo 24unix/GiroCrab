@@ -7974,13 +7974,13 @@
         }
       }
     },
-    "Blendet Beträge aus, wenn du die App jemandem zeigst. Auf Wunsch auch Namen, Kontonummern und Verwendungszwecke." : {
+    "Blendet Beträge, Namen, Kontonummern und Verwendungszwecke aus, wenn du die App jemandem zeigst. Auf Wunsch nur die Beträge." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hides amounts when showing the app to someone. Optionally also names, account numbers, and purposes."
+            "value" : "Hides amounts, names, account numbers, and purposes when showing the app to someone. Optionally only the amounts."
           }
         }
       }
@@ -24711,6 +24711,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Privacy Mode: Hide amounts (⇧⌘H)"
+          }
+        }
+      }
+    },
+    "Privatmodus: Beträge und persönliche Angaben ausblenden (⇧⌘H)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy Mode: Hide amounts and personal details (⇧⌘H)"
           }
         }
       }
