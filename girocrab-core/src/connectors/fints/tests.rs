@@ -1304,6 +1304,7 @@ fn fints_date_needs_eight_ascii_digits() {
     assert_eq!(fints_date("20261107").as_deref(), Some("2026-11-07"));
     assert_eq!(fints_date("202ä1107"), None); // 8 bytes, not 8 digits
     assert_eq!(fints_date("2026110"), None);
+    assert_eq!(fints_date("20260230"), None);
     assert_eq!(fints_date(""), None);
 }
 

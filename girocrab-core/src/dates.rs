@@ -74,9 +74,9 @@ pub(crate) fn day_number(d: Date) -> i32 {
     days_between(jiff::civil::date(1, 1, 1), d) as i32 + 1
 }
 
-/// `d` as stored: `YYYY-MM-DD`.
+/// `d` as stored: `YYYY-MM-DD` (jiff's `Display`, the year padded to four digits).
 pub(crate) fn iso(d: Date) -> String {
-    d.strftime("%Y-%m-%d").to_string()
+    d.to_string()
 }
 
 /// The `YYYY-MM-DD` at the start of `s`; a time after it is ignored.
@@ -100,6 +100,40 @@ pub(crate) fn find_de_date(s: &str) -> Option<Date> {
     DE_DATE
         .captures_iter(s)
         .find_map(|c| ymd(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?))
+}
+
+/// The day a leading `YYYYMMDD` names (FinTS and MT535), `None` unless the
+/// eight characters are digits and a real day.
+pub(crate) fn parse_yyyymmdd(s: &str) -> Option<Date> {
+    let d = s
+        .get(..8)
+        .filter(|d| d.bytes().all(|b| b.is_ascii_digit()))?;
+    ymd(
+        d[..4].parse().ok()?,
+        d[4..6].parse().ok()?,
+        d[6..].parse().ok()?,
+    )
+}
+
+/// A year written with four or two digits. Two digits pivot at 80: 81–99 is
+/// 1981–1999, 00–80 is 2000–2080 ("31.12.99" on a receipt is 1999, not 2099).
+pub(crate) fn year(s: &str) -> Option<i32> {
+    let n: i32 = s.parse().ok()?;
+    Some(match s.len() {
+        2 if n > 80 => 1900 + n,
+        2 => 2000 + n,
+        _ => n,
+    })
+}
+
+/// Day `d` of month `m`, a day past the month's end moved to its last day
+/// (31 in February is the 28th or 29th). `None` for a day outside 1–31.
+pub(crate) fn clamped_ymd(y: i32, m: u32, d: u32) -> Option<Date> {
+    if !(1..=31).contains(&d) {
+        return None;
+    }
+    let last = ymd(y, m, 1)?.days_in_month() as u32;
+    ymd(y, m, d.min(last))
 }
 
 /// Month names and abbreviations (German, English), lower case.
@@ -137,6 +171,7 @@ mod tests {
     #[test]
     fn iso_round_trip() {
         assert_eq!(iso(day(2025, 3, 2)), "2025-03-02");
+        assert_eq!(iso(day(999, 1, 1)), "0999-01-01");
         assert_eq!(parse_iso("2025-03-02"), Some(day(2025, 3, 2)));
         assert_eq!(parse_iso("2025-03-02T10:00:00Z"), Some(day(2025, 3, 2)));
         assert_eq!(parse_iso("2025-02-30"), None);
@@ -163,6 +198,35 @@ mod tests {
         );
         assert_eq!(find_de_date("Bestellung 112.03.2025"), None);
         assert_eq!(find_de_date("2025-03-02"), None);
+    }
+
+    #[test]
+    fn compact_dates() {
+        assert_eq!(parse_yyyymmdd("20261107"), Some(day(2026, 11, 7)));
+        assert_eq!(parse_yyyymmdd("20261107120000"), Some(day(2026, 11, 7)));
+        assert_eq!(parse_yyyymmdd("20260230"), None);
+        assert_eq!(parse_yyyymmdd("2026+107"), None);
+        assert_eq!(parse_yyyymmdd("202611"), None);
+    }
+
+    #[test]
+    fn years() {
+        assert_eq!(year("2025"), Some(2025));
+        assert_eq!(year("00"), Some(2000));
+        assert_eq!(year("80"), Some(2080));
+        assert_eq!(year("81"), Some(1981));
+        assert_eq!(year("99"), Some(1999));
+        assert_eq!(year("x"), None);
+    }
+
+    #[test]
+    fn days_past_the_month_end_are_clamped() {
+        assert_eq!(clamped_ymd(2024, 2, 30), Some(day(2024, 2, 29)));
+        assert_eq!(clamped_ymd(2025, 2, 31), Some(day(2025, 2, 28)));
+        assert_eq!(clamped_ymd(2025, 4, 15), Some(day(2025, 4, 15)));
+        assert_eq!(clamped_ymd(2025, 4, 0), None);
+        assert_eq!(clamped_ymd(2025, 4, 32), None);
+        assert_eq!(clamped_ymd(2025, 13, 1), None);
     }
 
     #[test]

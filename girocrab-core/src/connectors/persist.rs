@@ -167,6 +167,18 @@ fn refresh_existing(
 
 /// Persists accounts, bookings and documents of one fetch (shared by bank
 /// syncs and the keyless web-portal / statement import).
+/// Bank dates as stored: real `YYYY-MM-DD` days, since period filters, sums and file names
+/// read them as such. A booking date that is no day takes the value date, then today (as
+/// connectors already do for an empty one); a value date that is no day is left empty.
+fn store_dates(t: &mut RemoteTransaction) {
+    let value = crate::dates::parse_iso(&t.value_date);
+    let booking = crate::dates::parse_iso(&t.booking_date)
+        .or(value)
+        .unwrap_or_else(crate::dates::today);
+    t.booking_date = crate::dates::iso(booking);
+    t.value_date = value.map(crate::dates::iso).unwrap_or_default();
+}
+
 pub(crate) fn store_fetch(
     vault: &Vault,
     kind: ConnectorKind,
@@ -226,6 +238,8 @@ pub(crate) fn store_fetch(
                     .or_default()
                     .next(t);
             }
+            // After the content ids, so they stay what earlier syncs computed.
+            store_dates(t);
         }
         for (old, new) in &data.renamed_refs {
             if old.is_empty() || new.is_empty() || old == new {

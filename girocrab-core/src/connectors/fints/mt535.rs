@@ -334,11 +334,7 @@ fn decimal_cents(s: &str) -> Option<i64> {
 
 /// "20261107" or "20261107120000" → "2026-11-07"
 fn date(s: &str) -> Option<String> {
-    let d = s.get(..8)?;
-    if !d.chars().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    Some(format!("{}-{}-{}", &d[..4], &d[4..6], &d[6..8]))
+    crate::dates::parse_yyyymmdd(s).map(crate::dates::iso)
 }
 
 #[cfg(test)]

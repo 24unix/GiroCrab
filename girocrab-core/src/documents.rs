@@ -121,11 +121,10 @@ pub(crate) fn title_from_file(file_name: &str) -> String {
 /// or an archive import must not flood the unread count. Newer ones are unread until opened.
 pub(crate) const UNSEEN_DAYS: i64 = 45;
 
-/// `seen_at` of a document arriving with this date: now if it is old, else NULL (unread). An
-/// unreadable date counts as new.
-fn seen_on_arrival(date: &str) -> Option<i64> {
-    let d = jiff::civil::Date::strptime("%Y-%m-%d", date.get(..10)?).ok()?;
-    let old = crate::dates::days_between(d, crate::dates::today()) > UNSEEN_DAYS;
+/// `seen_at` of a document arriving with this date: now if it is old, else NULL (unread). A
+/// document without a date counts as new.
+fn seen_on_arrival(date: Option<jiff::civil::Date>) -> Option<i64> {
+    let old = crate::dates::days_between(date?, crate::dates::today()) > UNSEEN_DAYS;
     old.then(|| jiff::Timestamp::now().as_second())
 }
 
@@ -159,10 +158,13 @@ pub(crate) fn insert_doc(
             message: tr("Leere Datei").into(),
         });
     }
+    // The date comes from bank or PDF text: anything but a real day is stored empty, so the
+    // document falls back to its booking's date.
+    let date = crate::dates::parse_iso(date);
     let n = conn.execute(
         "INSERT OR IGNORE INTO booking_documents(booking_id, account_id, title, doc_type, mime_type, file_name, pdf_bytes, source_url, doc_date, seen_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![booking_id, account_id, title, doc_type, mime, file_name, bytes, source_url, date, seen_on_arrival(date)],
+        params![booking_id, account_id, title, doc_type, mime, file_name, bytes, source_url, date.map(crate::dates::iso).unwrap_or_default(), seen_on_arrival(date)],
     )?;
     Ok(if n > 0 {
         Some(conn.last_insert_rowid())
@@ -326,16 +328,12 @@ pub fn dates_in(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for c in GERMAN.captures_iter(text) {
         let (d, m): (u32, u32) = (c[1].parse().unwrap_or(0), c[2].parse().unwrap_or(0));
-        let y: i32 = if c[3].len() == 2 {
-            2000 + c[3].parse::<i32>().unwrap_or(0)
-        } else {
-            c[3].parse().unwrap_or(0)
+        let Some(date) = crate::dates::year(&c[3]).and_then(|y| crate::dates::ymd(y, m, d)) else {
+            continue;
         };
-        if crate::dates::ymd(y, m, d).is_some() {
-            let iso = format!("{y:04}-{m:02}-{d:02}");
-            if !out.contains(&iso) {
-                out.push(iso);
-            }
+        let iso = crate::dates::iso(date);
+        if !out.contains(&iso) {
+            out.push(iso);
         }
     }
     for c in ISO.captures_iter(text) {
@@ -887,7 +885,7 @@ impl Vault {
         let mut used = HashSet::new();
         let mut n = 0u32;
         for d in docs {
-            let year = d.doc_date.get(..4).unwrap_or(tr("ohne-Datum")).to_string();
+            let year = year_folder(&d.doc_date);
             let dir = base.join(&year);
             std::fs::create_dir_all(&dir).map_err(|e| CoreError::InvalidInput {
                 message: format!("{e}"),
@@ -922,6 +920,16 @@ impl Vault {
         }
         Ok(n)
     }
+}
+
+/// The year folder a document is exported into. Only a parsed date may name a directory:
+/// `doc_date` falls back to the booking date, which comes from bank data ("../x" would leave
+/// the export folder).
+fn year_folder(doc_date: &str) -> String {
+    crate::dates::parse_iso(doc_date).map_or_else(
+        || tr("ohne-Datum").to_string(),
+        |d| format!("{:04}", d.year()),
+    )
 }
 
 /// File name of a document in the mirror folder: `<Datum>_<Händler>_<Titel>.<ext>`.
@@ -982,7 +990,7 @@ impl Vault {
             } else {
                 safe_name(&d.account_name)
             };
-            let year = d.doc_date.get(..4).unwrap_or(tr("ohne-Datum")).to_string();
+            let year = year_folder(&d.doc_date);
             let dir = base.join(account).join(year);
             std::fs::create_dir_all(&dir).map_err(io)?;
             let bytes = self.get_document_bytes(d.id)?;
@@ -1170,6 +1178,53 @@ mod tests {
         assert_eq!(amounts_in("Total 1.234,56 €"), vec![1_234_56]);
         assert!(dates_in("Datum 07.11.2026 / 2026-11-08").contains(&"2026-11-07".to_string()));
         assert!(dates_in("Rechnung_2026-11-08_Metro.pdf").contains(&"2026-11-08".to_string()));
+        assert_eq!(dates_in("vom 31.12.99"), vec!["1999-12-31".to_string()]);
+        assert_eq!(dates_in("vom 02.01.26"), vec!["2026-01-02".to_string()]);
+    }
+
+    #[test]
+    fn a_document_date_that_is_no_day_is_stored_empty() {
+        let dir = crate::test_support::TempDir::new("girocrab-docs-date");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![8u8; 32],
+        )
+        .unwrap();
+        let db = v.db().unwrap();
+        let stored = |date: &str| {
+            let id = insert_doc(
+                &db,
+                None,
+                None,
+                "t",
+                "beleg",
+                "application/pdf",
+                "x.pdf",
+                b"%PDF-1.4 x",
+                date,
+                date,
+            )
+            .unwrap()
+            .unwrap();
+            db.query_row(
+                "SELECT doc_date FROM booking_documents WHERE id = ?1",
+                [id],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(stored("2025-03-02"), "2025-03-02");
+        assert_eq!(stored("2025-03-04T10:00:00Z"), "2025-03-04");
+        assert_eq!(stored("2025-02-30"), "");
+        assert_eq!(stored("../x"), "");
+    }
+
+    #[test]
+    fn export_folders_are_years_only() {
+        assert_eq!(year_folder("2025-03-02"), "2025");
+        assert_eq!(year_folder("../x"), tr("ohne-Datum"));
+        assert_eq!(year_folder("2025-02-30"), tr("ohne-Datum"));
+        assert_eq!(year_folder(""), tr("ohne-Datum"));
     }
 
     #[test]
