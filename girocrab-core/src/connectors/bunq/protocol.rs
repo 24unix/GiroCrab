@@ -56,11 +56,8 @@ impl From<CoreError> for ApiError {
 
 impl BunqConnector {
     pub(super) fn signing_key(&self) -> CoreResult<SigningKey<Sha256>> {
-        let key = PrivateKey::from_pkcs8_pem(&self.state.private_key_pem).map_err(|e| {
-            CoreError::Protocol {
-                message: format!("bunq key: {e}"),
-            }
-        })?;
+        let key = PrivateKey::from_pkcs8_pem(&self.state.private_key_pem)
+            .map_err(|e| CoreError::protocol(format!("bunq key: {e}")))?;
         Ok(SigningKey::<Sha256>::new(key))
     }
 
@@ -165,9 +162,7 @@ impl BunqConnector {
     ) -> ApiResult<Value> {
         let body = match body {
             Some(b) => Some((
-                serde_json::to_vec(b).map_err(|e| CoreError::Protocol {
-                    message: e.to_string(),
-                })?,
+                serde_json::to_vec(b).map_err(|e| CoreError::protocol(e.to_string()))?,
                 "application/json",
             )),
             None => None,
@@ -188,19 +183,18 @@ impl BunqConnector {
         if self.state.server_public_key.is_empty() {
             return Ok(()); // installation response itself
         }
-        let invalid = || CoreError::Protocol {
-            message: tr("Die Antwort von bunq ist nicht korrekt signiert.").into(),
-        };
-        let sig = sig.ok_or_else(invalid)?;
-        let key =
-            PublicKey::from_public_key_pem(&self.state.server_public_key).map_err(|_| invalid())?;
+        let unsigned =
+            || CoreError::protocol(tr("Die Antwort von bunq ist nicht korrekt signiert."));
+        let sig = sig.ok_or_else(unsigned)?;
+        let key = PublicKey::from_public_key_pem(&self.state.server_public_key)
+            .map_err(|_| unsigned())?;
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(sig)
-            .map_err(|_| invalid())?;
-        let sig = Signature::try_from(bytes.as_slice()).map_err(|_| invalid())?;
+            .map_err(|_| unsigned())?;
+        let sig = Signature::try_from(bytes.as_slice()).map_err(|_| unsigned())?;
         VerifyingKey::<Sha256>::new(key)
             .verify(raw, &sig)
-            .map_err(|_| invalid())
+            .map_err(|_| unsigned())
     }
 
     pub(super) async fn get(&mut self, path: &str) -> ApiResult<Value> {
@@ -213,23 +207,18 @@ impl BunqConnector {
     pub(super) async fn install(&mut self) -> CoreResult<()> {
         let key = tokio::task::spawn_blocking(|| PrivateKey::new(&mut getrandom::SysRng, 2048))
             .await
-            .map_err(|e| CoreError::Protocol {
-                message: e.to_string(),
-            })?
-            .map_err(|e| CoreError::Protocol {
-                message: format!("bunq key: {e}"),
-            })?;
-        let pem_err = |e: String| CoreError::Protocol { message: e };
+            .map_err(|e| CoreError::protocol(e.to_string()))?
+            .map_err(|e| CoreError::protocol(format!("bunq key: {e}")))?;
         let public_pem = key
             .to_public_key()
             .to_public_key_pem(LineEnding::LF)
-            .map_err(|e| pem_err(e.to_string()))?;
+            .map_err(|e| CoreError::protocol(e.to_string()))?;
         self.state = BunqState {
             env: self.state.env.clone(),
             key_fp: self.state.key_fp.clone(),
             private_key_pem: key
                 .to_pkcs8_pem(LineEnding::LF)
-                .map_err(|e| pem_err(e.to_string()))?
+                .map_err(|e| CoreError::protocol(e.to_string()))?
                 .to_string(),
             ..Default::default()
         };
@@ -251,9 +240,7 @@ impl BunqConnector {
             .unwrap_or_default()
             .to_string();
         if self.state.installation_token.is_empty() || self.state.server_public_key.is_empty() {
-            return Err(CoreError::Protocol {
-                message: "bunq installation: missing token".into(),
-            });
+            return Err(CoreError::protocol("bunq installation: missing token"));
         }
         Ok(())
     }
@@ -315,10 +302,7 @@ impl BunqConnector {
         .find_map(|k| find(&v, k)["id"].as_i64())
         .unwrap_or(0);
         if session.is_empty() || user_id == 0 {
-            return Err(CoreError::Protocol {
-                message: "bunq session: missing token or user".into(),
-            }
-            .into());
+            return Err(CoreError::protocol("bunq session: missing token or user").into());
         }
         self.state.session_token = session.to_string();
         self.state.user_id = user_id;

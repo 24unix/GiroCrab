@@ -372,9 +372,7 @@ impl Vault {
         let mut scope = stored_scope(&db)?;
         change(&mut scope);
         scope.account_ids = live_account_ids(&db, &scope.account_ids)?;
-        let json = serde_json::to_string(&scope).map_err(|e| CoreError::InvalidInput {
-            message: e.to_string(),
-        })?;
+        let json = serde_json::to_string(&scope).map_err(|e| CoreError::invalid(e.to_string()))?;
         Vault::set_setting_inner(&db, SCOPE_SETTING, &json)
     }
 

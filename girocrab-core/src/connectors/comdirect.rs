@@ -133,9 +133,7 @@ impl ComdirectConnector {
 
     async fn get(&mut self, path: &str) -> CoreResult<Value> {
         if !is_api_path(path) {
-            return Err(CoreError::InvalidInput {
-                message: "unsafe comdirect API path".into(),
-            });
+            return Err(CoreError::invalid("unsafe comdirect API path"));
         }
         let client = self.client()?;
         let resp = client
@@ -414,9 +412,7 @@ impl BankConnector for ComdirectConnector {
             .and_then(|h| h.to_str().ok())
             .map(serde_json::from_str)
             .transpose()?
-            .ok_or_else(|| CoreError::Protocol {
-                message: "missing x-once-authentication-info".into(),
-            })?;
+            .ok_or_else(|| CoreError::protocol("missing x-once-authentication-info"))?;
         self.challenge_id = info["id"].as_str().unwrap_or_default().to_string();
         self.challenge_link = info["link"]["href"].as_str().map(|s| s.to_string());
         let typ = info["typ"].as_str().unwrap_or("");
@@ -461,9 +457,9 @@ impl BankConnector for ComdirectConnector {
                 poll_interval_seconds: 0,
             },
             other => {
-                return Err(CoreError::Protocol {
-                    message: format!("unsupported comdirect TAN type '{other}'"),
-                })
+                return Err(CoreError::protocol(format!(
+                    "unsupported comdirect TAN type '{other}'"
+                )))
             }
         };
         self.challenge = Some(c.clone());
@@ -489,9 +485,9 @@ impl BankConnector for ComdirectConnector {
             }
             ChallengeResponse::Code(tan) => self.activate_session(Some(tan.expose())).await?,
             ChallengeResponse::ConfirmPayee => {
-                return Err(CoreError::Protocol {
-                    message: "comdirect: no payee confirmation pending".into(),
-                })
+                return Err(CoreError::protocol(
+                    "comdirect: no payee confirmation pending",
+                ))
             }
         }
         self.secondary_token(ctx).await?;

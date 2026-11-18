@@ -33,9 +33,7 @@ mod tests;
 pub(crate) const HOLD_PREFIX: &str = "pending-hold-portal-advanzia-";
 
 fn invalid(message: &'static str) -> CoreError {
-    CoreError::InvalidInput {
-        message: format!("Advanzia: {}", tr(message)),
-    }
+    CoreError::invalid(format!("Advanzia: {}", tr(message)))
 }
 fn account_ref(id: &str) -> String {
     format!("advanzia:{id}")

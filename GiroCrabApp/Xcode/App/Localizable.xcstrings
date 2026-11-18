@@ -674,6 +674,17 @@
         }
       }
     },
+    "%lld Bestellungen gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld orders found"
+          }
+        }
+      }
+    },
     "%lld Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2341,6 +2352,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1% Saveback"
+          }
+        }
+      }
+    },
+    "1 Bestellung gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 order found"
           }
         }
       }
@@ -4499,6 +4521,17 @@
         }
       }
     },
+    "Angeklickte Umsätze werden sofort als gelesen markiert. Beim Wechsel auf ein anderes Konto werden alle übrigen ungelesenen Umsätze des vorherigen Kontos als gelesen markiert, unabhängig von Zeitraum und Filtern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicking a transaction marks it as read immediately. When you switch to another account, all remaining unread transactions in the previous account are marked as read, regardless of the date range or filters."
+          }
+        }
+      }
+    },
     "Angemeldet – Bausparverträge, Umsätze und Postfach können abgerufen werden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6567,6 +6600,17 @@
         }
       }
     },
+    "Bei Kontoauswahl" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On account selection"
+          }
+        }
+      }
+    },
     "Bei allen ausgewählten Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7128,6 +7172,28 @@
         }
       }
     },
+    "Bestelldetails" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order details"
+          }
+        }
+      }
+    },
+    "Bestelldetails aus %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order details from %@"
+          }
+        }
+      }
+    },
     "Bestellliste %@ …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7135,6 +7201,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Order list %@ …"
+          }
+        }
+      }
+    },
+    "Bestellliste %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order list %lld of %lld"
           }
         }
       }
@@ -7168,6 +7245,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Order"
+          }
+        }
+      }
+    },
+    "Bestellung %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order %lld of %lld"
           }
         }
       }
@@ -7207,6 +7295,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetch orders"
+          }
+        }
+      }
+    },
+    "Bestellungen werden abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching orders"
           }
         }
       }
@@ -7974,13 +8073,13 @@
         }
       }
     },
-    "Blendet Beträge aus, wenn du die App jemandem zeigst. Auf Wunsch auch Namen, Kontonummern und Verwendungszwecke." : {
+    "Blendet Beträge, Namen, Kontonummern und Verwendungszwecke aus, wenn du die App jemandem zeigst. Auf Wunsch nur die Beträge." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hides amounts when showing the app to someone. Optionally also names, account numbers, and purposes."
+            "value" : "Hides amounts, names, account numbers, and purposes when showing the app to someone. Optionally only the amounts."
           }
         }
       }
@@ -8978,6 +9077,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The account is permanently deleted along with %u bookings, documents and securities positions – also from analyses and category totals. If it is the last account of its bank connection, the connection and its stored credentials are removed too."
+          }
+        }
+      }
+    },
+    "Das Konto wurde aufgelöst" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account has been closed"
           }
         }
       }
@@ -10052,13 +10162,13 @@
         }
       }
     },
-    "Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Startsaldo …“ im Kontextmenü des Kontos." : {
+    "Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Einstellungen …“ im Kontextmenü des Kontos." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The difference is booked as a “Balance correction” dated today. You can change the starting balance with “Starting Balance…” in the account’s context menu."
+            "value" : "The difference is booked as a “Balance correction” dated today. You can change the starting balance with “Settings…” in the account’s context menu."
           }
         }
       }
@@ -11402,6 +11512,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Direct access through the bank's own API"
+          }
+        }
+      }
+    },
+    "Dock & Menüleiste" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dock & Menu Bar"
           }
         }
       }
@@ -15093,6 +15213,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab signs in using the saved credentials. Then enter the SMS code or approve in the Advanzia app. Transactions are imported automatically afterwards."
+          }
+        }
+      }
+    },
+    "GiroCrab nach Fensterschließen geöffnet lassen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep GiroCrab open after closing the window"
           }
         }
       }
@@ -19444,6 +19574,17 @@
         }
       }
     },
+    "Kontoeinstellungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Settings"
+          }
+        }
+      }
+    },
     "Kontogruppen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19528,6 +19669,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account Name"
+          }
+        }
+      }
+    },
+    "Kontonummer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account number"
           }
         }
       }
@@ -22404,6 +22556,17 @@
         }
       }
     },
+    "Nicht alle Karten ließen sich öffnen – übernommen werden die bisher geladenen Karten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not every card could be opened – the cards loaded so far will be imported."
+          }
+        }
+      }
+    },
     "Nicht als Gehalt erkannt. Markieren Sie den Eingang, damit der Zeitraum „Seit letztem Gehalt“ ihn nutzt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24711,6 +24874,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Privacy Mode: Hide amounts (⇧⌘H)"
+          }
+        }
+      }
+    },
+    "Privatmodus: Beträge und persönliche Angaben ausblenden (⇧⌘H)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy Mode: Hide amounts and personal details (⇧⌘H)"
           }
         }
       }
@@ -27447,6 +27621,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Balance date"
+          }
+        }
+      }
+    },
+    "Stichtag und Kalibrierung …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cut-off date and calibration …"
           }
         }
       }
@@ -31637,6 +31822,16 @@
         }
       }
     },
+    "Zeigt das GiroCrab-Symbol oben in der Menüleiste." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows the GiroCrab icon in the menu bar at the top of the screen."
+          }
+        }
+      }
+    },
     "Zeigt den Kontostand nach jeder Buchung und am Ende jedes Tages, zum Abgleich mit dem Kontoauszug. Bei mehreren Konten die Summe der Euro-Konten ohne Depots und Darlehen. Innerhalb eines Tages kann die Reihenfolge von der Bank abweichen, der Tagessaldo stimmt immer. Auch im Menü Ansicht umschaltbar." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -32925,6 +33120,16 @@
         }
       }
     },
+    "schließt das Fenster. GiroCrab läuft weiter." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "closes the window. GiroCrab keeps running."
+          }
+        }
+      }
+    },
     "teils berechnet" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -33405,6 +33610,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Review Change"
+          }
+        }
+      }
+    },
+    "Änderungen werden beim Beenden zurückgesetzt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changes are reset when you quit."
           }
         }
       }

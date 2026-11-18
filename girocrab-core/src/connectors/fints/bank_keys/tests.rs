@@ -228,6 +228,20 @@ fn bootstrap_is_anonymous_and_returns_only_untrusted_candidates() {
 }
 
 #[test]
+fn errors_follow_the_ui_language() {
+    use crate::i18n::{with_language, Lang};
+    let keys = vec![candidate("S"), candidate("V")];
+    let result = with_language(Lang::En, || confirmed_keys("12345678", &keys, &[]));
+    let Err(CoreError::InvalidInput { message }) = result else {
+        panic!("expected InvalidInput");
+    };
+    assert_eq!(
+        message,
+        "The signature and encryption keys must be confirmed separately."
+    );
+}
+
+#[test]
 fn only_independently_confirmed_fingerprints_can_be_pinned() {
     let keys = vec![candidate("S"), candidate("V")];
     let expected: Vec<_> = keys.iter().map(|k| k.fingerprint.clone()).collect();

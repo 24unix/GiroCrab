@@ -25,9 +25,7 @@ const DEVICE_SETTINGS_WHERE: &str = "key LIKE 'fints.url.%' OR key LIKE 'fints.t
      OR key LIKE 'pin.%' OR key = 'sync.psd2_auto_hours'";
 
 fn not_a_backup() -> CoreError {
-    CoreError::InvalidInput {
-        message: tr("Falsches Passwort oder keine GiroCrab-Sicherung.").into(),
-    }
+    CoreError::invalid(tr("Falsches Passwort oder keine GiroCrab-Sicherung."))
 }
 
 fn remove_with_sidecars(path: &str) {
@@ -43,17 +41,16 @@ impl Vault {
     pub fn write_backup(&self, dest_path: String, password: String) -> CoreResult<()> {
         let password = Zeroizing::new(password);
         if password.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Bitte ein Passwort für die Sicherung angeben.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Bitte ein Passwort für die Sicherung angeben.",
+            )));
         }
         // The backup is only as strong as this password (PBKDF2 over a guessable
         // string is cheap to brute-force), so every front end gets the same floor.
         if password.chars().count() < MIN_BACKUP_PASSWORD_CHARS {
-            return Err(CoreError::InvalidInput {
-                message: tr("Das Passwort für die Sicherung muss mindestens 8 Zeichen lang sein.")
-                    .into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Das Passwort für die Sicherung muss mindestens 8 Zeichen lang sein.",
+            )));
         }
         self.export_to(&dest_path, &password)
     }

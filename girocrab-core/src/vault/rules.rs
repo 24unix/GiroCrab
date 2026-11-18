@@ -178,17 +178,14 @@ impl Vault {
 
     /// Creates (id == 0) or updates a rule. Validates the pattern first.
     pub fn save_rule(&self, rule: Rule) -> Result<i64, CoreError> {
-        if rule.pattern.len() > crate::rules::MAX_PATTERN_LEN {
-            return Err(CoreError::invalid(tr("Das Suchmuster ist zu lang.")));
-        }
-        crate::rules::CompiledRule::compile(rule.clone())?;
+        let rule = crate::rules::CompiledRule::compile_supported(rule)?.rule;
         if rule.pattern.trim().is_empty() {
             return Err(CoreError::invalid(tr("Das Suchmuster ist leer.")));
         }
         if rule.category_id == 0 && rule.tag_ids.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die Regel braucht eine Kategorie oder mindestens einen Tag.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die Regel braucht eine Kategorie oder mindestens einen Tag.",
+            )));
         }
         let db = self.db()?;
         let tag_uuids = crate::tags::rule_tag_uuids(&db, &rule.tag_ids)?;
@@ -197,11 +194,7 @@ impl Vault {
         let kind = match rule.match_kind {
             MatchKind::Keyword => "keyword",
             MatchKind::Regex => "regex",
-            MatchKind::Expression => {
-                // `compile` keeps unsupported fields for imported rules; a saved rule may not use them.
-                crate::search_expr::SearchExpr::parse_supported(&rule.pattern)?;
-                "expression"
-            }
+            MatchKind::Expression => "expression",
         };
         if rule.id == 0 {
             db.execute(

@@ -281,7 +281,7 @@ fn load_setup(conn: &Connection, account_id: i64) -> CoreResult<Option<LoanSetup
             "SELECT a.name, a.initial_balance_cents, l.anchor_date, l.anchor_balance_cents,
                     l.interest_rate_ppm, l.match_expr
                FROM loan_terms l JOIN accounts a ON a.id = l.account_id
-              WHERE l.account_id = ?1 AND a.deleted_ms IS NULL",
+              WHERE l.account_id = ?1 AND a.kind = 'loan' AND a.deleted_ms IS NULL",
             [account_id],
             |r| {
                 Ok(LoanSetup {
@@ -323,10 +323,20 @@ fn refresh(conn: &Connection, loan_id: i64) -> CoreResult<LoanStatus> {
     Ok(st)
 }
 
+pub(crate) fn is_manual_loan(conn: &Connection, account_id: i64) -> CoreResult<bool> {
+    if !has_table(conn, "main", "loan_terms")? {
+        return Ok(false);
+    }
+    Ok(load_setup(conn, account_id)?.is_some())
+}
+
+/// A manual loan whose kind the user changed (e.g. to cash) is an ordinary
+/// account afterwards: its terms stay (for a change back), but it neither
+/// links bookings nor gets its balance from them.
 fn manual_loan_ids(conn: &Connection) -> CoreResult<Vec<i64>> {
     let mut st = conn.prepare(
         "SELECT account_id FROM loan_terms
-          WHERE account_id IN (SELECT id FROM accounts WHERE deleted_ms IS NULL) ORDER BY account_id",
+          WHERE account_id IN (SELECT id FROM accounts WHERE kind = 'loan' AND deleted_ms IS NULL) ORDER BY account_id",
     )?;
     let rows = st.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -342,7 +352,7 @@ pub(crate) fn apply_loan_rules(conn: &Connection) -> CoreResult<u32> {
     let loans: Vec<(i64, SearchExpr)> = {
         let mut st = conn.prepare(
             "SELECT l.account_id, l.match_expr FROM loan_terms l JOIN accounts a ON a.id = l.account_id
-              WHERE l.match_expr != '' AND a.archived_unix IS NULL AND a.deleted_ms IS NULL
+              WHERE l.match_expr != '' AND a.kind = 'loan' AND a.archived_unix IS NULL AND a.deleted_ms IS NULL
               ORDER BY l.account_id",
         )?;
         let rows: Vec<(i64, String)> = st

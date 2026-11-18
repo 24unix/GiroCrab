@@ -17,9 +17,7 @@ use crate::{
 mod snapshot;
 
 fn invalid(message: &'static str) -> CoreError {
-    CoreError::InvalidInput {
-        message: tr(message).into(),
-    }
+    CoreError::invalid(tr(message))
 }
 
 fn field<'a>(v: &'a Value, pointer: &str) -> CoreResult<&'a str> {

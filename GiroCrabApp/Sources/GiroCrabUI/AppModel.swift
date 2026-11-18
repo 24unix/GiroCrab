@@ -368,8 +368,15 @@ public final class AppModel {
         }
     }
     var autoReviewDelay: AutoReviewDelay = .stored {
-        didSet { AppDefaults.store.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey) }
-    }
+        didSet {
+            AppDefaults.store.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey)
+            #if os(macOS)
+            if autoReviewDelay == .onAccountSwitch {
+                autoReviewTask?.cancel()
+                autoReviewTask = nil
+            }
+            #endif
+        }    }
     @ObservationIgnored var autoReviewTask: Task<Void, Never>?
 
     /// All selected bookings (⌘-click adds/removes, ⇧-click selects a range,

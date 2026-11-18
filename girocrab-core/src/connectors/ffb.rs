@@ -78,18 +78,13 @@ static POSITION_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"SinglePosition\(\s*'\d+-([A-Z]+)-(\d+)-([A-Z0-9]+)'").unwrap());
 
 fn page_changed() -> CoreError {
-    CoreError::Protocol {
-        message: tr("FFB: Anmeldeseite nicht erkannt (Webseite geändert?).").into(),
-    }
+    CoreError::protocol(tr("FFB: Anmeldeseite nicht erkannt (Webseite geändert?)."))
 }
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: tr(
-            "FFB: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen.",
-        )
-        .into(),
-    }
+    CoreError::invalid(tr(
+        "FFB: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen.",
+    ))
 }
 
 fn wrong_credentials() -> CoreError {
@@ -116,10 +111,9 @@ fn ensure_ffb(url: &url::Url) -> CoreResult<()> {
     if url.scheme() == "https" && url.host_str() == Some(HOST) {
         return Ok(());
     }
-    Err(CoreError::Protocol {
-        message: tr("FFB: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.")
-            .into(),
-    })
+    Err(CoreError::protocol(tr(
+        "FFB: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.",
+    )))
 }
 
 // ------------------------------------------------------------------ parsing helpers
@@ -692,9 +686,7 @@ impl BankConnector for FfbConnector {
         }
         let session = session_id(&final_url)
             .or_else(|| session_id(&html))
-            .ok_or_else(|| CoreError::Protocol {
-                message: tr("FFB: Anmeldung nicht abgeschlossen. Die FFB verlangt möglicherweise eine zusätzliche Bestätigung, die GiroCrab noch nicht unterstützt.").into(),
-            })?;
+            .ok_or_else(|| CoreError::protocol(tr("FFB: Anmeldung nicht abgeschlossen. Die FFB verlangt möglicherweise eine zusätzliche Bestätigung, die GiroCrab noch nicht unterstützt.")))?;
         self.client = Some(client);
         self.session = session;
         Ok(Phase::Ready)

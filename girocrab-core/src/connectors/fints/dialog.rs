@@ -220,9 +220,7 @@ impl FinTsConnector {
             let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
             let raw = base64::engine::general_purpose::STANDARD
                 .decode(cleaned.as_bytes())
-                .map_err(|e| CoreError::Protocol {
-                    message: format!("base64: {e}"),
-                })?;
+                .map_err(|e| CoreError::protocol(format!("base64: {e}")))?;
             parse_response(&raw)?
         };
         let segments = raw;
@@ -441,9 +439,9 @@ impl FinTsConnector {
         }
         self.end_dialog(ctx, "999").await;
         if self.st.system_id.is_empty() {
-            return Err(CoreError::Protocol {
-                message: "bank did not assign a customer system ID (HISYN)".into(),
-            });
+            return Err(CoreError::protocol(
+                "bank did not assign a customer system ID (HISYN)",
+            ));
         }
         Ok(())
     }
@@ -483,12 +481,9 @@ impl FinTsConnector {
         let mut reply = self.send(ctx, payload, &sec, None).await?;
         if reply.has("3955") || reply.has("3956") {
             let _ = self.challenge_from(&reply)?;
-            let task = self
-                .task_reference
-                .clone()
-                .ok_or_else(|| CoreError::Protocol {
-                    message: trf("{0}: Freigabe ohne Auftragsreferenz", &[&seg_id]),
-                })?;
+            let task = self.task_reference.clone().ok_or_else(|| {
+                CoreError::protocol(trf("{0}: Freigabe ohne Auftragsreferenz", &[&seg_id]))
+            })?;
             let mut approved = false;
             for _ in 0..60 {
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
