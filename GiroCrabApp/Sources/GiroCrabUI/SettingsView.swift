@@ -141,7 +141,7 @@ struct GeneralSettings: View {
                 Picker("Als geprüft markieren", selection: $model.autoReviewDelay) {
                     ForEach(AutoReviewDelay.allCases) { Text($0.title).tag($0) }
                 }
-                Text("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.")
+                Text(model.autoReviewDelay.helpText)
                     .appFont(.caption).foregroundStyle(.secondary)
                 Picker("Zeitraum beim ersten Abruf", selection: firstFetchDays) {
                     Text("90 Tage").tag(90)

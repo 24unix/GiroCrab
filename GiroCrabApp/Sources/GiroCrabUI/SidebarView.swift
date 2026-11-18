@@ -633,8 +633,12 @@ private struct SidebarSelectionList<Content: View>: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        List(selection: Binding(get: { model.sidebarSelection }, set: { model.selectFromSidebar($0) })) { content }
+        #else
         @Bindable var model = model
         List(selection: $model.interactiveSidebarSelection) { content }
+        #endif
     }
 }
 

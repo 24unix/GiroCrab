@@ -116,7 +116,7 @@ Rectangle {
         for (i += delta; i >= 0 && i < all.length; i += delta) {
             const key = rowKey(all[i])
             if (key === "") continue
-            AppModel.sidebarSelection = key
+            AppModel.selectFromSidebar(key)
             // a header page or the first row bring the header back into view
             if (i <= top) list.contentY = -list.topMargin
             else list.positionViewAtIndex(i - top, ListView.Contain)

@@ -1460,7 +1460,7 @@ QtObject {
     }
 
     // MARK: selection / editing
-    function selectBooking(id, toggle, extend) {
+    function selectBooking(id, toggle, extend, fromListClick) {
         const list = bookings.map(b => b.id)
         if (extend && selectedBookingID !== null) {
             const a = list.indexOf(selectedBookingID), b = list.indexOf(id)
@@ -1476,6 +1476,10 @@ QtObject {
             const ids = {}; ids[id] = true
             selectedBookingIDs = ids
             selectedBookingID = id
+        }
+        if (fromListClick && autoReviewDelay === "account" && !isMultiSelection && selectedBookingID === id) {
+            const b = bookingByID(id)
+            if (b && !b.checked) setChecked(true, b)
         }
     }
     /// Bearbeiten › Alles auswählen (Strg+A) in the booking list.
@@ -1542,20 +1546,22 @@ QtObject {
     /// "Alle Buchungen als gelesen markieren": everything new in the list as filtered now, or –
     /// with `accountIDs`, from a sidebar entry – in those accounts regardless of
     /// period, search and scope. One SQL update off the GUI thread.
-    function markAllChecked(accountIDs) {
+    function markAllChecked(accountIDs, quietWhenEmpty) {
         if (!isUnlocked) return
         if (!accountIDs && sidebarSelection === "documents") return
-        const f = currentFilter()
-        if (accountIDs) {
-            f.account_ids = accountIDs; f.category_id = null; f.uncategorized_only = false
-            f.search = null; f.date_from = null; f.date_to = null; f.direction = "All"
-            f.scope = "All"; f.merchant_key = null
-        }
+        if (accountIDs && !accountIDs.length) return
+        const f = accountIDs
+            ? { account_ids: accountIDs, include_subcategories: false, uncategorized_only: false,
+                direction: "All", scope: "All" }
+            : currentFilter()
         f.checked = false; f.limit = 0; f.offset = 0; f.whole_days = false
         const demo = demoActive
         coreAsync("set_checked_for_filter", { filter: f, checked: true }, ids => {
             if (!isUnlocked || demoActive !== demo) return
-            if (!ids.length) { toast = qsTr("Keine neuen Umsätze"); return }
+            if (!ids.length) {
+                if (!quietWhenEmpty) toast = qsTr("Keine neuen Umsätze")
+                return
+            }
             UndoManager.register(qsTr("Alle Buchungen als gelesen markieren"), () => setCheckedIds(ids, false))
             toast = qsTr("%1 Umsätze als gelesen markiert").arg(ids.length)
             // the selected booking leaves a "Neu" list: keep it in the inspector (like setChecked)
@@ -3590,13 +3596,24 @@ QtObject {
     /// Title of the separate window `--screenshot` grabs ("" = main window).
     property string screenshotWindow: ""
 
+    function selectFromSidebar(selection) {
+        const previous = sidebarSelection
+        sidebarSelection = selection
+        if (autoReviewDelay === "account" && previous !== selection
+                && previous.startsWith("account:") && selection.startsWith("account:"))
+            markAllChecked([Number(previous.slice(8))], true)
+    }
+
     // AutoReview.swift: "Als geprüft markieren" (per device, like UserDefaults).
     readonly property var autoReviewDelays: [
         { id: "manual", title: qsTr("Nur manuell"), seconds: -1 }, { id: "now", title: qsTr("Sofort"), seconds: 0 },
-        { id: "1s", title: qsTr("Nach 1 Sekunde"), seconds: 1 }, { id: "5s", title: qsTr("Nach 5 Sekunden"), seconds: 5 }]
+        { id: "1s", title: qsTr("Nach 1 Sekunde"), seconds: 1 }, { id: "5s", title: qsTr("Nach 5 Sekunden"), seconds: 5 },
+        { id: "account", title: qsTr("Bei Kontoauswahl"), seconds: -1 }]
     property string autoReviewDelay: String(defaults.value("bookings/autoReviewDelay", "manual"))
-    // Only stored: a new delay applies from the next selection on (AutoReview.swift).
-    onAutoReviewDelayChanged: defaults.setValue("bookings/autoReviewDelay", autoReviewDelay)
+    onAutoReviewDelayChanged: {
+        defaults.setValue("bookings/autoReviewDelay", autoReviewDelay)
+        if (autoReviewDelay === "account" && autoReviewTimer) autoReviewTimer.stop()
+    }
     property Timer autoReviewTimer: Timer {
         property var bookingID: null
         onTriggered: {

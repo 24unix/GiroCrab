@@ -565,7 +565,7 @@ Rectangle {
                     stream.compactCollapsedID = stream.compactCollapsedID === dc.booking.id ? null : dc.booking.id
                 else
                     stream.compactCollapsedID = null
-                AppModel.selectBooking(dc.booking.id, toggle, extend)
+                AppModel.selectBooking(dc.booking.id, toggle, extend, true)
             }
             onDoubleClicked: m => { if (m.button === Qt.LeftButton) AppModel.editNote(dc.booking) }
             // .draggable(BookingDrag.payload(…)): onto a sidebar category (#366)

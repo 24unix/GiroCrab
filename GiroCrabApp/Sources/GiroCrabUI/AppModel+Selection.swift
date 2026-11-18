@@ -11,6 +11,17 @@ extension AppModel {
         Set(UserDefaults.standard.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
     }
 
+    #if os(macOS)
+    func selectFromSidebar(_ selection: SidebarItem?) {
+        let previous = sidebarSelection
+        interactiveSidebarSelection = selection
+        if autoReviewDelay == .onAccountSwitch, previous != selection,
+           case .account(let id)? = previous, case .account? = selection {
+            markAllChecked(accountIDs: [id], quietWhenEmpty: true)
+        }
+    }
+    #endif
+
     /// Marks the selected booking as checked after `autoReviewDelay`, unless
     /// the selection moved on (or became a multiple one) in the meantime.
     func scheduleAutoReview() {
@@ -49,7 +60,7 @@ extension AppModel {
 
     /// Click on a booking row: plain = only this one, `toggle` (⌘) adds or
     /// removes it, `extend` (⇧) selects the range from the current booking.
-    func selectBooking(_ id: Booking.ID, toggle: Bool = false, extend: Bool = false) {
+    func selectBooking(_ id: Booking.ID, toggle: Bool = false, extend: Bool = false, fromListClick: Bool = false) {
         let list = visibleBookings.map(\.id)
         if extend, let anchor = selectedBookingID, let a = list.firstIndex(of: anchor), let b = list.firstIndex(of: id) {
             selectedBookingIDs = Set(list[min(a, b)...max(a, b)])
@@ -68,6 +79,12 @@ extension AppModel {
             selectedBookingIDs = [id]
             selectedBookingID = id
         }
+        #if os(macOS)
+        if fromListClick, autoReviewDelay == .onAccountSwitch, !isMultiSelection,
+           selectedBookingID == id, let booking = selectedBooking, !booking.checked {
+            setChecked(true, for: booking)
+        }
+        #endif
     }
 
     /// Bearbeiten › Alles auswählen (⌘A) in the booking list.

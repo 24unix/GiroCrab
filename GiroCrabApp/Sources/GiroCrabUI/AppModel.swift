@@ -368,7 +368,15 @@ public final class AppModel {
         }
     }
     var autoReviewDelay: AutoReviewDelay = .stored {
-        didSet { UserDefaults.standard.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey) }
+        didSet {
+            UserDefaults.standard.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey)
+            #if os(macOS)
+            if autoReviewDelay == .onAccountSwitch {
+                autoReviewTask?.cancel()
+                autoReviewTask = nil
+            }
+            #endif
+        }
     }
     @ObservationIgnored var autoReviewTask: Task<Void, Never>?
 
