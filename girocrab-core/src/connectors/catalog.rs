@@ -67,7 +67,7 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             login_label: tr("E-Mail (nur Anzeige)").into(),
             secret_label: tr("(nicht nötig – nutzt Ihre REST-App)").into(),
             required_settings: s(&["paypal.client_id", "paypal.client_secret"]),
-            note: tr("OAuth2 Client Credentials; Historie in 31-Tage-Fenstern.").into(),
+            note: tr("OAuth2 Client Credentials (REST-App) oder API-Signatur (klassische NVP-API, unter Erweitert); Historie in 31-Tage-Fenstern.").into(),
         },
         ConnectorKind::TradeRepublic => BankDescriptor {
             kind,

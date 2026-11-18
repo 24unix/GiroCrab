@@ -490,6 +490,10 @@ pub struct FetchResult {
     /// external_id prefix of provisional bookings (card holds) this fetch
     /// lists completely: stored ones missing from it are removed.
     pub hold_prefix: Option<String>,
+    /// `(account external ref, external_id)` of entries the bank lists that move
+    /// no money (e.g. PayPal's internal offsetting pairs): not stored, and a
+    /// stored one is removed (soft delete, stays deleted).
+    pub withdrawn: Vec<(String, String)>,
     /// `(old, new)` account external refs to rewrite before storing (a
     /// connector switched to a stable account key).
     pub renamed_refs: Vec<(String, String)>,

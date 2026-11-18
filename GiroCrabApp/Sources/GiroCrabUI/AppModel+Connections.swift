@@ -147,7 +147,26 @@ extension AppModel {
     func missingSettings(for connection: BankConnection) -> [String] {
         if Self.isMagicDemoLogin(connection.loginName) { return [] }
         guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }
+        if connection.connector == .payPal, payPalUsesSignature { return missingPayPalSignatureKeys }
         return userRequiredKeys(for: d).filter { key in !(settingEntry(key)?.hasValue ?? false) }
+    }
+
+    /// PayPal via API signature (classic NVP API, #752): all three are required.
+    nonisolated static let payPalSignatureKeys = ["paypal.api_username", "paypal.api_password", "paypal.api_signature"]
+
+    /// One of the API signature fields is filled in: PayPal is set up that way, not via a REST app.
+    var payPalUsesSignature: Bool {
+        Self.payPalSignatureKeys.contains { settingEntry($0)?.hasValue == true }
+    }
+
+    /// The API signature fields still empty (none: complete).
+    var missingPayPalSignatureKeys: [String] {
+        Self.payPalSignatureKeys.filter { !(settingEntry($0)?.hasValue ?? false) }
+    }
+
+    /// A setting to enter masked: the core's flag, else guessed from the key (not loaded yet).
+    nonisolated static func isSecretSetting(_ key: String, _ entry: SettingEntry?) -> Bool {
+        entry?.isSecret ?? (key.contains("secret") || key.hasSuffix("password") || key.hasSuffix("signature"))
     }
 
     /// Settings the core lists as required that are only an optional override for the user.
