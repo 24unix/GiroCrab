@@ -1454,8 +1454,18 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
         .unwrap(),
         None
     );
+    // the only card, also as a replacement card with a new number
     assert_eq!(
-        adopt_account(&db, conn_id, "card-1", "", "", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(
+            &db,
+            conn_id,
+            "card-1",
+            "",
+            "5232123456789999",
+            "",
+            AccountKind::CreditCard
+        )
+        .unwrap(),
         Some(visa.id)
     );
     // only once, and never for another login
@@ -1471,6 +1481,41 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
             "",
             "",
             "",
+            AccountKind::Brokerage
+        )
+        .unwrap(),
+        None
+    );
+}
+
+#[test]
+fn only_cards_are_adopted_by_number() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    let conn_id = v.list_bank_connections().unwrap()[0].id;
+    let db = v.db().unwrap();
+    // a second imported depot next to "Depot" (9999) on the same login
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, currency, kind)
+         SELECT connection_id, group_id, 'moneymoney-db:99:x', 'Depot 2', '1111', 'EUR', 'brokerage'
+         FROM accounts WHERE name = 'Depot'",
+        [],
+    )
+    .unwrap();
+    // the same last four digits are no reason to take over a depot
+    assert_eq!(
+        adopt_account(
+            &db,
+            conn_id,
+            "dep-x",
+            "",
+            "99991111",
+            "EUR",
             AccountKind::Brokerage
         )
         .unwrap(),
@@ -3150,9 +3195,8 @@ fn miles_and_more_pseudo_code_maps_to_the_deutsche_bank_card_login() {
         .unwrap()
     };
     assert_eq!(take("card-b", "5232123456785678"), Some(partner));
-    // the only card left has another number: not taken as a guess
-    assert_eq!(take("card-c", "5232123456789999"), None);
     assert_eq!(take("card-a", "5232123456781234"), Some(main));
+    assert_eq!(take("card-c", "5232123456789999"), None);
 }
 
 #[test]
@@ -3167,11 +3211,8 @@ fn same_card_number_needs_the_same_digits_or_a_masked_side() {
     assert!(!same_card_number("371234567891234", "5232123456781234"));
     assert!(!same_card_number("", "5232123456781234"));
     assert!(!same_card_number("123", "123"));
-    // a known other card blocks a guess, an account id in another form does not
-    assert!(other_card("5232 XXXX XXXX 1234", "5232123456789999"));
-    assert!(!other_card("5232 XXXX XXXX 1234", "5232123456781234"));
-    assert!(!other_card("1234567890", "5232123456789999"));
-    assert!(!other_card("", "5232123456789999"));
+    // masked at the end: the last four are not shown
+    assert!(!same_card_number("5232 12XX XXXX XXXX", "5232123456783212"));
 }
 
 #[test]

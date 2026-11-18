@@ -1363,13 +1363,16 @@ const MILES_AND_MORE_PSEUDO_CODE: &str = "Miles & More Credit Card";
 const DKB_BLZ: &str = "12030000";
 
 impl SrcBank {
-    /// A login that holds credit cards only: the Miles & More pseudo code or
-    /// the cards' own bank code.
-    fn card_only(&self) -> bool {
+    fn has_miles_and_more_pseudo_code(&self) -> bool {
         self.bankcode
             .trim()
             .eq_ignore_ascii_case(MILES_AND_MORE_PSEUDO_CODE)
-            || digits(&self.bankcode) == MILES_AND_MORE_BLZ
+    }
+
+    /// A login that holds credit cards only: the Miles & More pseudo code or
+    /// the cards' own bank code.
+    fn card_only(&self) -> bool {
+        self.has_miles_and_more_pseudo_code() || digits(&self.bankcode) == MILES_AND_MORE_BLZ
     }
 }
 
@@ -1378,9 +1381,7 @@ impl SrcBank {
 /// code (no connector): its name says so or its cards carry DKB's bank code.
 /// The name alone is not enough, MoneyMoney lets the user rename the login.
 fn is_deutsche_bank_card_login(b: &SrcBank, accounts: &[SrcAccount]) -> bool {
-    b.bankcode
-        .trim()
-        .eq_ignore_ascii_case(MILES_AND_MORE_PSEUDO_CODE)
+    b.has_miles_and_more_pseudo_code()
         && !b.name.to_lowercase().contains("dkb")
         && !accounts
             .iter()
@@ -2408,20 +2409,29 @@ pub(crate) fn adopt_account(
             .filter(|(_, _, has_iban, _)| widen || !has_iban)
             .collect();
         let currency = currency.trim().to_uppercase();
-        // several cards on one login (main and partner card): the number decides
-        let by_number = unique(
-            rows.iter()
-                .filter(|(_, number, _, _)| same_card_number(number, account_number))
-                .map(|(id, _, _, _)| *id),
-        );
-        // else the only one of its kind, preferring those without an IBAN –
-        // never one whose number names another card
-        let single = |with_iban: bool| {
+        let card = kind == AccountKind::CreditCard;
+        // several cards on one login (main and partner card): the number
+        // decides; other kinds have no card number to compare
+        let by_number = if card {
+            unique(
+                rows.iter()
+                    .filter(|(_, number, _, _)| same_card_number(number, account_number))
+                    .map(|(id, _, _, _)| *id),
+            )
+        } else {
+            None
+        };
+        // else the only one of its kind (also a replacement card with a new
+        // number), preferring those without an IBAN; widened: the only one in
+        // that currency, with or without an IBAN
+        let single = |widened: bool| {
             unique(rows.iter().filter(|(_, _, has_iban, cur)| {
-                !has_iban
-                    || (with_iban && (currency.is_empty() || cur.is_empty() || *cur == currency))
+                if widened {
+                    currency.is_empty() || cur.is_empty() || *cur == currency
+                } else {
+                    !has_iban
+                }
             }))
-            .filter(|(_, number, _, _)| !other_card(number, account_number))
             .map(|(id, _, _, _)| *id)
         };
         by_number
@@ -2474,21 +2484,17 @@ fn full_card_number(s: &str) -> bool {
 
 /// Whether two card (account) numbers name the same card: two complete ones
 /// by all digits, a masked or shortened one (`5232 •••• •••• 1234`, `1234`) by
-/// the last four.
+/// the last four – only if they are shown (not `5232 12•• •••• ••••`).
 fn same_card_number(a: &str, b: &str) -> bool {
     if full_card_number(a) && full_card_number(b) {
         return digits(a) == digits(b);
     }
-    let (a, b) = (digits(a), digits(b));
-    a.len() >= 4 && b.len() >= 4 && a[a.len() - 4..] == b[b.len() - 4..]
-}
-
-/// Whether two numbers surely name different cards: both are card numbers
-/// (complete, or masked with digits left) and they do not match. An account
-/// id in another form proves nothing.
-fn other_card(a: &str, b: &str) -> bool {
-    let card = |s: &str| full_card_number(s) || (masked(s) && digits(s).len() >= 4);
-    card(a) && card(b) && !same_card_number(a, b)
+    let last_four = |s: &str| {
+        let d = digits(s);
+        (s.trim_end().ends_with(|c: char| c.is_ascii_digit()) && d.len() >= 4)
+            .then(|| d[d.len() - 4..].to_string())
+    };
+    last_four(a).is_some_and(|x| last_four(b) == Some(x))
 }
 
 /// The only item, `None` for none or several.
