@@ -21656,6 +21656,17 @@
         }
       }
     },
+    "Natürliche Suche" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Natural search"
+          }
+        }
+      }
+    },
     "Negative Beträge" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27671,6 +27682,17 @@
         }
       }
     },
+    "Suche:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search:"
+          }
+        }
+      }
+    },
     "Suchen Sie Ihre Bank nach Name, Bankleitzahl oder IBAN." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -31578,6 +31600,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "dictionary"
+          }
+        }
+      }
+    },
+    "Wörtlich nach dem eingegebenen Text suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search for the typed text literally"
+          }
+        }
+      }
+    },
+    "Wörtlich suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search literally"
           }
         }
       }

@@ -121,7 +121,8 @@ public final class AppModel {
             if !appliesMerchantFocus { merchantFocus = nil; merchantFocusReturn = nil }
             listLimit = Self.defaultListLimit
             // A category with its own default period switches to it; that load covers the selection too (#425).
-            if case .category(let id)? = sidebarSelection, let saved = categoryPeriod(id), saved != period {
+            if !keepsPeriodOnCategorySelection, case .category(let id)? = sidebarSelection,
+               let saved = categoryPeriod(id), saved != period {
                 period = saved
                 return
             }
@@ -132,6 +133,9 @@ public final class AppModel {
     /// Set while a vault is adopted: `reloadAll()` follows at once, so the selection's own
     /// reload (the same queries again, on the main thread) is skipped.
     @ObservationIgnored var resetsSelectionBeforeReloadAll = false
+    /// Set while a natural-language reading without a period selects its category: the category's
+    /// default period must not replace the current one.
+    @ObservationIgnored var keepsPeriodOnCategorySelection = false
     /// Selects "Alle Konten" for a vault that is just being shown; the caller reloads everything.
     func selectAllAccountsForReloadAll() {
         resetsSelectionBeforeReloadAll = true
@@ -303,7 +307,21 @@ public final class AppModel {
             reloadSelection(periodChanged: true) // also the sidebar sums (#621)
         }
     }
-    var searchText: String = "" { didSet { if !suspendsFilterReloads { scheduleSearch() } } }
+    /// What the user typed into the search field; never rewritten by the natural-language search.
+    var searchText: String = "" {
+        didSet {
+            // Typing on or clearing the field ends the natural reading of the previous phrase.
+            if let natural = naturalSearch, natural.query != searchText { revertNaturalSearch() }
+            if !suspendsFilterReloads { scheduleSearch() }
+        }
+    }
+    /// The natural-language reading of `searchText` the list uses (`effectiveSearchText`, filters);
+    /// nil = the typed text is searched literally. Only the search code in `AppModel+Selection` sets it.
+    var naturalSearch: NaturalSearchOverride?
+    /// Whether a typed phrase is read as natural language (Einstellungen › Allgemein); tests inject it.
+    /// A phrase the user wants searched literally (chip „wörtlich suchen“); not read as natural language again.
+    @ObservationIgnored var literalSearchQuery: String?
+    @ObservationIgnored var naturalSearchEnabled: () -> Bool = { NaturalSearch.isEnabled }
     /// Filters the accounts section of the sidebar (name, owner, IBAN / account number).
     var sidebarAccountSearch: String = ""
     var selectedBookingID: Booking.ID? {
@@ -756,7 +774,7 @@ public final class AppModel {
         }
         if options.freshVault || options.demoSeed {
             // Developer switches only (screenshots): synchronous, not the normal start path.
-            GiroCrabCore.setLanguage(code: Bundle.main.preferredLocalizations.first ?? "de")
+            GiroCrabCore.setLanguage(code: options.simulateSystemLanguage ?? Bundle.main.preferredLocalizations.first ?? "de")
         }
         if options.freshVault {
             openFreshVault()

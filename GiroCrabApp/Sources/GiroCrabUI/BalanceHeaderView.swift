@@ -374,6 +374,33 @@ struct StreamHeaderCard: View {
         .fixedSize()
     }
 
+    /// The natural-language reading of the typed search phrase (`AppModel.naturalSearch`): what the
+    /// list really searches, so the field itself keeps what the user typed. × searches literally.
+    @ViewBuilder
+    private var naturalSearchChip: some View {
+        if let natural = model.naturalSearch {
+            HStack(spacing: 4) {
+                Image(systemName: "sparkle.magnifyingglass")
+                if natural.keyword.isEmpty {
+                    Text("Natürliche Suche")
+                } else {
+                    Text("Suche:")
+                    Text(natural.keyword).sensitive()
+                }
+                Button { model.searchLiterally() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .help("Wörtlich nach dem eingegebenen Text suchen")
+                .accessibilityLabel("Wörtlich suchen")
+            }
+            .appFont(.body)
+            .foregroundStyle(Theme.text)
+            .lineLimit(1)
+            .fixedSize()
+        }
+    }
+
     @ViewBuilder
     private var filterContent: some View {
         @Bindable var model = model
@@ -425,6 +452,7 @@ struct StreamHeaderCard: View {
                     categoryAccountMenu
                 }
                 amountFilterPill
+                naturalSearchChip
                 if model.hasActiveListFilters {
                     // all list filters at once (#840); the period is a view choice and stays
                     Button { model.resetListFilters(inBackground: true) } label: {
