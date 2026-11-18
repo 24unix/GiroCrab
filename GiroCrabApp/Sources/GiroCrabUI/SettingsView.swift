@@ -160,7 +160,7 @@ struct GeneralSettings: View {
             MerchantLogoSettingsSection()
             #if os(macOS)
             AutoSyncSettingsSection()
-            MenuBarSettingsSection()
+            DockAndMenuBarSettingsSection()
             #endif
             #if os(iOS)
             Section {
