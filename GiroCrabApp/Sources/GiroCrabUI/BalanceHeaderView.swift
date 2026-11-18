@@ -627,7 +627,7 @@ struct BalanceChart: View {
         var pts: [Point] = []
         /// `pts` thinned to what the chart width can show (extremes of each stretch kept).
         var drawn: [Point] = []
-        /// `drawn` with each date at the middle of its day, where `unit: .day` marks sit.
+        /// `drawn` at `dayMiddle`.
         var plotted: [PlotPoint] = []
         /// Lowest and highest balance (axis labels) and the padded y-scale around them.
         var low = 0.0
@@ -642,9 +642,23 @@ struct BalanceChart: View {
     }
     @State private var prepared = Prepared()
 
-    /// More points than this are thinned. Charts lays out every point again at each new width
-    /// (sidebar animation, window resize), so the count sets the cost of each such frame.
-    private static let maxDrawnPoints = 300
+    /// A year of days is drawn in full: 367 (both ends and a leap day), rounded up to whole
+    /// stretches of `thinned`. Longer histories are thinned, where the hover marker may sit off
+    /// the line. Charts lays out every point again at each new width (sidebar animation, window
+    /// resize), so the count sets the cost of each such frame.
+    private static let maxDrawnPoints = 368
+
+    /// Where `unit: .day` marks put a day, and so where the plots and the marker do.
+    private static func dayMiddle(_ date: Date) -> Date {
+        Calendar.current.dateInterval(of: .day, for: date).map { $0.start + $0.duration / 2 } ?? date
+    }
+
+    /// The day under `x` (days are drawn across their whole span), else the nearest one.
+    private static func day(atX x: CGFloat, proxy: ChartProxy, in all: [Point]) -> Point? {
+        guard let date: Date = proxy.value(atX: x) else { return nil }
+        let start = Calendar.current.startOfDay(for: date)
+        return all.min { abs($0.date.timeIntervalSince(start)) < abs($1.date.timeIntervalSince(start)) }
+    }
 
     /// "Mo. 9. Nov. 2026": the marker readout and the day bar's title.
     private static let dayFormat = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()
@@ -670,11 +684,8 @@ struct BalanceChart: View {
             prepared.low = all.map(\.euros).min() ?? 0
             prepared.high = all.map(\.euros).max() ?? 1
             let floor = prepared.yDomain.lowerBound
+            prepared.plotted = prepared.drawn.map { PlotPoint(date: Self.dayMiddle($0.date), euros: $0.euros, floor: floor) }
             let calendar = Calendar.current
-            prepared.plotted = prepared.drawn.map { p in
-                let day = calendar.dateInterval(of: .day, for: p.date)
-                return PlotPoint(date: day.map { $0.start + $0.duration / 2 } ?? p.date, euros: p.euros, floor: floor)
-            }
             if let first = all.first.flatMap({ calendar.dateInterval(of: .day, for: $0.date) }),
                let last = all.last.flatMap({ calendar.dateInterval(of: .day, for: $0.date) }) {
                 prepared.xDomain = first.start...last.end
@@ -856,7 +867,7 @@ struct BalanceChart: View {
     /// overlay, outside the chart's marks, so moving it does not rebuild the line.
     @ViewBuilder private func marker(in all: [Point], proxy: ChartProxy, geo: GeometryProxy) -> some View {
         if let m = hover.point ?? followedPoint(in: all), let plot = proxy.plotFrame,
-           let x = proxy.position(forX: m.date), let y = proxy.position(forY: m.euros) {
+           let x = proxy.position(forX: Self.dayMiddle(m.date)), let y = proxy.position(forY: m.euros) {
             let frame = geo[plot]
             let left = m.id * 2 > all.count
             ZStack(alignment: .topLeading) {
@@ -921,9 +932,7 @@ struct BalanceChart: View {
                         switch phase {
                         case .active(let location):
                             guard let plot = proxy.plotFrame else { return }
-                            let x = location.x - geo[plot].origin.x
-                            guard let date: Date = proxy.value(atX: x) else { return }
-                            let nearest = pts.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
+                            let nearest = Self.day(atX: location.x - geo[plot].origin.x, proxy: proxy, in: pts)
                             if nearest != hover.point { hover.point = nearest }
                         case .ended:
                             hover.point = nil
@@ -931,8 +940,7 @@ struct BalanceChart: View {
                     }
                     .onTapGesture { location in
                         guard let onSelect, let plot = proxy.plotFrame,
-                              let date: Date = proxy.value(atX: location.x - geo[plot].origin.x),
-                              let nearest = pts.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+                              let nearest = Self.day(atX: location.x - geo[plot].origin.x, proxy: proxy, in: pts)
                         else { return }
                         onSelect(nearest.date)
                     }
