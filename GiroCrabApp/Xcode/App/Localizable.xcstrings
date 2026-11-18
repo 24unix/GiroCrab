@@ -8982,6 +8982,17 @@
         }
       }
     },
+    "Das Konto wurde aufgelöst" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account has been closed"
+          }
+        }
+      }
+    },
     "Das Mandat „%@“ wird entfernt. Bereits eingereichte Einzüge bleiben unverändert." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10052,13 +10063,13 @@
         }
       }
     },
-    "Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Startsaldo …“ im Kontextmenü des Kontos." : {
+    "Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Einstellungen …“ im Kontextmenü des Kontos." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The difference is booked as a “Balance correction” dated today. You can change the starting balance with “Starting Balance…” in the account’s context menu."
+            "value" : "The difference is booked as a “Balance correction” dated today. You can change the starting balance with “Settings…” in the account’s context menu."
           }
         }
       }
@@ -19444,6 +19455,17 @@
         }
       }
     },
+    "Kontoeinstellungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Settings"
+          }
+        }
+      }
+    },
     "Kontogruppen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19528,6 +19550,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account Name"
+          }
+        }
+      }
+    },
+    "Kontonummer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account number"
           }
         }
       }
@@ -27447,6 +27480,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Balance date"
+          }
+        }
+      }
+    },
+    "Stichtag und Kalibrierung …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cut-off date and calibration …"
           }
         }
       }
