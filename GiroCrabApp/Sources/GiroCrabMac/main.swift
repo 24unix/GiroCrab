@@ -112,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        guard DockKeepAlive.isEnabled, !flag else { return true }
+        guard DockKeepAlive.isEnabled, !flag, !NSApp.windows.contains(where: { $0.isMiniaturized }) else { return true }
         MenuBarActions.showMain()
         return false
     }
