@@ -139,3 +139,9 @@ enum MenuBarSummary {
 public enum MenuBarKeepAlive {
     public static var isEnabled: Bool { UserDefaults.standard.bool(forKey: MenuBarSummary.enabledKey) }
 }
+
+public enum DockKeepAlive {
+    static let enabledKey = "keepAppOpenInDock"
+
+    public static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+}

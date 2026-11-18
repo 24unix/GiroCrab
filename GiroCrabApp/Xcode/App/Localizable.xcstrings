@@ -11406,6 +11406,16 @@
         }
       }
     },
+    "Dock & Menüleiste" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dock & Menu Bar"
+          }
+        }
+      }
+    },
     "Dokument auswählen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15093,6 +15103,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab signs in using the saved credentials. Then enter the SMS code or approve in the Advanzia app. Transactions are imported automatically afterwards."
+          }
+        }
+      }
+    },
+    "GiroCrab nach Fensterschließen geöffnet lassen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep GiroCrab open after closing the window"
           }
         }
       }
@@ -31637,6 +31657,16 @@
         }
       }
     },
+    "Zeigt das GiroCrab-Symbol oben in der Menüleiste." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows the GiroCrab icon in the menu bar at the top of the screen."
+          }
+        }
+      }
+    },
     "Zeigt den Kontostand nach jeder Buchung und am Ende jedes Tages, zum Abgleich mit dem Kontoauszug. Bei mehreren Konten die Summe der Euro-Konten ohne Depots und Darlehen. Innerhalb eines Tages kann die Reihenfolge von der Bank abweichen, der Tagessaldo stimmt immer. Auch im Menü Ansicht umschaltbar." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -32921,6 +32951,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "quirion: The portal response could not be read."
+          }
+        }
+      }
+    },
+    "schließt das Fenster. GiroCrab läuft weiter." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "closes the window. GiroCrab keeps running."
           }
         }
       }
