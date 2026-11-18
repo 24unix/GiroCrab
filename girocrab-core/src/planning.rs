@@ -36,6 +36,33 @@ CREATE TABLE IF NOT EXISTS transfer_templates (
 /// `extra`: more columns of `t` (e.g. ", t.currency AS currency"); `condition`:
 /// more conditions on `t` (e.g. " AND t.account_id = ?1"). Both appear in both
 /// halves of the UNION, so `condition` must use numbered parameters.
+/// Whether a booking in `currency` enters the sums (category totals, history, KPI tiles) of a
+/// selection of `account_count` accounts (#1049, as in `balances::chosen` and #569): one account
+/// counts in its own currency, several (or all) only EUR; amounts in other currencies are never
+/// added to them. An empty currency is EUR.
+pub(crate) fn counts_in_sums(account_count: usize, currency: &str) -> bool {
+    account_count == 1 || currency.is_empty() || currency.eq_ignore_ascii_case("EUR")
+}
+
+/// SQL condition on `t` that is `counts_in_sums` for the whole selection.
+pub(crate) fn sums_condition(account_count: usize) -> &'static str {
+    if account_count == 1 {
+        ""
+    } else {
+        " AND t.currency COLLATE NOCASE IN ('', 'EUR')"
+    }
+}
+
+/// Whether any live booking is in a currency other than EUR: the cheap check that lets the
+/// "Zusätzlich" queries return at once for the many vaults that have none.
+pub(crate) fn has_other_currencies(conn: &rusqlite::Connection) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM transactions WHERE deleted_ms IS NULL AND upper(currency) NOT IN ('', 'EUR'))",
+        [],
+        |r| r.get(0),
+    )
+}
+
 pub(crate) fn effective_sql(extra: &str, condition: &str) -> String {
     format!(
         "(
@@ -102,7 +129,8 @@ impl Vault {
             let mut stmt = db.prepare(&format!(
                 "SELECT category_id, SUM(amount_cents) FROM {}
                  WHERE booking_date >= ?1 AND booking_date <= ?2 GROUP BY category_id",
-                effective_sql("", "")
+                // budgets are amounts in EUR: other currencies are never added to them (#1049)
+                effective_sql("", sums_condition(0))
             ))?;
             for row in stmt.query_map(params![from, to], |r| {
                 Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?))
@@ -417,6 +445,10 @@ pub(crate) fn cashflow_for(
     };
     let mut acc: HashMap<String, (i64, i64)> = HashMap::new();
     v.visit_bookings(&*v.db()?, &filter, |_, b| {
+        // other currencies are never added to the sums, unless one account is selected (#1049)
+        if !counts_in_sums(account_ids.len(), &b.currency) {
+            return;
+        }
         let (date, amt) = (&b.booking_date, b.amount_cents);
         // Non-ASCII / malformed dates are skipped instead of panicking on a slice.
         let key = match granularity {

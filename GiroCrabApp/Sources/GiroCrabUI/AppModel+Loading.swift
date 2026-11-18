@@ -520,7 +520,11 @@ extension AppModel {
 
     /// Currency of the running balances: one account's own, else the EUR sum (as the core sums).
     var balanceCurrency: String {
-        if case .account(let id) = sidebarSelection, let a = account(for: id) { return a.currency }
+        if case .account(let id) = sidebarSelection, let a = account(for: id), !a.currency.isEmpty { return a.currency.uppercased() }
+        // A category filtered to one account is summed in that account's currency (#1049); else EUR only.
+        if case .category = sidebarSelection, categoryAccountIDs.count == 1, let a = account(for: categoryAccountIDs[0]), !a.currency.isEmpty {
+            return a.currency.uppercased()
+        }
         return "EUR"
     }
 
@@ -598,6 +602,49 @@ extension AppModel {
         }
     }
 
+    /// Reads what the EUR-only sums leave out (#1049) for the current selection: the KPI tiles per
+    /// further currency and the sidebar totals per category. Runs after every reload of the sums; a newer
+    /// call cancels an older one, and both queries return at once while no booking has another currency.
+    func refreshOtherCurrencies() {
+        otherCurrenciesTask?.cancel()
+        guard vault != nil else {
+            if !otherCurrencyFlows.isEmpty { otherCurrencyFlows = [] }
+            if !categoryOtherTotals.isEmpty { categoryOtherTotals = [:] }
+            return
+        }
+        let (from, to) = periodRange
+        let filter = currentFilter
+        let followsList = filter.listHasFlow || kpiFollowsList
+        let sums = categorySumFilter
+        otherCurrenciesTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let loaded = try await self.vaultOffMain { vault -> ([CurrencyFlow], [CategoryCurrencyAmount]) in
+                    let flows = followsList && !filter.listHasFlow
+                        ? try vault.flowOtherCurrencies(filter: filter)
+                        : try vault.selectionFlowOtherCurrencies(accountIds: filter.accountIds, dateFrom: from, dateTo: to)
+                    let totals = try vault.categoryOtherCurrencyTotals(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction, amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents)
+                    return (flows, totals)
+                }
+                guard !Task.isCancelled, let loaded else { return }
+                if self.otherCurrencyFlows != loaded.0 { self.otherCurrencyFlows = loaded.0 }
+                let grouped = Dictionary(grouping: loaded.1, by: \.categoryId).mapValues { $0.map { CurrencyAmount(currency: $0.currency, cents: $0.cents) } }
+                if self.categoryOtherTotals != grouped { self.categoryOtherTotals = grouped }
+            } catch {
+                // a missing "Zusätzlich" line is not worth an error alert
+            }
+        }
+    }
+
+    /// "Zusätzlich: −30,00 $ · …" for one KPI tile (nil: nothing in other currencies); `pick` reads the tile's value.
+    func otherCurrencyText(_ pick: (CurrencyFlow) -> Int64) -> String? {
+        let parts = otherCurrencyFlows.compactMap { f -> String? in
+            let cents = pick(f)
+            return cents == 0 ? nil : Money.format(cents, currency: f.currency)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     /// KPI tiles: same flow rules as the dashboard, but for the selected
     /// period and account/group (no account selected = all accounts).
     func reloadSelectionKPIs() {
@@ -634,9 +681,13 @@ extension AppModel {
     func reloadCategoryHistory() {
         guard let vault, let r = categoryHistoryRequest else {
             if !categoryHistory.isEmpty { categoryHistory = [] }
+            if !categoryOtherCurrencies.isEmpty { categoryOtherCurrencies = [] }
             return
         }
-        runCore { categoryHistory = try vault.categoryHistoryByUnit(categoryId: r.id, accountIds: r.accounts, dateFrom: r.from, dateTo: r.to, keyLength: r.keyLength) }
+        runCore {
+            categoryHistory = try vault.categoryHistoryByUnit(categoryId: r.id, accountIds: r.accounts, dateFrom: r.from, dateTo: r.to, keyLength: r.keyLength)
+            categoryOtherCurrencies = try vault.categoryOtherCurrencies(categoryId: r.id, accountIds: r.accounts, dateFrom: r.from, dateTo: r.to)
+        }
     }
 
     func reloadHistory() {

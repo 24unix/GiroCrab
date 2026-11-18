@@ -872,6 +872,54 @@ impl Vault {
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         self.list_page(filter, true)
     }
+
+    /// `flow_other_currencies` for the plain selection of `selection_flow`: accounts and period.
+    pub fn selection_flow_other_currencies(
+        &self,
+        account_ids: Vec<i64>,
+        date_from: Option<String>,
+        date_to: Option<String>,
+    ) -> Result<Vec<CurrencyFlow>, CoreError> {
+        self.flow_other_currencies(BookingFilter {
+            account_ids,
+            date_from,
+            date_to,
+            ..Default::default()
+        })
+    }
+
+    /// The KPI tiles of the currencies other than EUR (#1049) for the same filter: what the page
+    /// sums leave out. Empty for a single account; no scan when no booking has another currency.
+    pub fn flow_other_currencies(
+        &self,
+        filter: BookingFilter,
+    ) -> Result<Vec<CurrencyFlow>, CoreError> {
+        if filter.account_ids.len() == 1 {
+            return Ok(Vec::new());
+        }
+        let db = self.db()?;
+        if !crate::planning::has_other_currencies(&db)? {
+            return Ok(Vec::new());
+        }
+        let mut per: std::collections::BTreeMap<String, SelectionFlow> = Default::default();
+        self.visit_bookings(&db, &filter, |share, t| {
+            if !crate::planning::counts_in_sums(filter.account_ids.len(), &t.currency) {
+                per.entry(t.currency.to_uppercase())
+                    .or_default()
+                    .add(t.flow, share);
+            }
+        })?;
+        Ok(per
+            .into_iter()
+            .map(|(currency, f)| CurrencyFlow {
+                currency,
+                consumption_cents: f.consumption_cents,
+                invested_cents: f.invested_cents,
+                income_cents: f.income_cents,
+            })
+            .filter(|f| f.consumption_cents != 0 || f.invested_cents != 0 || f.income_cents != 0)
+            .collect())
+    }
 }
 
 impl Vault {
@@ -1080,13 +1128,18 @@ impl Vault {
             ""
         };
         let sql = format!(
-            "{cte}SELECT t.id, t.booking_date, {share_sql} {BOOKING_FROM_SQL} WHERE {where_sql}{order}"
+            "{cte}SELECT t.id, t.booking_date, {share_sql}, t.currency {BOOKING_FROM_SQL} WHERE {where_sql}{order}"
         );
         let mut stmt = db.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
             // the date only cuts the page: counts and sums skip the String
             let date = if with_rows { r.get(1)? } else { String::new() };
-            Ok((r.get::<_, i64>(0)?, date, r.get::<_, i64>(2)?))
+            Ok((
+                r.get::<_, i64>(0)?,
+                date,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+            ))
         })?;
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
@@ -1094,25 +1147,28 @@ impl Vault {
         let mut kept: Vec<(i64, String)> = Vec::new();
         let mut total = 0u32;
         for row in rows {
-            let (id, date, share) = row?;
+            let (id, date, share, currency) = row?;
             let Some(class) = classes.get(&id) else {
                 return Ok(None);
             };
             if !keeps(filter, class.flow, &class.merchant) {
                 continue;
             }
-            match kpi_side(class.flow, share) {
-                KpiSide::Income => income += share,
-                KpiSide::Expense => expense += share,
-                KpiSide::Neutral => {}
+            // Sums skip other currencies unless one account is selected (#1049); the rows stay.
+            if crate::planning::counts_in_sums(filter.account_ids.len(), &currency) {
+                match kpi_side(class.flow, share) {
+                    KpiSide::Income => income += share,
+                    KpiSide::Expense => expense += share,
+                    KpiSide::Neutral => {}
+                }
+                match class.flow {
+                    FlowKind::Consumption => consumption += share,
+                    FlowKind::Investment => investment += share,
+                    FlowKind::Perk => perk += share,
+                    _ => {}
+                }
+                flow.add(class.flow, share);
             }
-            match class.flow {
-                FlowKind::Consumption => consumption += share,
-                FlowKind::Investment => investment += share,
-                FlowKind::Perk => perk += share,
-                _ => {}
-            }
-            flow.add(class.flow, share);
             total += 1;
             if with_rows {
                 kept.push((id, date));
@@ -1191,18 +1247,21 @@ impl Vault {
         self.visit_bookings(db, filter, |share, t| {
             // One KPI definition (`kpi_side`) for the page sums and `SelectionFlow`;
             // transfers between own accounts are neutral (else counted on both sides).
-            match kpi_side(t.flow, share) {
-                KpiSide::Income => income += share,
-                KpiSide::Expense => expense += share,
-                KpiSide::Neutral => {}
+            // Sums skip other currencies unless one account is selected (#1049); the rows stay.
+            if crate::planning::counts_in_sums(filter.account_ids.len(), &t.currency) {
+                match kpi_side(t.flow, share) {
+                    KpiSide::Income => income += share,
+                    KpiSide::Expense => expense += share,
+                    KpiSide::Neutral => {}
+                }
+                match t.flow {
+                    FlowKind::Consumption => consumption += share,
+                    FlowKind::Investment => investment += share,
+                    FlowKind::Perk => perk += share,
+                    _ => {}
+                }
+                flow.add(t.flow, share);
             }
-            match t.flow {
-                FlowKind::Consumption => consumption += share,
-                FlowKind::Investment => investment += share,
-                FlowKind::Perk => perk += share,
-                _ => {}
-            }
-            flow.add(t.flow, share);
             // Only the page is kept. `whole_days` adds the rest of its last day:
             // sorted by day, it follows directly.
             let in_page = (start..end).contains(&total)

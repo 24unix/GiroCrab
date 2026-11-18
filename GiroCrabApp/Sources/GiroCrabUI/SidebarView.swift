@@ -845,21 +845,36 @@ struct AccountRow: View {
 }
 
 struct CategoryRow: View {
+    @Environment(AppModel.self) private var model
     let category: GiroCrabCore.Category
 
     var body: some View {
+        // "Zusätzlich" (#1049): what the category holds in currencies other than EUR, under its total.
+        let other = (model.categoryOtherTotals[category.id] ?? []).map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · ")
         HStack(spacing: 8) {
             Image(systemName: category.sfSymbol)
                 .foregroundStyle(Color.readable(hex: category.colorHex).opacity(0.85))
                 .frame(width: 20)
             Text(category.name).lineLimit(1).appDefaultFont().sensitive(.labels)
             Spacer(minLength: 4)
-            if category.totalCents != 0 {
-                Text(Money.format(category.totalCents))
-                    .sensitive(.amounts)
-                    .appFont(.caption, monospacedDigit: true)
-                    .fixedSize()
-                    .foregroundStyle(.secondary) // follows selection, Dark Mode, Increase Contrast
+            if category.totalCents != 0 || !other.isEmpty {
+                VStack(alignment: .trailing, spacing: 1) {
+                    if category.totalCents != 0 {
+                        Text(Money.format(category.totalCents))
+                            .sensitive(.amounts)
+                            .appFont(.caption, monospacedDigit: true)
+                            .fixedSize()
+                            .foregroundStyle(.secondary) // follows selection, Dark Mode, Increase Contrast
+                    }
+                    if !other.isEmpty {
+                        Text("Zusätzlich: \(other)")
+                            .sensitive(.amounts)
+                            .appFont(.caption2, monospacedDigit: true)
+                            .fixedSize()
+                            .foregroundStyle(.secondary)
+                            .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
+                    }
+                }
             }
         }
     }

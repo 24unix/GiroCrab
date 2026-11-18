@@ -145,7 +145,7 @@ struct ReceiptCard: View {
                 }
                 Spacer()
             }
-            Text(Money.signed(booking.amountCents))
+            Text(Money.signed(booking.amountCents, currency: booking.currency))
                 .sensitive(.amounts)
                 .font(.system(.largeTitle, design: .rounded, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Money.ink(booking.amountCents))
@@ -802,17 +802,31 @@ struct RawDataCard: View {
 struct MultiSelectionCard: View {
     @Environment(AppModel.self) private var model
 
+    private static func code(_ b: Booking) -> String { b.currency.isEmpty ? "EUR" : b.currency.uppercased() }
+
     var body: some View {
         let many = model.selectedBookings
         let income = many.filter { $0.amountCents > 0 }.reduce(Int64(0)) { $0 + $1.amountCents }
         let expense = many.filter { $0.amountCents < 0 }.reduce(Int64(0)) { $0 + $1.amountCents }
+        let currencies = Array(Set(many.map(Self.code))).sorted()
+        let currency = currencies.first ?? "EUR"
         VStack(alignment: .leading, spacing: 12) {
             Label("\(many.count) Buchungen ausgewählt", systemImage: "checkmark.circle")
                 .appFont(.headline)
             VStack(alignment: .leading, spacing: 4) {
-                LabeledContent("Summe") { Text(Money.format(income + expense)).sensitive(.amounts) }
-                if income != 0 { LabeledContent("Einnahmen") { Text(Money.format(income)).sensitive(.amounts) } }
-                if expense != 0 { LabeledContent("Ausgaben") { Text(Money.format(expense)).sensitive(.amounts) } }
+                if currencies.count > 1 {
+                    // Never one number over several currencies (#569): one sum per currency.
+                    ForEach(currencies, id: \.self) { code in
+                        LabeledContent("Summe \(code)") {
+                            Text(Money.format(many.filter { Self.code($0) == code }.reduce(Int64(0)) { $0 + $1.amountCents }, currency: code))
+                                .sensitive(.amounts)
+                        }
+                    }
+                } else {
+                    LabeledContent("Summe") { Text(Money.format(income + expense, currency: currency)).sensitive(.amounts) }
+                    if income != 0 { LabeledContent("Einnahmen") { Text(Money.format(income, currency: currency)).sensitive(.amounts) } }
+                    if expense != 0 { LabeledContent("Ausgaben") { Text(Money.format(expense, currency: currency)).sensitive(.amounts) } }
+                }
             }
             .appFont(.callout, monospacedDigit: true)
             MultiSelectionTags(bookings: many)

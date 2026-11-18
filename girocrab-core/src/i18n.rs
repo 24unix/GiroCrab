@@ -481,6 +481,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Manuelle Buchungen sind nur in Offline-Konten möglich." => "Manual bookings are only possible in offline accounts.",
         "Der Betrag darf nicht 0 sein." => "The amount must not be 0.",
         "Depots und Darlehen werden nicht als Offline-Konto angelegt." => "Depots and loans are not created as offline accounts.",
+        "Die Währung muss ein dreistelliger ISO-Code sein (z. B. EUR)." => "The currency must be a three-letter ISO code (e.g. EUR).",
         "Eine Buchung lässt sich nicht in ihr eigenes Konto spiegeln." => "A booking cannot be mirrored into its own account.",
         "Saldokorrektur" => "Balance correction",
         // ------------------------------------------------------ user_groups.rs
