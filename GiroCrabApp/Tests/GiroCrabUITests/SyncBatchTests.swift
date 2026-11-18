@@ -124,6 +124,48 @@ final class SyncBatchTests: XCTestCase {
         XCTAssertTrue(model.syncQueue.isEmpty)
     }
 
+    /// "Erneut versuchen" in the error alert fetches the failed login again, and the
+    /// batch goes on after it.
+    func testRetryInTheErrorAlertGoesOnWithTheBatch() async throws {
+        let logins = batch
+        try XCTSkipIf(logins.count < 3, "demo vault needs at least three logins")
+        model.requestSyncAll()
+        try await waitForChallenge(of: logins[0])
+        model.finishSync(error: CoreError.Network(message: "x"))
+        let retry = try XCTUnwrap(model.errorRetry)
+        model.errorOnClose = nil   // what the button does before retrying
+        model.errorMessage = nil
+        retry()
+
+        try await waitForChallenge(of: logins[0])
+        XCTAssertEqual(model.syncBatchProgress?.current, 1, "the same login again")
+        model.skipCurrentSync()
+        try await waitForChallenge(of: logins[1])
+        XCTAssertEqual(model.syncBatchProgress?.current, 2)
+    }
+
+    /// A missing setting opens the setup form and keeps the batch: cancelling the
+    /// form skips this login, completing it fetches the login and goes on.
+    func testSetupFormKeepsTheBatch() async throws {
+        let logins = batch
+        try XCTSkipIf(logins.count < 3, "demo vault needs at least three logins")
+        model.requestSyncAll()
+        try await waitForChallenge(of: logins[0])
+        model.finishSync(error: CoreError.MissingSetting(key: "x"))
+        XCTAssertEqual(model.setupRequest?.connection.id, logins[0].id)
+        XCTAssertNotNil(model.syncBatchProgress, "the batch waits for the form")
+        model.cancelSetupRequest()
+        try await waitForChallenge(of: logins[1])
+
+        model.finishSync(error: CoreError.MissingSetting(key: "x"))
+        let request = try XCTUnwrap(model.setupRequest)
+        model.completeSetup(request, values: [:])
+        try await waitForChallenge(of: logins[1])
+        XCTAssertEqual(model.syncBatchProgress?.current, 2, "the same login again")
+        model.skipCurrentSync()
+        try await waitForChallenge(of: logins[2])
+    }
+
     /// "Alle abbrechen" in the error alert ends the batch.
     func testCancelAllInTheErrorAlertEndsTheBatch() async throws {
         let logins = batch
