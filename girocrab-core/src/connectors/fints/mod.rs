@@ -167,13 +167,12 @@ impl UpdAccount {
 /// Consorsbank (BNP Paribas): see `docs/consorsbank-connector.md`.
 const CONSORSBANK_BLZ: &str = "76030080";
 
-/// FinTS date `YYYYMMDD` → `YYYY-MM-DD`; `None` unless exactly 8 ASCII digits
-/// (no byte slicing into a multi-byte character).
+/// FinTS date `YYYYMMDD` → `YYYY-MM-DD`; `None` unless exactly 8 digits naming a real day.
 fn fints_date(d: &str) -> Option<String> {
-    if d.len() != 8 || !d.bytes().all(|b| b.is_ascii_digit()) {
+    if d.len() != 8 {
         return None;
     }
-    Some(format!("{}-{}-{}", &d[..4], &d[4..6], &d[6..]))
+    crate::dates::parse_yyyymmdd(d).map(crate::dates::iso)
 }
 
 #[derive(Debug, Clone)]

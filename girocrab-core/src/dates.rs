@@ -102,6 +102,19 @@ pub(crate) fn find_de_date(s: &str) -> Option<Date> {
         .find_map(|c| ymd(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?))
 }
 
+/// The day a leading `YYYYMMDD` names (FinTS and MT535), `None` unless the
+/// eight characters are digits and a real day.
+pub(crate) fn parse_yyyymmdd(s: &str) -> Option<Date> {
+    let d = s
+        .get(..8)
+        .filter(|d| d.bytes().all(|b| b.is_ascii_digit()))?;
+    ymd(
+        d[..4].parse().ok()?,
+        d[4..6].parse().ok()?,
+        d[6..].parse().ok()?,
+    )
+}
+
 /// A year written with four or two digits. Two digits pivot at 80: 81–99 is
 /// 1981–1999, 00–80 is 2000–2080 ("31.12.99" on a receipt is 1999, not 2099).
 pub(crate) fn year(s: &str) -> Option<i32> {
@@ -184,6 +197,15 @@ mod tests {
         );
         assert_eq!(find_de_date("Bestellung 112.03.2025"), None);
         assert_eq!(find_de_date("2025-03-02"), None);
+    }
+
+    #[test]
+    fn compact_dates() {
+        assert_eq!(parse_yyyymmdd("20261107"), Some(day(2026, 11, 7)));
+        assert_eq!(parse_yyyymmdd("20261107120000"), Some(day(2026, 11, 7)));
+        assert_eq!(parse_yyyymmdd("20260230"), None);
+        assert_eq!(parse_yyyymmdd("2026+107"), None);
+        assert_eq!(parse_yyyymmdd("202611"), None);
     }
 
     #[test]
