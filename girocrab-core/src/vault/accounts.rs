@@ -277,14 +277,14 @@ impl Vault {
         let blz = blz.trim().to_string();
         let url = url.trim().to_string();
         if ConnectorKind::fints_blz(&ConnectorKind::fints_key(&blz)).is_none() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die BLZ muss aus genau 8 Ziffern bestehen.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die BLZ muss aus genau 8 Ziffern bestehen.",
+            )));
         }
         if !crate::connectors::fints_presets::is_valid_fints_url(&url) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die FinTS-URL muss mit https:// beginnen.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die FinTS-URL muss mit https:// beginnen.",
+            )));
         }
         let key = ConnectorKind::fints_key(&blz);
         if !crate::demo::is_magic_demo_login(&login_name) {
@@ -330,9 +330,7 @@ impl Vault {
         let country = country.trim().to_uppercase();
         let key = ConnectorKind::enable_banking_key(&country, &aspsp);
         if aspsp.is_empty() || ConnectorKind::enable_banking_target(&key).is_none() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Bank oder Ländercode ungültig.").into(),
-            });
+            return Err(CoreError::invalid(tr("Bank oder Ländercode ungültig.")));
         }
         if !crate::demo::is_magic_demo_login(&login_name) {
             crate::banking_gate::check_connector(&key)?;
@@ -391,10 +389,7 @@ impl Vault {
             });
         };
         if !archived {
-            return Err(CoreError::InvalidInput {
-                message: tr("Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.")
-                    .to_string(),
-            });
+            return Err(CoreError::invalid(tr("Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.")));
         }
         Self::delete_account_rows(&tx, account_id)?;
         // linked loan payments of this account are gone with it

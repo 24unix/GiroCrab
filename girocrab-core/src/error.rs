@@ -58,6 +58,12 @@ impl CoreError {
             message: message.into(),
         }
     }
+
+    pub(crate) fn protocol(message: impl Into<String>) -> Self {
+        CoreError::Protocol {
+            message: message.into(),
+        }
+    }
 }
 
 impl From<rusqlite::Error> for CoreError {
@@ -83,9 +89,7 @@ impl From<reqwest::Error> for CoreError {
 
 impl From<serde_json::Error> for CoreError {
     fn from(e: serde_json::Error) -> Self {
-        CoreError::Protocol {
-            message: format!("JSON: {e}"),
-        }
+        CoreError::protocol(format!("JSON: {e}"))
     }
 }
 

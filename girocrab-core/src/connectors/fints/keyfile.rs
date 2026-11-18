@@ -14,14 +14,15 @@ use sha2::Sha256;
 use zeroize::Zeroizing;
 
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::tr;
 
 pub const MAX_FILE_SIZE: usize = 4 * 1024 * 1024;
 const MAX_ITERATIONS: usize = 2_000_000;
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: "Schlüsseldatei beschädigt oder Format noch nicht unterstützt.".into(),
-    }
+    CoreError::invalid(tr(
+        "Schlüsseldatei beschädigt oder Format noch nicht unterstützt.",
+    ))
 }
 fn crypto(_: impl std::fmt::Debug) -> CoreError {
     invalid()
@@ -204,7 +205,7 @@ impl KeyFile {
         // Mac::verify_slice performs a constant-time tag comparison.
         if mac.verify_slice(macs[0].data).is_err() {
             return Err(CoreError::Authentication {
-                message: "Passwort falsch oder Schlüsseldatei verändert.".into(),
+                message: tr("Passwort falsch oder Schlüsseldatei verändert.").into(),
             });
         }
         // PBKDF2 output prefix is identical for 24 and 32 byte requested keys.

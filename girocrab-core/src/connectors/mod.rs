@@ -136,17 +136,15 @@ pub(crate) fn ensure_secure_fints_url(url: &str) -> CoreResult<()> {
         if fints_presets::is_valid_fints_url(url.trim()) {
             return Ok(());
         }
-        return Err(CoreError::Protocol {
-            message: "FinTS URL is not a public https address".to_string(),
-        });
+        return Err(CoreError::protocol(
+            "FinTS URL is not a public https address",
+        ));
     }
     #[cfg(test)]
     if lower.starts_with("http://127.0.0.1") || lower.starts_with("http://localhost") {
         return Ok(());
     }
-    Err(CoreError::Protocol {
-        message: "FinTS URL must use https://".to_string(),
-    })
+    Err(CoreError::protocol("FinTS URL must use https://"))
 }
 
 /// Upper bound for JSON / text / FinTS responses.

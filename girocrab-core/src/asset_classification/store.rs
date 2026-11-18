@@ -127,9 +127,7 @@ fn security_assets(db: &Connection, account_id: i64) -> CoreResult<Vec<Classifie
 }
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: crate::i18n::tr("Ungültiger Klassifizierungsschlüssel.").into(),
-    }
+    CoreError::invalid(crate::i18n::tr("Ungültiger Klassifizierungsschlüssel."))
 }
 fn validate_key(db: &Connection, key: &str) -> CoreResult<()> {
     if let Some(isin) = key.strip_prefix("isin:") {

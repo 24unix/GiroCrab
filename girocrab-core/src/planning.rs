@@ -53,9 +53,7 @@ pub(crate) fn effective_sql(extra: &str, condition: &str) -> String {
 
 fn month_range(year: i32, month: u32) -> Result<(String, String), CoreError> {
     if !(1..=12).contains(&month) {
-        return Err(CoreError::InvalidInput {
-            message: tr("Ungültiger Monat.").into(),
-        });
+        return Err(CoreError::invalid(tr("Ungültiger Monat.")));
     }
     Ok((
         format!("{year:04}-{month:02}-01"),
@@ -74,9 +72,7 @@ impl Vault {
         budget_cents: Option<i64>,
     ) -> Result<(), CoreError> {
         if budget_cents.is_some_and(|b| b <= 0) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Das Budget muss größer als 0 sein.").into(),
-            });
+            return Err(CoreError::invalid(tr("Das Budget muss größer als 0 sein.")));
         }
         let db = self.db()?;
         let n = db.execute(
@@ -216,27 +212,20 @@ impl Vault {
             })?;
         if !splits.is_empty() {
             if splits.len() < 2 || splits.iter().any(|s| s.amount_cents == 0) {
-                return Err(CoreError::InvalidInput {
-                    message: tr(
-                        "Eine Splitbuchung braucht mindestens zwei Teilbeträge ungleich 0.",
-                    )
-                    .into(),
-                });
+                return Err(CoreError::invalid(tr(
+                    "Eine Splitbuchung braucht mindestens zwei Teilbeträge ungleich 0.",
+                )));
             }
             // checked: an overflowing (wrapping) sum must not pass as "equal"
             let sum = splits
                 .iter()
                 .try_fold(0i64, |acc, s| acc.checked_add(s.amount_cents))
-                .ok_or_else(|| CoreError::InvalidInput {
-                    message: tr("Die Teilbeträge sind zu groß.").into(),
-                })?;
+                .ok_or_else(|| CoreError::invalid(tr("Die Teilbeträge sind zu groß.")))?;
             if sum != amount {
-                return Err(CoreError::InvalidInput {
-                    message: trf(
-                        "Die Teilbeträge ({0} ¢) ergeben nicht den Buchungsbetrag ({1} ¢).",
-                        &[&sum, &amount],
-                    ),
-                });
+                return Err(CoreError::invalid(trf(
+                    "Die Teilbeträge ({0} ¢) ergeben nicht den Buchungsbetrag ({1} ¢).",
+                    &[&sum, &amount],
+                )));
             }
         }
         let tx = db.transaction()?;
@@ -337,14 +326,14 @@ impl Vault {
         let rname = template.recipient_name.trim().to_string();
         let iban = normalize_iban(&template.recipient_iban);
         if name.is_empty() || rname.is_empty() || iban.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Name, Empfänger und IBAN der Vorlage dürfen nicht leer sein.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Name, Empfänger und IBAN der Vorlage dürfen nicht leer sein.",
+            )));
         }
         if template.default_amount_cents.is_some_and(|c| c <= 0) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Vorlagenbetrag muss größer als 0 sein.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Der Vorlagenbetrag muss größer als 0 sein.",
+            )));
         }
         let db = self.db()?;
         let bic = template.recipient_bic.trim().to_uppercase();
