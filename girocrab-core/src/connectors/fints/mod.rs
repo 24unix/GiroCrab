@@ -371,7 +371,9 @@ impl BankConnector for FinTsConnector {
             let bytes = zeroize::Zeroizing::new(
                 base64::engine::general_purpose::STANDARD
                     .decode(keyfile)
-                    .map_err(|_| CoreError::invalid("Ungültige gespeicherte Schlüsseldatei."))?,
+                    .map_err(|_| {
+                        CoreError::invalid(tr("Ungültige gespeicherte Schlüsseldatei."))
+                    })?,
             );
             let mut file = keyfile::KeyFile::open(&bytes, ctx.secret.expose().as_bytes())?;
             let saved = ctx.setting_or(&format!("fints.rah10.bank_keys.{}", ctx.connection_id), "");
@@ -802,9 +804,9 @@ impl BankConnector for FinTsConnector {
         job: &TransferJob,
     ) -> CoreResult<Phase> {
         if self.rah.is_some() {
-            return Err(CoreError::invalid(
+            return Err(CoreError::invalid(tr(
                 "RAH-10 unterstützt zunächst nur Kontoabrufe.",
-            ));
+            )));
         }
         self.begin_order();
         let r = self.start_transfer(ctx, job).await;

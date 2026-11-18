@@ -2110,9 +2110,9 @@ impl Vault {
             (cid, row.1, row.2)
         };
         if self.is_rah10_connection(connection_id)? {
-            return Err(CoreError::invalid(
+            return Err(CoreError::invalid(tr(
                 "RAH-10 unterstützt zunächst nur Kontoabrufe.",
-            ));
+            )));
         }
         let (key_str, login_name): (String, String) = {
             let db = self.db()?;

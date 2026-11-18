@@ -1,6 +1,6 @@
 //! Commerzbank RAH-10 keyfile import and separately confirmed bank keys.
 use super::Vault;
-use crate::{error::CoreError, models::ConnectorKind};
+use crate::{error::CoreError, i18n::tr, models::ConnectorKind};
 use rusqlite::params;
 use zeroize::Zeroizing;
 
@@ -43,18 +43,18 @@ impl Vault {
         let mut file =
             crate::connectors::fints::keyfile::KeyFile::open(&bytes, password.as_bytes())?;
         if file.identities.len() != 1 {
-            return Err(CoreError::invalid(
+            return Err(CoreError::invalid(tr(
                 "Der Import unterstützt zunächst genau einen Bankzugang pro Schlüsseldatei.",
-            ));
+            )));
         }
         let identity = &file.identities[0];
         if !matches!(
             identity.host.as_str(),
             "hbci.commerzbank.de" | "fints.commerzbank.de"
         ) {
-            return Err(CoreError::invalid(
+            return Err(CoreError::invalid(tr(
                 "RAH-10 wird zunächst nur für Commerzbank-Schlüsseldateien unterstützt.",
-            ));
+            )));
         }
         let blz = identity.blz.clone();
         let login = identity.user_id.clone();
@@ -84,9 +84,9 @@ impl Vault {
             "SELECT EXISTS(SELECT 1 FROM bank_connections WHERE connector = ?1 AND login_name = ?2 AND deleted_ms IS NULL)",
             params![key, login], |r| r.get(0))?;
         if exists {
-            return Err(CoreError::invalid(
+            return Err(CoreError::invalid(tr(
                 "Dieser Bankzugang ist bereits vorhanden.",
-            ));
+            )));
         }
         let name = if display_name.trim().is_empty() {
             "Commerzbank (RAH-10)".to_string()

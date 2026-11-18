@@ -10,9 +10,12 @@ use super::{
     syntax::{self, SegmentBuilder, Value},
 };
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::tr;
 
 fn error() -> CoreError {
-    CoreError::protocol("RAH-10-Nachricht unvollständig oder kryptografisch nicht verifiziert.")
+    CoreError::protocol(tr(
+        "RAH-10-Nachricht unvollständig oder kryptografisch nicht verifiziert.",
+    ))
 }
 fn crypto(_: impl std::fmt::Debug) -> CoreError {
     error()
@@ -114,7 +117,7 @@ impl Rah10 {
                 .map(|(i, _)| i)
                 .collect();
             if matches.is_empty() {
-                return Err(CoreError::invalid("Öffentliche Bankschlüssel fehlen. Bitte im Einrichtungsdialog die Bankschlüssel abrufen und ihre Prüfwerte unabhängig mit der Commerzbank-Quelle vergleichen."));
+                return Err(CoreError::invalid(tr("Öffentliche Bankschlüssel fehlen. Bitte im Einrichtungsdialog die Bankschlüssel abrufen und ihre Prüfwerte unabhängig mit der Commerzbank-Quelle vergleichen.")));
             }
             if matches.len() != 1 {
                 return Err(error());
