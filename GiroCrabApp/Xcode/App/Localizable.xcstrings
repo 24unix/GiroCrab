@@ -4499,6 +4499,17 @@
         }
       }
     },
+    "Angeklickte Umsätze werden sofort als gelesen markiert. Beim Wechsel auf ein anderes Konto werden alle übrigen ungelesenen Umsätze des vorherigen Kontos als gelesen markiert, unabhängig von Zeitraum und Filtern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicking a transaction marks it as read immediately. When you switch to another account, all remaining unread transactions in the previous account are marked as read, regardless of the date range or filters."
+          }
+        }
+      }
+    },
     "Angemeldet – Bausparverträge, Umsätze und Postfach können abgerufen werden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6662,17 +6673,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Require %@ on Unlock"
-          }
-        }
-      }
-    },
-    "Beim Wechsel auf ein einzelnes Konto in der Seitenleiste werden alle ungelesenen Umsätze dieses Kontos als gelesen markiert, unabhängig vom gewählten Zeitraum und von aktiven Filtern." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "When you switch to an individual account in the sidebar, all unread transactions in that account are marked as read, regardless of the selected date range or active filters."
           }
         }
       }

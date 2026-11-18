@@ -371,7 +371,7 @@ public final class AppModel {
         didSet {
             UserDefaults.standard.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey)
             #if os(macOS)
-            if autoReviewDelay == .onAccountSelection {
+            if autoReviewDelay == .onAccountSwitch {
                 autoReviewTask?.cancel()
                 autoReviewTask = nil
             }

@@ -9,7 +9,7 @@ enum AutoReviewDelay: String, CaseIterable, Identifiable {
     case oneSecond = "1s"
     case fiveSeconds = "5s"
     #if os(macOS)
-    case onAccountSelection = "account"
+    case onAccountSwitch = "account"
     #endif
 
     static let defaultsKey = "bookings.autoReviewDelay"
@@ -23,7 +23,7 @@ enum AutoReviewDelay: String, CaseIterable, Identifiable {
         case .oneSecond: 1
         case .fiveSeconds: 5
         #if os(macOS)
-        case .onAccountSelection: nil
+        case .onAccountSwitch: nil
         #endif
         }
     }
@@ -35,15 +35,15 @@ enum AutoReviewDelay: String, CaseIterable, Identifiable {
         case .oneSecond: String(localized: "Nach 1 Sekunde")
         case .fiveSeconds: String(localized: "Nach 5 Sekunden")
         #if os(macOS)
-        case .onAccountSelection: String(localized: "Bei Kontoauswahl")
+        case .onAccountSwitch: String(localized: "Bei Kontoauswahl")
         #endif
         }
     }
 
     var helpText: String {
         #if os(macOS)
-        if self == .onAccountSelection {
-            return String(localized: "Beim Wechsel auf ein einzelnes Konto in der Seitenleiste werden alle ungelesenen Umsätze dieses Kontos als gelesen markiert, unabhängig vom gewählten Zeitraum und von aktiven Filtern.")
+        if self == .onAccountSwitch {
+            return String(localized: "Angeklickte Umsätze werden sofort als gelesen markiert. Beim Wechsel auf ein anderes Konto werden alle übrigen ungelesenen Umsätze des vorherigen Kontos als gelesen markiert, unabhängig von Zeitraum und Filtern.")
         }
         #endif
         return String(localized: "Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.")

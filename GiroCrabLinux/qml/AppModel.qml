@@ -1460,7 +1460,7 @@ QtObject {
     }
 
     // MARK: selection / editing
-    function selectBooking(id, toggle, extend) {
+    function selectBooking(id, toggle, extend, fromListClick) {
         const list = bookings.map(b => b.id)
         if (extend && selectedBookingID !== null) {
             const a = list.indexOf(selectedBookingID), b = list.indexOf(id)
@@ -1476,6 +1476,10 @@ QtObject {
             const ids = {}; ids[id] = true
             selectedBookingIDs = ids
             selectedBookingID = id
+        }
+        if (fromListClick && autoReviewDelay === "account" && !isMultiSelection && selectedBookingID === id) {
+            const b = bookingByID(id)
+            if (b && !b.checked) setChecked(true, b)
         }
     }
     /// Bearbeiten › Alles auswählen (Strg+A) in the booking list.
@@ -3595,8 +3599,9 @@ QtObject {
     function selectFromSidebar(selection) {
         const previous = sidebarSelection
         sidebarSelection = selection
-        if (autoReviewDelay === "account" && previous !== selection && selection.startsWith("account:"))
-            markAllChecked([Number(selection.slice(8))], true)
+        if (autoReviewDelay === "account" && previous !== selection
+                && previous.startsWith("account:") && selection.startsWith("account:"))
+            markAllChecked([Number(previous.slice(8))], true)
     }
 
     // AutoReview.swift: "Als geprüft markieren" (per device, like UserDefaults).

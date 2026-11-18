@@ -84,7 +84,7 @@ final class AutoReviewTests: XCTestCase {
     }
 
     #if os(macOS)
-    func testAccountSelectionMarksOnlyThatAccountAndCanBeUndone() async throws {
+    func testAccountSwitchMarksPreviousAccountAndClickMarksOneBooking() async throws {
         let vault = try XCTUnwrap(model.vault)
         model.sidebarSelection = .allAccounts
         model.period = .all
@@ -92,11 +92,13 @@ final class AutoReviewTests: XCTestCase {
         let byAccount = Dictionary(grouping: allBookings, by: \.accountId)
         let account = try XCTUnwrap(byAccount.values.first { $0.count >= 3 })
         let other = try XCTUnwrap(allBookings.first { $0.accountId != account[0].accountId })
+        let third = try XCTUnwrap(allBookings.first { $0.accountId != account[0].accountId && $0.accountId != other.accountId })
         let target = SidebarItem.account(account[0].accountId)
+        let next = SidebarItem.account(other.accountId)
         let alreadyChecked = account[0].id
         let unread = account.dropFirst().map(\.id)
         try vault.setCheckedForIds(ids: [alreadyChecked], checked: true)
-        try vault.setCheckedForIds(ids: unread + [other.id], checked: false)
+        try vault.setCheckedForIds(ids: unread + [other.id, third.id], checked: false)
         let unfiltered = model.currentFilter
 
         func checkedIDs() throws -> Set<Int64> {
@@ -113,27 +115,39 @@ final class AutoReviewTests: XCTestCase {
         undo.groupsByEvent = false
         defer { undo.groupsByEvent = true }
 
+        model.selectFromSidebar(target)
+        model.selectFromSidebar(next)
+        XCTAssertNil(model.checkedWriteTask, "The default mode must not mark an account")
+        XCTAssertTrue(try checkedIDs().isDisjoint(with: unread))
+
+        model.autoReviewDelay = .onAccountSwitch
+        XCTAssertEqual(AutoReviewDelay.stored, .onAccountSwitch)
+        XCTAssertNil(model.autoReviewDelay.seconds)
+        model.sidebarSelection = target
+        XCTAssertNil(model.checkedWriteTask, "Programmatic navigation must not mark accounts")
+        model.selectFromSidebar(.allAccounts)
+        XCTAssertNil(model.checkedWriteTask, "An aggregate selection must not mark accounts")
+        model.selectFromSidebar(target)
+        await model.selectionLoadTask?.value
+        XCTAssertNil(model.checkedWriteTask, "Opening a single account must leave it unread")
+        model.selectFromSidebar(target)
+        XCTAssertNil(model.checkedWriteTask, "Selecting the same account must not mark it")
+
+        let clicked = try XCTUnwrap(model.visibleBookings.first { unread.contains($0.id) })
+        model.selectBooking(clicked.id)
+        XCTAssertTrue(try checkedIDs().isDisjoint(with: unread), "Programmatic selection stays unread")
+        model.selectBooking(clicked.id, fromListClick: true)
+        let remaining = unread.filter { $0 != clicked.id }
+        XCTAssertTrue(try checkedIDs().contains(clicked.id))
+        XCTAssertTrue(try checkedIDs().isDisjoint(with: remaining))
+
         model.period = .custom
         model.customPeriodFrom = "2000-01-01"
         model.customPeriodTo = "2000-01-02"
         model.amountFilter = AmountFilter(minCents: Int64.max)
-        model.selectFromSidebar(target)
-        XCTAssertNil(model.checkedWriteTask, "The default mode must not mark an account")
-        XCTAssertTrue(try checkedIDs().isDisjoint(with: unread))
-
-        model.autoReviewDelay = .onAccountSelection
-        XCTAssertEqual(AutoReviewDelay.stored, .onAccountSelection)
-        XCTAssertNil(model.autoReviewDelay.seconds)
-        model.selectFromSidebar(target)
-        XCTAssertNil(model.checkedWriteTask, "Selecting the same account must not mark again")
-        model.selectFromSidebar(.allAccounts)
-        XCTAssertNil(model.checkedWriteTask, "An aggregate selection must not mark accounts")
-        model.sidebarSelection = target
-        XCTAssertNil(model.checkedWriteTask, "Programmatic navigation must not mark accounts")
-        model.selectFromSidebar(.allAccounts)
 
         undo.beginUndoGrouping()
-        model.selectFromSidebar(target)
+        model.selectFromSidebar(next)
         let write = model.checkedWriteTask
         await write?.value
         undo.endUndoGrouping()
@@ -141,12 +155,22 @@ final class AutoReviewTests: XCTestCase {
         let checked = try checkedIDs()
         XCTAssertTrue(checked.isSuperset(of: unread + [alreadyChecked]))
         XCTAssertFalse(checked.contains(other.id))
+        XCTAssertFalse(checked.contains(third.id))
         XCTAssertTrue(undo.canUndo)
         undo.undo()
         let afterUndo = try checkedIDs()
-        XCTAssertTrue(afterUndo.isDisjoint(with: unread))
-        XCTAssertTrue(afterUndo.contains(alreadyChecked))
+        XCTAssertTrue(afterUndo.isDisjoint(with: remaining))
+        XCTAssertTrue(afterUndo.isSuperset(of: [clicked.id, alreadyChecked]))
         XCTAssertFalse(afterUndo.contains(other.id))
+
+        undo.beginUndoGrouping()
+        model.selectFromSidebar(.account(third.accountId))
+        await model.checkedWriteTask?.value
+        undo.endUndoGrouping()
+        let afterNextSwitch = try checkedIDs()
+        XCTAssertTrue(afterNextSwitch.contains(other.id), "The next switch marks the account just left")
+        XCTAssertFalse(afterNextSwitch.contains(third.id))
+        XCTAssertTrue(afterNextSwitch.isDisjoint(with: remaining))
     }
     #endif
 }

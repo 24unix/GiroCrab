@@ -590,7 +590,8 @@ struct DayCardRow: View {
                         } else {
                             compactDetailsCollapsed = false
                         }
-                        model.selectBooking(b.id, toggle: flags.contains(.command), extend: flags.contains(.shift))
+                        model.selectBooking(b.id, toggle: flags.contains(.command), extend: flags.contains(.shift),
+                                            fromListClick: true)
                         #else
                         if density == .compact, model.selectedBookingID == b.id {
                             compactDetailsCollapsed.toggle()
