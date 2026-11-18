@@ -8,13 +8,16 @@
 //! JSON: `{"holdings": [...], "transactions": [...]}` (`positions` is accepted
 //! for `holdings`), keys in camelCase or snake_case.
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde_json::Value;
 
-use super::{ContentIds, RemoteHolding, RemoteTransaction};
+use super::{persist::store_fetch, ContentIds, RemoteHolding, RemoteTransaction, SyncSummary};
 use crate::{
     error::{CoreError, CoreResult},
-    models::Holding,
+    i18n::tr,
+    models::{ConnectorKind, Holding},
+    vault::Vault,
 };
 
 fn invalid(message: impl Into<String>) -> CoreError {
@@ -141,6 +144,138 @@ pub fn remote_transactions(
             r
         })
         .collect()
+}
+
+/// Finpension has no API: the export file is imported through
+/// [`Vault::import_finpension_export`], a sync only points the user there.
+pub struct FinpensionConnector;
+
+#[async_trait::async_trait]
+impl super::BankConnector for FinpensionConnector {
+    async fn begin(&mut self, _ctx: &super::ConnectContext) -> CoreResult<super::Phase> {
+        Err(invalid(tr(
+            "Bitte die Exportdatei über „Datei importieren“ einlesen.",
+        )))
+    }
+    async fn respond(
+        &mut self,
+        ctx: &super::ConnectContext,
+        _response: super::ChallengeResponse,
+    ) -> CoreResult<super::Phase> {
+        self.begin(ctx).await
+    }
+    async fn fetch(&mut self, ctx: &super::ConnectContext) -> CoreResult<super::FetchResult> {
+        self.begin(ctx).await.map(|_| Default::default())
+    }
+}
+
+/// Builds the fetch of one import: a depot (holdings) and a cash account
+/// (transactions) per currency present in the export.
+pub fn to_fetch(connection_id: i64, name: &str, export: FinpensionExport) -> super::FetchResult {
+    use super::{FetchResult, RemoteAccount};
+    use crate::models::AccountKind;
+    let mut out = FetchResult::default();
+    let mut currencies: Vec<String> = export
+        .holdings
+        .iter()
+        .map(|h| h.currency.clone())
+        .chain(export.transactions.iter().map(|t| t.currency.clone()))
+        .collect();
+    currencies.sort();
+    currencies.dedup();
+    let multi = currencies.len() > 1;
+    for cur in currencies {
+        let label = |what: &str| {
+            if multi {
+                format!("{name} {what} ({cur})")
+            } else {
+                format!("{name} {what}")
+            }
+        };
+        let holdings: Vec<_> = export
+            .holdings
+            .iter()
+            .filter(|h| h.currency == cur)
+            .collect();
+        if !holdings.is_empty() {
+            let depot_ref = format!("finpension-{connection_id}-depot-{cur}");
+            out.accounts.push(RemoteAccount {
+                external_ref: depot_ref.clone(),
+                name: label("Depot"),
+                currency: cur.clone(),
+                kind: AccountKind::Brokerage,
+                balance_cents: holdings.iter().map(|h| h.value_cents).sum(),
+                balance_date: today_iso(),
+                owner: String::new(),
+                iban: String::new(),
+                account_number: String::new(),
+            });
+            out.holdings_fetched.push(depot_ref.clone());
+            out.balances_reported.push(depot_ref.clone());
+            out.holdings.extend(
+                holdings
+                    .into_iter()
+                    .cloned()
+                    .map(|h| h.into_remote(&depot_ref)),
+            );
+        }
+        let txs: Vec<_> = export
+            .transactions
+            .iter()
+            .filter(|t| t.currency == cur)
+            .cloned()
+            .collect();
+        if !txs.is_empty() {
+            let cash_ref = format!("finpension-{connection_id}-cash-{cur}");
+            out.accounts.push(RemoteAccount {
+                external_ref: cash_ref.clone(),
+                name: label("Cash"),
+                currency: cur.clone(),
+                kind: AccountKind::Cash,
+                balance_cents: 0,
+                balance_date: today_iso(),
+                owner: String::new(),
+                iban: String::new(),
+                account_number: String::new(),
+            });
+            out.transactions
+                .extend(remote_transactions(&cash_ref, &txs));
+            // an export carries no cash balance: add the bookings to the stored one
+            out.adjust_balances = true;
+        }
+    }
+    out
+}
+
+fn today_iso() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Imports a Finpension CSV/JSON export (holdings and cash transactions)
+    /// into the connection. Local only, no network access.
+    pub fn import_finpension_export(
+        self: Arc<Self>,
+        connection_id: i64,
+        bytes: Vec<u8>,
+    ) -> Result<SyncSummary, CoreError> {
+        let (kind, name) = self.portal_connection(connection_id)?;
+        if kind != ConnectorKind::Finpension {
+            return Err(invalid(tr("Die Verbindung gehört nicht zu Finpension.")));
+        }
+        let text = crate::text::decode_bank_bytes(&bytes);
+        let export = parse_export(&text)?;
+        if export.holdings.is_empty() && export.transactions.is_empty() {
+            return Err(invalid(tr("Keine Positionen oder Buchungen erkannt.")));
+        }
+        store_fetch(
+            &self,
+            kind,
+            connection_id,
+            to_fetch(connection_id, &name, export),
+        )
+    }
 }
 
 /// Parses an export; JSON when it starts with `{` or `[`, otherwise CSV.
@@ -609,5 +744,44 @@ IE0000000022;Synthetic Bond Fund;3;49.99;149.97;EUR\n";
         assert!(parse_export("{}").is_err());
         assert!(parse_export("{not json").is_err());
         assert!(parse_csv_rows("a;b\n\"x;y\n").is_err());
+    }
+
+    #[test]
+    fn import_creates_depot_and_cash_accounts_per_currency() {
+        let dir = crate::test_support::TempDir::new("girocrab-finpension-import");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![7u8; 32],
+        )
+        .unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::Finpension, "Finpension".into(), "3a".into())
+            .unwrap();
+        let json = r#"{"holdings":[{"isin":"CH0000000011","name":"Fund","quantity":2,"price":10.5,"value":21.0,"currency":"CHF"}],
+            "transactions":[{"date":"2026-03-15","description":"Einzahlung","amount":100.0,"currency":"CHF","reference":"R1"}]}"#;
+        let s = v
+            .clone()
+            .import_finpension_export(conn, json.as_bytes().to_vec())
+            .unwrap();
+        assert_eq!(s.transactions_imported, 1);
+        let accounts = v.list_accounts().unwrap();
+        assert_eq!(accounts.len(), 2);
+        let depot = accounts
+            .iter()
+            .find(|a| a.kind == crate::models::AccountKind::Brokerage)
+            .unwrap();
+        assert_eq!(depot.balance_cents, 2100);
+        assert_eq!(v.list_holdings(depot.id).unwrap().len(), 1);
+        // importing again does not duplicate bookings
+        let again = v
+            .clone()
+            .import_finpension_export(conn, json.as_bytes().to_vec())
+            .unwrap();
+        assert_eq!(again.transactions_imported, 0);
+        // garbage and wrong connector
+        assert!(v
+            .clone()
+            .import_finpension_export(conn, b"x".to_vec())
+            .is_err());
     }
 }

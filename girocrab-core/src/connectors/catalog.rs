@@ -190,6 +190,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Ford Money (Ford Bank): Tagesgeld- und Festgeldkonten mit Saldo und Umsätzen. Die Anmeldung wird in der Ford-Money-Security-App bestätigt. Kontoauszüge und weitere Dokumente aus der Postbox lassen sich abrufen; ungelesene Dokumente gelten danach bei Ford Money als gelesen. Inoffiziell: liest die Seiten des Online-Bankings, Änderungen sind möglich.").into(),
         },
+        ConnectorKind::Finpension => BankDescriptor {
+            kind,
+            name: "Finpension".into(),
+            protocol: tr("Datei-Import (CSV/JSON-Export)").into(),
+            bank_code: "".into(),
+            sf_symbol: "chart.pie".into(),
+            login_label: tr("Bezeichnung").into(),
+            secret_label: tr("Passwort").into(),
+            required_settings: vec![],
+            note: tr("Finpension (Schweiz): Säule 3a, Freizügigkeit und 1e. Die CSV- oder JSON-Exportdatei (Positionen und Cash-Buchungen) wird über „Datei importieren“ eingelesen; es gibt keine Anmeldung und keinen Netzwerkzugriff.").into(),
+        },
         ConnectorKind::Ffb => BankDescriptor {
             kind,
             name: "FFB (FIL Fondsbank)".into(),
@@ -298,6 +309,8 @@ pub enum Interface {
     EnableBanking,
     /// `Web-Portal` (embedded browser login, internal portal API)
     WebPortal,
+    /// `Datei-Import` (export file chosen by the user, no login)
+    FileImport,
 }
 
 /// What a connector can read or do. Only list what is implemented today.
@@ -637,6 +650,19 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "Finpension",
+        kind: Some(ConnectorKind::Finpension),
+        interface: Interface::FileImport,
+        official: Some(false),
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+        ],
+        status: Status::TestingWanted,
+        issues: &[300],
+    },
+    MatrixEntry {
         name: "Opel Direktbank",
         kind: Some(ConnectorKind::OpelDirektbank),
         interface: Interface::WebPortal,
@@ -760,6 +786,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Ffb => Box::new(ffb::FfbConnector::new()),
         ConnectorKind::FordMoney => Box::new(fordmoney::FordMoneyConnector::new()),
         ConnectorKind::OpelDirektbank => Box::new(opel::OpelDirektbankConnector::new()),
+        ConnectorKind::Finpension => Box::new(finpension::FinpensionConnector),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));

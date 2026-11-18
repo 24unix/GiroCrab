@@ -26,7 +26,7 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
-        List(selection: $model.interactiveSidebarSelection) {
+        SidebarSelectionList {
             // Pages across all accounts that are opened daily or as a starting point stay above the
             // account tree: with many accounts they must not end up below the visible part.
             // „Neue Umsätze“ (#352)
@@ -278,7 +278,7 @@ struct SidebarView: View {
             // restore its own saved collapse state for sidebar sections.
             SectionHeader(
                 name: group.name, sfSymbol: group.sfSymbol, balanceCents: group.balanceCents,
-                selected: model.sidebarSelection == .group(group.id),
+                item: .group(group.id),
                 isLoanGroup: !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan },
                 open: open, toggle: toggle
             )
@@ -311,7 +311,7 @@ struct SidebarView: View {
                 }
                 SectionHeader(
                     name: group.name, sfSymbol: group.sfSymbol, balanceCents: group.balanceCents,
-                    selected: model.sidebarSelection == .bank(group.id),
+                    item: .bank(group.id),
                     isLoanGroup: !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan },
                     nameRedaction: [],
                     open: open, toggle: toggle
@@ -532,9 +532,16 @@ struct SidebarView: View {
                 }
                 .padding(.leading, indent)
                 .listRowInsets(Self.rowInsets)
+                #if os(macOS)
+                // a category dragged here goes above this row, or into it (lower half)
+                .modifier(categoryDropSlot(node, indent: indent, takesBookings: false, freeLeading: 12))
+                #endif
                 .tag(SidebarItem.category(node.id))
                 .contextMenu { categoryMenu(node.category) }
                 .modifier(CategoryIconColorPopover(id: node.id))
+                #if os(macOS)
+                .draggable(GroupDrag.category(node.id))
+                #endif
                 if open {
                     categoryRows(kids, depth: depth + 1)
                 }
@@ -546,17 +553,38 @@ struct SidebarView: View {
                 .padding(.leading, indent)
                 .listRowInsets(Self.rowInsets)
                 #if os(macOS)
-                // only leaves take dragged bookings, as only leaves are assigned
-                .modifier(DropSlot(key: "c:\(node.id)", inset: 0, line: $dropLine, edge: { _ in .into }, perform: { items, _ in
-                    model.dropBookings(items, onCategory: node.id)
-                }, takesBookings: true))
+                // only leaves take dragged bookings, as only leaves are assigned;
+                // a dragged category goes above or below, or into a main category (#977)
+                .modifier(categoryDropSlot(node, indent: indent, takesBookings: true))
                 #endif
                 .tag(SidebarItem.category(node.id))
                 .contextMenu { categoryMenu(node.category) }
                 .modifier(CategoryIconColorPopover(id: node.id))
+                #if os(macOS)
+                .draggable(GroupDrag.category(node.id))
+                #endif
             }
         })
     }
+
+    #if os(macOS)
+    /// Drop zones of a category row (#977): a category goes above the row (upper
+    /// half), below it or – on a row with sub-categories or a main category – into
+    /// it as its last sub-category (lower half). Bookings (`takesBookings`, leaves
+    /// only) are assigned to the row's category.
+    private func categoryDropSlot(_ node: CategoryNode, indent: CGFloat, takesBookings: Bool, freeLeading: CGFloat = 0) -> DropSlot {
+        DropSlot(key: "c:\(node.id)", inset: indent, line: $dropLine, edge: { half in
+            guard let dragged = GroupDrag.draggedCategory else { return .into }
+            guard model.canDropCategory(dragged, on: node.id) else { return nil }
+            return half == .below && model.categoryTakesDropInto(node.id) ? .into : half
+        }, perform: { items, edge in
+            if items.contains(where: { GroupDrag.categoryID($0) != nil }) {
+                return model.dropCategory(items, onto: node.id, place: edge == .into ? .into : edge == .below ? .after : .before)
+            }
+            return takesBookings && model.dropBookings(items, onCategory: node.id)
+        }, freeLeading: freeLeading, takesBookings: takesBookings, takesCategories: true)
+    }
+    #endif
 
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
@@ -581,6 +609,10 @@ struct SidebarView: View {
                 }
             }
         }
+        Button("Nach oben", systemImage: "arrow.up") { model.shiftCategory(category.id, by: -1) }
+            .disabled(!model.canShiftCategory(category.id, by: -1))
+        Button("Nach unten", systemImage: "arrow.down") { model.shiftCategory(category.id, by: 1) }
+            .disabled(!model.canShiftCategory(category.id, by: 1))
         Button("Duplizieren", systemImage: "plus.square.on.square") { model.duplicateCategory(category.id) }
         Divider()
         Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
@@ -598,6 +630,24 @@ private struct AccountRowHeight: ViewModifier {
     @Environment(\.textScale) private var scale
     func body(content: Content) -> some View {
         content.frame(minHeight: 34 * scale, alignment: .center)
+    }
+}
+
+/// The sidebar `List` and its selection. Reading the selection binding made the reading view
+/// depend on `sidebarSelection`: in `SidebarView` every click re-ran its whole body and rebuilt
+/// the outline. Here only this wrapper re-runs; its rows are the value `SidebarView` built last,
+/// so they stay as they are and only the selection highlight moves.
+private struct SidebarSelectionList<Content: View>: View {
+    @Environment(AppModel.self) private var model
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        @Bindable var model = model
+        List(selection: $model.interactiveSidebarSelection) { content }
     }
 }
 
@@ -624,17 +674,23 @@ struct DisclosureChevron: View {
 }
 
 struct SectionHeader: View {
-    /// Selected header: hierarchical styles so macOS can draw them light on the
-    /// accent-coloured selection (fixed theme colours stay dark there).
+    @Environment(AppModel.self) private var model
     let name: String
     let sfSymbol: String
     let balanceCents: Int64
-    var selected: Bool = false
+    /// The header's own sidebar item. Its selection flag (`sidebarRowSelection(for:)`) is read
+    /// here, so a selection change re-runs only the old and the new header, not
+    /// `SidebarView.body` (the whole outline).
+    let item: SidebarItem
     var isLoanGroup: Bool = false
     /// Bug report screenshot (#301): category-like group names hide on request, bank names stay visible.
     var nameRedaction: ReportRedaction = .labels
     var open: Bool = true
     var toggle: () -> Void = {}
+
+    /// Selected header: hierarchical styles so macOS can draw them light on the
+    /// accent-coloured selection (fixed theme colours stay dark there).
+    private var selected: Bool { model.sidebarRowSelection(for: item).isSelected }
 
     var body: some View {
         HStack(spacing: 5) {
@@ -674,7 +730,7 @@ struct AccountRow: View {
     /// Selected row: the amount uses the hierarchical `.primary` style, which
     /// macOS turns white on the accent-coloured selection (fixed theme colours
     /// stay dark there). `backgroundProminence` is not set in a macOS sidebar.
-    private var onSelection: Bool { model.sidebarSelection == .account(account.id) }
+    private var onSelection: Bool { model.sidebarRowSelection(for: .account(account.id)).isSelected }
     @Environment(\.reportRedaction) private var redaction
     let account: Account
     var syncing: Bool = false
@@ -864,6 +920,17 @@ private struct DropSlot: ViewModifier {
     /// Mark only booking drags (category rows), else only account and group
     /// drags. Gates just the mark: `perform` ignores foreign payloads itself.
     var takesBookings = false
+    /// Also mark a category drag (#977; category rows).
+    var takesCategories = false
+
+    /// Whether the drag in progress is one this row marks: bookings only on
+    /// `takesBookings` rows, categories only on `takesCategories` rows, else only
+    /// account and group drags.
+    private var acceptsDrag: Bool {
+        if BookingDrag.isDragged { return takesBookings }
+        if GroupDrag.draggedCategory != nil { return takesCategories }
+        return !takesBookings && !takesCategories
+    }
 
     /// Zones a drag is over right now. Not state: changing it must not redraw.
     @MainActor private static var hovered: Set<String> = []
@@ -919,7 +986,7 @@ private struct DropSlot: ViewModifier {
         // zone: write only real changes and clear a tick later, unless the
         // zone came back meanwhile, so the mark doesn't flicker.
         let zone = key + (half == .above ? "↑" : "↓")
-        if targeted, let edge = edge(half), BookingDrag.isDragged == takesBookings {
+        if targeted, let edge = edge(half), acceptsDrag {
             Self.hovered.insert(zone)
             let next = DropLine(key: edge == .into ? intoKey ?? key : key, edge: edge, zone: zone)
             if line != next { line = next }

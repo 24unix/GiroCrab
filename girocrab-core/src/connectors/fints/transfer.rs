@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::bpd::is_segment_code;
 use super::syntax::{Segment, SegmentBuilder};
 use super::{sepa, BankReply, FinTsConnector, PreparedOrder, Vop};
 use crate::connectors::{
@@ -11,7 +12,6 @@ use crate::connectors::{
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::iban::normalize_iban;
 
 /// What the bank allows for batch transfers (BPD HICCMS).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,10 +150,8 @@ pub(super) fn vop_parameters(seg: &Segment) -> (String, Vec<String>) {
             let t = v.text();
             if format.is_empty() && t.contains("pain.002") {
                 format = t.to_string();
-            } else if t.len() == 5
-                && t.starts_with("HK")
-                && t[2..].chars().all(|c| c.is_ascii_uppercase())
-            {
+            } else if t.starts_with("HK") && is_segment_code(t) {
+                // The name check covers HK orders only, never DK ones.
                 orders.push(t.to_string());
             }
         }
@@ -292,42 +290,15 @@ impl FinTsConnector {
             }
             return Err(not_allowed());
         }
-        let sec = self.sec();
-        if sec == "999" {
-            return Err(CoreError::Bank {
-                code: "HKTAN".into(),
-                message: tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
-            });
-        }
-        let mut errors = Vec::new();
-        let accounts = self.account_list(ctx, &mut errors).await;
-        let want = normalize_iban(&job.source_iban);
-        let (acc, upd) = accounts
-            .into_iter()
-            .find(|(a, _)| normalize_iban(&a.iban) == want)
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf(
-                    "Konto {0} bei der Bank{1}",
-                    &[
-                        &job.source_iban,
-                        &if errors.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" ({})", errors.join(" / "))
-                        },
-                    ],
-                ),
-            })?;
-        if let Some(u) = &upd {
-            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
-                if instant {
-                    return Ok(self.decline_instant(tr(
-                        "Für dieses Konto ist die Echtzeitüberweisung per FinTS nicht freigeschaltet.",
-                    )));
-                }
-                return Err(not_allowed());
+        self.require_tan_method(tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen."))?;
+        let Some(acc) = self.source_account(ctx, &job.source_iban, seg_id).await? else {
+            if instant {
+                return Ok(self.decline_instant(tr(
+                    "Für dieses Konto ist die Echtzeitüberweisung per FinTS nicht freigeschaltet.",
+                )));
             }
-        }
+            return Err(not_allowed());
+        };
         let version = match self.pain_version(seg_id) {
             Some(v) => v,
             None => {
@@ -336,31 +307,13 @@ impl FinTsConnector {
                 )))
             }
         };
-        let (date, time) = Self::now();
-        let created = format!(
-            "{}-{}-{}T{}:{}:{}",
-            &date[..4],
-            &date[4..6],
-            &date[6..],
-            &time[..2],
-            &time[2..4],
-            &time[4..]
-        );
-        let exec = job
-            .execution_date
-            .clone()
-            .unwrap_or_else(|| format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]));
-        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
-        let owner = if job.source_owner.trim().is_empty() {
-            "Kontoinhaber"
-        } else {
-            job.source_owner.trim()
-        };
+        let header = sepa::PainHeader::new(&job.source_owner);
+        let exec = job.execution_date.as_deref().unwrap_or(header.date());
         let xml = sepa::build_pain001(&sepa::Pain001 {
-            message_id: &msg_id,
-            created: &created,
-            execution_date: &exec,
-            debtor_name: owner,
+            message_id: &header.message_id,
+            created: &header.created,
+            execution_date: exec,
+            debtor_name: header.owner,
             debtor_iban: &acc.iban,
             debtor_bic: &acc.bic,
             creditor_name: &job.recipient_name,
@@ -384,9 +337,6 @@ impl FinTsConnector {
             debit_layout: None,
             standing: None,
         });
-        self.vop_id = None;
-        self.vop_with_tan = false;
-        self.vop_pending = None;
         let needs_vop =
             !self.st.vop_format.is_empty() && self.st.vop_orders.iter().any(|o| o == seg_id);
         if !needs_vop {
@@ -449,55 +399,18 @@ impl FinTsConnector {
                 message: tr("Die Bank bucht Sammelüberweisungen nur als Sammelbuchung.").into(),
             });
         }
-        if self.sec() == "999" {
-            return Err(CoreError::Bank {
-                code: "HKTAN".into(),
-                message: tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
-            });
-        }
-        let mut errors = Vec::new();
-        let accounts = self.account_list(ctx, &mut errors).await;
-        let want = normalize_iban(&job.source_iban);
-        let (acc, upd) = accounts
-            .into_iter()
-            .find(|(a, _)| normalize_iban(&a.iban) == want)
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf(
-                    "Konto {0} bei der Bank{1}",
-                    &[&job.source_iban, &String::new()],
-                ),
-            })?;
-        if let Some(u) = &upd {
-            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
-                return Err(not_allowed());
-            }
-        }
-        let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
-        let (date, time) = Self::now();
-        let created = format!(
-            "{}-{}-{}T{}:{}:{}",
-            &date[..4],
-            &date[4..6],
-            &date[6..],
-            &time[..2],
-            &time[2..4],
-            &time[4..]
-        );
-        let exec = job
-            .execution_date
-            .clone()
-            .unwrap_or_else(|| format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]));
-        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
-        let owner = if job.source_owner.trim().is_empty() {
-            "Kontoinhaber"
-        } else {
-            job.source_owner.trim()
+        self.require_tan_method(tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen."))?;
+        let Some(acc) = self.source_account(ctx, &job.source_iban, seg_id).await? else {
+            return Err(not_allowed());
         };
+        let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
+        let header = sepa::PainHeader::new(&job.source_owner);
+        let exec = job.execution_date.as_deref().unwrap_or(header.date());
         let xml = sepa::build_pain001_batch(&sepa::Pain001Batch {
-            message_id: &msg_id,
-            created: &created,
-            execution_date: &exec,
-            debtor_name: owner,
+            message_id: &header.message_id,
+            created: &header.created,
+            execution_date: exec,
+            debtor_name: header.owner,
             debtor_iban: &acc.iban,
             debtor_bic: &acc.bic,
             payments: &job.payments,
@@ -520,11 +433,30 @@ impl FinTsConnector {
             debit_layout: None,
             standing: None,
         });
+        let reply = self.send_order(ctx, Vop::None).await?;
+        self.finish_submit(&reply)
+    }
+
+    /// Starts a new order: nothing of the previous one, its name check included, carries over.
+    pub(super) fn begin_order(&mut self) {
+        self.transferring = true;
+        self.result = TransferResult::default();
+        self.order_submitted = false;
+        self.order = None;
         self.vop_id = None;
         self.vop_with_tan = false;
         self.vop_pending = None;
-        let reply = self.send_order(ctx, Vop::None).await?;
-        self.finish_submit(&reply)
+    }
+
+    /// Orders need a two-step TAN method; `sec()` is 999 (one-step) while none is known.
+    pub(super) fn require_tan_method(&self, refusal: &'static str) -> CoreResult<()> {
+        if self.sec() == "999" {
+            return Err(CoreError::Bank {
+                code: "HKTAN".into(),
+                message: refusal.into(),
+            });
+        }
+        Ok(())
     }
 
     /// Instant not possible before anything was sent: nothing to approve.

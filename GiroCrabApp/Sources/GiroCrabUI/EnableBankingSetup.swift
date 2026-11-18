@@ -135,7 +135,11 @@ struct EnableBankingSetupSection: View {
             step(2, "Bei der Anwendung „Activate by linking accounts“ wählen und alle Konten verknüpfen, die GiroCrab sehen soll – nicht verknüpfte Konten liefert die Bank nicht.")
             if !model.psd2LinkHints.isEmpty { importedAccounts }
             step(3, "Hier die heruntergeladene .pem-Datei wählen. GiroCrab übernimmt Schlüssel und Application-ID und prüft die Anwendung.")
-            Link("enablebanking.com/cp/applications öffnen", destination: URL(string: "https://enablebanking.com/cp/applications")!)
+            HStack(spacing: 12) {
+                Link("enablebanking.com/cp/applications öffnen", destination: URL(string: "https://enablebanking.com/cp/applications")!)
+                Text("·").foregroundStyle(.secondary)
+                Link("Interaktive Anleitung (3 Min.)", destination: URL(string: "https://girocrab.de/girocrab_psd2_anleitung.html")!)
+            }
                 .appFont(.caption)
                 .padding(.leading, 22)
         }

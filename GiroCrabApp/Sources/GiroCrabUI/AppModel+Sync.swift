@@ -31,6 +31,12 @@ extension AppModel {
         if connection.connector == .advanzia, !isDemo, !Self.isMagicDemoLogin(connection.loginName) {
             startAdvanzia(connection); return
         }
+        // Finpension: no sync, the export file is imported from the connection's sheet.
+        if usesFileImport(connection) {
+            resetSyncBatch()
+            toast = String(localized: "\(connection.displayName): Bitte den Export in den Einstellungen der Verbindung importieren.")
+            return
+        }
         // Amex / Amazon Visa: embedded web-portal login (no API keys needed).
         if usesPortal(connection) {
             webLoginConnection = connection
@@ -66,7 +72,7 @@ extension AppModel {
     func requestSyncAll() {
         // portal connections need an interactive login – not part of "sync all"
         // logins whose accounts are all archived are not asked at all
-        requestSyncBatch { [self] in connections.filter { !usesPortal($0) && !$0.allAccountsArchived } }
+        requestSyncBatch { [self] in connections.filter { !usesPortal($0) && !usesFileImport($0) && !$0.allAccountsArchived } }
     }
 
     /// "Konten abrufen" in a group's menu: the logins behind the group's
@@ -74,7 +80,7 @@ extension AppModel {
     func groupSyncConnections(_ group: UserGroup) -> [BankConnection] {
         let ids = Set(userGroupSubtree(group.uuid).flatMap(\.accounts)
             .filter { !$0.isArchived }.compactMap(\.connectionId))
-        return connections.filter { ids.contains($0.id) && !usesPortal($0) }
+        return connections.filter { ids.contains($0.id) && !usesPortal($0) && !usesFileImport($0) }
     }
 
     func requestSyncGroup(_ group: UserGroup) {
@@ -97,7 +103,7 @@ extension AppModel {
         case .account(let id):
             guard let cid = allAccounts.first(where: { $0.id == id })?.connectionId,
                   let c = connections.first(where: { $0.id == cid }),
-                  !usesPortal(c), !c.allAccountsArchived else { return .none }
+                  !usesPortal(c), !usesFileImport(c), !c.allAccountsArchived else { return .none }
             return .connection(cid)
         case .userGroup(let uuid) where !uuid.isEmpty:
             return .group(uuid)

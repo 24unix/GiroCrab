@@ -238,3 +238,12 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 ## Data tables
 `girocrab-core/data/*.tsv` are embedded at compile time and parsed by `src/data_tables.rs`: `bic_directory.tsv` (BIC),
 `fints_directory.tsv` (FinTS endpoints), `merchants.tsv` (merchant dictionary). Never read them whole; `grep -n` a key instead.
+
+## Bank-Konnektoren: End-to-End-Pflicht (kein reiner Core-Merge)
+- Ein neuer Bank- oder Depot-Konnektor gilt **nicht** als fertig und darf sein Feature-Issue nicht schließen, solange er nur als Parser in `girocrab-core/src/connectors/` existiert.
+- Jeder Konnektor-PR muss zwingend alle vier Ebenen verdrahten:
+  1. Core-Konnektor (`girocrab-core/src/connectors/`)
+  2. Bankenkatalog / Preset-Registrierung
+  3. FFI-Anbindung (`girocrab-core` / UniFFI)
+  4. UI-Einrichtung & Tests in `GiroCrabApp`
+- Vor jedem PR `bash scripts/lint-connectors.sh` ausführen (und bei Nacharbeit an `finpension` / `paypal_nvp` deren Eintrag aus der Allowlist entfernen).

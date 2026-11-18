@@ -11,13 +11,23 @@ extension AppModel {
     }
 
     func fetchRah10BankKeys(blz: String) async throws -> [Rah10BankKeyCandidate] {
+        let pin = try await prepareRah10BankKeyRequest()
         await withCheckedContinuation { continuation in
             withFreshBankingPolicy { continuation.resume() }
         }
-        guard let pin = pinVault() else { throw CoreError.Database(message: "vault locked") }
+        guard isCurrent(pin) else { throw CoreError.SessionClosed }
         let keys = try await pin.runAsync { try await $0.rah10BankKeyCandidates(blz: blz) }
         guard isCurrent(pin) else { throw CoreError.SessionClosed }
         return keys
+    }
+
+    /// The registration field saves off the main thread. Do not start the first
+    /// bank request until that write has finished, or move it to a different vault.
+    func prepareRah10BankKeyRequest() async throws -> VaultPin {
+        guard let pin = pinVault() else { throw CoreError.Database(message: "vault locked") }
+        await settingsWriteTask?.value
+        guard isCurrent(pin) else { throw CoreError.SessionClosed }
+        return pin
     }
 
     func addRah10Connection(bytes: Data, password: String, name: String, bankKeys: [Rah10BankKeyCandidate], expected: [String], completion: @escaping (Bool) -> Void) {

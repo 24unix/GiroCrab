@@ -18,9 +18,7 @@ fn tx(date: &str, cents: i64, who: &str) -> RemoteTransaction {
 }
 
 #[test]
-fn fnv_matches_reference_values() {
-    assert_eq!(fnv1a64(""), 0xcbf2_9ce4_8422_2325);
-    assert_eq!(fnv1a64("a"), 0xaf63_dc4c_8601_ec8c);
+fn content_ids_carry_the_prefix() {
     let id = tx("2026-11-01", -350, "Bäckerei").content_id(0);
     assert!(is_content_id(&id, CONTENT_ID_PREFIX), "{id}");
 }

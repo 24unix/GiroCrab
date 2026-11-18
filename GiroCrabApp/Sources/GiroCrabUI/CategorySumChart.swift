@@ -10,7 +10,9 @@ struct CategorySumChart: View {
     @State private var selected: Date?
     @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
-    @AppStorage(BalanceChartStyle.defaultsKey) private var style: BalanceChartStyle = .line
+    /// Passed in by the header, which reads the setting anyway: an `@AppStorage` here made the
+    /// chart unequal on every header update, so each sidebar click rebuilt it with the old sums.
+    let style: BalanceChartStyle
 
     struct Bar: Identifiable, Equatable {
         let start: Date

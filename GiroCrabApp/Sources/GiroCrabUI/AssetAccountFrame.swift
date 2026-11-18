@@ -97,7 +97,7 @@ struct AssetAccountFrame<Top: View, Header: View, Metrics: View, Analysis: View,
         #endif
         #if os(iOS)
         .modifier(MainToolbar())
-        .modifier(WindowTitle(title: model.title))
+        .modifier(WindowTitle())
         .refreshable { await model.refreshCurrentView() }
         #endif
         .bookingOutputSheets()

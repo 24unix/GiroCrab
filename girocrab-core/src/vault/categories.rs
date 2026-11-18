@@ -100,6 +100,31 @@ impl Vault {
     }
 }
 
+/// Refuses putting category `id` below itself (or below one of its sub-categories).
+fn ensure_not_below(db: &Connection, id: i64, parent_id: Option<i64>) -> CoreResult<()> {
+    let Some(mut p) = parent_id else {
+        return Ok(());
+    };
+    let mut guard = 0;
+    loop {
+        if p == id {
+            return Err(CoreError::InvalidInput {
+                message: tr("Eine Kategorie kann nicht in sich selbst verschoben werden.").into(),
+            });
+        }
+        guard += 1;
+        match db
+            .query_row("SELECT parent_id FROM categories WHERE id = ?1", [p], |r| {
+                r.get::<_, Option<i64>>(0)
+            })
+            .optional()?
+        {
+            Some(Some(next)) if guard < 32 => p = next,
+            _ => return Ok(()),
+        }
+    }
+}
+
 #[uniffi::export]
 impl Vault {
     /// All categories in tree order (depth-first, siblings by sort order) with
@@ -276,28 +301,7 @@ impl Vault {
         color_hex: String,
     ) -> Result<(), CoreError> {
         let db = self.db()?;
-        // Refuse moving a category below itself.
-        if let Some(mut p) = parent_id {
-            let mut guard = 0;
-            loop {
-                if p == id {
-                    return Err(CoreError::InvalidInput {
-                        message: tr("Eine Kategorie kann nicht in sich selbst verschoben werden.")
-                            .into(),
-                    });
-                }
-                guard += 1;
-                match db
-                    .query_row("SELECT parent_id FROM categories WHERE id = ?1", [p], |r| {
-                        r.get::<_, Option<i64>>(0)
-                    })
-                    .optional()?
-                {
-                    Some(Some(next)) if guard < 32 => p = next,
-                    _ => break,
-                }
-            }
-        }
+        ensure_not_below(&db, id, parent_id)?;
         // The UI shows built-in names translated; saving that unchanged
         // display name keeps the stored German default (and its logic).
         let stored: Option<(String, Option<i64>, String, String, Option<String>)> = db
@@ -341,6 +345,71 @@ impl Vault {
         Ok(())
     }
 
+    /// Puts `ids` as the children of `parent_id` (`None` = top level), in this order
+    /// (sidebar drag and drop, GitHub #977). A category of another parent is moved
+    /// here; one below itself is refused. Only changed fields get a sync stamp.
+    /// Ids that no longer exist are skipped.
+    pub fn reorder_categories(
+        &self,
+        parent_id: Option<i64>,
+        ids: Vec<i64>,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        if let Some(p) = parent_id {
+            let live: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM categories WHERE id = ?1 AND deleted_ms IS NULL",
+                    [p],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if live.is_none() {
+                return Err(CoreError::InvalidInput {
+                    message: tr("Die Zielkategorie existiert nicht mehr.").into(),
+                });
+            }
+        }
+        let now = crate::dates::now_ms();
+        let mut seen = std::collections::HashSet::new();
+        let mut order = 0;
+        for id in ids {
+            if !seen.insert(id) {
+                continue;
+            }
+            let stored: Option<(Option<i64>, i32)> = tx
+                .query_row(
+                    "SELECT parent_id, sort_order FROM categories WHERE id = ?1 AND deleted_ms IS NULL",
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            let Some((old_parent, old_order)) = stored else {
+                continue;
+            };
+            if old_parent != parent_id {
+                ensure_not_below(&tx, id, parent_id)?;
+            }
+            tx.execute(
+                "UPDATE categories SET parent_id = ?2, sort_order = ?3,
+                        parent_ms = CASE WHEN ?4 THEN ?6 ELSE parent_ms END,
+                        order_ms = CASE WHEN ?5 THEN ?6 ELSE order_ms END
+                 WHERE id = ?1",
+                params![
+                    id,
+                    parent_id,
+                    order,
+                    old_parent != parent_id,
+                    old_order != order,
+                    now
+                ],
+            )?;
+            order += 1;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Deletes a category and its sub-categories (soft: the rows stay with a
     /// deletion stamp, so a sync does not bring them back); their rules go
     /// too and their transactions and splits become uncategorised. The
@@ -354,6 +423,8 @@ impl Vault {
     }
 }
 
+#[cfg(test)]
+mod reorder_tests;
 #[cfg(test)]
 mod role_tests;
 

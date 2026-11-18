@@ -11,8 +11,8 @@ struct InspectorSectionCard: View {
     var body: some View {
         switch section {
         case .receipt: ReceiptCard(booking: booking)
-        case .note: NoteCard(booking: booking).id(booking.id)
-        case .tags: TagsCard(booking: booking).id(booking.id)
+        case .note: NoteCard(booking: booking)
+        case .tags: TagsCard(booking: booking)
         case .salary:
             if booking.amountCents > 0 {
                 SalaryCard(booking: booking)

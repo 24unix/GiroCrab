@@ -39,7 +39,7 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("DKKKU", &[2]),
 ];
 
-fn is_segment_code(s: &str) -> bool {
+pub(super) fn is_segment_code(s: &str) -> bool {
     s.len() == 5
         && (s.starts_with("HK") || s.starts_with("DK"))
         && s[2..].chars().all(|c| c.is_ascii_uppercase())
