@@ -13,14 +13,14 @@ final class AutoReviewTests: XCTestCase {
     private var model: AppModel!
 
     override func setUp() async throws {
-        UserDefaults.standard.removeObject(forKey: AutoReviewDelay.defaultsKey)
+        AppDefaults.store.removeObject(forKey: AutoReviewDelay.defaultsKey)
         model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
         XCTAssertEqual(model.vaultState, .open)
         model.statusFilter = .all
     }
 
     override func tearDown() async throws {
-        UserDefaults.standard.removeObject(forKey: AutoReviewDelay.defaultsKey)
+        AppDefaults.store.removeObject(forKey: AutoReviewDelay.defaultsKey)
         model = nil
     }
 
@@ -78,7 +78,7 @@ final class AutoReviewTests: XCTestCase {
 
     func testChoiceIsStoredPerDevice() {
         model.autoReviewDelay = .fiveSeconds
-        XCTAssertEqual(UserDefaults.standard.string(forKey: AutoReviewDelay.defaultsKey), "5s")
+        XCTAssertEqual(AppDefaults.store.string(forKey: AutoReviewDelay.defaultsKey), "5s")
         XCTAssertEqual(AutoReviewDelay.stored, .fiveSeconds)
         XCTAssertEqual([AutoReviewDelay.manual, .immediately, .oneSecond, .fiveSeconds].map(\.seconds), [nil, 0, 1, 5])
     }

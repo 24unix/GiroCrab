@@ -25,7 +25,7 @@ final class AccountGroupsTests: XCTestCase {
     }
 
     private static func clearDefaults() {
-        for k in defaultsKeys { UserDefaults.standard.removeObject(forKey: k) }
+        for k in defaultsKeys { AppDefaults.store.removeObject(forKey: k) }
     }
 
     // MARK: helpers
@@ -470,7 +470,7 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertEqual(next.accountView, .byKind)
         XCTAssertEqual(next.accountViewChoice, .byKind)
         // the demo vault is recreated with new uuids, so compare the persisted set
-        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedUserGroups"), [g.uuid])
+        XCTAssertEqual(AppDefaults.store.stringArray(forKey: "sidebar.collapsedUserGroups"), [g.uuid])
 
         model.toggleCollapsed(g)
         XCTAssertFalse(model.collapsedUserGroups.contains(g.uuid))

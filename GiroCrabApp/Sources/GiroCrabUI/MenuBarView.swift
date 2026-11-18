@@ -91,7 +91,7 @@ public enum MenuBarActions {
         retained = []
         let unlocked = model?.isUnlocked ?? false
         let canLock = unlocked && (model?.holdsRealData ?? false)
-        let privateMode = UserDefaults.standard.bool(forKey: MenuBarSummary.privateKey)
+        let privateMode = AppDefaults.store.bool(forKey: MenuBarSummary.privateKey)
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.addItem(item(String(localized: "GiroCrab öffnen")) { showMain() })
@@ -102,7 +102,7 @@ public enum MenuBarActions {
         })
         menu.addItem(.separator())
         menu.addItem(item(String(localized: "Beträge in der Menüleiste verdecken"), checked: privateMode) {
-            UserDefaults.standard.set(!privateMode, forKey: MenuBarSummary.privateKey)
+            AppDefaults.store.set(!privateMode, forKey: MenuBarSummary.privateKey)
         })
         if unlocked {
             menu.addItem(item(String(localized: "Tresor sperren"), key: "l", enabled: canLock) { model?.lock() })
@@ -121,7 +121,7 @@ public enum MenuBarActions {
     }
 
     private static func settingsItems() -> [NSMenuItem] {
-        let defaults = UserDefaults.standard
+        let defaults = AppDefaults.store
         let display = MenuBarSummary.BarDisplay(rawValue: defaults.string(forKey: MenuBarSummary.barDisplayKey) ?? "") ?? .amount
         let hours = (defaults.object(forKey: AutoSync.hoursKey) as? Int) ?? model?.autoSyncHours ?? 0
         let intervals = AutoSync.hourOptions.map { h in

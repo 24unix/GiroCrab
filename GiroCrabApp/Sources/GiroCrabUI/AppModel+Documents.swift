@@ -23,7 +23,7 @@ extension AppModel {
     func setDocumentMirror(_ url: URL?) {
         if let url {
             documentMirrorPath = url.path
-            UserDefaults.standard.set(url.path, forKey: Self.mirrorDirKey)
+            AppDefaults.store.set(url.path, forKey: Self.mirrorDirKey)
             // Creating the folder (iCloud Drive can be slow) and resetting the
             // copy markers (vault mutex) stay off the main thread. `mirrorRunning`
             // keeps syncs from starting a copy in between.
@@ -44,7 +44,7 @@ extension AppModel {
         } else {
             documentMirrorPath = nil
             documentMirrorStatus = nil
-            UserDefaults.standard.removeObject(forKey: Self.mirrorDirKey)
+            AppDefaults.store.removeObject(forKey: Self.mirrorDirKey)
         }
     }
 

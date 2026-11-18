@@ -783,7 +783,7 @@ struct PortalWebSheet: View {
         }
         .task {
             // Billing-period portals: the first sync of a connection offers the older periods.
-            if connection.connector.portalHasBillingPeriods && !UserDefaults.standard.bool(forKey: historyOfferedKey) {
+            if connection.connector.portalHasBillingPeriods && !AppDefaults.store.bool(forKey: historyOfferedKey) {
                 browsingHistory = true
             }
             // Count recognised bookings live; auto-import only when >= 1 booking is
@@ -843,7 +843,7 @@ struct PortalWebSheet: View {
                     }
                     // First sync with older history on offer: store what is there, but keep
                     // the sheet open so the user can unlock the rest (SMS code).
-                    let firstSync = importedCount == 0 && !UserDefaults.standard.bool(forKey: historyOfferedKey)
+                    let firstSync = importedCount == 0 && !AppDefaults.store.bool(forKey: historyOfferedKey)
                     let keepOpen = pager.older && firstSync
                     if await attempt(closing: !keepOpen) {
                         if !keepOpen && openHolds.isEmpty { return }
@@ -963,7 +963,7 @@ struct PortalWebSheet: View {
     }
 
     private func close() {
-        if importedCount > 0 { UserDefaults.standard.set(true, forKey: historyOfferedKey) }
+        if importedCount > 0 { AppDefaults.store.set(true, forKey: historyOfferedKey) }
         model.webLoginConnection = nil
         dismiss()
     }

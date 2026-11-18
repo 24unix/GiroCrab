@@ -137,7 +137,7 @@ enum MenuBarSummary {
 /// Read by the macOS executable (`AppDelegate`): with the menu bar item on, the
 /// app keeps running after the last window is closed, so the item stays.
 public enum MenuBarKeepAlive {
-    public static var isEnabled: Bool { UserDefaults.standard.bool(forKey: MenuBarSummary.enabledKey) }
+    public static var isEnabled: Bool { AppDefaults.store.bool(forKey: MenuBarSummary.enabledKey) }
 }
 
 public enum DockKeepAlive {
