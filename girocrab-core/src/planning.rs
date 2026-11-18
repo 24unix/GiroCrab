@@ -53,9 +53,7 @@ pub(crate) fn effective_sql(extra: &str, condition: &str) -> String {
 
 fn month_range(year: i32, month: u32) -> Result<(String, String), CoreError> {
     if !(1..=12).contains(&month) {
-        return Err(CoreError::InvalidInput {
-            message: tr("Ungültiger Monat.").into(),
-        });
+        return Err(CoreError::invalid(tr("Ungültiger Monat.")));
     }
     Ok((
         format!("{year:04}-{month:02}-01"),
@@ -74,9 +72,7 @@ impl Vault {
         budget_cents: Option<i64>,
     ) -> Result<(), CoreError> {
         if budget_cents.is_some_and(|b| b <= 0) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Das Budget muss größer als 0 sein.").into(),
-            });
+            return Err(CoreError::invalid(tr("Das Budget muss größer als 0 sein.")));
         }
         let db = self.db()?;
         let n = db.execute(
@@ -216,44 +212,28 @@ impl Vault {
             })?;
         if !splits.is_empty() {
             if splits.len() < 2 || splits.iter().any(|s| s.amount_cents == 0) {
-                return Err(CoreError::InvalidInput {
-                    message: tr(
-                        "Eine Splitbuchung braucht mindestens zwei Teilbeträge ungleich 0.",
-                    )
-                    .into(),
-                });
+                return Err(CoreError::invalid(tr(
+                    "Eine Splitbuchung braucht mindestens zwei Teilbeträge ungleich 0.",
+                )));
             }
             // checked: an overflowing (wrapping) sum must not pass as "equal"
             let sum = splits
                 .iter()
                 .try_fold(0i64, |acc, s| acc.checked_add(s.amount_cents))
-                .ok_or_else(|| CoreError::InvalidInput {
-                    message: tr("Die Teilbeträge sind zu groß.").into(),
-                })?;
+                .ok_or_else(|| CoreError::invalid(tr("Die Teilbeträge sind zu groß.")))?;
             if sum != amount {
-                return Err(CoreError::InvalidInput {
-                    message: trf(
-                        "Die Teilbeträge ({0} ¢) ergeben nicht den Buchungsbetrag ({1} ¢).",
-                        &[&sum, &amount],
-                    ),
-                });
+                return Err(CoreError::invalid(trf(
+                    "Die Teilbeträge ({0} ¢) ergeben nicht den Buchungsbetrag ({1} ¢).",
+                    &[&sum, &amount],
+                )));
             }
         }
+        let lines: Vec<_> = splits
+            .iter()
+            .map(|s| (s.category_id, s.amount_cents, s.note.as_str()))
+            .collect();
         let tx = db.transaction()?;
-        tx.execute(
-            "DELETE FROM transaction_splits WHERE transaction_id = ?1",
-            [transaction_id],
-        )?;
-        for s in &splits {
-            tx.execute(
-                "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents, note) VALUES (?1, ?2, ?3, ?4)",
-                params![transaction_id, s.category_id, s.amount_cents, s.note.trim()],
-            )?;
-        }
-        tx.execute(
-            "UPDATE transactions SET splits_ms = ?1 WHERE id = ?2",
-            params![crate::dates::now_ms(), transaction_id],
-        )?;
+        store_splits(&tx, transaction_id, &lines)?;
         tx.commit()?;
         Ok(())
     }
@@ -295,15 +275,14 @@ impl Vault {
         count: u32,
         account_ids: Option<Vec<i64>>,
     ) -> Result<Vec<PeriodCashflow>, CoreError> {
-        use chrono::{Datelike, Local};
-        let today = Local::now().date_naive();
+        let today = crate::dates::today();
         crate::planning::cashflow_for(
             self,
             granularity,
             count,
             account_ids.as_deref().unwrap_or_default(),
-            today.year(),
-            today.month(),
+            today.year().into(),
+            today.month() as u32,
         )
     }
 
@@ -337,14 +316,14 @@ impl Vault {
         let rname = template.recipient_name.trim().to_string();
         let iban = normalize_iban(&template.recipient_iban);
         if name.is_empty() || rname.is_empty() || iban.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Name, Empfänger und IBAN der Vorlage dürfen nicht leer sein.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Name, Empfänger und IBAN der Vorlage dürfen nicht leer sein.",
+            )));
         }
         if template.default_amount_cents.is_some_and(|c| c <= 0) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Vorlagenbetrag muss größer als 0 sein.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Der Vorlagenbetrag muss größer als 0 sein.",
+            )));
         }
         let db = self.db()?;
         let bic = template.recipient_bic.trim().to_uppercase();
@@ -472,6 +451,39 @@ pub(crate) fn cashflow_for(
             }
         })
         .collect())
+}
+
+/// Replaces the splits of booking `id` with `lines` (category, amount, note)
+/// and stamps `splits_ms`. The amounts are the caller's to check.
+pub(crate) fn store_splits(
+    conn: &rusqlite::Connection,
+    id: i64,
+    lines: &[(Option<i64>, i64, impl AsRef<str>)],
+) -> Result<(), CoreError> {
+    conn.execute(
+        "DELETE FROM transaction_splits WHERE transaction_id = ?1",
+        [id],
+    )?;
+    let mut insert = conn.prepare_cached(
+        "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents, note) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for (category, cents, note) in lines {
+        insert.execute(params![id, category, cents, note.as_ref().trim()])?;
+    }
+    conn.prepare_cached("UPDATE transactions SET splits_ms = ?2 WHERE id = ?1")?
+        .execute(params![id, crate::dates::now_ms()])?;
+    Ok(())
+}
+
+/// A booking turned into a split booking by an import keeps no category of its
+/// own (its splits carry them, #654), unless the user set it.
+pub(crate) fn clear_split_category(conn: &rusqlite::Connection, id: i64) -> Result<(), CoreError> {
+    conn.prepare_cached(
+        "UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL, category_ms = ?2
+          WHERE id = ?1 AND category_id IS NOT NULL AND category_source != 'manual'",
+    )?
+    .execute(params![id, crate::dates::now_ms()])?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -756,10 +768,9 @@ mod tests {
 
     #[test]
     fn cashflow_ignores_transfers_between_own_accounts() {
-        use chrono::{Datelike, Local};
         let (v, dir) = vault();
-        let today = Local::now().date_naive();
-        let date = today.format("%Y-%m-%d").to_string();
+        let today = crate::dates::today();
+        let date = crate::dates::iso(today);
         {
             let c = v.db().unwrap();
             c.execute(
@@ -780,8 +791,8 @@ mod tests {
             PeriodGranularity::Month,
             1,
             &[],
-            today.year(),
-            today.month(),
+            today.year().into(),
+            today.month() as u32,
         )
         .unwrap();
         assert_eq!(cf.last().unwrap().expense_cents, 1_000);

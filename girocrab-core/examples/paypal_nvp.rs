@@ -44,7 +44,10 @@ async fn main() {
         );
     }
     let since = std::env::var("SINCE").unwrap_or_else(|_| {
-        (chrono::Utc::now().date_naive() - chrono::Duration::days(90)).to_string()
+        let today = jiff::Timestamp::now()
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .date();
+        (today - jiff::Span::new().days(90)).to_string()
     });
     let ctx = ConnectContext {
         connection_id: 0,
@@ -112,7 +115,7 @@ async fn raw(ctx: &ConnectContext) {
         },
     )
     .expect("http client");
-    let since = chrono::NaiveDate::parse_from_str(&ctx.since, "%Y-%m-%d").expect("SINCE");
+    let since = jiff::civil::Date::strptime("%Y-%m-%d", &ctx.since).expect("SINCE");
     // e.g. PAYPAL_NVP_CLASS=BalanceAffecting (TRANSACTIONCLASS of TransactionSearch)
     let class = std::env::var("PAYPAL_NVP_CLASS").ok();
     if let Some(c) = &class {

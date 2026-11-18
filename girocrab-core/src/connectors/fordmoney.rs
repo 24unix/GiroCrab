@@ -101,18 +101,15 @@ static CDATA_UPDATE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 fn page_changed() -> CoreError {
-    CoreError::Protocol {
-        message: tr("Ford Money: Seite nicht erkannt (Online-Banking geändert?).").into(),
-    }
+    CoreError::protocol(tr(
+        "Ford Money: Seite nicht erkannt (Online-Banking geändert?).",
+    ))
 }
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: tr(
-            "Ford Money: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen.",
-        )
-        .into(),
-    }
+    CoreError::invalid(tr(
+        "Ford Money: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen.",
+    ))
 }
 
 fn wrong_credentials() -> CoreError {
@@ -142,12 +139,9 @@ fn ensure_host(url: &url::Url) -> CoreResult<()> {
     if url.scheme() == "https" && url.host_str() == Some(HOST) {
         return Ok(());
     }
-    Err(CoreError::Protocol {
-        message: tr(
-            "Ford Money: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.",
-        )
-        .into(),
-    })
+    Err(CoreError::protocol(tr(
+        "Ford Money: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.",
+    )))
 }
 
 fn push_challenge() -> Challenge {
@@ -548,8 +542,8 @@ fn known_documents(state: &Value) -> Vec<String> {
 
 /// `YYYY-MM-DD` → `DD.MM.YYYY`.
 fn site_date(iso: &str) -> Option<String> {
-    let d = chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d").ok()?;
-    Some(d.format("%d.%m.%Y").to_string())
+    let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).ok()?;
+    Some(d.strftime("%d.%m.%Y").to_string())
 }
 
 // ------------------------------------------------------------------ connector

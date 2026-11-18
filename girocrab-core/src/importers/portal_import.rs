@@ -14,7 +14,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
-use chrono::{Datelike, NaiveDate};
 use regex::Regex;
 use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
@@ -135,7 +134,7 @@ pub fn parse_date(s: &str) -> Option<String> {
     static MONTH_NAME_DAY: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"(?i)^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})").unwrap());
     let s = s.trim();
-    let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).map(iso);
+    let ymd = |y, m, d| crate::dates::ymd(y, m, d).map(iso);
     let year = |y: &str| -> Option<i32> {
         let n: i32 = y.parse().ok()?;
         Some(if y.len() == 2 { 2000 + n } else { n })
@@ -864,7 +863,8 @@ pub fn parse_statement_text(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
         Regex::new(r"^\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+(?:(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+)?(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})\s*(-|CR|H|S|\+)?\s*$").unwrap()
     });
     // statement year from any full date or "Abrechnung … 2025"
-    let default_year = find_de_date(text).map_or_else(|| chrono::Local::now().year(), |d| d.year());
+    let default_year =
+        find_de_date(text).map_or_else(|| crate::dates::today().year(), |d| d.year());
     let mut out = Vec::new();
     for line in text.lines() {
         let Some(c) = LINE.captures(line) else {
@@ -1442,41 +1442,30 @@ pub(crate) fn merge_imported_split_parts(
             continue;
         }
         // the portal booking with this reference (exactly one, not split yet)
-        let bank: Vec<(i64, i64, bool, String)> = {
+        let bank: Vec<(i64, i64, bool)> = {
             let mut q = db.prepare(
-                "SELECT t.id, t.amount_cents, t.checked, t.category_source FROM transactions t
+                "SELECT t.id, t.amount_cents, t.checked FROM transactions t
                   WHERE t.account_id = ?1 AND t.deleted_ms IS NULL AND substr(t.external_id, 1, ?3) = ?2
                     AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)",
             )?;
             let prefix = format!("id:{reference}---");
             let rows = q.query_map(params![account_id, prefix, prefix.len() as i64], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
             })?;
             rows.collect::<Result<_, _>>()?
         };
-        let [(bank_id, bank_cents, bank_checked, ref source)] = bank[..] else {
+        let [(bank_id, bank_cents, bank_checked)] = bank[..] else {
             continue;
         };
         if parts.iter().map(|p| p.1).sum::<i64>() != bank_cents {
             continue;
         }
-        for (_, cents, cat, note, _) in &parts {
-            db.execute(
-                "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents, note) VALUES (?1, ?2, ?3, ?4)",
-                params![bank_id, cat, cents, note.trim()],
-            )?;
-        }
-        db.execute(
-            "UPDATE transactions SET splits_ms = ?2 WHERE id = ?1",
-            params![bank_id, now],
-        )?;
-        if source != "manual" {
-            db.execute(
-                "UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL, category_ms = ?2
-                  WHERE id = ?1 AND category_id IS NOT NULL",
-                params![bank_id, now],
-            )?;
-        }
+        let lines: Vec<_> = parts
+            .iter()
+            .map(|(_, cents, cat, note, _)| (*cat, *cents, note.as_str()))
+            .collect();
+        crate::planning::store_splits(db, bank_id, &lines)?;
+        crate::planning::clear_split_category(db, bank_id)?;
         if !bank_checked && parts.iter().all(|p| p.4) {
             db.execute(
                 "UPDATE transactions SET checked = 1, checked_ms = ?2 WHERE id = ?1",

@@ -363,9 +363,7 @@ impl Vault {
             .ok_or_else(|| CoreError::NotFound {
                 what: trf("Bankzugang {0}", &[&connection_id]),
             })?;
-        let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
-            message: kind.clone(),
-        })?;
+        let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::invalid(kind))?;
         let login = normalize_login(kind, &login_name);
         let generic = crate::connectors::descriptor(kind).name;
         let name = if display_name.trim().is_empty() {
@@ -407,9 +405,7 @@ impl Vault {
         cookies: String,
     ) -> Result<(), CoreError> {
         if !cookies.contains('=') {
-            return Err(CoreError::InvalidInput {
-                message: tr("Keine Sitzungs-Cookies übergeben").into(),
-            });
+            return Err(CoreError::invalid(tr("Keine Sitzungs-Cookies übergeben")));
         }
         let db = self.db()?;
         let state: String = db
@@ -425,7 +421,7 @@ impl Vault {
         let mut v: serde_json::Value =
             serde_json::from_str(&state).unwrap_or(serde_json::json!({}));
         v["cookies"] = serde_json::json!(cookies);
-        v["saved_unix"] = serde_json::json!(chrono::Utc::now().timestamp());
+        v["saved_unix"] = serde_json::json!(jiff::Timestamp::now().as_second());
         v["source"] = serde_json::json!("browser");
         db.execute(
             "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",
@@ -501,7 +497,9 @@ impl Vault {
 
 /// comdirect bank code of a login: from the first comdirect IBAN among its
 /// accounts (characters 5–12), else the stored bank code. The account's code
-/// decides: comdirect's API logins all carry 20041111.
+/// comes first: comdirect's API logins all carry 20041111. Only a first
+/// guess – if comdirect rejects it for this login (9210), the FinTS connector
+/// tries its other codes and keeps the one that works.
 fn comdirect_blz(
     conn: &Connection,
     connection_id: i64,
@@ -555,15 +553,11 @@ impl Vault {
             .as_deref()
             .is_some_and(|b| crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&b));
         if !from_api && !is_comdirect_fints {
-            return Err(CoreError::InvalidInput {
-                message: tr("Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen.").into(),
-            });
+            return Err(CoreError::invalid(tr("Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen.")));
         }
         let (kind, new_key, new_code) = if from_api {
             let blz = comdirect_blz(&tx, connection_id, &bank_code)?.ok_or_else(|| {
-                CoreError::InvalidInput {
-                    message: tr("Keine comdirect-IBAN gefunden: Die Bankleitzahl für FinTS lässt sich nicht bestimmen.").into(),
-                }
+                CoreError::invalid(tr("Keine comdirect-IBAN gefunden: Die Bankleitzahl für FinTS lässt sich nicht bestimmen."))
             })?;
             (
                 ConnectorKind::FinTsGeneric,
@@ -589,10 +583,9 @@ impl Vault {
             |r| r.get(0),
         )?;
         if clash {
-            return Err(CoreError::InvalidInput {
-                message: tr("Für diesen Anmeldenamen gibt es den Zugang auf diesem Weg schon.")
-                    .into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Für diesen Anmeldenamen gibt es den Zugang auf diesem Weg schon.",
+            )));
         }
         let symbol = crate::connectors::descriptor(kind).sf_symbol;
         tx.execute(

@@ -565,7 +565,7 @@ Rectangle {
                     stream.compactCollapsedID = stream.compactCollapsedID === dc.booking.id ? null : dc.booking.id
                 else
                     stream.compactCollapsedID = null
-                AppModel.selectBooking(dc.booking.id, toggle, extend)
+                AppModel.selectBooking(dc.booking.id, toggle, extend, true)
             }
             onDoubleClicked: m => { if (m.button === Qt.LeftButton) AppModel.editNote(dc.booking) }
             // .draggable(BookingDrag.payload(…)): onto a sidebar category (#366)
@@ -985,6 +985,11 @@ Rectangle {
                             ? qsTr("Ihr eigener Tresor ist noch leer. Hier sehen Sie erfundene Buchungen.")
                             : qsTr("Erfundene Buchungen – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen.")
                     font.pixelSize: Theme.caption; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                }
+                Text {
+                    // DemoBanner.resetNote (#952): the demo vault is rebuilt on every start
+                    text: qsTr("Änderungen werden beim Beenden zurückgesetzt.")
+                    font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true
                 }
             }
             Button { text: AppModel.hasOwnVault || AppModel.vaultMayHoldRealData() ? qsTr("Zurück zum eigenen Tresor") : qsTr("Eigenes Konto anlegen")

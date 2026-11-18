@@ -116,7 +116,7 @@ impl Default for ScalableConnector {
 }
 
 fn now() -> i64 {
-    chrono::Utc::now().timestamp()
+    jiff::Timestamp::now().as_second()
 }
 
 fn log(msg: &str) {
@@ -140,20 +140,14 @@ fn str_of(v: &Value) -> String {
 /// `2026-11-10T12:48:01.123Z` (or epoch seconds) -> local `YYYY-MM-DD`.
 fn local_date(v: &Value) -> String {
     if let Some(s) = v.as_str() {
-        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-            return dt
-                .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d")
-                .to_string();
+        if let Ok(ts) = s.parse::<jiff::Timestamp>() {
+            return crate::dates::iso(crate::dates::local_date(ts));
         }
         return s.chars().take(10).collect();
     }
     if let Some(secs) = v.as_i64() {
-        if let Some(dt) = chrono::DateTime::from_timestamp(secs, 0) {
-            return dt
-                .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d")
-                .to_string();
+        if let Ok(ts) = jiff::Timestamp::from_second(secs) {
+            return crate::dates::iso(crate::dates::local_date(ts));
         }
     }
     String::new()
@@ -163,12 +157,9 @@ fn since_epoch(since: &str) -> Option<i64> {
     if since <= "1970-01-01" {
         return None;
     }
-    let d = chrono::NaiveDate::parse_from_str(since, "%Y-%m-%d").ok()?;
-    let local = d
-        .and_hms_opt(0, 0, 0)?
-        .and_local_timezone(chrono::Local)
-        .single()?;
-    Some(local.timestamp())
+    let d = jiff::civil::Date::strptime("%Y-%m-%d", since).ok()?;
+    let local = d.to_zoned_datetime(jiff::tz::TimeZone::system()).ok()?;
+    Some(local.timestamp().as_second())
 }
 
 fn fmt_quantity(v: &Value) -> String {

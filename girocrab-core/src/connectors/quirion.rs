@@ -27,7 +27,7 @@ fn text<'a>(v: &'a Value, key: &str) -> CoreResult<&'a str> {
 
 fn date(v: &Value, key: &str) -> CoreResult<String> {
     let s = text(v, key)?.get(..10).ok_or_else(invalid)?;
-    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| invalid())?;
+    jiff::civil::Date::strptime("%Y-%m-%d", s).map_err(|_| invalid())?;
     Ok(s.into())
 }
 

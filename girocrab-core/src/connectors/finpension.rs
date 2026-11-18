@@ -21,9 +21,7 @@ use crate::{
 };
 
 fn invalid(message: impl Into<String>) -> CoreError {
-    CoreError::InvalidInput {
-        message: format!("Finpension: {}", message.into()),
-    }
+    CoreError::invalid(format!("Finpension: {}", message.into()))
 }
 
 /// Host every Finpension URL must belong to.
@@ -205,7 +203,7 @@ pub fn to_fetch(connection_id: i64, name: &str, export: FinpensionExport) -> sup
                 currency: cur.clone(),
                 kind: AccountKind::Brokerage,
                 balance_cents: holdings.iter().map(|h| h.value_cents).sum(),
-                balance_date: today_iso(),
+                balance_date: crate::dates::today_iso(),
                 owner: String::new(),
                 iban: String::new(),
                 account_number: String::new(),
@@ -233,7 +231,7 @@ pub fn to_fetch(connection_id: i64, name: &str, export: FinpensionExport) -> sup
                 currency: cur.clone(),
                 kind: AccountKind::Cash,
                 balance_cents: 0,
-                balance_date: today_iso(),
+                balance_date: crate::dates::today_iso(),
                 owner: String::new(),
                 iban: String::new(),
                 account_number: String::new(),
@@ -245,10 +243,6 @@ pub fn to_fetch(connection_id: i64, name: &str, export: FinpensionExport) -> sup
         }
     }
     out
-}
-
-fn today_iso() -> String {
-    chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
 #[uniffi::export]
@@ -594,10 +588,10 @@ fn parse_date(s: &str) -> CoreResult<String> {
     let s = s.trim();
     let parsed = s
         .get(..10)
-        .and_then(|p| chrono::NaiveDate::parse_from_str(p, "%Y-%m-%d").ok())
-        .or_else(|| chrono::NaiveDate::parse_from_str(s, "%d.%m.%Y").ok());
+        .and_then(|p| jiff::civil::Date::strptime("%Y-%m-%d", p).ok())
+        .or_else(|| jiff::civil::Date::strptime("%d.%m.%Y", s).ok());
     parsed
-        .map(|d| d.format("%Y-%m-%d").to_string())
+        .map(crate::dates::iso)
         .ok_or_else(|| invalid(format!("invalid date '{s}'")))
 }
 

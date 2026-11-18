@@ -195,7 +195,7 @@ fn card_timestamp_date(text: &str) -> Option<String> {
             continue;
         }
         let d: String = s[i - 10..i].iter().collect();
-        if chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").is_ok() {
+        if jiff::civil::Date::strptime("%Y-%m-%d", &d).is_ok() {
             return Some(d);
         }
     }

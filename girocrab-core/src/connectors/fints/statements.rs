@@ -11,15 +11,17 @@ use crate::i18n::trf;
 /// Start date of a card statement request: `since`, but not further back than the
 /// bank's storage period (`storage_days`, 0 = unknown). Dates are `YYYY-MM-DD`.
 pub(super) fn card_since(since: &str, today: &str, storage_days: i64) -> String {
-    let parse = |d: &str| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok();
+    let parse = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d).ok();
     match (parse(since), parse(today)) {
         (Some(s), Some(t)) if storage_days > 0 => {
             // the bank's number: an absurd value must not overflow the date arithmetic
             // (a panic on a hostile reply); no bound cuts the range then
-            let oldest =
-                chrono::Duration::try_days(storage_days).and_then(|d| t.checked_sub_signed(d));
+            let oldest = jiff::Span::new()
+                .try_days(storage_days)
+                .and_then(|d| t.checked_sub(d))
+                .ok();
             match oldest {
-                Some(oldest) => s.max(oldest).format("%Y-%m-%d").to_string(),
+                Some(oldest) => crate::dates::iso(s.max(oldest)),
                 None => since.to_string(),
             }
         }

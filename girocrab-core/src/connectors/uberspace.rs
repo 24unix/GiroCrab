@@ -56,15 +56,13 @@ static ASTEROID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,31}$").unwrap());
 
 fn page_changed() -> CoreError {
-    CoreError::Protocol {
-        message: tr("Uberspace: Anmeldeseite nicht erkannt (Dashboard geändert?).").into(),
-    }
+    CoreError::protocol(tr(
+        "Uberspace: Anmeldeseite nicht erkannt (Dashboard geändert?).",
+    ))
 }
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: tr("Uberspace: Unvollständige oder ungültige Dashboard-Antwort. Es wurden keine Daten übernommen.").into(),
-    }
+    CoreError::invalid(tr("Uberspace: Unvollständige oder ungültige Dashboard-Antwort. Es wurden keine Daten übernommen."))
 }
 
 fn wrong_credentials() -> CoreError {
@@ -232,10 +230,9 @@ fn ensure_dashboard(url: &url::Url) -> CoreResult<()> {
     if url.scheme() == "https" && url.host_str() == Some(HOST) {
         return Ok(());
     }
-    Err(CoreError::Protocol {
-        message: tr("Uberspace: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.")
-            .into(),
-    })
+    Err(CoreError::protocol(tr(
+        "Uberspace: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.",
+    )))
 }
 
 fn login_form(html: &str, page: &url::Url) -> CoreResult<LoginForm> {
@@ -465,9 +462,9 @@ impl BankConnector for UberspaceConnector {
     async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let asteroids = parse_asteroids(&self.page("/meta").await?);
         if asteroids.is_empty() {
-            return Err(CoreError::Protocol {
-                message: tr("Uberspace: Keine Asteroids gefunden (Dashboard geändert?).").into(),
-            });
+            return Err(CoreError::protocol(tr(
+                "Uberspace: Keine Asteroids gefunden (Dashboard geändert?).",
+            )));
         }
         let mut out = FetchResult::default();
         for asteroid in asteroids {

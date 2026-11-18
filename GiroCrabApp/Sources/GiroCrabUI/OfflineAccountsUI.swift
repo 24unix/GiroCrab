@@ -406,7 +406,7 @@ struct BalanceCorrectionSheet: View {
                     .multilineTextAlignment(.trailing)
                     .sensitive(.amounts)
             }
-            Text("Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Startsaldo …“ im Kontextmenü des Kontos.")
+            Text("Der Unterschied wird als Buchung „Saldokorrektur“ mit heutigem Datum angelegt. Den Startsaldo ändern Sie über „Einstellungen …“ im Kontextmenü des Kontos.")
                 .appFont(.caption).foregroundStyle(Theme.tertiary)
             HStack {
                 Spacer()

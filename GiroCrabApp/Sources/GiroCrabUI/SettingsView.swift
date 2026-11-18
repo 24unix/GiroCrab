@@ -68,7 +68,7 @@ struct GeneralSettings: View {
     @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeAmountStyle: NegativeAmountStyle = .neutral
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
-    @AppStorage(PrivacyMode.scopeKey) private var privacyScope = PrivacyMode.Scope.amounts
+    @AppStorage(PrivacyMode.scopeKey) private var privacyScope = PrivacyMode.defaultScope
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
     @AppStorage(BookingDensity.defaultsKey) private var bookingDensity: BookingDensity = .standard
 
@@ -117,7 +117,7 @@ struct GeneralSettings: View {
                 Picker("Im Privatmodus ausblenden", selection: $privacyScope) {
                     ForEach(PrivacyMode.Scope.allCases) { Text($0.title).tag($0) }
                 }
-                Text("Blendet Beträge aus, wenn du die App jemandem zeigst. Auf Wunsch auch Namen, Kontonummern und Verwendungszwecke.")
+                Text("Blendet Beträge, Namen, Kontonummern und Verwendungszwecke aus, wenn du die App jemandem zeigst. Auf Wunsch nur die Beträge.")
                     .appFont(.caption).foregroundStyle(.secondary)
                 Toggle("Auswertungen in der Übersicht anzeigen", isOn: $showStatistics)
                 Text("Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar.")
@@ -141,7 +141,7 @@ struct GeneralSettings: View {
                 Picker("Als geprüft markieren", selection: $model.autoReviewDelay) {
                     ForEach(AutoReviewDelay.allCases) { Text($0.title).tag($0) }
                 }
-                Text("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.")
+                Text(model.autoReviewDelay.helpText)
                     .appFont(.caption).foregroundStyle(.secondary)
                 Picker("Zeitraum beim ersten Abruf", selection: firstFetchDays) {
                     Text("90 Tage").tag(90)
@@ -160,7 +160,7 @@ struct GeneralSettings: View {
             MerchantLogoSettingsSection()
             #if os(macOS)
             AutoSyncSettingsSection()
-            MenuBarSettingsSection()
+            DockAndMenuBarSettingsSection()
             #endif
             #if os(iOS)
             Section {

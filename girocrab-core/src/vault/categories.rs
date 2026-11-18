@@ -108,9 +108,9 @@ fn ensure_not_below(db: &Connection, id: i64, parent_id: Option<i64>) -> CoreRes
     let mut guard = 0;
     loop {
         if p == id {
-            return Err(CoreError::InvalidInput {
-                message: tr("Eine Kategorie kann nicht in sich selbst verschoben werden.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Eine Kategorie kann nicht in sich selbst verschoben werden.",
+            )));
         }
         guard += 1;
         match db
@@ -260,9 +260,7 @@ impl Vault {
     ) -> Result<i64, CoreError> {
         let name = name.trim().to_string();
         if name.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Kategoriename ist leer.").into(),
-            });
+            return Err(CoreError::invalid(tr("Der Kategoriename ist leer.")));
         }
         let db = self.db()?;
         let order: i32 = db.query_row(
@@ -365,9 +363,9 @@ impl Vault {
                 )
                 .optional()?;
             if live.is_none() {
-                return Err(CoreError::InvalidInput {
-                    message: tr("Die Zielkategorie existiert nicht mehr.").into(),
-                });
+                return Err(CoreError::invalid(tr(
+                    "Die Zielkategorie existiert nicht mehr.",
+                )));
             }
         }
         let now = crate::dates::now_ms();

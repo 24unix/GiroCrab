@@ -149,15 +149,15 @@ pub(crate) struct PainHeader<'a> {
 
 impl<'a> PainHeader<'a> {
     pub(crate) fn new(owner: &'a str) -> Self {
-        let now = chrono::Local::now();
+        let now = jiff::ZonedDateTime::now();
         let owner = owner.trim();
         Self {
             message_id: format!(
                 "GC{}{:08X}",
-                now.format("%Y%m%d%H%M%S"),
+                now.strftime("%Y%m%d%H%M%S"),
                 rand::random::<u32>()
             ),
-            created: now.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            created: now.strftime("%Y-%m-%dT%H:%M:%S").to_string(),
             owner: if owner.is_empty() {
                 "Kontoinhaber"
             } else {
@@ -196,19 +196,13 @@ pub struct Pain001<'a> {
 /// Builds a single-transfer `pain.001` document (UTF-8).
 pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     if p.amount_cents <= 0 {
-        return Err(CoreError::InvalidInput {
-            message: tr("Der Betrag muss größer als 0 sein.").into(),
-        });
+        return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
     }
     if !validate_iban(p.creditor_iban) {
-        return Err(CoreError::InvalidInput {
-            message: tr("Die Empfänger-IBAN ist ungültig.").into(),
-        });
+        return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
     }
     if p.creditor_name.trim().is_empty() {
-        return Err(CoreError::InvalidInput {
-            message: tr("Der Empfängername fehlt.").into(),
-        });
+        return Err(CoreError::invalid(tr("Der Empfängername fehlt.")));
     }
     let amount = format_amount(p.amount_cents);
     let msg_id = xml_escape(&clip(p.message_id, 35));
@@ -313,9 +307,8 @@ pub fn batch_total_cents(payments: &[BatchPayment]) -> Option<i64> {
 
 /// Checks one payment; the message names the 1-based position.
 pub fn validate_batch_payment(position: usize, p: &BatchPayment) -> CoreResult<()> {
-    let fail = |msg: &str| CoreError::InvalidInput {
-        message: crate::i18n::trf("Zahlung {0}: {1}", &[&position, &msg]),
-    };
+    let fail =
+        |msg: &str| CoreError::invalid(crate::i18n::trf("Zahlung {0}: {1}", &[&position, &msg]));
     if p.name.trim().is_empty() {
         return Err(fail(tr("Der Empfängername fehlt.")));
     }
@@ -337,16 +330,15 @@ pub fn validate_batch_payment(position: usize, p: &BatchPayment) -> CoreResult<(
 /// `CdtTrfTxInf` per payment, `NbOfTxs` and `CtrlSum` in header and block.
 pub fn build_pain001_batch(p: &Pain001Batch) -> CoreResult<String> {
     if p.payments.is_empty() {
-        return Err(CoreError::InvalidInput {
-            message: tr("Die Sammelüberweisung enthält keine Zahlung.").into(),
-        });
+        return Err(CoreError::invalid(tr(
+            "Die Sammelüberweisung enthält keine Zahlung.",
+        )));
     }
     for (i, pay) in p.payments.iter().enumerate() {
         validate_batch_payment(i + 1, pay)?;
     }
-    let total = batch_total_cents(p.payments).ok_or_else(|| CoreError::InvalidInput {
-        message: tr("Die Summe der Sammelüberweisung ist zu groß.").into(),
-    })?;
+    let total = batch_total_cents(p.payments)
+        .ok_or_else(|| CoreError::invalid(tr("Die Summe der Sammelüberweisung ist zu groß.")))?;
     let sum = format_amount(total);
     let count = p.payments.len();
     let msg_id = xml_escape(&clip(p.message_id, 35));

@@ -274,12 +274,9 @@ impl Vault {
         let application_id = application_id.trim();
         let pem = private_key_pem.trim();
         if application_id.is_empty() != pem.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr(
-                    "Application-ID und privater Schlüssel gehören zusammen: bitte beide angeben.",
-                )
-                .into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Application-ID und privater Schlüssel gehören zusammen: bitte beide angeben.",
+            )));
         }
         if !pem.is_empty() {
             // a key that cannot sign must not replace one that can

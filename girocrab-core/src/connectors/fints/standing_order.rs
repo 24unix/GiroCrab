@@ -125,15 +125,15 @@ pub(crate) fn limits_from_state(
 pub(super) fn check_schedule(
     rules: &StandingRules,
     job: &StandingOrderJob,
-    today: chrono::NaiveDate,
+    today: jiff::civil::Date,
 ) -> CoreResult<()> {
     let invalid = |m: String| Err(CoreError::InvalidInput { message: m });
-    let first = chrono::NaiveDate::parse_from_str(&job.first_date, "%Y-%m-%d").map_err(|_| {
+    let first = jiff::civil::Date::strptime("%Y-%m-%d", &job.first_date).map_err(|_| {
         CoreError::InvalidInput {
             message: tr("Der erste Termin ist ungültig (JJJJ-MM-TT).").into(),
         }
     })?;
-    let ahead = (first - today).num_days();
+    let ahead = crate::dates::days_between(today, first);
     if ahead < i64::from(rules.min_pretime) {
         return invalid(trf(
             "Der erste Termin muss mindestens {0} Tage in der Zukunft liegen.",
@@ -246,7 +246,7 @@ impl FinTsConnector {
             StandingOrderAction::Delete => None,
         };
         if let Some(rules) = rules {
-            check_schedule(&rules, job, chrono::Local::now().date_naive())?;
+            check_schedule(&rules, job, crate::dates::today())?;
         }
         let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
         let header = sepa::PainHeader::new(&job.source_owner);
@@ -312,8 +312,8 @@ mod tests {
         }
     }
 
-    fn day(s: &str) -> chrono::NaiveDate {
-        chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    fn day(s: &str) -> jiff::civil::Date {
+        jiff::civil::Date::strptime("%Y-%m-%d", s).unwrap()
     }
 
     #[test]

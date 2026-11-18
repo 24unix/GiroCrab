@@ -55,9 +55,7 @@ const GATE: &str = "schwaebischhall";
 const MAX_BOOKINGS: usize = 20_000;
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: tr("Schwäbisch Hall: Unvollständige oder ungültige Portalantwort. Es wurden keine Daten übernommen.").into(),
-    }
+    CoreError::invalid(tr("Schwäbisch Hall: Unvollständige oder ungültige Portalantwort. Es wurden keine Daten übernommen."))
 }
 
 /// Trimmed string field with whitespace collapsed and HTML entities decoded.
@@ -186,9 +184,12 @@ fn day_parts(v: &Value) -> (Option<u32>, Option<u32>, Option<i32>) {
         _ => return (None, None, None),
     };
     if let Some(iso) = s.get(..10).filter(|p| p.as_bytes().get(4) == Some(&b'-')) {
-        if let Ok(d) = chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d") {
-            use chrono::Datelike;
-            return (Some(d.day()), Some(d.month()), Some(d.year()));
+        if let Ok(d) = jiff::civil::Date::strptime("%Y-%m-%d", iso) {
+            return (
+                Some(d.day() as u32),
+                Some(d.month() as u32),
+                Some(d.year().into()),
+            );
         }
     }
     let parts: Vec<&str> = s.split('.').map(str::trim).collect();
@@ -258,9 +259,9 @@ fn collect_bookings(
             let y = d_year.or(year).ok_or_else(invalid)?;
             let m = d_month.or(month).ok_or_else(invalid)?;
             let d = day.ok_or_else(invalid)?;
-            let date = chrono::NaiveDate::from_ymd_opt(y, m, d).ok_or_else(invalid)?;
+            let date = crate::dates::ymd(y, m, d).ok_or_else(invalid)?;
             out.push(Booking {
-                date: date.format("%Y-%m-%d").to_string(),
+                date: crate::dates::iso(date),
                 amount_cents: amount(&obj["amount"])?,
                 subject: text(v, "subject"),
             });
@@ -400,18 +401,19 @@ fn document_date(v: &Value) -> Option<String> {
         } else {
             n
         };
-        return chrono::DateTime::from_timestamp_millis(ms)
-            .map(|d| d.date_naive().format("%Y-%m-%d").to_string());
+        return jiff::Timestamp::from_millisecond(ms)
+            .ok()
+            .map(|t| crate::dates::iso(crate::dates::utc_date(t)));
     }
     let s = v.as_str()?.trim();
     if let Some(d) = s
         .get(..10)
-        .and_then(|p| chrono::NaiveDate::parse_from_str(p, "%Y-%m-%d").ok())
+        .and_then(|p| jiff::civil::Date::strptime("%Y-%m-%d", p).ok())
     {
-        return Some(d.format("%Y-%m-%d").to_string());
+        return Some(crate::dates::iso(d));
     }
     let (d, m, y) = day_parts(&Value::String(s.into()));
-    chrono::NaiveDate::from_ymd_opt(y?, m?, d?).map(|d| d.format("%Y-%m-%d").to_string())
+    crate::dates::ymd(y?, m?, d?).map(crate::dates::iso)
 }
 
 /// Account a postbox attachment belongs to: the contract the message names

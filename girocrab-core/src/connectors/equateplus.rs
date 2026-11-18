@@ -15,7 +15,7 @@ use std::{
 };
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput { message: tr("EquatePlus: Unvollständige oder nicht unterstützte Bestandsdaten. Es wurden keine Daten übernommen.").into() }
+    CoreError::invalid(tr("EquatePlus: Unvollständige oder nicht unterstützte Bestandsdaten. Es wurden keine Daten übernommen."))
 }
 fn label(v: &Value) -> Option<&str> {
     v.as_str()
@@ -356,7 +356,7 @@ fn snapshot(json: &str) -> CoreResult<FetchResult> {
         return Err(invalid());
     }
     let date = label(&v["date"]).ok_or_else(invalid)?;
-    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| invalid())?;
+    jiff::civil::Date::strptime("%Y-%m-%d", date).map_err(|_| invalid())?;
     let plans = v["plans"].as_array().ok_or_else(invalid)?;
     // An empty overview may also be an expired session; don't clear a depot.
     if plans.is_empty() {
@@ -636,7 +636,7 @@ fn document(v: &Value) -> Option<LibraryDocument> {
         return None;
     }
     let date = text("date")?.chars().take(10).collect::<String>();
-    chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?;
+    jiff::civil::Date::strptime("%Y-%m-%d", &date).ok()?;
     let document_type = text("documentType").unwrap_or_default();
     let title = text("description")
         .filter(|d| !d.is_empty())

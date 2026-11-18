@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use chrono::{Datelike, Local, NaiveDate};
+use jiff::civil::Date;
 use rusqlite::{params, OptionalExtension};
 
 use crate::connectors::read_body_limited;
@@ -30,9 +30,12 @@ fn last_months(n: u32) -> Vec<String> {
 
 /// `n` months ending `offset` months before the current one (0 = up to now), oldest first.
 fn last_months_ending(n: u32, offset: u32) -> Vec<String> {
-    let today = Local::now().date_naive();
+    let today = crate::dates::today();
     let back = offset as i32;
-    let (mut y, mut m) = (today.year() - back / 12, today.month() as i32 - back % 12);
+    let (mut y, mut m) = (
+        i32::from(today.year()) - back / 12,
+        i32::from(today.month()) - back % 12,
+    );
     if m <= 0 {
         m += 12;
         y -= 1;
@@ -167,7 +170,7 @@ impl Vault {
                     .push(b);
             }
         }
-        let today = Local::now().date_naive();
+        let today = crate::dates::today();
         let mut out_plans: Vec<SavingsPlan> = plans
             .into_values()
             .filter(|(_, v)| v.len() >= 2 || v.iter().any(|b| lower_contains(b, &["sparplan"])))
@@ -177,13 +180,15 @@ impl Vault {
                 for b in &v {
                     *per_month.entry(month_key(&b.booking_date)).or_default() += -b.amount_cents;
                 }
-                let last = NaiveDate::parse_from_str(&latest.booking_date, "%Y-%m-%d").ok();
+                let last = Date::strptime("%Y-%m-%d", &latest.booking_date).ok();
                 SavingsPlan {
                     merchant: m,
                     monthly_cents: -latest.amount_cents,
-                    day_of_month: last.map(|d| d.day()).unwrap_or(1),
+                    day_of_month: last.map_or(1, |d| d.day() as u32),
                     last_date: latest.booking_date.clone(),
-                    active: last.map(|d| (today - d).num_days() <= 40).unwrap_or(false),
+                    active: last
+                        .map(|d| crate::dates::days_between(d, today) <= 40)
+                        .unwrap_or(false),
                     total_invested_cents: v.iter().map(|b| -b.amount_cents).sum(),
                     executions: months_list
                         .iter()
@@ -192,7 +197,7 @@ impl Vault {
                             amount_cents: per_month.get(mk).copied().unwrap_or(0),
                         })
                         .collect(),
-                    run_days: vec![last.map(|d| d.day()).unwrap_or(1)],
+                    run_days: vec![last.map_or(1, |d| d.day() as u32)],
                 }
             })
             .collect();
@@ -241,7 +246,7 @@ impl Vault {
         let plans = plans_from_security_transactions(
             &transactions,
             &months_list,
-            Local::now().date_naive(),
+            crate::dates::today(),
             &currency,
         );
         let total_monthly = plans
@@ -870,7 +875,7 @@ impl Vault {
                 )
                 .optional()?;
             if let Some((bytes, fetched)) = row {
-                let fresh_negative = chrono::Utc::now().timestamp() - fetched < 7 * 86400;
+                let fresh_negative = jiff::Timestamp::now().as_second() - fetched < 7 * 86400;
                 match bytes {
                     Some(b) if good_logo(&b) => return Ok(Some(b)),
                     _ if fresh_negative => return Ok(None),
@@ -940,13 +945,13 @@ impl Vault {
 /// What a plan invests per month: the sum of the executions of its latest month, so two executions of
 /// 50 € a month are 100 €, not 50 €. A running month that has fewer executions than the one before
 /// (the plan has not run again yet) is not taken: its predecessor is.
-fn monthly_rate(executions: &[&SecurityTransaction], today: NaiveDate) -> (i64, Vec<u32>) {
+fn monthly_rate(executions: &[&SecurityTransaction], today: Date) -> (i64, Vec<u32>) {
     let mut per_month: BTreeMap<String, (i64, Vec<u32>)> = BTreeMap::new();
     for t in executions {
         let e = per_month.entry(month_key(&t.booking_date)).or_default();
         e.0 += t.value_cents.abs();
-        if let Ok(d) = NaiveDate::parse_from_str(&t.booking_date, "%Y-%m-%d") {
-            e.1.push(d.day());
+        if let Ok(d) = Date::strptime("%Y-%m-%d", &t.booking_date) {
+            e.1.push(d.day() as u32);
         }
     }
     for (_, days) in per_month.values_mut() {
@@ -958,7 +963,7 @@ fn monthly_rate(executions: &[&SecurityTransaction], today: NaiveDate) -> (i64, 
         return (0, Vec::new());
     };
     if let Some((_, (previous_sum, previous_days))) = newest.next() {
-        if *latest_month == today.format("%Y-%m").to_string()
+        if *latest_month == today.strftime("%Y-%m").to_string()
             && latest_days.len() < previous_days.len()
         {
             return (*previous_sum, previous_days.clone());
@@ -968,14 +973,9 @@ fn monthly_rate(executions: &[&SecurityTransaction], today: NaiveDate) -> (i64, 
 }
 
 /// Last day of a `YYYY-MM` month.
-fn last_day_of_month(month: &str) -> Option<NaiveDate> {
-    let first = NaiveDate::parse_from_str(&format!("{month}-01"), "%Y-%m-%d").ok()?;
-    let next = if first.month() == 12 {
-        NaiveDate::from_ymd_opt(first.year() + 1, 1, 1)?
-    } else {
-        NaiveDate::from_ymd_opt(first.year(), first.month() + 1, 1)?
-    };
-    next.pred_opt()
+fn last_day_of_month(month: &str) -> Option<Date> {
+    let first = Date::strptime("%Y-%m-%d", format!("{month}-01")).ok()?;
+    Some(first.last_of_month())
 }
 
 /// The text of a savings plan execution: "Sparplan ausgeführt" or the bank's event code
@@ -994,7 +994,7 @@ fn is_savings_plan_text(text: &str) -> bool {
 fn plans_from_security_transactions(
     transactions: &[SecurityTransaction],
     months_list: &[String],
-    today: NaiveDate,
+    today: Date,
     currency: &str,
 ) -> Vec<SavingsPlan> {
     let first_month = months_list.first().cloned().unwrap_or_default();
@@ -1038,14 +1038,16 @@ fn plans_from_security_transactions(
             for t in &v {
                 *per_month.entry(month_key(&t.booking_date)).or_default() += t.value_cents.abs();
             }
-            let last = NaiveDate::parse_from_str(&latest.booking_date, "%Y-%m-%d").ok();
+            let last = Date::strptime("%Y-%m-%d", &latest.booking_date).ok();
             let (monthly_cents, run_days) = monthly_rate(&v, today);
             SavingsPlan {
                 merchant,
                 monthly_cents,
-                day_of_month: last.map(|d| d.day()).unwrap_or(1),
+                day_of_month: last.map_or(1, |d| d.day() as u32),
                 last_date: latest.booking_date.clone(),
-                active: last.map(|d| (as_of - d).num_days() <= 40).unwrap_or(false),
+                active: last
+                    .map(|d| crate::dates::days_between(d, as_of) <= 40)
+                    .unwrap_or(false),
                 total_invested_cents: v.iter().map(|t| t.value_cents.abs()).sum(),
                 executions: months_list
                     .iter()
@@ -1088,7 +1090,7 @@ mod depot_plan_tests {
             .iter()
             .map(|m| m.to_string())
             .collect();
-        let today = NaiveDate::from_ymd_opt(2026, 11, 17).unwrap();
+        let today = jiff::civil::date(2026, 11, 17);
         let tx = vec![
             buy("2026-09-02", "IE1", "Alpha", 5000, "Sparplan ausgeführt"),
             buy("2026-11-02", "IE1", "Alpha", 7500, "Sparplan ausgeführt"),
@@ -1127,7 +1129,7 @@ mod depot_plan_tests {
             .iter()
             .map(|m| m.to_string())
             .collect();
-        let today = NaiveDate::from_ymd_opt(2026, 11, 17).unwrap();
+        let today = jiff::civil::date(2026, 11, 17);
         let usd = |mut t: SecurityTransaction| {
             t.currency = "USD".into();
             t
@@ -1169,7 +1171,7 @@ mod depot_plan_tests {
             .iter()
             .map(|m| m.to_string())
             .collect();
-        let today = NaiveDate::from_ymd_opt(2026, 11, 17).unwrap();
+        let today = jiff::civil::date(2026, 11, 17);
         let text = "Sparplan ausgeführt";
         let tx = vec![
             // twice a month, 50 € each: 100 € a month
@@ -1209,7 +1211,7 @@ mod depot_plan_tests {
         assert_eq!(days("Beta"), vec![3, 17]);
         assert_eq!(days("Gamma"), vec![10]);
         // the same running month, one execution fewer is no gap once the month is over
-        let december = NaiveDate::from_ymd_opt(2026, 12, 2).unwrap();
+        let december = jiff::civil::date(2026, 12, 2);
         let later = plans_from_security_transactions(&tx, &months, december, "EUR");
         assert_eq!(
             later
@@ -1236,7 +1238,7 @@ mod depot_plan_tests {
         );
         let text = "Sparplan ausgeführt";
         let months = ["2026-03", "2026-04", "2026-05"].map(String::from).to_vec();
-        let today = NaiveDate::from_ymd_opt(2026, 11, 17).unwrap();
+        let today = jiff::civil::date(2026, 11, 17);
         let tx = vec![
             buy("2026-04-10", "IE1", "Alpha", 5000, text),
             buy("2026-05-10", "IE1", "Alpha", 5000, text),
@@ -1252,13 +1254,10 @@ mod depot_plan_tests {
         assert_eq!(plans[0].total_invested_cents, 10000);
         // ran in May: on 31 May it was active, though today it would not be
         assert!(plans[0].active);
-        assert_eq!(
-            last_day_of_month("2026-02"),
-            NaiveDate::from_ymd_opt(2026, 2, 28)
-        );
+        assert_eq!(last_day_of_month("2026-02"), crate::dates::ymd(2026, 2, 28));
         assert_eq!(
             last_day_of_month("2026-12"),
-            NaiveDate::from_ymd_opt(2026, 12, 31)
+            crate::dates::ymd(2026, 12, 31)
         );
     }
 }

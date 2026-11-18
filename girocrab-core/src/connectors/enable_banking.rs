@@ -443,14 +443,16 @@ fn psu_type_for(list: &Value, name: &str) -> &'static str {
 
 /// Consent end to request: the bank's maximum (≤ 180 days) minus an hour of
 /// slack, else 90 days.
-fn consent_valid_until(now: chrono::DateTime<chrono::Utc>, max_secs: Option<i64>) -> String {
+fn consent_valid_until(now: jiff::Timestamp, max_secs: Option<i64>) -> String {
     let secs = match max_secs {
         Some(s) => s.min(MAX_CONSENT_SECS) - 3600,
         None => DEFAULT_CONSENT_DAYS * 86_400,
     }
     .max(3600);
     // Whole seconds and a "Z" suffix: some banks (Revolut) reject fractions.
-    (now + chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    (now + jiff::SignedDuration::from_secs(secs))
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 /// Revolut grants at most 90 days: never ask for more, whatever the list says.
@@ -700,14 +702,11 @@ impl EnableBankingConnector {
 
     /// RS256 JWT for the Enable Banking API from the user's own application.
     pub(crate) fn make_jwt_for(app_id: &str, private_key_pem: &str) -> CoreResult<String> {
-        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).map_err(|e| {
-            CoreError::InvalidInput {
-                message: format!("Enable Banking private key: {e}"),
-            }
-        })?;
+        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
+            .map_err(|e| CoreError::invalid(format!("Enable Banking private key: {e}")))?;
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(app_id.to_string());
-        let now = chrono::Utc::now().timestamp();
+        let now = jiff::Timestamp::now().as_second();
         encode(
             &header,
             &Claims {
@@ -718,9 +717,7 @@ impl EnableBankingConnector {
             },
             &key,
         )
-        .map_err(|e| CoreError::InvalidInput {
-            message: format!("JWT: {e}"),
-        })
+        .map_err(|e| CoreError::invalid(format!("JWT: {e}")))
     }
 
     /// Accounts of a session / account-details response. Accepts account
@@ -1148,14 +1145,13 @@ fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
                     .into(),
             });
         }
-        return code.ok_or_else(|| CoreError::InvalidInput {
-            message: tr("Kein „code“ in der eingefügten Adresse").into(),
-        });
+        return code
+            .ok_or_else(|| CoreError::invalid(tr("Kein „code“ in der eingefügten Adresse")));
     }
     if input.is_empty() {
-        return Err(CoreError::InvalidInput {
-            message: tr("Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden").into(),
-        });
+        return Err(CoreError::invalid(tr(
+            "Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden",
+        )));
     }
     Ok(input.to_string())
 }
@@ -1169,7 +1165,7 @@ impl BankConnector for EnableBankingConnector {
         if let Ok(st) = serde_json::from_value::<PsdState>(ctx.state.clone()) {
             self.st = st;
         }
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = jiff::Timestamp::now().to_string();
         if !self.st.session_id.is_empty() && self.st.valid_until > now {
             if self.card_mode() {
                 return Ok(Phase::Ready);
@@ -1238,7 +1234,7 @@ impl BankConnector for EnableBankingConnector {
             let body = if self.card_mode() {
                 // unchanged card request
                 json!({
-                    "access": {"valid_until": consent_valid_until(chrono::Utc::now(), None)},
+                    "access": {"valid_until": consent_valid_until(jiff::Timestamp::now(), None)},
                     "aspsp": {"name": name, "country": country},
                     "state": self.expected_state,
                     "redirect_url": ctx.setting("enablebanking.redirect_url")?,
@@ -1248,7 +1244,7 @@ impl BankConnector for EnableBankingConnector {
                 let max = effective_max_secs(name, max_consent_secs(&aspsp_list, name));
                 let mut body = json!({
                     "access": {
-                        "valid_until": consent_valid_until(chrono::Utc::now(), max),
+                        "valid_until": consent_valid_until(jiff::Timestamp::now(), max),
                         "balances": true,
                         "transactions": true,
                     },
@@ -1290,9 +1286,9 @@ impl BankConnector for EnableBankingConnector {
         if let Some(e) = last_err {
             return Err(e);
         }
-        let url = v["url"].as_str().ok_or_else(|| CoreError::Protocol {
-            message: "no consent URL".into(),
-        })?;
+        let url = v["url"]
+            .as_str()
+            .ok_or_else(|| CoreError::protocol("no consent URL"))?;
         Ok(Phase::Challenge(Challenge {
             kind: ChallengeKind::Redirect,
             title: if self.card_mode() {
@@ -1316,9 +1312,9 @@ impl BankConnector for EnableBankingConnector {
         response: ChallengeResponse,
     ) -> CoreResult<Phase> {
         let ChallengeResponse::Code(input) = response else {
-            return Err(CoreError::InvalidInput {
-                message: tr("Bitte die Weiterleitungsadresse einfügen").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Bitte die Weiterleitungsadresse einfügen",
+            )));
         };
         let code = extract_code(input.expose(), &self.expected_state)
             .map_err(|e| with_auth_diag(e, &self.auth_diag))?;
@@ -1523,9 +1519,7 @@ impl EnableBankingConnector {
             let mut n = 0u32;
             let mut pages = 0u32;
             // Card cycles span months: look back at least 180 days.
-            let floor = (chrono::Local::now().date_naive() - chrono::Duration::days(180))
-                .format("%Y-%m-%d")
-                .to_string();
+            let floor = crate::dates::iso(crate::dates::today() - crate::dates::days(180));
             let since = if ctx.since > floor {
                 floor
             } else {
@@ -2310,9 +2304,7 @@ mod tests {
 
     #[test]
     fn consent_length_follows_the_bank() {
-        let now = chrono::DateTime::parse_from_rfc3339("2026-11-11T00:00:00+00:00")
-            .unwrap()
-            .with_timezone(&chrono::Utc);
+        let now: jiff::Timestamp = "2026-11-11T00:00:00+00:00".parse().unwrap();
         let list = json!({"aspsps": [
             {"name": "C24", "country": "DE", "maximum_consent_validity": 15552000},
             {"name": "Long", "country": "DE", "maximum_consent_validity": 31536000}
@@ -2464,9 +2456,7 @@ mod tests {
 
     #[test]
     fn consent_valid_until_has_whole_seconds_and_z() {
-        let now = chrono::DateTime::parse_from_rfc3339("2026-11-11T00:00:00.123456789+00:00")
-            .unwrap()
-            .with_timezone(&chrono::Utc);
+        let now: jiff::Timestamp = "2026-11-11T00:00:00.123456789+00:00".parse().unwrap();
         for max in [None, Some(7_776_000), Some(31_536_000)] {
             let v = consent_valid_until(now, max);
             assert!(
