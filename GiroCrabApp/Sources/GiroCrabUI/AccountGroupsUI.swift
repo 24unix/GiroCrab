@@ -34,9 +34,11 @@ struct MoveStringDrop: DropDelegate {
 enum GroupDrag {
     static let accountPrefix = "girocrab-account:"
     static let groupPrefix = "girocrab-group:"
+    static let categoryPrefix = "girocrab-category:"
 
     static func account(_ id: Int64) -> String { accountPrefix + String(id) }
     static func group(_ uuid: String) -> String { groupPrefix + uuid }
+    static func category(_ id: Int64) -> String { categoryPrefix + String(id) }
 
     static func accountID(_ s: String) -> Int64? {
         s.hasPrefix(accountPrefix) ? Int64(s.dropFirst(accountPrefix.count)) : nil
@@ -44,6 +46,10 @@ enum GroupDrag {
 
     static func groupUUID(_ s: String) -> String? {
         s.hasPrefix(groupPrefix) ? String(s.dropFirst(groupPrefix.count)) : nil
+    }
+
+    static func categoryID(_ s: String) -> Int64? {
+        s.hasPrefix(categoryPrefix) ? Int64(s.dropFirst(categoryPrefix.count)) : nil
     }
 
     /// The string the drag in progress carries, so a drop target can tell
@@ -59,6 +65,9 @@ enum GroupDrag {
     /// The group the drag in progress carries (nil = an account), so a row
     /// knows where it shows the drop line. On iOS every drag counts as an account.
     static var draggedGroup: String? { draggedString.flatMap(groupUUID) }
+
+    /// The category the drag in progress carries (#977; macOS only, like `draggedString`).
+    static var draggedCategory: Int64? { draggedString.flatMap(categoryID) }
 
     /// The drop line above (`below` false) or below row `row` as an index for
     /// `moveAccount`, which counts without the moved account. `from` is the
@@ -168,7 +177,7 @@ struct UserGroupHeader: View {
     @Environment(AppModel.self) private var model
     /// Selected header: hierarchical styles so macOS can draw them light on the
     /// accent-coloured selection (fixed theme colours stay dark there).
-    private var selected: Bool { model.sidebarSelection == SidebarItem.userGroup(group.uuid) }
+    private var selected: Bool { model.sidebarRowSelection(for: .userGroup(group.uuid)).isSelected }
     let group: UserGroup
     var open: Bool = true
     var toggle: () -> Void = {}

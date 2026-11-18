@@ -57,7 +57,7 @@ public final class AppModel {
     var userGroups: [UserGroup] = []
     /// Lookups for booking rows (see `rebuildAccountIndex`).
     var accountsByID: [Int64: Account] = [:]
-    var accountMarkers: [Int64: AccountMarker] = [:]
+    var accountMarkers: [Int64: AccountMarker] = [:] { didSet { refreshAccountMarkerVisibility() } }
     /// Account notes (vault setting `account.note.<id>`), loaded with the account index.
     var accountNotes: [Int64: String] = [:]
     /// Custom label for „Ohne Kategorie“ (vault setting `ui.uncategorized_name`, #597); empty = default.
@@ -66,11 +66,19 @@ public final class AppModel {
     /// Live tags in list order with their booking counts (#228).
     var tags: [GiroCrabCore.Tag] = []
     var categoryTree: [CategoryNode] = []
-    var bookings: [Booking] = [] { didSet { rebuildBookingIndex(); loadListSuggestions() } }
+    var bookings: [Booking] = [] { didSet { rebuildBookingIndex(); loadListSuggestions(); refreshAccountMarkerVisibility() } }
+    /// Booking rows show which account they belong to (more than one account in the list).
+    /// Stored and set with the list instead of computed from `sidebarSelection`: every row reads
+    /// it, so a computed value made all visible rows re-run at the click, with the old bookings.
+    var showsAccountMarkers = false
     /// Derived from `bookings` once per reload instead of on every view access.
-    var dayGroups: [DayGroup] = [] { didSet { streamItems = StreamItem.flatten(dayGroups) } }
+    var dayGroups: [DayGroup] = [] {
+        didSet { (streamItems, streamSlots) = StreamItem.flatten(dayGroups) }
+    }
     /// `dayGroups` flattened into headers and rows for the lazy booking stream.
     private(set) var streamItems: [StreamItem] = []
+    /// Scroll targets of days and bookings in `streamItems` (read in actions, not observed).
+    @ObservationIgnored private(set) var streamSlots = StreamSlots()
     @ObservationIgnored var bookingIndexByID: [Booking.ID: Int] = [:]
     var page: BookingPage?
     /// Balance after each loaded booking and per loaded day (#577); empty unless
@@ -117,6 +125,12 @@ public final class AppModel {
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts {
         didSet {
+            mainColumn = MainColumn(sidebarSelection)
+            if oldValue != sidebarSelection {
+                oldValue.flatMap { sidebarRowSelections[$0] }?.isSelected = false
+                sidebarSelection.flatMap { sidebarRowSelections[$0] }?.isSelected = true
+                requestStreamTop()
+            }
             // Any other choice in the sidebar ends the merchant list (#495).
             if !appliesMerchantFocus { merchantFocus = nil; merchantFocusReturn = nil }
             listLimit = Self.defaultListLimit
@@ -129,6 +143,22 @@ public final class AppModel {
             reloadSelection(periodChanged: false)
         }
     }
+    /// The kind of view the booking column shows; follows `sidebarSelection`. The split view
+    /// and other window-level views read this instead of the selection: assigning an equal
+    /// value does not notify, so a switch between accounts or categories leaves them alone
+    /// (re-running them re-created and re-laid out every column of the window).
+    private(set) var mainColumn: MainColumn = .bookings
+    /// Per sidebar row: is it the selected one (`sidebarRowSelection(for:)`), kept in step by
+    /// `sidebarSelection`.
+    @ObservationIgnored var sidebarRowSelections: [SidebarItem: SidebarRowSelection] = [:]
+    /// `sidebarSelection` for code that must not observe it (a row's first lookup of its flag):
+    /// the macro's untracked backing store.
+    var untrackedSidebarSelection: SidebarItem? { _sidebarSelection }
+    /// Bumped when the booking stream should scroll back to its top for a new selection
+    /// (`requestStreamTop`).
+    var streamTopRequest = 0
+    /// A background selection load still has to bring the stream to the top when it publishes.
+    @ObservationIgnored var streamTopPending = false
     /// Set while a vault is adopted: `reloadAll()` follows at once, so the selection's own
     /// reload (the same queries again, on the main thread) is skipped.
     @ObservationIgnored var resetsSelectionBeforeReloadAll = false
@@ -159,7 +189,12 @@ public final class AppModel {
             reloadListInBackground()
         }
     }
-    var period: Period = .all { didSet { periodDidChange() } }
+    var period: Period = .all {
+        didSet {
+            if oldValue != period { requestStreamTop() }
+            periodDidChange()
+        }
+    }
     /// Start/end of the `.custom` period (ISO, inclusive); remembered across launches.
     var customPeriodFrom: String = UserDefaults.standard.string(forKey: "period.customFrom") ?? AppModel.defaultCustomPeriod.from
     var customPeriodTo: String = UserDefaults.standard.string(forKey: "period.customTo") ?? AppModel.defaultCustomPeriod.to

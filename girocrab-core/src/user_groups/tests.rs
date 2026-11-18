@@ -1461,3 +1461,12 @@ fn archived_state_syncs_and_newest_change_wins() {
     assert_eq!(archived(&c, "Giro"), None);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn account_color_hash_never_changes() {
+    // Every device must pick the same default colour for the same account.
+    assert_eq!(
+        crate::user_groups::account_color_hash("fints", "12345678", "user", "ACC-1"),
+        0x0f11_c659_fa84_e823
+    );
+}

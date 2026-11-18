@@ -184,7 +184,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa, .advanzia: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus, .ffb, .fordMoney, .opelDirektbank: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall, .equatePlus, .ffb, .fordMoney, .opelDirektbank, .finpension: return []
         }
     }
 
@@ -247,6 +247,7 @@ struct ConnectionEditSheet: View {
 
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
     @State private var importingStatement = false
+    @State private var importingFinpension = false
     @State private var confirmSwitch = false
     /// comdirect via FinTS: PostBox through the bank's API as well (#838).
     @State private var postbox = false
@@ -326,6 +327,22 @@ struct ConnectionEditSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             ForEach(advancedKeys, id: \.self) { key in field(key) }
                         }
+                    }
+                }
+                if connection.connector == .finpension {
+                    Section {
+                        Text("Finpension hat keine Schnittstelle: Laden Sie in Ihrem Finpension-Konto den Export (CSV oder JSON) mit Positionen und Cash-Buchungen herunter und lesen Sie ihn hier ein. Säule 3a, Freizügigkeit und 1e werden gleich behandelt. Es gibt keine Anmeldung und keinen Netzwerkzugriff.")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button { importingFinpension = true } label: { Label("Finpension-Export importieren …", systemImage: "doc.badge.plus") }
+                            .buttonStyle(.borderedProminent)
+                            .fileImporter(isPresented: $importingFinpension, allowedContentTypes: [.commaSeparatedText, .json, .plainText, .data]) { result in
+                                if case .success(let url) = result {
+                                    save()
+                                    model.importFinpension(connection, url: url)
+                                    dismiss()
+                                }
+                            }
                     }
                 }
                 if isPortal {

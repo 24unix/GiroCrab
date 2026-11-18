@@ -7,8 +7,9 @@ use std::collections::HashSet;
 use super::syntax::{escape, SegmentBuilder};
 use super::{fints_date, mt535, FinTsConnector, SepaAccount, UpdAccount, CONSORSBANK_BLZ, COUNTRY};
 use crate::connectors::{today, ConnectContext};
-use crate::error::CoreResult;
+use crate::error::{CoreError, CoreResult};
 use crate::i18n::trf;
+use crate::iban::normalize_iban;
 use crate::models::AccountKind;
 use crate::money::parse_cents;
 
@@ -49,10 +50,9 @@ pub(super) fn merge_upd_with_sepa(
     let mut out: Vec<(SepaAccount, Option<UpdAccount>)> = Vec::new();
     for u in upd {
         // Only accounts of this bank with at least one usable transaction
-        let usable = u.allowed.is_empty()
-            || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU", "DKKKU"]
-                .iter()
-                .any(|t| u.allowed.contains(*t));
+        let usable = ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU", "DKKKU"]
+            .iter()
+            .any(|t| u.allows(t));
         if crate::depot_debug::enabled() {
             let mut allowed: Vec<&str> = u.allowed.iter().map(String::as_str).collect();
             allowed.sort_unstable();
@@ -160,6 +160,34 @@ impl FinTsConnector {
             }
         }
         merge_upd_with_sepa(&self.upd, sepa, &self.blz)
+    }
+
+    /// The order's source account from the bank's account list. `None` when the
+    /// UPD does not allow `seg_id` for it; the caller words that refusal.
+    pub(super) async fn source_account(
+        &mut self,
+        ctx: &ConnectContext,
+        iban: &str,
+        seg_id: &str,
+    ) -> CoreResult<Option<SepaAccount>> {
+        let mut errors = Vec::new();
+        let accounts = self.account_list(ctx, &mut errors).await;
+        let want = normalize_iban(iban);
+        let Some((acc, upd)) = accounts
+            .into_iter()
+            .find(|(a, _)| normalize_iban(&a.iban) == want)
+        else {
+            // A failed HKSPA is the likely reason the account is missing.
+            let reason = if errors.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", errors.join(" / "))
+            };
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0} bei der Bank{1}", &[&iban, &reason]),
+            });
+        };
+        Ok(upd.is_none_or(|u| u.allows(seg_id)).then_some(acc))
     }
 
     pub(super) async fn balance(

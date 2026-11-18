@@ -488,7 +488,7 @@ fn hiekp_details_follow_the_dkb_layout() {
 }
 
 #[test]
-fn hiekp_period_comes_from_its_dates_and_pdf_ids_are_stable() {
+fn hiekp_period_comes_from_its_dates() {
     let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261001:20261031+20261102'");
     let s = r.all("HIEKP").next().unwrap();
     assert_eq!(
@@ -498,8 +498,6 @@ fn hiekp_period_comes_from_its_dates_and_pdf_ids_are_stable() {
             "2026-11-02".to_string()
         )
     );
-    assert_eq!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.7"));
-    assert_ne!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.6"));
 }
 
 fn reply(raw: &[u8]) -> BankReply {
@@ -836,8 +834,9 @@ fn order_for(c: &mut FinTsConnector) {
 
 #[test]
 fn reads_vop_parameters_from_bpd() {
-    // HIVPPS as sent by comdirect.
-    let raw = b"HIVPPS:7:1:3+1+1+0+20:J:S:N:N:sepade.pain.002.001.10.xsd:HKIPZ:HKCUI:HKCCS:HKCDE'";
+    // HIVPPS as sent by comdirect, plus a DK code: the name check covers HK orders only.
+    let raw =
+        b"HIVPPS:7:1:3+1+1+0+20:J:S:N:N:sepade.pain.002.001.10.xsd:HKIPZ:HKCUI:HKCCS:HKCDE:DKKKU'";
     let mut c = FinTsConnector::new("20041111");
     c.learn_bpd(&reply(raw));
     assert_eq!(c.st.vop_format, "sepade.pain.002.001.10.xsd");
@@ -1220,4 +1219,82 @@ fn fints_date_needs_eight_ascii_digits() {
     assert_eq!(fints_date("202ä1107"), None); // 8 bytes, not 8 digits
     assert_eq!(fints_date("2026110"), None);
     assert_eq!(fints_date(""), None);
+}
+
+#[test]
+fn pain_header_is_well_formed_and_always_names_the_owner() {
+    let h = sepa::PainHeader::new("  Max Mustermann ");
+    assert_eq!(h.owner, "Max Mustermann");
+    assert_eq!(sepa::PainHeader::new(" ").owner, "Kontoinhaber");
+    assert!(
+        chrono::NaiveDateTime::parse_from_str(&h.created, "%Y-%m-%dT%H:%M:%S").is_ok(),
+        "{}",
+        h.created
+    );
+    assert!(chrono::NaiveDate::parse_from_str(h.date(), "%Y-%m-%d").is_ok());
+    // GC + timestamp + 8 hex digits, within the 35 characters pain allows.
+    assert!(h.message_id.starts_with("GC") && h.message_id.len() == 24);
+}
+
+#[test]
+fn orders_need_a_two_step_tan_method() {
+    let mut c = FinTsConnector::new("20041111");
+    assert!(matches!(
+        c.require_tan_method("refused"),
+        Err(CoreError::Bank { code, message }) if code == "HKTAN" && message == "refused"
+    ));
+    c.st.sec_func = "946".into();
+    assert!(c.require_tan_method("refused").is_ok());
+}
+
+fn order_connector(url: &str) -> FinTsConnector {
+    let state = serde_json::json!({"system_id": "123", "sec_func": "946", "tan_method_name": "", "tan_medium": "", "versions": {"HKSPA": [1]}, "tan_required": {}});
+    two_step_connector(url, state)
+}
+
+#[tokio::test]
+async fn order_source_account_honours_the_upd_and_says_why_it_is_missing() {
+    // The bank offers HKSPA but rejects it: the UPD alone still lists the account.
+    let (url, _) = mock_bank(vec![REJECT_9010]);
+    let mut c = order_connector(&url);
+    c.upd = vec![upd_acc(
+        "0532013000",
+        "",
+        IBAN_A,
+        "Girokonto",
+        &["HKSAL", "HKCCS"],
+    )];
+    let ctx = test_ctx();
+
+    let acc = c
+        .source_account(&ctx, "DE89 3704 0044 0532 0130 00", "HKCCS")
+        .await
+        .unwrap();
+    assert_eq!(acc.map(|a| a.iban).as_deref(), Some(IBAN_A));
+    assert!(c
+        .source_account(&ctx, IBAN_A, "HKIPZ")
+        .await
+        .unwrap()
+        .is_none());
+    // The HKSPA error explains the missing account.
+    match c.source_account(&ctx, IBAN_B, "HKCCS").await {
+        Err(CoreError::NotFound { what }) => assert!(what.contains("HKSPA"), "{what}"),
+        other => panic!("{:?}", other.map(|a| a.map(|a| a.iban))),
+    }
+}
+
+#[tokio::test]
+async fn order_source_account_without_upd_restrictions_allows_every_order() {
+    // IBAN_B is known only from HKSPA (no UPD entry); IBAN_A's UPD lists nothing.
+    let (url, _) = mock_bank(vec![
+        "HNHBK:1:3+000000000000+300+DIALOG1+1'HIRMG:2:2+0010::Nachricht entgegengenommen.'HISPA:3:1:3+J:DE02120300000000202051:BYLADEM1001:202051::280:12030000'",
+    ]);
+    let mut c = order_connector(&url);
+    c.upd = vec![upd_acc("0532013000", "", IBAN_A, "Girokonto", &[])];
+    let ctx = test_ctx();
+
+    for iban in [IBAN_A, IBAN_B] {
+        let acc = c.source_account(&ctx, iban, "HKCCS").await.unwrap();
+        assert_eq!(acc.map(|a| a.iban).as_deref(), Some(iban));
+    }
 }

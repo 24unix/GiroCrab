@@ -903,7 +903,11 @@ extension AppModel {
     }
 
     /// Markers only where the list mixes bookings of several accounts.
-    var showsAccountMarkers: Bool {
+    func refreshAccountMarkerVisibility() {
+        showsAccountMarkers = listShowsSeveralAccounts // equal values do not notify
+    }
+
+    private var listShowsSeveralAccounts: Bool {
         switch sidebarSelection {
         case .account: false
         case .group(let id): (groups.first { $0.id == id }?.accounts.count ?? 0) > 1
