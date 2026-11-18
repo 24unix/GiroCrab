@@ -92,7 +92,7 @@ impl Vault {
     /// Merges another device's sync snapshot using this vault's own key
     /// (see [`merge_other_vault`](Self::merge_other_vault)).
     pub fn merge_peer_snapshot(&self, other_path: String) -> Result<MergeStats, CoreError> {
-        let key = self.kept_key()?.to_vec();
+        let key = self.kept_key().to_vec();
         self.merge_other_vault(other_path, key)
     }
 

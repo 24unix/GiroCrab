@@ -14,7 +14,7 @@
 use std::ops::{Deref, DerefMut};
 use std::panic::Location;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use rusqlite::{params, Connection};
@@ -282,9 +282,10 @@ impl Vault {
     pub(crate) fn db(&self) -> CoreResult<DbGuard<'_>> {
         let caller = Location::caller();
         let asked = Instant::now();
-        let conn = self.conn.lock().map_err(|_| CoreError::Database {
-            message: "vault lock poisoned".into(),
-        })?;
+        let conn = match self.conn.lock() {
+            Ok(conn) => conn,
+            Err(poisoned) => self.recover_poisoned(poisoned.into_inner())?,
+        };
         let waited = asked.elapsed();
         if cfg!(debug_assertions) && waited > SLOW_LOCK {
             eprintln!(
@@ -301,10 +302,35 @@ impl Vault {
         })
     }
 
-    fn kept_key(&self) -> CoreResult<MutexGuard<'_, Zeroizing<Vec<u8>>>> {
-        self.key.lock().map_err(|_| CoreError::Database {
-            message: "vault key lock poisoned".into(),
-        })
+    /// A panic while a `DbGuard` was held poisons the mutex, which would fail
+    /// every later call until restart. The connection itself is still usable,
+    /// but the panicking call may have left a transaction open or a database
+    /// attached (merge, snapshot): undo both, then lift the poison. If that
+    /// fails the mutex stays poisoned, so the next call tries again.
+    #[cold]
+    fn recover_poisoned<'a>(
+        &'a self,
+        conn: MutexGuard<'a, Connection>,
+    ) -> CoreResult<MutexGuard<'a, Connection>> {
+        if !conn.is_autocommit() {
+            conn.execute_batch("ROLLBACK")?;
+        }
+        let attached: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_database_list WHERE name NOT IN ('main', 'temp')")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for name in attached {
+            conn.execute("DETACH DATABASE ?1", [name])?;
+        }
+        self.conn.clear_poison();
+        eprintln!("vault: recovered the connection after a panic");
+        Ok(conn)
+    }
+
+    /// The key is only ever replaced as a whole, so a panic while it was
+    /// locked can't leave it half-written: ignore the poison.
+    fn kept_key(&self) -> MutexGuard<'_, Zeroizing<Vec<u8>>> {
+        self.key.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub(crate) fn apply_key(conn: &Connection, key: &[u8]) -> CoreResult<()> {
@@ -411,7 +437,7 @@ impl Vault {
         let key = Zeroizing::new(key);
         // Default (SQLCipher 4 settings) first; if the key check fails, retry with
         // explicit compatibility modes for vaults written by older SQLCipher builds.
-        // The cipher_compatibility pragma must be issued before the key.
+        // SQLCipher wants cipher_compatibility after the key, so it is set second.
         let mut tried: Vec<&str> = Vec::new();
         let mut opened: Option<Connection> = None;
         let mut first_err: Option<CoreError> = None;
@@ -496,7 +522,7 @@ impl Vault {
         }
         let pragma = Zeroizing::new(format!("PRAGMA rekey = \"x'{}'\";", hex::encode(&*key)));
         self.db()?.execute_batch(&pragma)?;
-        *self.kept_key()? = key;
+        *self.kept_key() = key;
         Ok(())
     }
 
@@ -504,7 +530,7 @@ impl Vault {
     /// (replacing it), for the sync folder. Runs under the connection lock,
     /// so concurrent writes never end up half in the copy.
     pub fn write_snapshot(&self, dest_path: String) -> Result<(), CoreError> {
-        let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&**self.kept_key()?)));
+        let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&**self.kept_key())));
         self.export_to(&dest_path, &raw_key)
     }
 
@@ -689,5 +715,54 @@ mod index_tests {
         assert_eq!(old, 0);
         drop(db);
         let _ = std::fs::remove_file(path);
+    }
+}
+
+#[cfg(test)]
+mod poison_tests {
+    use super::*;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    /// A panic inside an open transaction with a database attached neither
+    /// locks the vault for good nor leaves the transaction or the attachment
+    /// behind.
+    #[test]
+    fn panic_under_the_lock_rolls_back_and_recovers() {
+        let dir = crate::test_support::TempDir::new("gc-poison");
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![5u8; 32]).unwrap();
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            let db = v.db().unwrap();
+            db.execute_batch(
+                "ATTACH DATABASE ':memory:' AS other KEY '';
+                 BEGIN; INSERT INTO account_groups(name) VALUES ('G');",
+            )
+            .unwrap();
+            panic!("panic inside a transaction");
+        }));
+        assert!(res.is_err());
+        assert!(v.conn.is_poisoned());
+
+        let db = v.db().unwrap();
+        assert!(db.is_autocommit());
+        let groups: i64 = db
+            .query_row("SELECT count(*) FROM account_groups", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(groups, 0);
+        db.execute_batch("ATTACH DATABASE ':memory:' AS other KEY ''")
+            .unwrap();
+        drop(db);
+        assert!(!v.conn.is_poisoned());
+    }
+
+    #[test]
+    fn panic_under_the_key_lock_keeps_the_key() {
+        let dir = crate::test_support::TempDir::new("gc-poison-key");
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![6u8; 32]).unwrap();
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            let _key = v.kept_key();
+            panic!("panic while holding the key");
+        }));
+        assert!(res.is_err());
+        assert_eq!(**v.kept_key(), [6u8; 32]);
     }
 }
