@@ -56,6 +56,17 @@ struct TwoFactorSheet: View {
                         Text(active.waiting ? "Warte auf Freigabe …" : "Push-Nachricht gesendet")
                             .appFont(.callout).foregroundStyle(.secondary)
                     }
+                    if c.methodName == "Online-Archiv · Consorsbank App" {
+                        // as on the bank's page: the SecurePlus generator instead of the app (#1024)
+                        Button("Manuell mit TAN bestätigen") { model.switchApproval("TAN") }
+                            #if os(macOS)
+                            .buttonStyle(.link)
+                            #else
+                            .buttonStyle(.plain)
+                            #endif
+                            .appFont(.callout)
+                            .disabled(active.busy)
+                    }
                 case .progress:
                     // approval given, a longer download runs (comdirect PostBox, #838)
                     Image(systemName: "tray.and.arrow.down")
@@ -88,6 +99,16 @@ struct TwoFactorSheet: View {
                         .textContentType(.oneTimeCode)
                         #endif
                         .onSubmit(submit)
+                    if c.methodName == "Online-Archiv · TAN" {
+                        Button("Mit Consorsbank App bestätigen") { model.switchApproval("APP") }
+                            #if os(macOS)
+                            .buttonStyle(.link)
+                            #else
+                            .buttonStyle(.plain)
+                            #endif
+                            .appFont(.callout)
+                            .disabled(active.busy)
+                    }
                     if active.connection.connector == .tradeRepublic && c.kind == .code {
                         // HIG: belongs to the code field, not to the dialog's
                         // button row (which keeps at most three buttons)

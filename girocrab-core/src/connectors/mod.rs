@@ -23,6 +23,7 @@ pub mod broker_documents;
 pub mod bunq;
 pub mod comdirect;
 pub(crate) mod comdirect_postbox;
+pub(crate) mod consorsbank_archive;
 pub mod demo;
 pub mod dpop;
 pub mod easybank;
