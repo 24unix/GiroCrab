@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use crate::connectors::fints::pain008::{
     build_pain008, Collection, DebitVersion, Pain008, SequenceType,
 };
+use crate::connectors::fints::sepa::PainHeader;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::vault::Vault;
@@ -196,18 +197,16 @@ impl Vault {
         collection_date: String,
     ) -> Result<Vec<DebitFile>, CoreError> {
         let plan = self.plan_collection(account_id, &items, &collection_date)?;
-        let now = chrono::Local::now();
-        let created = now.format("%Y-%m-%dT%H:%M:%S").to_string();
-        let stamp = now.format("%Y%m%d%H%M%S").to_string();
+        let header = PainHeader::new(&plan.creditor_name);
         let mut files = Vec::new();
         for (n, g) in plan.groups.iter().enumerate() {
             let collections: Vec<Collection> = g.rows.iter().map(|(_, c)| c.clone()).collect();
-            let message_id = format!("GC{stamp}-{}", n + 1);
+            let message_id = format!("{}-{}", header.message_id, n + 1);
             let xml = build_pain008(&Pain008 {
                 message_id: &message_id,
-                created: &created,
+                created: &header.created,
                 collection_date: &collection_date,
-                creditor_name: &plan.creditor_name,
+                creditor_name: header.owner,
                 creditor_iban: &plan.creditor_iban,
                 creditor_bic: "",
                 creditor_id: &plan.creditor_id,

@@ -397,7 +397,7 @@ impl RemoteTransaction {
     pub fn content_id(&self, occurrence: u32) -> String {
         format!(
             "{CONTENT_ID_PREFIX}{:016x}",
-            fnv1a64(&format!("{}\u{1f}{occurrence}", self.content_key()))
+            crate::fnv::fnv1a64(format!("{}\u{1f}{occurrence}", self.content_key()))
         )
     }
 }
@@ -406,16 +406,6 @@ impl RemoteTransaction {
 /// (`h` + 16 hex digits, `DefaultHasher`) are adopted on the next sync, see
 /// [`adopt_legacy_content_id`].
 pub(crate) const CONTENT_ID_PREFIX: char = 'c';
-
-/// FNV-1a 64-bit hash.
-pub(crate) fn fnv1a64(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(0x0100_0000_01b3);
-    }
-    h
-}
 
 /// Hands out content ids, counting occurrences per identical content (not
 /// per list position): the ids stay the same when the fetch window moves or

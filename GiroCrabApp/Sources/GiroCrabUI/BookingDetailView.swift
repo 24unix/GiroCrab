@@ -27,14 +27,12 @@ struct InspectorView: View {
             }
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if model.sidebarSelection == .planned {
+                if model.mainColumn == .planned {
                     PlannedInspector()
-                } else if model.sidebarSelection == .directDebits {
+                } else if model.mainColumn == .directDebits {
                     MandateInspector()
                 } else {
-                if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
-                    LoanProgressCard(account: a)
-                }
+                SelectedLoanCard()
                 if model.isMultiSelection {
                     MultiSelectionCard()
                 } else if let b = model.selectedBooking {
@@ -65,8 +63,20 @@ struct InspectorView: View {
 
     /// The single-booking cards are shown, so their layout can be edited.
     private var showsBookingCards: Bool {
-        model.sidebarSelection != .planned && model.sidebarSelection != .directDebits
+        model.mainColumn != .planned && model.mainColumn != .directDebits
             && !model.isMultiSelection && model.selectedBooking != nil
+    }
+}
+
+/// The loan's progress above the booking cards while a loan account is selected. A view of its
+/// own so that only it follows the sidebar selection, not the whole inspector.
+private struct SelectedLoanCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
+            LoanProgressCard(account: a)
+        }
     }
 }
 
@@ -224,12 +234,26 @@ struct NoteCard: View {
     @Environment(AppModel.self) private var model
     let booking: Booking
     @State private var draft = ""
+    /// The booking `draft` was started from. The inspector reuses the card for the next selected
+    /// booking (no `.id`: rebuilding the text editor on every selection was a large part of the
+    /// inspector's update), so a save that runs after the switch (focus loss from the click in
+    /// the list) must still go to this booking, never to the new one.
+    @State private var draftBooking: Booking?
+    /// The text last stored for `draftBooking`: a second save of the same text (focus loss, then
+    /// the switch) writes nothing.
+    @State private var savedText: String?
+    /// Identity of the text editor. It stays across bookings, except after typing: the editor's
+    /// undo history then holds the previous booking's edits, and ⌘Z in the next booking's note
+    /// would bring that text back (and the next save store it there). A new editor drops it.
+    @State private var editorID = 0
+    @State private var typed = false
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Notiz", systemImage: "note.text").appFont(.subheadline, weight: .semibold).foregroundStyle(Theme.text)
             TextEditor(text: $draft)
+                .id(editorID)
                 .appFont(.callout)
                 .frame(minHeight: 54, maxHeight: 120)
                 .sensitive()
@@ -245,10 +269,31 @@ struct NoteCard: View {
                 }
         }
         .card()
-        .onAppear { draft = booking.note; claimFocus() }
+        .onAppear { start(booking); claimFocus() }
         .onDisappear { save() }
-        .onChange(of: booking.note) { _, n in if !focused { draft = n } }
+        .onChange(of: draft) { if focused { typed = true } }
+        .onChange(of: booking.id) {
+            // what was typed for the previous booking is stored first; then the editor is left,
+            // as with a new card, unless the new booking asked for it
+            save()
+            start(booking)
+            focused = false
+            if typed {
+                typed = false
+                editorID &+= 1
+            }
+            claimFocus()
+        }
+        .onChange(of: booking.note) {
+            if !focused, draftBooking?.id == booking.id { start(booking) }
+        }
         .onChange(of: model.pendingNoteFocus) { _, _ in claimFocus() }
+    }
+
+    private func start(_ b: Booking) {
+        draft = b.note
+        draftBooking = b
+        savedText = nil
     }
 
     /// Takes the focus requested by a double-click / Return in the list for this booking.
@@ -260,7 +305,11 @@ struct NoteCard: View {
     }
 
     private func save() {
-        if draft.trimmingCharacters(in: .whitespacesAndNewlines) != booking.note { model.updateNote(draft, for: booking) }
+        guard let b = draftBooking else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text != (savedText ?? b.note) else { return }
+        model.updateNote(draft, for: b)
+        savedText = text
     }
 }
 

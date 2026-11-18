@@ -72,10 +72,12 @@ pub(crate) const USER_AGENT: &str = concat!(
 
 pub(crate) const BROWSER_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 
-/// Client builder with [`USER_AGENT`] and a timeout for the whole request.
+/// Client builder with [`USER_AGENT`], a 15 s connection timeout and a separate
+/// timeout for the whole request.
 pub(crate) fn client_builder(timeout: Duration) -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
+        .connect_timeout(Duration::from_secs(15))
         .timeout(timeout)
 }
 

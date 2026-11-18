@@ -168,6 +168,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "opel direktbank opelbank opel-direktbank stellantis tagesgeld festgeld",
         ),
         (
+            ConnectorKind::Finpension,
+            "Finpension",
+            "finpension saeule 3a säule 3a freizuegigkeit freizügigkeit 1e schweiz vorsorge",
+        ),
+        (
             ConnectorKind::Ffb,
             "FFB (FIL Fondsbank)",
             "ffb fil fondsbank fidelity fondsdepot fonds vl sparplan",

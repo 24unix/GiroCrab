@@ -20,6 +20,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::portal_import::{parse_date, split_csv};
 use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
+use crate::fnv::fnv1a64;
 use crate::i18n::{tr, trf};
 use crate::iban::{normalize_iban, validate_iban};
 use crate::merchants::{FlowKind, MerchantResolver};
@@ -71,12 +72,7 @@ pub fn fingerprint(date: &str, cents: i64, iban: &str, name: &str, purpose: &str
         norm(iban)
     };
     let key = format!("{date}|{cents}|{who}|{}", norm(purpose));
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in key.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    format!("{h:016x}")
+    format!("{:016x}", fnv1a64(key))
 }
 
 impl MmRow {
@@ -1391,6 +1387,15 @@ impl Vault {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fingerprint_never_changes() {
+        // Stored import keys are built from it.
+        assert_eq!(
+            super::fingerprint("2026-11-01", -350, "", "Bäckerei Müller", "Einkauf"),
+            "79b1d135e9d7e169"
+        );
+    }
+
     use super::*;
     use std::sync::Arc;
 

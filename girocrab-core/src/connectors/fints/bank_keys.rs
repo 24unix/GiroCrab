@@ -248,6 +248,61 @@ fn request(blz: &str, product: &str, version: &str) -> Vec<u8> {
     )
 }
 
+/// RetVal.ref is a DE position or a DEG/component pair, up to `999,999`.
+/// Do not forward arbitrary text from this unauthenticated AN field.
+fn field_reference(raw: &str) -> Option<String> {
+    if raw.is_empty() || raw.len() > 7 {
+        return None;
+    }
+    let positions: Option<Vec<_>> = raw
+        .split(',')
+        .map(|part| {
+            if part.is_empty() || part.len() > 3 || !part.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            part.parse::<u16>().ok().filter(|n| *n > 0)
+        })
+        .collect();
+    let positions = positions.filter(|p| p.len() <= 2)?;
+    Some(
+        positions
+            .iter()
+            .map(u16::to_string)
+            .collect::<Vec<_>>()
+            .join(","),
+    )
+}
+
+fn rejection_location(segment: &syntax::Segment, feedback: &[Value]) -> String {
+    let location = match segment.reference().filter(|n| (1..=999).contains(n)) {
+        Some(number) => {
+            // Segment numbers of request(); never use a bank-supplied name.
+            let name = match number {
+                1 => "HNHBK",
+                2 => "HKIDN",
+                3 => "HKVVB",
+                4 => "HKISA/V",
+                5 => "HKISA/S",
+                6 => "HNHBS",
+                _ => "nicht zugeordnet",
+            };
+            format!("Segment {number} ({name})")
+        }
+        None if !segment.get(0, 3).is_empty() => "Segmentbezug ungültig".into(),
+        None if segment.id() == "HIRMG" => "Nachricht, kein Segmentbezug".into(),
+        None => "Segmentbezug fehlt".into(),
+    };
+    let field = feedback.get(1).map(Value::text).unwrap_or_default();
+    let field = if field.is_empty() {
+        "kein Feldbezug".into()
+    } else if let Some(position) = field_reference(field) {
+        format!("Feld {position}")
+    } else {
+        "Feldbezug ungültig".into()
+    };
+    format!("{location}, {field}")
+}
+
 fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankKeyCandidate>)> {
     let segments = syntax::parse(raw)?;
     let head = segments
@@ -264,20 +319,61 @@ fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankK
             "Ungültige Nachrichtenhülle beim Bankschlüsselabruf.",
         ));
     }
-    // Unauthenticated error text is not forwarded; never accept accounts or keys on error.
-    if segments
+    // Only numeric codes and positions are displayed, never response texts,
+    // parameters or field contents. All diagnostics remain unauthenticated.
+    let mut rejected = false;
+    let mut codes = std::collections::BTreeSet::new();
+    let mut locations = std::collections::BTreeSet::new();
+    let mut truncated = false;
+    for segment in segments
         .iter()
         .filter(|s| matches!(s.id(), "HIRMG" | "HIRMS"))
-        .any(|s| {
-            s.elements
-                .iter()
-                .skip(1)
-                .any(|e| e.first().is_some_and(|v| v.text().starts_with('9')))
-        })
     {
-        return Err(CoreError::invalid(
-            "Der Bankschlüsselabruf wurde abgelehnt. Die Antwort ist noch nicht authentifiziert.",
-        ));
+        for feedback in segment.elements.iter().skip(1) {
+            let Some(code) = feedback.first().map(Value::text) else {
+                continue;
+            };
+            if !code.starts_with('9') {
+                continue;
+            }
+            rejected = true;
+            if code.len() != 4 || !code.bytes().all(|b| b.is_ascii_digit()) {
+                continue;
+            }
+            codes.insert(code);
+            let location = format!("{code}: {}", rejection_location(segment, feedback));
+            if locations.len() < 16 {
+                locations.insert(location);
+            } else if !locations.contains(&location) {
+                truncated = true;
+            }
+        }
+    }
+    if rejected {
+        let detail = if codes.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " (unbestätigte FinTS-Rückmeldecodes: {})",
+                codes.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        };
+        let references = if locations.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " Bezüge: {}{}.",
+                locations.into_iter().collect::<Vec<_>>().join("; "),
+                if truncated {
+                    "; weitere Bezüge ausgeblendet"
+                } else {
+                    ""
+                }
+            )
+        };
+        return Err(CoreError::invalid(format!(
+            "Der Bankschlüsselabruf wurde abgelehnt{detail}.{references} Die Antwort ist noch nicht authentifiziert."
+        )));
     }
     let mut result = Vec::new();
     for segment in segments.iter().filter(|s| s.id() == "HIISA") {
