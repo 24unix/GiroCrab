@@ -171,9 +171,7 @@ impl Vault {
 fn check_date(label: &str, d: &str) -> CoreResult<()> {
     chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
         .map(|_| ())
-        .map_err(|_| CoreError::InvalidInput {
-            message: format!("{label}: {d}"),
-        })
+        .map_err(|_| CoreError::invalid(format!("{label}: {d}")))
 }
 
 #[uniffi::export]

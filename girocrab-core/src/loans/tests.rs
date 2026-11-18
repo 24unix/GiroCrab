@@ -373,6 +373,32 @@ fn merge_takes_over_manual_loans_and_hand_made_links() {
     let _ = std::fs::remove_file(pb);
 }
 
+/// A manual loan turned into a cash account is valued by its opening balance
+/// and bookings from then on; turned back, it is a loan again.
+#[test]
+fn loan_changed_to_cash_is_an_ordinary_account_until_changed_back() {
+    let (v, p) = temp_vault();
+    seed(&v);
+    let loan = v
+        .create_manual_loan(setup("2026-08-01", 8_400_00, None, "Autobank"))
+        .unwrap();
+    assert_eq!(balance(&v, loan).0, -7_800_00);
+
+    v.set_account_kind(loan, AccountKind::Cash).unwrap();
+    assert_eq!(balance(&v, loan).0, 0);
+    assert!(v.list_manual_loans().unwrap().is_empty());
+    v.set_account_opening_balance(loan, Some(100_00), String::new())
+        .unwrap();
+    apply_loan_rules(&v.db().unwrap()).unwrap();
+    assert_eq!(balance(&v, loan).0, 100_00);
+
+    v.set_account_kind(loan, AccountKind::Loan).unwrap();
+    assert_eq!(balance(&v, loan).0, -7_800_00);
+    assert_eq!(v.list_manual_loans().unwrap().len(), 1);
+    drop(v);
+    let _ = std::fs::remove_file(p);
+}
+
 #[test]
 fn vault_without_loan_tables_is_migrated() {
     let (v, p) = temp_vault();

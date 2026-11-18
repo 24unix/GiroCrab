@@ -58,12 +58,10 @@ Kvxz6iV4YsGyYNyCKfR7qyY6G1keFNSX0SJUzTowCLIOJ6I/GGgRvcSDmzzMFmtu
 /// The portal no longer answers as expected: most likely a new fin4u release
 /// changed the interface.
 fn interface_changed(what: &str) -> CoreError {
-    CoreError::Protocol {
-        message: trf(
-            "fin4u hat unerwartet geantwortet ({0}). Wahrscheinlich wurde die Portal-Schnittstelle geändert; bitte GiroCrab aktualisieren.",
-            &[&what],
-        ),
-    }
+    CoreError::protocol(trf(
+        "fin4u hat unerwartet geantwortet ({0}). Wahrscheinlich wurde die Portal-Schnittstelle geändert; bitte GiroCrab aktualisieren.",
+        &[&what],
+    ))
 }
 
 /// Login failures that are no credential problem: the Keycloak client or
@@ -110,9 +108,9 @@ async fn login(client: &reqwest::Client, username: &str, password: &str) -> Core
         });
     }
     if v["access_token"].as_str().unwrap_or_default().is_empty() {
-        return Err(CoreError::Protocol {
-            message: tr("fin4u hat kein Zugriffstoken geliefert").into(),
-        });
+        return Err(CoreError::protocol(tr(
+            "fin4u hat kein Zugriffstoken geliefert",
+        )));
     }
     Ok(v)
 }
@@ -122,11 +120,8 @@ async fn login(client: &reqwest::Client, username: &str, password: &str) -> Core
 pub(crate) fn encrypt_password(password: &str) -> CoreResult<String> {
     use base64::Engine;
     use rsa::pkcs8::DecodePublicKey;
-    let key = rsa::PublicKey::from_public_key_pem(PASSWORD_PUBLIC_KEY).map_err(|e| {
-        CoreError::Protocol {
-            message: format!("fin4u public key: {e}"),
-        }
-    })?;
+    let key = rsa::PublicKey::from_public_key_pem(PASSWORD_PUBLIC_KEY)
+        .map_err(|e| CoreError::protocol(format!("fin4u public key: {e}")))?;
     let cipher = oaep_encrypt(&key, password)?;
     Ok(base64::engine::general_purpose::STANDARD.encode(cipher))
 }
@@ -135,9 +130,7 @@ pub(crate) fn encrypt_password(password: &str) -> CoreResult<String> {
 fn oaep_encrypt(key: &rsa::PublicKey, password: &str) -> CoreResult<Vec<u8>> {
     let padding = rsa::Oaep::<sha2::Sha256, sha1::Sha1>::new_with_mgf_hash();
     key.encrypt(&mut getrandom::SysRng, padding, password.as_bytes())
-        .map_err(|e| CoreError::Protocol {
-            message: format!("fin4u password encryption: {e}"),
-        })
+        .map_err(|e| CoreError::protocol(format!("fin4u password encryption: {e}")))
 }
 
 pub struct Fin4uConnector {

@@ -97,16 +97,15 @@ static REDIRECT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"<redirect url="([^"]+)""#).unwrap());
 
 fn page_changed() -> CoreError {
-    CoreError::Protocol {
-        message: tr("Opel Direktbank: Seite nicht erkannt (Online-Banking geändert?).").into(),
-    }
+    CoreError::protocol(tr(
+        "Opel Direktbank: Seite nicht erkannt (Online-Banking geändert?).",
+    ))
 }
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: tr("Opel Direktbank: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen.")
-            .into(),
-    }
+    CoreError::invalid(tr(
+        "Opel Direktbank: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen.",
+    ))
 }
 
 fn wrong_credentials() -> CoreError {
@@ -137,12 +136,9 @@ fn ensure_host(url: &url::Url) -> CoreResult<()> {
     if url.scheme() == "https" && url.host_str() == Some(HOST) {
         return Ok(());
     }
-    Err(CoreError::Protocol {
-        message: tr(
-            "Opel Direktbank: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.",
-        )
-        .into(),
-    })
+    Err(CoreError::protocol(tr(
+        "Opel Direktbank: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen.",
+    )))
 }
 
 fn push_challenge() -> Challenge {

@@ -15,7 +15,7 @@ use std::{
 };
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput { message: tr("EquatePlus: Unvollständige oder nicht unterstützte Bestandsdaten. Es wurden keine Daten übernommen.").into() }
+    CoreError::invalid(tr("EquatePlus: Unvollständige oder nicht unterstützte Bestandsdaten. Es wurden keine Daten übernommen."))
 }
 fn label(v: &Value) -> Option<&str> {
     v.as_str()

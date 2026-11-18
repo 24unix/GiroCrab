@@ -363,9 +363,7 @@ impl Vault {
             .ok_or_else(|| CoreError::NotFound {
                 what: trf("Bankzugang {0}", &[&connection_id]),
             })?;
-        let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
-            message: kind.clone(),
-        })?;
+        let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::invalid(kind))?;
         let login = normalize_login(kind, &login_name);
         let generic = crate::connectors::descriptor(kind).name;
         let name = if display_name.trim().is_empty() {
@@ -407,9 +405,7 @@ impl Vault {
         cookies: String,
     ) -> Result<(), CoreError> {
         if !cookies.contains('=') {
-            return Err(CoreError::InvalidInput {
-                message: tr("Keine Sitzungs-Cookies übergeben").into(),
-            });
+            return Err(CoreError::invalid(tr("Keine Sitzungs-Cookies übergeben")));
         }
         let db = self.db()?;
         let state: String = db
@@ -555,15 +551,11 @@ impl Vault {
             .as_deref()
             .is_some_and(|b| crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&b));
         if !from_api && !is_comdirect_fints {
-            return Err(CoreError::InvalidInput {
-                message: tr("Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen.").into(),
-            });
+            return Err(CoreError::invalid(tr("Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen.")));
         }
         let (kind, new_key, new_code) = if from_api {
             let blz = comdirect_blz(&tx, connection_id, &bank_code)?.ok_or_else(|| {
-                CoreError::InvalidInput {
-                    message: tr("Keine comdirect-IBAN gefunden: Die Bankleitzahl für FinTS lässt sich nicht bestimmen.").into(),
-                }
+                CoreError::invalid(tr("Keine comdirect-IBAN gefunden: Die Bankleitzahl für FinTS lässt sich nicht bestimmen."))
             })?;
             (
                 ConnectorKind::FinTsGeneric,
@@ -589,10 +581,9 @@ impl Vault {
             |r| r.get(0),
         )?;
         if clash {
-            return Err(CoreError::InvalidInput {
-                message: tr("Für diesen Anmeldenamen gibt es den Zugang auf diesem Weg schon.")
-                    .into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Für diesen Anmeldenamen gibt es den Zugang auf diesem Weg schon.",
+            )));
         }
         let symbol = crate::connectors::descriptor(kind).sf_symbol;
         tx.execute(

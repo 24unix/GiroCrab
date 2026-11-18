@@ -49,10 +49,6 @@ pub struct ManualBookingSetup {
     pub note: String,
 }
 
-fn invalid(message: String) -> CoreError {
-    CoreError::InvalidInput { message }
-}
-
 fn not_found(what: String) -> CoreError {
     CoreError::NotFound { what }
 }
@@ -67,7 +63,7 @@ fn today() -> String {
 fn clean(text: &str, max: usize) -> CoreResult<String> {
     let t = text.trim();
     if t.chars().count() > max {
-        return Err(invalid(trf(
+        return Err(CoreError::invalid(trf(
             "Der Text ist zu lang (höchstens {0} Zeichen).",
             &[&max],
         )));
@@ -78,7 +74,7 @@ fn clean(text: &str, max: usize) -> CoreResult<String> {
 fn parse_date(date: &str) -> CoreResult<String> {
     NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d")
         .map(|d| d.format("%Y-%m-%d").to_string())
-        .map_err(|_| invalid(trf("Ungültiges Datum: {0}", &[&date.trim()])))
+        .map_err(|_| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&date.trim()])))
 }
 
 fn require_offline(conn: &Connection, account_id: i64) -> CoreResult<()> {
@@ -91,9 +87,9 @@ fn require_offline(conn: &Connection, account_id: i64) -> CoreResult<()> {
         .optional()?;
     match ok {
         Some(true) => Ok(()),
-        Some(false) => Err(invalid(
-            tr("Manuelle Buchungen sind nur in Offline-Konten möglich.").to_string(),
-        )),
+        Some(false) => Err(CoreError::invalid(tr(
+            "Manuelle Buchungen sind nur in Offline-Konten möglich.",
+        ))),
         None => Err(not_found(trf("Konto {0}", &[&account_id]))),
     }
 }
@@ -239,7 +235,7 @@ fn finish(conn: &Connection, account_id: i64) -> CoreResult<()> {
 
 fn validate(s: &ManualBookingSetup) -> CoreResult<(String, String, String, String)> {
     if s.amount_cents == 0 {
-        return Err(invalid(tr("Der Betrag darf nicht 0 sein.").to_string()));
+        return Err(CoreError::invalid(tr("Der Betrag darf nicht 0 sein.")));
     }
     Ok((
         parse_date(&s.booking_date)?,
@@ -261,9 +257,9 @@ impl Vault {
         opening_cents: i64,
     ) -> Result<i64, CoreError> {
         if matches!(kind, AccountKind::Brokerage | AccountKind::Loan) {
-            return Err(invalid(
-                tr("Depots und Darlehen werden nicht als Offline-Konto angelegt.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Depots und Darlehen werden nicht als Offline-Konto angelegt.",
+            )));
         }
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
@@ -394,12 +390,12 @@ impl Vault {
             .optional()?
             .ok_or_else(|| not_found(trf("Buchung {0}", &[&booking_id])))?;
         if source_account == account_id {
-            return Err(invalid(
-                tr("Eine Buchung lässt sich nicht in ihr eigenes Konto spiegeln.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Eine Buchung lässt sich nicht in ihr eigenes Konto spiegeln.",
+            )));
         }
         if cents == 0 {
-            return Err(invalid(tr("Der Betrag darf nicht 0 sein.").to_string()));
+            return Err(CoreError::invalid(tr("Der Betrag darf nicht 0 sein.")));
         }
         ensure_opening(&tx, account_id)?;
         let setup = ManualBookingSetup {

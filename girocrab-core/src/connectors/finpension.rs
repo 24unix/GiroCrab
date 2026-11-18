@@ -21,9 +21,7 @@ use crate::{
 };
 
 fn invalid(message: impl Into<String>) -> CoreError {
-    CoreError::InvalidInput {
-        message: format!("Finpension: {}", message.into()),
-    }
+    CoreError::invalid(format!("Finpension: {}", message.into()))
 }
 
 /// Host every Finpension URL must belong to.

@@ -33,12 +33,9 @@ impl DpopKey {
     pub fn from_hex(hex_str: &str) -> CoreResult<Self> {
         let bytes = hex::decode(hex_str.trim())
             .map(Zeroizing::new)
-            .map_err(|_| CoreError::Protocol {
-                message: "DPoP key: invalid hex".into(),
-            })?;
-        let key = SigningKey::from_slice(&bytes).map_err(|_| CoreError::Protocol {
-            message: "DPoP key: invalid scalar".into(),
-        })?;
+            .map_err(|_| CoreError::protocol("DPoP key: invalid hex"))?;
+        let key = SigningKey::from_slice(&bytes)
+            .map_err(|_| CoreError::protocol("DPoP key: invalid scalar"))?;
         Ok(DpopKey { key })
     }
 

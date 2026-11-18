@@ -7,6 +7,7 @@ struct SidebarView: View {
     /// The one sidebar dialog on screen (group dialogs live in `model.groupDialog`).
     @State private var dialog: SidebarDialog?
     @State private var budgetCategory: IDBox?
+    /// The account whose settings sheet is open.
     @State private var editedAccount: IDBox?
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     /// Where a drop would land: a thin line above or below one row.
@@ -251,7 +252,7 @@ struct SidebarView: View {
                 Text("Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen.")
             }
         }
-        .capturableSheet(item: $editedAccount) { box in AccountEditSheet(accountID: box.id).environment(model) }
+        .capturableSheet(item: $editedAccount) { box in AccountSettingsView(accountID: box.id).environment(model) }
         .capturableSheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
     }
 
@@ -467,28 +468,14 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func accountMenu(_ account: Account) -> some View {
-        // same order as a group's menu: rename, look, place – then what only
-        // accounts have – then archive / delete
-        Button("Konto bearbeiten …", systemImage: "square.and.pencil") { editedAccount = IDBox(id: account.id) }
-        Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
-        Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
+        // name, symbol & colour, Kontoart, Kontoinhaber, Startsaldo and the rest of the
+        // account's data live in the settings window; the menu keeps the actions
+        Button("Einstellungen …", systemImage: "gearshape") { editedAccount = IDBox(id: account.id) }
         CategoryChipToggle(accountID: account.id)
-        // an offline account is always cash (#679)
-        if !model.isOffline(account.id) {
-            Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
-                ForEach(AccountKind.importChoices, id: \.self) { k in
-                    Button { model.setAccountKind(account.id, to: k) } label: {
-                        Text(verbatim: k == account.kind ? "✓ \(k.label)" : k.label)
-                    }
-                }
-            }
-        }
-        Button("Kontoinhaber …", systemImage: "person.crop.circle") { model.groupDialog = .editOwner(account) }
         AccountGroupMenu(account: account)
         Divider()
         Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: [account.id]) }
         ManualLoanAccountMenu(model: model, account: account)
-        OpeningBalanceMenuItem(model: model, account: account)
         OfflineAccountMenuItems(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
@@ -646,8 +633,12 @@ private struct SidebarSelectionList<Content: View>: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        List(selection: Binding(get: { model.sidebarSelection }, set: { model.selectFromSidebar($0) })) { content }
+        #else
         @Bindable var model = model
         List(selection: $model.interactiveSidebarSelection) { content }
+        #endif
     }
 }
 

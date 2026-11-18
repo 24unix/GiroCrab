@@ -97,9 +97,7 @@ impl Vault {
                 what: trf("Konto {0}", &[&request.account_id]),
             })?;
         if matches!(account.kind, AccountKind::Loan | AccountKind::Brokerage) {
-            return Err(CoreError::InvalidInput {
-                message: tr("CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen.").to_string(),
-            });
+            return Err(CoreError::invalid(tr("CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen.")));
         }
         let date_from = request.date_from.as_deref().map(parse_day).transpose()?;
         let date_to = request.date_to.as_deref().map(parse_day).transpose()?;
@@ -161,9 +159,9 @@ impl Vault {
         // "everything up to <past day>" stays a valid, empty statement.
         let from = date_from.or(first).unwrap_or_else(|| to.clone());
         if to < from {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Zeitraum endet vor seinem Beginn.").to_string(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Der Zeitraum endet vor seinem Beginn.",
+            )));
         }
         // Marked bookings: OPBD + entries = CLBD only holds when no booked
         // booking between the first and the last day is left out.
@@ -172,9 +170,7 @@ impl Vault {
                 .iter()
                 .any(|(id, e)| !e.pending && !ids.contains(id));
             if gap {
-                return Err(CoreError::InvalidInput {
-                    message: tr("CAMT.053 erfordert eine lückenlose Auswahl. Markiere alle Umsätze eines zusammenhängenden Zeitraums.").to_string(),
-                });
+                return Err(CoreError::invalid(tr("CAMT.053 erfordert eine lückenlose Auswahl. Markiere alle Umsätze eines zusammenhängenden Zeitraums.")));
             }
         }
         let opening = booked_balance(&db, &account, &currency, &previous_day(&from))?;
@@ -195,9 +191,7 @@ fn parse_day(s: &str) -> CoreResult<String> {
     let day: String = s.trim().chars().take(10).collect();
     chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d")
         .map(|d| d.format("%Y-%m-%d").to_string())
-        .map_err(|_| CoreError::InvalidInput {
-            message: trf("Ungültiges Datum: {0}", &[&s]),
-        })
+        .map_err(|_| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&s])))
 }
 
 fn previous_day(day: &str) -> String {
