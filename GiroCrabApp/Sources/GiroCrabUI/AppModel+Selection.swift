@@ -309,11 +309,148 @@ extension AppModel {
 
     func scheduleSearch() {
         searchTask?.cancel()
+        let query = searchText
         searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled, let self else { return }
+            guard self.naturalSearch?.query != query, query != self.literalSearchQuery,
+                  self.naturalSearchEnabled() else {
+                self.reloadListInBackground() // the literal search, as ever
+                return
+            }
+            // One or two words naming a category ("mieten", "mietzahlungen", "kredite"): the category
+            // filter, deterministic and without the model.
+            if self.categories.isEmpty { self.reloadCategories() }
+            if let parsed = NaturalSearch.categoryOnly(query, categories: self.categories) {
+                if !self.applyParsedSearch(parsed) { self.reloadListInBackground() }
+                return
+            }
+            guard NaturalSearch.looksNatural(query) else {
+                self.reloadListInBackground()
+                return
+            }
+            // A keyword wrapped in filler words ("zeige alle amazon") needs no model and no literal
+            // search first (that one would only flash "Keine Treffer").
+            if let keyword = NaturalSearch.keywordOnly(query, categoryNames: self.categories.map(\.name)) {
+                if !self.applyParsedSearch(ParsedSearchQuery(text: keyword)) { self.reloadListInBackground() }
+                return
+            }
+            self.reloadListInBackground() // the literal search while the model reads the phrase
+            try? await Task.sleep(nanoseconds: 650_000_000) // ~800 ms after the last keystroke
             guard !Task.isCancelled else { return }
-            self?.reloadListInBackground()
+            await self.applyNaturalSearch(query)
         }
+    }
+
+    /// The text the list searches: the natural reading of the typed phrase, else the phrase itself.
+    var effectiveSearchText: String { naturalSearch?.keyword ?? searchText }
+
+    /// What the core searches for: the model's keyword, or the typed text with German plurals cut
+    /// back to the stem ("kredite" → "kredit") so the substring search also finds the singular.
+    /// Always a superset of the literal search. The field keeps showing what was typed.
+    var coreSearchText: String {
+        naturalSearch?.keyword ?? NaturalSearch.literalSearchTerm(searchText)
+    }
+
+    /// Refines the literal search (opt-in, Einstellungen › Allgemein) through the on-device model.
+    /// Period, category and amount range become the existing filters, the rest the effective search
+    /// text. Without a model answer the phrase loses only its filler words; a stale result changes nothing.
+    private func applyNaturalSearch(_ query: String) async {
+        let parsed = await NaturalSearch.understand(
+            query, categoryNames: categories.map(\.name), today: DateText.iso(Date()))
+        // The user may have typed on, cleared the field or locked the vault meanwhile.
+        guard !Task.isCancelled, searchText == query, naturalSearch == nil, isUnlocked else { return }
+        applyParsedSearch(parsed)
+    }
+
+    private func naturalSearchState(text: String) -> NaturalSearchState {
+        var category: Int64?
+        if case .category(let id)? = sidebarSelection { category = id }
+        return NaturalSearchState(searchText: text, period: period, customFrom: customPeriodFrom,
+                                  customTo: customPeriodTo, categoryID: category, amountFilter: amountFilter)
+    }
+
+    /// Applies a parsed reading of the typed phrase next to it: `searchText` (the field) stays as typed,
+    /// the list searches `effectiveSearchText` and the parsed filters. Reloads the list once; false
+    /// (nothing changed, nothing reloaded) when the reading adds nothing to the literal search.
+    @discardableResult
+    func applyParsedSearch(_ reading: ParsedSearchQuery, today: Date = Date()) -> Bool {
+        let query = searchText
+        // A phrase that names no period never filters by date, whatever the reading says.
+        let parsed = NaturalSearch.withoutUnnamedDates(reading, for: query)
+        revertNaturalSearch() // a new reading starts from the user's own filters
+        let old = naturalSearchState(text: query)
+        var new = old
+        NaturalSearch.apply(parsed: parsed, to: &new, categories: categories, today: today)
+        guard new != old else { return false }
+
+        // Set first: the reloads the filters below start already search for the keyword.
+        let selection = sidebarSelection
+        naturalSearch = NaturalSearchOverride(query: query, keyword: new.searchText, before: old,
+                                              beforeSelection: selection, applied: new, appliedSelection: selection)
+        listLimit = Self.defaultListLimit
+        if new.amountFilter != old.amountFilter {
+            let suspended = suspendsFilterReloads
+            suspendsFilterReloads = true // the reload at the end covers it
+            amountFilter = new.amountFilter
+            suspendsFilterReloads = suspended
+        }
+        // The category first: it may bring its own default period, which the parsed one then replaces.
+        if new.categoryID != old.categoryID, let id = new.categoryID {
+            // Without a period in the phrase the category's own default period must not move it.
+            let namesPeriod = parsed.fromDate != nil || parsed.toDate != nil
+            keepsPeriodOnCategorySelection = !namesPeriod
+            interactiveSidebarSelection = .category(id)
+            keepsPeriodOnCategorySelection = false
+        }
+        if new.period != old.period || new.customFrom != old.customFrom || new.customTo != old.customTo,
+           let from = DateText.date(new.customFrom), let to = DateText.date(new.customTo) {
+            loadsSelectionInBackground = true
+            applyCustomPeriod(from: from, to: to)
+            loadsSelectionInBackground = false
+        }
+        naturalSearch?.applied = naturalSearchState(text: new.searchText)
+        naturalSearch?.appliedSelection = sidebarSelection
+        reloadListInBackground()
+        return true
+    }
+
+    /// Ends the natural reading (typed on, field cleared, „wörtlich suchen“): the list searches the
+    /// typed text again and every filter the reading set and the user left alone returns to its
+    /// previous value. The caller's search change reloads the list; this only reloads what it restores.
+    func revertNaturalSearch() {
+        guard let natural = naturalSearch else { return }
+        naturalSearch = nil
+        let before = natural.before, applied = natural.applied
+        if amountFilter == applied.amountFilter, amountFilter != before.amountFilter {
+            let suspended = suspendsFilterReloads
+            suspendsFilterReloads = true // the caller's search reload covers it
+            amountFilter = before.amountFilter
+            suspendsFilterReloads = suspended
+        }
+        if sidebarSelection == natural.appliedSelection, sidebarSelection != natural.beforeSelection {
+            interactiveSidebarSelection = natural.beforeSelection
+        }
+        let periodNow = (period, customPeriodFrom, customPeriodTo)
+        if periodNow == (applied.period, applied.customFrom, applied.customTo),
+           periodNow != (before.period, before.customFrom, before.customTo) {
+            customPeriodFrom = before.customFrom
+            customPeriodTo = before.customTo
+            UserDefaults.standard.set(customPeriodFrom, forKey: "period.customFrom")
+            UserDefaults.standard.set(customPeriodTo, forKey: "period.customTo")
+            loadsSelectionInBackground = true
+            if period == before.period { periodDidChange() } else { period = before.period }
+            loadsSelectionInBackground = false
+            rememberPeriod()
+        }
+    }
+
+    /// The filter chip's „wörtlich suchen“: drops the natural reading of the current phrase for good.
+    func searchLiterally() {
+        guard naturalSearch != nil else { return }
+        literalSearchQuery = searchText
+        revertNaturalSearch()
+        scheduleSearch()
     }
 
     // MARK: - Pay cycle (GitHub #37)

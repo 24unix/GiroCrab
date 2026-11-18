@@ -406,7 +406,7 @@ extension AppModel {
             categoryId: category,
             includeSubcategories: true,
             uncategorizedOnly: uncategorized,
-            search: searchText.isEmpty ? nil : searchText,
+            search: coreSearchText.isEmpty ? nil : coreSearchText,
             dateFrom: from,
             dateTo: to,
             limit: listLimit,

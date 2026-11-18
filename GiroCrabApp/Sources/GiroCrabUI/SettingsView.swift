@@ -68,6 +68,7 @@ struct GeneralSettings: View {
     @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeAmountStyle: NegativeAmountStyle = .neutral
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
+    @AppStorage(NaturalSearch.defaultsKey) private var naturalSearch = false
     @AppStorage(PrivacyMode.scopeKey) private var privacyScope = PrivacyMode.defaultScope
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
     @AppStorage(BookingDensity.defaultsKey) private var bookingDensity: BookingDensity = .standard
@@ -119,6 +120,10 @@ struct GeneralSettings: View {
                 }
                 Text("Blendet Beträge, Namen, Kontonummern und Verwendungszwecke aus, wenn du die App jemandem zeigst. Auf Wunsch nur die Beträge.")
                     .appFont(.caption).foregroundStyle(.secondary)
+                if NaturalSearch.isAvailable {
+                    Toggle("Suche in natürlicher Sprache", isOn: $naturalSearch)
+                        .help("Versteht Angaben wie „Lebensmittel letzten Monat über 50 €“. Läuft vollständig auf diesem Gerät; an das Modell gehen nur Suchtext, heutiges Datum und Kategorienamen.")
+                }
                 Toggle("Auswertungen in der Übersicht anzeigen", isOn: $showStatistics)
                 Text("Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar.")
                     .appFont(.caption).foregroundStyle(.secondary)
