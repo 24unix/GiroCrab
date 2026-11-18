@@ -19,7 +19,7 @@ use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
 
 use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
-use crate::dates::{find_de_date, iso, month_from_name};
+use crate::dates::{day_month_on_or_before, de_dates, iso, month_from_name};
 use crate::error::CoreError;
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind};
@@ -862,20 +862,28 @@ pub fn parse_statement_text(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
     static LINE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"^\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+(?:(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+)?(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})\s*(-|CR|H|S|\+)?\s*$").unwrap()
     });
-    // statement year from any full date or "Abrechnung … 2025"
-    let default_year =
-        find_de_date(text).map_or_else(|| crate::dates::today().year(), |d| d.year());
+    // A "DD.MM." line falls on or before the statement's latest date. Dates after
+    // today are fine print (new terms, card expiry), not the statement's.
+    let today = crate::dates::today();
+    let latest = de_dates(text)
+        .filter(|d| *d <= today)
+        .max()
+        .unwrap_or(today);
     let mut out = Vec::new();
     for line in text.lines() {
         let Some(c) = LINE.captures(line) else {
             continue;
         };
-        let date_s = if c[1].matches('.').count() == 2 && c[1].ends_with('.') {
-            format!("{}{}", &c[1], default_year)
-        } else {
-            c[1].to_string()
+        let date = match c[1].strip_suffix('.').and_then(|dm| dm.split_once('.')) {
+            Some((d, m)) => d
+                .parse()
+                .ok()
+                .zip(m.parse().ok())
+                .and_then(|(d, m)| day_month_on_or_before(d, m, latest))
+                .map(iso),
+            None => parse_date(&c[1]),
         };
-        let Some(date) = parse_date(&date_s) else {
+        let Some(date) = date else {
             continue;
         };
         let Some(raw) = parse_amount(&c[4]) else {
@@ -2229,6 +2237,33 @@ mod tests {
         assert_eq!(p.len(), 2);
         assert_eq!((p[0].date.as_str(), p[0].cents), ("2025-04-03", -2350));
         assert_eq!(p[1].cents, 10000);
+    }
+
+    #[test]
+    fn pdf_lines_without_year_before_the_statement_date() {
+        let dates = |t: &str| -> Vec<String> {
+            parse_statement_text(t, ConnectorKind::AmericanExpress)
+                .into_iter()
+                .map(|p| p.date)
+                .collect()
+        };
+        assert_eq!(
+            dates("Abrechnung vom 05.01.2026\n28.12. Hotel 120,00\n03.01. Taxi 12,00\n"),
+            ["2025-12-28", "2026-01-03"]
+        );
+        // A period names its start first; the end date decides.
+        assert_eq!(
+            dates("Zeitraum 01.12.2025 - 05.01.2026\n28.12. Hotel 120,00\n03.01. Taxi 12,00\n"),
+            ["2025-12-28", "2026-01-03"]
+        );
+        assert_eq!(
+            dates("Abrechnung vom 15.12.2025\n01.12. Hotel 120,00\n15.12. Taxi 12,00\n"),
+            ["2025-12-01", "2025-12-15"]
+        );
+        assert_eq!(
+            dates("Abrechnung vom 05.01.2026\n28.12. Hotel 120,00\nZinsänderung ab 01.04.2099\n"),
+            ["2025-12-28"]
+        );
     }
 
     #[test]

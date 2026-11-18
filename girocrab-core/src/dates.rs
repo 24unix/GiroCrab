@@ -92,14 +92,26 @@ pub(crate) fn parse_de_or_iso(s: &str) -> Option<Date> {
         .ok()
 }
 
-/// The first `D.M.YYYY` anywhere in `s` that is a real day ("31.02.2025" is
-/// skipped). Digits glued to it ("112.03.2025") don't count as one.
-pub(crate) fn find_de_date(s: &str) -> Option<Date> {
+/// Every `D.M.YYYY` in `s` that is a real day ("31.02.2025" is skipped).
+/// Digits glued to it ("112.03.2025") don't count as one.
+pub(crate) fn de_dates(s: &str) -> impl Iterator<Item = Date> + '_ {
     static DE_DATE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap());
     DE_DATE
         .captures_iter(s)
-        .find_map(|c| ymd(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?))
+        .filter_map(|c| ymd(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?))
+}
+
+/// The first of [`de_dates`].
+pub(crate) fn find_de_date(s: &str) -> Option<Date> {
+    de_dates(s).next()
+}
+
+/// The day `day.month.` that falls on or before `latest`, for dates printed
+/// without a year: "28.12." before 05.01.2026 is 2025-12-28.
+pub(crate) fn day_month_on_or_before(day: u32, month: u32, latest: Date) -> Option<Date> {
+    let later = (month, day) > (latest.month() as u32, latest.day() as u32);
+    ymd(i32::from(latest.year()) - i32::from(later), month, day)
 }
 
 /// Month names and abbreviations (German, English), lower case.
@@ -151,6 +163,25 @@ mod tests {
         assert_eq!(parse_de_or_iso("1.3.2025"), Some(day(2025, 3, 1)));
         assert_eq!(parse_de_or_iso("31.02.2025"), None);
         assert_eq!(parse_de_or_iso("März 2025"), None);
+    }
+
+    #[test]
+    fn day_month_without_year() {
+        let latest = day(2026, 1, 5);
+        assert_eq!(
+            day_month_on_or_before(28, 12, latest),
+            Some(day(2025, 12, 28))
+        );
+        assert_eq!(day_month_on_or_before(5, 1, latest), Some(day(2026, 1, 5)));
+        assert_eq!(day_month_on_or_before(6, 1, latest), Some(day(2025, 1, 6)));
+        assert_eq!(day_month_on_or_before(29, 2, day(2025, 3, 1)), None);
+        assert_eq!(day_month_on_or_before(31, 4, latest), None);
+    }
+
+    #[test]
+    fn every_german_date_in_text() {
+        let dates: Vec<_> = de_dates("05.01.2026 bis 31.02.2026, 01.12.2025").collect();
+        assert_eq!(dates, [day(2026, 1, 5), day(2025, 12, 1)]);
     }
 
     #[test]
