@@ -108,7 +108,7 @@ extension AppModel {
         // a transfer waiting for its TAN shows `activeChallenge` / `transferBusy`
         guard vault != nil, !isDemo, syncingConnectionID == nil, activeChallenge == nil,
               !transferBusy, pendingLogin == nil, webLoginConnection == nil,
-              setupRequest == nil else { return }
+              setupRequest == nil, syncQueue.isEmpty else { return }
         let hours = autoSyncHours
         guard hours > 0 else { return }
         // Sachwerte: missing gold prices (at most one request a day, none without gold items)
