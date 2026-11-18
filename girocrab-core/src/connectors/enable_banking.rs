@@ -472,9 +472,15 @@ fn is_spuerkeess(name: &str) -> bool {
     n.contains("spuerkeess") || n.contains("bcee")
 }
 
+/// N26 lists 180 days in `/aspsps` but rejects `/auth` with `invalid_request`
+/// on restricted applications unless capped at 90 days without `language`.
+fn is_n26(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case("n26") || name.to_lowercase().starts_with("n26 ")
+}
+
 /// Banks that want the leanest request: 90 days at most, no `language`.
 fn needs_lean_request(name: &str) -> bool {
-    is_revolut(name) || is_spuerkeess(name)
+    is_revolut(name) || is_spuerkeess(name) || is_n26(name)
 }
 
 fn effective_max_secs(name: &str, max: Option<i64>) -> Option<i64> {
@@ -2441,20 +2447,26 @@ mod tests {
                 "{v}"
             );
         }
+        // N26 is capped at 90 days despite advertising 180 days
+        assert_eq!(
+            effective_max_secs("N26", Some(15_552_000)),
+            Some(90 * 86_400)
+        );
+        assert!(needs_lean_request("N26"));
         // Revolut never exceeds 90 days, with or without a list entry
         assert_eq!(effective_max_secs("Revolut", None), Some(90 * 86_400));
         assert_eq!(
             effective_max_secs("Revolut", Some(180 * 86_400)),
             Some(90 * 86_400)
         );
-        assert_eq!(effective_max_secs("N26", None), None);
+        assert_eq!(effective_max_secs("N26", None), Some(90 * 86_400));
         // Spuerkeess lists 180 days but only accepts 90 (and no language)
         assert_eq!(
             effective_max_secs("Spuerkeess", Some(15_552_000)),
             Some(90 * 86_400)
         );
         assert!(needs_lean_request("Spuerkeess") && needs_lean_request("BCEE"));
-        assert!(!needs_lean_request("N26"));
+        assert!(!needs_lean_request("C24"));
     }
 
     #[test]
