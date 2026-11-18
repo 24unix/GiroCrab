@@ -180,7 +180,7 @@ def parse_reflection(body, trailers):
             if not values:
                 for line in rest[item.end():].lstrip("\r\n").splitlines():
                     sub = REFLECTION_SUB_RE.match(line)
-                    if not sub:
+                    if not sub or REFLECTION_ITEM_RE.match(line):  # an indented next item ends the answers
                         break
                     values.append(sub.group(1))
             out[k.lower().replace("-", "_")] += values
@@ -318,9 +318,10 @@ def pr_features(pr, patch=None, pseudo=None):
         is_ai = any(re.search(rx, n, re.I) for n in names for _, rx in AI_TOOLS)
         ai_commits += is_ai
         human_commits += not is_ai
-    trailers += parse_trailers(HTML_COMMENT_RE.sub("", body or ""))
+    clean_body = HTML_COMMENT_RE.sub("", body or "")  # template hints are no evidence
+    trailers += parse_trailers(clean_body)
     roles = {}
-    tools = detect_tools(coauthors, trailers, body, pr.get("headRefName"), author, roles)
+    tools = detect_tools(coauthors, trailers, clean_body, pr.get("headRefName"), author, roles)
     reflection = parse_reflection(body, trailers)
 
     layers, security = classify_paths(paths)

@@ -123,6 +123,10 @@ class Reflection(unittest.TestCase):
         self.assertEqual(r["review_focus"], ["**Neue Enum-Variante.** Frontends prüfen"])
         self.assertEqual(r["perf_check"], [])
 
+    def test_indented_empty_item_does_not_swallow_next_item(self):
+        r = prov.parse_reflection("### 🤖 AI Process Reflection\n  - **Human-Steering:** \n  - **AI-Agency:** x\n", [])
+        self.assertEqual((r["human_steering"], r["ai_agency"]), ([], ["x"]))
+
     def test_crlf_body(self):
         # PR bodies written in the GitHub web editor use CRLF line endings.
         r = prov.parse_reflection((self.FULL + self.EMPTY).replace("\n", "\r\n"), [])
