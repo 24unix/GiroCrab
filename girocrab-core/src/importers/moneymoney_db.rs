@@ -194,8 +194,9 @@ pub struct MoneyMoneyDbPreview {
     pub total_bookings: u32,
     pub pending_bookings: u32,
     pub notes_count: u32,
-    /// Parts of split bookings imported as bookings of their own: their sum
-    /// differs from the split booking's (#877).
+    /// Parts of split bookings imported as bookings of their own (#877): their
+    /// sum differs from the split booking's, a part has another currency, or the
+    /// split booking itself is not imported (pending).
     pub split_parts: u32,
     pub date_range_start: Option<String>,
     pub date_range_end: Option<String>,
@@ -2671,8 +2672,11 @@ fn check_account(
             } else {
                 fp
             };
-            keys.insert(fp.clone(), &date, cents, &iban, &name);
-            if row.get::<_, bool>(7)? {
+            let mm = row.get::<_, bool>(7)?;
+            if mm || !row.get::<_, String>(5)?.is_empty() {
+                keys.insert(fp.clone(), &date, cents, &iban, &name);
+            }
+            if mm {
                 keys.insert_imported(date, cents);
             }
             Ok((fp, row.get::<_, bool>(6)?))

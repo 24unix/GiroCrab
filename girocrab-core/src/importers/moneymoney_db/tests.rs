@@ -792,6 +792,56 @@ fn split_booking_without_categories_has_no_splits() {
     let whole = one_booking(&v, giro, -10_000);
     assert!(split_lines(&v, whole.id).is_empty());
     assert!(!bookings(&v, giro).iter().any(|b| b.amount_cents == -6000));
+    // the parts' texts are kept in the booking's note
+    assert_eq!(whole.note, "Einkauf Lebensmittel · Einkauf Lampe");
+}
+
+#[test]
+fn split_notes_are_counted_like_the_preview() {
+    let extra = r#"
+INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, currency, timestamp, value_timestamp, comment, booked, unformatted_type, unformatted_purpose, name, checkmark, splitted, split_key, category_key) VALUES
+  (40, 1, '', '', -30.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Markt', 'Markt D', 0, 1, 40, 1),
+  (41, 1, '', '', -20.0, 'EUR', 1772884800, 0, 'für Oma', 1, 'KARTENZAHLUNG', 'Markt', 'Markt D', 0, 0, 40, 2),
+  (42, 1, '', '', -10.0, 'EUR', 1772884800, 0, '', 1, 'KARTENZAHLUNG', 'Markt', 'Markt D', 0, 0, 40, 4);
+"#;
+    let path = fake_db_with(false, extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let r = import_with(&v, &path, |_| {});
+    assert_eq!(r.notes_imported, p.notes_count);
+    let giro = account_by_name(&v, "Girokonto").id;
+    let lines = split_lines(&v, one_booking(&v, giro, -3000).id);
+    assert_eq!(lines[0].2, "für Oma");
+}
+
+#[test]
+fn a_bank_booking_like_a_part_does_not_take_the_split_apart() {
+    let v = vault();
+    let acc = {
+        let db = v.db().unwrap();
+        let gid = Vault::ensure_group(&db, "Giro & Tagesgeld", "building.columns", 1).unwrap();
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name, iban, currency, kind, balance_cents)
+             VALUES (?1, 'abc-123', 'Mein Giro', 'DE89370400440532013000', 'EUR', 'checking', 0)",
+            [gid],
+        )
+        .unwrap();
+        let id = db.last_insert_rowid();
+        // fetched from the bank: another purchase, same day, name and amount as a part
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+             VALUES (?1, 'bank-3', '2026-03-07', -6000, 'Kaufhaus Muster', 'Einkauf Lebensmittel')",
+            [id],
+        )
+        .unwrap();
+        id
+    };
+    import_with(&v, &fake_db(), |o| o.accounts.retain(|c| c.mm_id == 1));
+    let whole = one_booking(&v, acc, -10_000);
+    assert_eq!(split_lines(&v, whole.id).len(), 2);
+    assert_eq!(one_booking(&v, acc, -6000).external_id, "bank-3");
 }
 
 #[test]

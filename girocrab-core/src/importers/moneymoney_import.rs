@@ -572,10 +572,14 @@ struct Existing {
     split_set: bool,
     /// (date, amount) of a row imported from MoneyMoney (`mm-*`).
     imported: Option<(String, i64)>,
+    /// Imported from MoneyMoney, also when a bank fetch has adopted it since.
+    from_import: bool,
 }
 
-/// The match keys of the bookings already in an account: whether a row is
-/// there by any key of [`match_existing`] (without counting).
+/// The match keys of the bookings imported from MoneyMoney before (`mm-*` or
+/// adopted since, `import_fp`): whether a row is there by any key of
+/// [`match_existing`] (without counting). Bank bookings stay out, so one that
+/// matches a part by chance does not take a split booking apart.
 #[derive(Default)]
 pub(crate) struct KnownKeys {
     fp: HashSet<String>,
@@ -674,15 +678,26 @@ fn write_splits(
                 &mut st.categories_created,
             )?)
         };
-        let own = if preserve_notes { s.note.trim() } else { "" };
-        let note = [own, s.text.trim()]
-            .into_iter()
-            .filter(|n| !n.is_empty())
-            .collect::<Vec<_>>()
-            .join(" · ");
-        lines.push((cat, s.amount_cents, note));
+        if preserve_notes && !s.note.trim().is_empty() {
+            st.notes += 1;
+        }
+        lines.push((cat, s.amount_cents, split_note(s, preserve_notes)));
     }
     crate::planning::store_splits(conn, id, &lines)
+}
+
+/// A part's note (with `own_note`) and the text where it differs from the booking's.
+fn split_note(s: &MmSplit, own_note: bool) -> String {
+    let own = if own_note { s.note.trim() } else { "" };
+    join_notes([own, s.text.trim()].map(str::to_string))
+}
+
+fn join_notes(notes: impl IntoIterator<Item = String>) -> String {
+    notes
+        .into_iter()
+        .filter(|n| !n.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// For each row the existing booking it duplicates (index into `existing`).
@@ -1037,7 +1052,7 @@ pub(crate) fn merge_rows(
             "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
                     import_fp, category_source, note, deleted_ms IS NOT NULL,
                     splits_ms != 0 OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id),
-                    external_id LIKE 'mm-%'
+                    external_id LIKE 'mm-%', external_id LIKE 'mm-%' OR import_fp != ''
              FROM transactions WHERE account_id = ?1 ORDER BY id",
         )?;
         let it = q.query_map([st.account_id], |r| {
@@ -1058,6 +1073,7 @@ pub(crate) fn merge_rows(
                 deleted: r.get(9)?,
                 split_set: r.get(10)?,
                 imported: r.get::<_, bool>(11)?.then(|| (date.clone(), cents)),
+                from_import: r.get(12)?,
             })
         })?;
         for e in it {
@@ -1066,7 +1082,7 @@ pub(crate) fn merge_rows(
     }
     let rows = with_known_parts(rows, || {
         let mut keys = KnownKeys::default();
-        for e in &existing {
+        for e in existing.iter().filter(|e| e.from_import) {
             keys.fp.insert(e.fp.clone());
             keys.weak.insert(e.weak.clone());
             keys.named.insert(e.named.clone());
@@ -1102,7 +1118,22 @@ pub(crate) fn merge_rows(
         } else {
             None
         };
-        let note = if preserve_notes { r.note.as_str() } else { "" };
+        // #877: without categories a split booking has no splits; it takes the
+        // parts' notes. `notes`: how many MoneyMoney notes `note` carries.
+        let (note_text, notes): (Cow<str>, u32) = if !preserve_notes {
+            (Cow::Borrowed(""), 0)
+        } else if preserve_categories || r.splits.is_empty() {
+            (Cow::Borrowed(&r.note), u32::from(!r.note.is_empty()))
+        } else {
+            let own = std::iter::once(&r.note).chain(r.splits.iter().map(|s| &s.note));
+            let lines = std::iter::once(r.note.trim().to_string())
+                .chain(r.splits.iter().map(|s| split_note(s, true)));
+            (
+                Cow::Owned(join_notes(lines)),
+                own.filter(|n| !n.trim().is_empty()).count() as u32,
+            )
+        };
+        let note: &str = &note_text;
         if let Some(e) = match_of[i].map(|j| &existing[j]) {
             st.duplicates += 1;
             if e.deleted {
@@ -1132,7 +1163,7 @@ pub(crate) fn merge_rows(
                     "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
                     params![note, e.id, now_ms()],
                 )?;
-                st.notes += 1;
+                st.notes += notes;
                 changed = true;
             }
             if changed {
@@ -1169,9 +1200,7 @@ pub(crate) fn merge_rows(
         }
         st.new += 1;
         st.balance_cents = st.balance_cents.saturating_add(r.amount_cents);
-        if !note.is_empty() {
-            st.notes += 1;
-        }
+        st.notes += notes;
     }
     Ok(())
 }
