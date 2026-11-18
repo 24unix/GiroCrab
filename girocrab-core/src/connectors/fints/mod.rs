@@ -371,9 +371,7 @@ impl BankConnector for FinTsConnector {
             let bytes = zeroize::Zeroizing::new(
                 base64::engine::general_purpose::STANDARD
                     .decode(keyfile)
-                    .map_err(|_| CoreError::InvalidInput {
-                        message: "Ungültige gespeicherte Schlüsseldatei.".into(),
-                    })?,
+                    .map_err(|_| CoreError::invalid("Ungültige gespeicherte Schlüsseldatei."))?,
             );
             let mut file = keyfile::KeyFile::open(&bytes, ctx.secret.expose().as_bytes())?;
             let saved = ctx.setting_or(&format!("fints.rah10.bank_keys.{}", ctx.connection_id), "");
@@ -445,9 +443,7 @@ impl BankConnector for FinTsConnector {
         let task = self
             .task_reference
             .clone()
-            .ok_or_else(|| CoreError::Protocol {
-                message: "no pending TAN task".into(),
-            })?;
+            .ok_or_else(|| CoreError::protocol("no pending TAN task"))?;
         let sec = self.sec();
         // Name matched: HKVPA (VOP-ID) goes along with the approval.
         let mut payload = Vec::new();
@@ -806,9 +802,9 @@ impl BankConnector for FinTsConnector {
         job: &TransferJob,
     ) -> CoreResult<Phase> {
         if self.rah.is_some() {
-            return Err(CoreError::InvalidInput {
-                message: "RAH-10 unterstützt zunächst nur Kontoabrufe.".into(),
-            });
+            return Err(CoreError::invalid(
+                "RAH-10 unterstützt zunächst nur Kontoabrufe.",
+            ));
         }
         self.begin_order();
         let r = self.start_transfer(ctx, job).await;

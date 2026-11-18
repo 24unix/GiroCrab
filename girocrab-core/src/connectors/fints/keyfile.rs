@@ -19,9 +19,7 @@ pub const MAX_FILE_SIZE: usize = 4 * 1024 * 1024;
 const MAX_ITERATIONS: usize = 2_000_000;
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: "Schlüsseldatei beschädigt oder Format noch nicht unterstützt.".into(),
-    }
+    CoreError::invalid("Schlüsseldatei beschädigt oder Format noch nicht unterstützt.")
 }
 fn crypto(_: impl std::fmt::Debug) -> CoreError {
     invalid()

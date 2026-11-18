@@ -55,9 +55,7 @@ const GATE: &str = "schwaebischhall";
 const MAX_BOOKINGS: usize = 20_000;
 
 fn invalid() -> CoreError {
-    CoreError::InvalidInput {
-        message: tr("Schwäbisch Hall: Unvollständige oder ungültige Portalantwort. Es wurden keine Daten übernommen.").into(),
-    }
+    CoreError::invalid(tr("Schwäbisch Hall: Unvollständige oder ungültige Portalantwort. Es wurden keine Daten übernommen."))
 }
 
 /// Trimmed string field with whitespace collapsed and HTML entities decoded.

@@ -34,16 +34,12 @@ fn load(db: &Connection, id: i64) -> CoreResult<Vec<ConnectionAccountChoice>> {
         )
         .optional()?;
     raw.map(|s| {
-        serde_json::from_str(&s).map_err(|_| CoreError::InvalidInput {
-            message: "Invalid account selection".into(),
-        })
+        serde_json::from_str(&s).map_err(|_| CoreError::invalid("Invalid account selection"))
     })
     .unwrap_or_else(|| Ok(vec![]))
 }
 fn save(db: &Connection, id: i64, rows: &[ConnectionAccountChoice]) -> CoreResult<()> {
-    let raw = serde_json::to_string(rows).map_err(|e| CoreError::InvalidInput {
-        message: e.to_string(),
-    })?;
+    let raw = serde_json::to_string(rows).map_err(|e| CoreError::invalid(e.to_string()))?;
     db.execute("INSERT INTO settings(key,value) VALUES (?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![key(db,id)?,raw])?;
     Ok(())
 }
@@ -254,9 +250,7 @@ impl Vault {
             .iter()
             .any(|r| !rows.iter().any(|c| &c.account_ref == r))
         {
-            return Err(CoreError::InvalidInput {
-                message: "Unknown account selection".into(),
-            });
+            return Err(CoreError::invalid("Unknown account selection"));
         }
         for c in &mut rows {
             c.enabled = enabled_refs.contains(&c.account_ref);

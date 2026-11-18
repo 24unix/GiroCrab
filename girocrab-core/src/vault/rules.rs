@@ -186,9 +186,9 @@ impl Vault {
             return Err(CoreError::invalid(tr("Das Suchmuster ist leer.")));
         }
         if rule.category_id == 0 && rule.tag_ids.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die Regel braucht eine Kategorie oder mindestens einen Tag.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die Regel braucht eine Kategorie oder mindestens einen Tag.",
+            )));
         }
         let db = self.db()?;
         let tag_uuids = crate::tags::rule_tag_uuids(&db, &rule.tag_ids)?;

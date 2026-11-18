@@ -700,11 +700,8 @@ impl EnableBankingConnector {
 
     /// RS256 JWT for the Enable Banking API from the user's own application.
     pub(crate) fn make_jwt_for(app_id: &str, private_key_pem: &str) -> CoreResult<String> {
-        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).map_err(|e| {
-            CoreError::InvalidInput {
-                message: format!("Enable Banking private key: {e}"),
-            }
-        })?;
+        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
+            .map_err(|e| CoreError::invalid(format!("Enable Banking private key: {e}")))?;
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(app_id.to_string());
         let now = chrono::Utc::now().timestamp();
@@ -718,9 +715,7 @@ impl EnableBankingConnector {
             },
             &key,
         )
-        .map_err(|e| CoreError::InvalidInput {
-            message: format!("JWT: {e}"),
-        })
+        .map_err(|e| CoreError::invalid(format!("JWT: {e}")))
     }
 
     /// Accounts of a session / account-details response. Accepts account
@@ -1148,14 +1143,13 @@ fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
                     .into(),
             });
         }
-        return code.ok_or_else(|| CoreError::InvalidInput {
-            message: tr("Kein „code“ in der eingefügten Adresse").into(),
-        });
+        return code
+            .ok_or_else(|| CoreError::invalid(tr("Kein „code“ in der eingefügten Adresse")));
     }
     if input.is_empty() {
-        return Err(CoreError::InvalidInput {
-            message: tr("Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden").into(),
-        });
+        return Err(CoreError::invalid(tr(
+            "Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden",
+        )));
     }
     Ok(input.to_string())
 }
@@ -1290,9 +1284,9 @@ impl BankConnector for EnableBankingConnector {
         if let Some(e) = last_err {
             return Err(e);
         }
-        let url = v["url"].as_str().ok_or_else(|| CoreError::Protocol {
-            message: "no consent URL".into(),
-        })?;
+        let url = v["url"]
+            .as_str()
+            .ok_or_else(|| CoreError::protocol("no consent URL"))?;
         Ok(Phase::Challenge(Challenge {
             kind: ChallengeKind::Redirect,
             title: if self.card_mode() {
@@ -1316,9 +1310,9 @@ impl BankConnector for EnableBankingConnector {
         response: ChallengeResponse,
     ) -> CoreResult<Phase> {
         let ChallengeResponse::Code(input) = response else {
-            return Err(CoreError::InvalidInput {
-                message: tr("Bitte die Weiterleitungsadresse einfügen").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Bitte die Weiterleitungsadresse einfügen",
+            )));
         };
         let code = extract_code(input.expose(), &self.expected_state)
             .map_err(|e| with_auth_diag(e, &self.auth_diag))?;

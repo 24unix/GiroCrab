@@ -1127,9 +1127,9 @@ impl Vault {
                 what: trf("Bankzugang {0}", &[&connection_id]),
             })?;
         if !is_comdirect_fints(&key) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die PostBox lässt sich nur für comdirect-Zugänge per FinTS zusätzlich abrufen.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die PostBox lässt sich nur für comdirect-Zugänge per FinTS zusätzlich abrufen.",
+            )));
         }
         for k in ["comdirect.client_id", "comdirect.client_secret"] {
             if Vault::setting_inner(&db, k)?.is_none_or(|v| v.trim().is_empty()) {
@@ -1160,14 +1160,14 @@ impl Vault {
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
         if !self.comdirect_postbox_enabled(connection_id)? {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der PostBox-Abruf ist für diesen Zugang nicht eingeschaltet.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Der PostBox-Abruf ist für diesen Zugang nicht eingeschaltet.",
+            )));
         }
         if !documents_fetch_on(&*self.db()?, connection_id)? {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
+            )));
         }
         self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Now)
     }
@@ -1277,9 +1277,8 @@ impl Vault {
                 what: trf("Konto {0}", &[&account_id]),
             })?
         };
-        let conn_id = conn_id.ok_or_else(|| CoreError::InvalidInput {
-            message: tr("Dieses Konto hat keine Bankverbindung.").into(),
-        })?;
+        let conn_id = conn_id
+            .ok_or_else(|| CoreError::invalid(tr("Dieses Konto hat keine Bankverbindung.")))?;
         let kind: String = self.db()?.query_row(
             "SELECT connector FROM bank_connections WHERE id = ?1",
             [conn_id],
@@ -1297,9 +1296,9 @@ impl Vault {
             )
         });
         if !supports_statements {
-            return Err(CoreError::InvalidInput {
-                message: tr("Für diese Bank können keine Kontoauszüge abgerufen werden.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Für diese Bank können keine Kontoauszüge abgerufen werden.",
+            )));
         }
         self.begin_sync_inner(conn_id, secret, demo, Some(ext), PostboxMode::Off)
     }
@@ -1367,9 +1366,8 @@ impl Vault {
             if !magic {
                 crate::banking_gate::check_connector(&key_str)?;
             }
-            let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
-                message: format!("unknown connector {kind}"),
-            })?;
+            let kind = ConnectorKind::from_str(&kind)
+                .ok_or_else(|| CoreError::invalid(format!("unknown connector {kind}")))?;
             let mut settings = HashMap::new();
             for (key, ..) in crate::vault::KNOWN_SETTINGS {
                 if let Some(v) = Vault::setting_inner(&db, key)? {
@@ -1489,9 +1487,9 @@ impl Vault {
         if let Some(ext) = statements_only {
             // an explicit request must not run for nothing: store_fetch would drop what it brings
             if !documents_on {
-                return Err(CoreError::InvalidInput {
-                    message: tr("Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.").into(),
-                });
+                return Err(CoreError::invalid(tr(
+                    "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
+                )));
             }
             ctx_settings.insert(STATEMENTS_ONLY.into(), SecretString::new(ext));
         } else if documents_on {
@@ -1600,14 +1598,10 @@ impl Vault {
     ) -> Result<Arc<TransferSession>, CoreError> {
         use crate::connectors::fints::sepa;
         if request.amount_cents <= 0 {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Betrag muss größer als 0 sein.").into(),
-            });
+            return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
         }
         if !validate_iban(&request.recipient_iban) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die Empfänger-IBAN ist ungültig.").into(),
-            });
+            return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
         }
         if let Some(b) = request
             .recipient_bic
@@ -1615,20 +1609,16 @@ impl Vault {
             .filter(|b| !b.trim().is_empty())
         {
             if !sepa::validate_bic(b) {
-                return Err(CoreError::InvalidInput {
-                    message: tr("Die BIC ist ungültig.").into(),
-                });
+                return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
             }
         }
         if request.recipient_name.trim().is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Empfängername fehlt.").into(),
-            });
+            return Err(CoreError::invalid(tr("Der Empfängername fehlt.")));
         }
         if request.purpose.chars().count() > 140 {
-            return Err(CoreError::InvalidInput {
-                message: tr("Der Verwendungszweck darf höchstens 140 Zeichen lang sein.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Der Verwendungszweck darf höchstens 140 Zeichen lang sein.",
+            )));
         }
         let (connection_id, iban, owner, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
@@ -1639,27 +1629,24 @@ impl Vault {
             .filter(|d| !d.is_empty())
             .map(str::to_string);
         if request.instant && exec_date.is_some() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Echtzeitüberweisungen können nicht terminiert werden.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Echtzeitüberweisungen können nicht terminiert werden.",
+            )));
         }
         if let Some(d) = &exec_date {
             let parsed = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
-                CoreError::InvalidInput {
-                    message: tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT).").into(),
-                }
+                CoreError::invalid(tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)."))
             })?;
             if parsed <= chrono::Local::now().date_naive() {
-                return Err(CoreError::InvalidInput {
-                    message: tr("Das Ausführungsdatum muss in der Zukunft liegen.").into(),
-                });
+                return Err(CoreError::invalid(tr(
+                    "Das Ausführungsdatum muss in der Zukunft liegen.",
+                )));
             }
         }
         if (request.instant || exec_date.is_some()) && matches!(kind, ConnectorKind::Bunq) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Echtzeit- und Terminüberweisungen sind nur für FinTS-Konten möglich.")
-                    .into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Echtzeit- und Terminüberweisungen sind nur für FinTS-Konten möglich.",
+            )));
         }
         // Reuse the sync session set-up (settings, PIN, connector state).
         let sync = self.clone().begin_sync(connection_id, secret, demo)?;
@@ -1699,9 +1686,9 @@ impl Vault {
     ) -> Result<Arc<TransferSession>, CoreError> {
         use crate::connectors::fints::sepa;
         if request.payments.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Die Sammelüberweisung enthält keine Zahlung.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Die Sammelüberweisung enthält keine Zahlung.",
+            )));
         }
         let mut payments = Vec::with_capacity(request.payments.len());
         for (i, p) in request.payments.iter().enumerate() {
@@ -1721,8 +1708,8 @@ impl Vault {
             sepa::validate_batch_payment(i + 1, &payment)?;
             payments.push(payment);
         }
-        let total = sepa::batch_total_cents(&payments).ok_or_else(|| CoreError::InvalidInput {
-            message: tr("Die Summe der Sammelüberweisung ist zu groß.").into(),
+        let total = sepa::batch_total_cents(&payments).ok_or_else(|| {
+            CoreError::invalid(tr("Die Summe der Sammelüberweisung ist zu groß."))
         })?;
         let (connection_id, iban, owner, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
@@ -1732,9 +1719,9 @@ impl Vault {
                 | ConnectorKind::Direkt1822
                 | ConnectorKind::FinTsGeneric
         ) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Sammelüberweisungen sind nur für FinTS-Konten möglich.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Sammelüberweisungen sind nur für FinTS-Konten möglich.",
+            )));
         }
         let exec_date = request
             .execution_date
@@ -1744,14 +1731,12 @@ impl Vault {
             .map(str::to_string);
         if let Some(d) = &exec_date {
             let parsed = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
-                CoreError::InvalidInput {
-                    message: tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT).").into(),
-                }
+                CoreError::invalid(tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)."))
             })?;
             if parsed <= chrono::Local::now().date_naive() {
-                return Err(CoreError::InvalidInput {
-                    message: tr("Das Ausführungsdatum muss in der Zukunft liegen.").into(),
-                });
+                return Err(CoreError::invalid(tr(
+                    "Das Ausführungsdatum muss in der Zukunft liegen.",
+                )));
             }
         }
         let sync = self.clone().begin_sync(connection_id, secret, demo)?;
@@ -1796,7 +1781,6 @@ impl Vault {
         demo: bool,
     ) -> Result<Arc<TransferSession>, CoreError> {
         use crate::models::StandingOrderAction as Action;
-        let bad = |m: &str| CoreError::InvalidInput { message: m.into() };
         let (connection_id, iban, owner, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
         if !matches!(
@@ -1805,7 +1789,7 @@ impl Vault {
                 | ConnectorKind::Direkt1822
                 | ConnectorKind::FinTsGeneric
         ) {
-            return Err(bad(tr(
+            return Err(CoreError::invalid(tr(
                 "Daueraufträge lassen sich nur bei FinTS-Konten ändern.",
             )));
         }
@@ -1813,38 +1797,41 @@ impl Vault {
             Action::Create | Action::Change => {
                 let name = request.recipient_name.trim().to_string();
                 if name.is_empty() || name.chars().count() > 70 {
-                    return Err(bad(tr(
+                    return Err(CoreError::invalid(tr(
                         "Der Empfängername muss 1 bis 70 Zeichen lang sein.",
                     )));
                 }
                 let purpose = request.purpose.trim().to_string();
                 if purpose.chars().count() > 140 {
-                    return Err(bad(tr(
+                    return Err(CoreError::invalid(tr(
                         "Der Verwendungszweck darf höchstens 140 Zeichen lang sein.",
                     )));
                 }
                 let recipient_iban = normalize_iban(&request.recipient_iban);
                 if !validate_iban(&recipient_iban) {
-                    return Err(bad(tr("Die Empfänger-IBAN ist ungültig.")));
+                    return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
                 }
                 if request.amount_cents <= 0 {
-                    return Err(bad(tr("Der Betrag muss größer als 0 sein.")));
+                    return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
                 }
                 let today = chrono::Local::now().date_naive();
                 let date = |d: &str| chrono::NaiveDate::parse_from_str(d.trim(), "%Y-%m-%d").ok();
-                let first = date(&request.first_date)
-                    .ok_or_else(|| bad(tr("Der erste Termin ist ungültig (JJJJ-MM-TT).")))?;
+                let first = date(&request.first_date).ok_or_else(|| {
+                    CoreError::invalid(tr("Der erste Termin ist ungültig (JJJJ-MM-TT)."))
+                })?;
                 if first <= today {
-                    return Err(bad(tr("Der erste Termin muss in der Zukunft liegen.")));
+                    return Err(CoreError::invalid(tr(
+                        "Der erste Termin muss in der Zukunft liegen.",
+                    )));
                 }
                 let last = match request.last_date.as_deref().map(str::trim) {
                     None | Some("") => None,
                     Some(l) => {
                         let l = date(l).ok_or_else(|| {
-                            bad(tr("Der letzte Termin ist ungültig (JJJJ-MM-TT)."))
+                            CoreError::invalid(tr("Der letzte Termin ist ungültig (JJJJ-MM-TT)."))
                         })?;
                         if l < first {
-                            return Err(bad(tr(
+                            return Err(CoreError::invalid(tr(
                                 "Der letzte Termin darf nicht vor dem ersten liegen.",
                             )));
                         }
@@ -1854,20 +1841,26 @@ impl Vault {
                 let max_day = match request.time_unit.as_str() {
                     "M" => 31,
                     "W" => 7,
-                    _ => return Err(bad(tr("Der Rhythmus muss Monate oder Wochen sein."))),
+                    _ => {
+                        return Err(CoreError::invalid(tr(
+                            "Der Rhythmus muss Monate oder Wochen sein.",
+                        )))
+                    }
                 };
                 if !(1..=99).contains(&request.interval) {
-                    return Err(bad(tr("Der Rhythmus muss zwischen 1 und 99 liegen.")));
+                    return Err(CoreError::invalid(tr(
+                        "Der Rhythmus muss zwischen 1 und 99 liegen.",
+                    )));
                 }
                 if !(1..=max_day).contains(&request.exec_day) {
-                    return Err(bad(tr("Der Ausführungstag ist ungültig.")));
+                    return Err(CoreError::invalid(tr("Der Ausführungstag ist ungültig.")));
                 }
                 if !crate::standing_orders::first_date_fits(
                     first,
                     &request.time_unit,
                     request.exec_day,
                 ) {
-                    return Err(bad(tr(
+                    return Err(CoreError::invalid(tr(
                         "Die erste Ausführung passt nicht zum Ausführungstag.",
                     )));
                 }
@@ -1901,7 +1894,7 @@ impl Vault {
             Action::Delete => {
                 let o = self.stored_order(&request)?;
                 if !o.can_delete {
-                    return Err(bad(tr(
+                    return Err(CoreError::invalid(tr(
                         "Die Bank erlaubt nicht, diesen Dauerauftrag zu löschen.",
                     )));
                 }
@@ -1953,7 +1946,6 @@ impl Vault {
         &self,
         request: &crate::models::StandingOrderRequest,
     ) -> CoreResult<crate::standing_orders::StandingOrderInfo> {
-        let bad = |m: &str| CoreError::InvalidInput { message: m.into() };
         let o = request
             .order_row_id
             .map(|id| self.standing_order(id))
@@ -1961,15 +1953,15 @@ impl Vault {
             .flatten()
             .filter(|o| o.account_id == request.account_id)
             .ok_or_else(|| {
-                bad(tr(
+                CoreError::invalid(tr(
                     "Der Dauerauftrag ist nicht mehr vorhanden. Bitte die Konten neu abrufen.",
                 ))
             })?;
         if o.order_id.trim().is_empty() {
-            return Err(bad(tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.")));
+            return Err(CoreError::invalid(tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.")));
         }
         if request.action == crate::models::StandingOrderAction::Change && !o.can_change {
-            return Err(bad(tr(
+            return Err(CoreError::invalid(tr(
                 "Die Bank erlaubt nicht, diesen Dauerauftrag zu ändern.",
             )));
         }
@@ -1994,16 +1986,12 @@ impl Vault {
         let group = match (groups.next(), groups.next()) {
             (Some(g), None) if g.sequence.code() == request.sequence => g,
             _ => {
-                return Err(CoreError::InvalidInput {
-                    message: tr("Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.").into(),
-                })
+                return Err(CoreError::invalid(tr("Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.")))
             }
         };
         let scheme = group.scheme.debit();
         if scheme == DebitScheme::B2b && !request.b2b_confirmed {
-            return Err(CoreError::InvalidInput {
-                message: tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.").into(),
-            });
+            return Err(CoreError::invalid(tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.")));
         }
         let (connection_id, iban, owner, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
@@ -2013,10 +2001,9 @@ impl Vault {
                 | ConnectorKind::Direkt1822
                 | ConnectorKind::FinTsGeneric
         ) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Lastschriften können nur über FinTS-Konten eingereicht werden.")
-                    .into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Lastschriften können nur über FinTS-Konten eingereicht werden.",
+            )));
         }
         let (ids, collections): (Vec<i64>, Vec<_>) = group.rows.into_iter().unzip();
         let total: i64 = collections.iter().map(|c| c.amount_cents).sum();
@@ -2117,15 +2104,15 @@ impl Vault {
                 .ok_or_else(|| CoreError::NotFound {
                     what: trf("Konto {0}", &[&account_id]),
                 })?;
-            let cid = row.0.ok_or_else(|| CoreError::InvalidInput {
-                message: tr("Dieses Konto hat keine Bankverbindung.").into(),
-            })?;
+            let cid = row
+                .0
+                .ok_or_else(|| CoreError::invalid(tr("Dieses Konto hat keine Bankverbindung.")))?;
             (cid, row.1, row.2)
         };
         if self.is_rah10_connection(connection_id)? {
-            return Err(CoreError::InvalidInput {
-                message: "RAH-10 unterstützt zunächst nur Kontoabrufe.".into(),
-            });
+            return Err(CoreError::invalid(
+                "RAH-10 unterstützt zunächst nur Kontoabrufe.",
+            ));
         }
         let (key_str, login_name): (String, String) = {
             let db = self.db()?;
@@ -2140,9 +2127,8 @@ impl Vault {
         if !magic {
             crate::banking_gate::check_connector(&key_str)?;
         }
-        let kind = ConnectorKind::from_str(&key_str).ok_or_else(|| CoreError::InvalidInput {
-            message: format!("unknown connector {key_str}"),
-        })?;
+        let kind = ConnectorKind::from_str(&key_str)
+            .ok_or_else(|| CoreError::invalid(format!("unknown connector {key_str}")))?;
         if !matches!(
             kind,
             ConnectorKind::VolksbankKasselGoettingen
@@ -2150,14 +2136,12 @@ impl Vault {
                 | ConnectorKind::FinTsGeneric
                 | ConnectorKind::Bunq
         ) {
-            return Err(CoreError::InvalidInput {
-                message: tr("Überweisungen sind nur für FinTS- und bunq-Konten möglich.").into(),
-            });
+            return Err(CoreError::invalid(tr(
+                "Überweisungen sind nur für FinTS- und bunq-Konten möglich.",
+            )));
         }
         if iban.is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Das Konto hat keine IBAN.").into(),
-            });
+            return Err(CoreError::invalid(tr("Das Konto hat keine IBAN.")));
         }
         Ok((connection_id, iban, owner, key_str, kind, demo))
     }

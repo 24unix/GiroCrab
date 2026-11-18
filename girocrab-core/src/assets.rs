@@ -1037,9 +1037,8 @@ struct RateRow {
 
 /// Parses a Frankfurter answer into (date, cents per unit).
 fn parse_rates(body: &str) -> CoreResult<Vec<(String, i64)>> {
-    let rows: Vec<RateRow> = serde_json::from_str(body).map_err(|e| CoreError::Protocol {
-        message: trf("Unerwartete Antwort der Kurs-API: {0}", &[&e]),
-    })?;
+    let rows: Vec<RateRow> = serde_json::from_str(body)
+        .map_err(|e| CoreError::protocol(trf("Unerwartete Antwort der Kurs-API: {0}", &[&e])))?;
     Ok(rows
         .into_iter()
         .filter(|r| r.rate.is_finite() && r.rate > 0.0 && parse_iso(&r.date).is_some())
