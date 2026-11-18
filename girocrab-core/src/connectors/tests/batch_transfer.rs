@@ -98,8 +98,7 @@ async fn run(batch_booking: bool, date: Option<&str>) -> (i64, i64, i64, i64) {
         Arc::clone(&vault),
         Box::new(Accepting),
         ctx,
-        OrderKind::Batch(batch),
-        summary,
+        OrderKind::Batch { batch, summary },
         account_id,
     );
     assert!(matches!(

@@ -1662,8 +1662,7 @@ impl Vault {
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
-            OrderKind::Single,
-            job,
+            OrderKind::Single(job),
             request.account_id,
         )))
     }
@@ -1756,8 +1755,7 @@ impl Vault {
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
-            OrderKind::Batch(batch),
-            summary,
+            OrderKind::Batch { batch, summary },
             request.account_id,
         )))
     }
@@ -1863,8 +1861,8 @@ impl Vault {
                 };
                 crate::connectors::StandingOrderJob {
                     action: request.action,
-                    source_iban: iban.clone(),
-                    source_owner: owner.clone(),
+                    source_iban: iban,
+                    source_owner: owner,
                     order_id,
                     recipient_name: name,
                     recipient_iban,
@@ -1892,8 +1890,8 @@ impl Vault {
                 }
                 crate::connectors::StandingOrderJob {
                     action: Action::Delete,
-                    source_iban: iban.clone(),
-                    source_owner: owner.clone(),
+                    source_iban: iban,
+                    source_owner: owner,
                     order_id: o.order_id,
                     recipient_name: o.recipient_name,
                     recipient_iban: o.recipient_iban,
@@ -1910,24 +1908,11 @@ impl Vault {
         };
         let sync = self.clone().begin_sync(connection_id, secret, demo)?;
         let ctx = sync.clone_context()?;
-        let summary = TransferJob {
-            source_iban: iban,
-            source_owner: owner,
-            recipient_name: order.recipient_name.clone(),
-            recipient_iban: order.recipient_iban.clone(),
-            recipient_bic: order.recipient_bic.clone(),
-            amount_cents: order.amount_cents,
-            purpose: order.purpose.clone(),
-            instant: false,
-            execution_date: None,
-            end_to_end_id: new_end_to_end_id(),
-        };
         Ok(Arc::new(TransferSession::new(
             self.clone(),
             make_connector_for(kind, &key_str, demo),
             ctx,
             OrderKind::Standing(order),
-            summary,
             request.account_id,
         )))
     }
@@ -1985,7 +1970,7 @@ impl Vault {
         if scheme == DebitScheme::B2b && !request.b2b_confirmed {
             return Err(CoreError::invalid(tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.")));
         }
-        let (connection_id, iban, owner, key_str, kind, demo) =
+        let (connection_id, iban, _, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
         if !matches!(
             kind,
@@ -1998,24 +1983,8 @@ impl Vault {
             )));
         }
         let (ids, collections): (Vec<i64>, Vec<_>) = group.rows.into_iter().unzip();
-        let total: i64 = collections.iter().map(|c| c.amount_cents).sum();
         let sync = self.clone().begin_sync(connection_id, secret, demo)?;
         let ctx = sync.clone_context()?;
-        let summary = TransferJob {
-            source_iban: iban.clone(),
-            source_owner: owner,
-            recipient_name: trf(
-                "Lastschrift-Einzug ({0} Lastschriften)",
-                &[&collections.len()],
-            ),
-            recipient_iban: String::new(),
-            recipient_bic: None,
-            amount_cents: total,
-            purpose: String::new(),
-            instant: false,
-            execution_date: Some(request.collection_date.clone()),
-            end_to_end_id: new_end_to_end_id(),
-        };
         let job = DebitJob {
             source_iban: iban,
             creditor_name: plan.creditor_name,
@@ -2034,7 +2003,6 @@ impl Vault {
                 job,
                 mandate_ids: ids,
             }),
-            summary,
             request.account_id,
         )))
     }
@@ -2194,7 +2162,7 @@ impl Vault {
             return self.record_planned_transfer(account_id, summary);
         }
         for p in &batch.payments {
-            self.record_planned_transfer(account_id, &payment_job(batch, summary, p))?;
+            self.record_planned_transfer(account_id, &payment_job(batch, p))?;
         }
         Ok(())
     }
@@ -2216,7 +2184,7 @@ impl Vault {
         for p in &batch.payments {
             self.record_pending_transfer(
                 account_id,
-                &payment_job(batch, summary, p),
+                &payment_job(batch, p),
                 &format!("Überweisung {state}"),
             )?;
         }
@@ -2296,7 +2264,6 @@ impl Vault {
 /// One payment of a batch as a single-transfer job (for per-payment bookings).
 fn payment_job(
     batch: &BatchTransferJob,
-    summary: &TransferJob,
     p: &crate::connectors::fints::sepa::BatchPayment,
 ) -> TransferJob {
     TransferJob {
@@ -2308,7 +2275,7 @@ fn payment_job(
         amount_cents: p.amount_cents,
         purpose: p.purpose.clone(),
         instant: false,
-        execution_date: summary.execution_date.clone(),
+        execution_date: batch.execution_date.clone(),
         end_to_end_id: p.end_to_end_id.clone(),
     }
 }
