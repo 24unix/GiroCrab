@@ -127,6 +127,15 @@ Item {
             field.text = ""
             if (v !== "") AppModel.saveSetting("fints.product_id", v)
         }
+        /// After a rejected registration the alert sends the user here (AppModel.enterOwnProductID).
+        function focusIfAsked() {
+            if (!AppModel.focusOwnProductID || !own.visible) return
+            AppModel.focusOwnProductID = false
+            Qt.callLater(() => field.forceActiveFocus())
+        }
+        Component.onCompleted: focusIfAsked()
+        onVisibleChanged: focusIfAsked()
+        Connections { target: AppModel; function onFocusOwnProductIDChanged() { own.focusIfAsked() } }
         SettingsFormRow {
             label: qsTr("Eigene Produktregistrierung")
             TextField {

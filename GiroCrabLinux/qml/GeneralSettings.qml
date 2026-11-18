@@ -200,6 +200,27 @@ ScrollView {
                 onClicked: MerchantLogos.clearLogoCache()
             }
         }
+        // AutomationSettings.swift › AutoSyncSettingsSection (#546): kept outside the vault (QSettings
+        // `[autoSync] hours`), so it is active again after a relaunch. Logic: AutoSync.qml
+        SettingsFormSection {
+            title: qsTr("Abruf")
+            SettingsFormRow {
+                label: qsTr("Automatischer Abruf")
+                AppComboBox {
+                    readonly property int current: AutoSync.selection
+                    // a value set elsewhere stays selectable
+                    readonly property var options: AutoSync.hourOptions.indexOf(current) >= 0
+                        ? AutoSync.hourOptions : AutoSync.hourOptions.concat([current])
+                    Layout.preferredWidth: 200 * Theme.textScale
+                    model: options.map(h => ({ id: h, title: AutoSync.label(h) }))
+                    textRole: "title"; valueRole: "id"
+                    currentIndex: options.indexOf(current)
+                    onActivated: AutoSync.setHours(currentValue)
+                }
+            }
+            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                   text: qsTr("Ruft die Kontostände im gewählten Abstand ab, solange GiroCrab läuft und der Tresor entsperrt ist. Bei gesperrtem Tresor wird der Abruf übersprungen und nach dem Entsperren nachgeholt. Es werden nur Zugänge mit gespeicherter PIN oder gültiger Freigabe abgerufen, nie mit einem Anmeldedialog.") }
+        }
         Item { implicitHeight: 8 }
     }
 }

@@ -1633,11 +1633,31 @@ QtObject {
         if (isMagicDemoLogin(c.login_name)) return []
         const d = descriptor(c.connector)
         if (!d) return []
-        return d.required_settings.filter(key => {
-            if (key === "fints.product_id" && fintsProductIDSource !== "") return false
-            const e = settingEntry(key)
-            return !(e && e.has_value)
-        })
+        return userRequiredKeys(d.required_settings).filter(key => { const e = settingEntry(key); return !(e && e.has_value) })
+    }
+    /// Settings the core lists as required that are only an optional override for the user.
+    /// A custom FinTS product ID is one: GiroCrab ships its own, and a value entered once is a
+    /// global setting that covers every bank (AppModel+Connections.swift, #842/#865).
+    readonly property var optionalSettingKeys: ["fints.product_id"]
+    /// The ONLY place that turns `required_settings` into what the user must provide.
+    /// Add-bank sheet, setup and the sidebar use it.
+    function userRequiredKeys(requiredSettings) { return (requiredSettings || []).filter(k => optionalSettingKeys.indexOf(k) < 0) }
+    /// The core's `MissingSetting` (parsed error) for a key that is only an optional override.
+    function isMissingProductID(e) {
+        if (e.kind !== "MissingSetting") return false
+        const m = /key: "([^"]+)"/.exec(e.debug || "")
+        return !!m && optionalSettingKeys.indexOf(m[1]) >= 0
+    }
+    /// The core could not resolve a FinTS registration (no embedded ID and no own one).
+    /// Never a setup form: with an embedded ID the mode returns to `builtin` and the caller
+    /// retries once; otherwise the user is offered the own-ID alternative in an alert.
+    /// Returns true when a retry should follow.
+    function recoverFromMissingProductID() {
+        if (!fintsBuiltinAvailable || fintsProductIDMode === "builtin") return false
+        run(() => core("set_fints_product_id_mode", { mode: "builtin" }))
+        reloadSettings()
+        reloadProductIDState()
+        return true
     }
     function connectionStatus(id) { return run(() => core("connection_status", { connection_id: id })) || null }
     /// Amex / Amazon Visa / FNZ / Quirion / Schwäbisch Hall / Amazon orders: embedded web-portal login.
@@ -1716,6 +1736,8 @@ QtObject {
     property var pendingLogin: null          // BankConnection asking for the PIN
     property var setupRequest: null          // { connection, keys }
     property var webLoginConnection: null    // portal login (QtWebEngine)
+    /// The running sync was started by the schedule (AutoSync.qml): no login prompts, no error dialogs.
+    property var quietSyncConnectionID: null
     property var syncQueue: []
     property int syncBatchTotal: 0
     property var syncBatchSkipped: []
@@ -1805,16 +1827,34 @@ QtObject {
         const gen = ++syncGeneration
         // Statements only for an account of exactly this login: a stale value
         // would hand this login's PIN to another bank.
-        if (statementsAccountID !== null && (!accountsByID[statementsAccountID] || accountsByID[statementsAccountID].connection_id !== connection.id))
+        if (statementsAccountID !== null && (!accountsByID[statementsAccountID] || accountsByID[statementsAccountID].connection_id !== connection.id)
+            || quietSyncConnectionID === connection.id)
             statementsAccountID = null
             postboxConnectionID = null
         const statementsFor = statementsAccountID
-        // "PostBox jetzt abrufen" (#838) only for exactly this login
-        if (postboxConnectionID !== connection.id) postboxConnectionID = null
+        // "PostBox jetzt abrufen" (#838) only for exactly this login, never in an automatic sync
+        if (postboxConnectionID !== connection.id || quietSyncConnectionID === connection.id) postboxConnectionID = null
         const postboxNow = postboxConnectionID !== null
+        const quiet = quietSyncConnectionID === connection.id
         // Kept for the "GiroCrab-Registrierung" retry of a rejected product ID, so the
         // login is not asked again; finishSync takes it and clears it.
         const keepSecret = () => { if (statementsFor === null) failedSyncSecret = secret }
+        const startSession = id => {
+            activeSession = id
+            coreAsync("session_start", { session: id }, step => {
+                if (activeSession !== id || gen !== syncGeneration) return   // skipped / cancelled meanwhile
+                handleStep(step, connection)
+            }, err => { if (activeSession === id) { keepSecret(); finishSync(err, connection) } })
+        }
+        if (quiet) {
+            // no new approval in the background (e.g. the comdirect PostBox, #838); prepared
+            // off the GUI thread like the rest of the automatic fetch
+            coreAsync("begin_quiet_sync", { connection_id: connection.id, secret: secret, demo: isDemo }, id => {
+                if (gen !== syncGeneration) { coreAsync("session_cancel", { session: id }, null, () => {}); return }
+                startSession(id)
+            }, err => { if (gen === syncGeneration) finishSync(err, connection) })
+            return
+        }
         let id
         try {
             id = statementsFor !== null
@@ -1827,13 +1867,20 @@ QtObject {
             finishSync(e.message, connection)
             return
         }
-        activeSession = id
-        coreAsync("session_start", { session: id }, step => {
-            if (activeSession !== id || gen !== syncGeneration) return   // skipped / cancelled meanwhile
-            handleStep(step, connection)
-        }, err => { if (activeSession === id) { keepSecret(); finishSync(err, connection) } })
+        startSession(id)
     }
     function handleStep(step, connection) {
+        // A scheduled sync never asks for a login: the bank wants a new
+        // consent, so stop quietly – the connection view shows it.
+        if (quietSyncConnectionID === connection.id && (step.NeedsChallenge || step.StillWaiting)) {
+            logSync(connection.id, "Cancelled", qsTr("Automatischer Abruf übersprungen: Die Bank verlangt eine neue Freigabe."), 0, "Automatic")
+            quietSyncConnectionID = null
+            const s = activeSession
+            activeSession = null
+            syncingConnectionID = null
+            if (s !== null) coreAsync("session_cancel", { session: s }, null, () => {})
+            return
+        }
         if (step.NeedsChallenge) {
             const c = step.NeedsChallenge.challenge
             activeChallenge = { connection: connection, challenge: c, waiting: false, busy: false, error: "" }
@@ -1846,7 +1893,7 @@ QtObject {
             schedulePoll(connection, c.poll_interval_seconds)
         } else if (step.Finished) {
             const s = step.Finished.summary
-            logSync(connection.id, "Ok", "", s.transactions_imported, syncLogSource())
+            logSync(connection.id, "Ok", "", s.transactions_imported, syncLogSource(connection.id))
             activeChallenge = null
             syncingConnectionID = null
             activeSession = null
@@ -1861,12 +1908,14 @@ QtObject {
                 documentsVersion++
                 toast = syncNotice(connection, s) + " · " + postboxNote(s)
             } else {
-                toast = syncNotice(connection, s)
-                if (s.postbox_documents > 0) {
-                    documentsVersion++
-                    toast += " · " + postboxNote(s)
+                // scheduled syncs only speak up when something changed
+                if (quietSyncConnectionID !== connection.id || s.transactions_imported > 0 || s.new_accounts.length || s.revoked_accounts.length) {
+                    toast = syncNotice(connection, s)
+                    if (s.postbox_documents > 0) toast += " · " + postboxNote(s)
                 }
+                if (s.postbox_documents > 0) documentsVersion++
             }
+            quietSyncConnectionID = null
             reloadAll()
             checkPendingAccountSelection()
             syncNextInQueue()
@@ -1945,6 +1994,7 @@ QtObject {
         if (s !== null && syncingConnectionID !== null)
             logSync(syncingConnectionID, "Cancelled", qsTr("Vom Benutzer abgebrochen"), 0, syncLogSource())
         activeSession = null; activeChallenge = null; pendingLogin = null; syncingConnectionID = null
+        quietSyncConnectionID = null   // a cancelled automatic fetch must not make the next sync quiet
         statementsAccountID = null
         postboxConnectionID = null
         syncGeneration++
@@ -1984,15 +2034,39 @@ QtObject {
     property string failedSyncSecret: ""
     function finishSync(err, connection) {
         const e = parseCoreError(err)
-        logSync(connection.id, "Error", e.message, 0, syncLogSource())   // source before statementsAccountID is cleared
+        logSync(connection.id, "Error", e.message, 0, syncLogSource(connection.id))   // source before statementsAccountID is cleared
         const retrySecret = failedSyncSecret
         failedSyncSecret = ""
+        if (quietSyncConnectionID !== null) {
+            // scheduled sync: a notice instead of dialogs / login prompts
+            const quietID = quietSyncConnectionID
+            quietSyncConnectionID = null
+            pollTimer.stop()
+            activeSession = null; activeChallenge = null; syncingConnectionID = null
+            const name = (connections.find(c => c.id === quietID) || {}).display_name || ""
+            toast = qsTr("%1: automatischer Abruf fehlgeschlagen – %2").arg(name).arg(e.message)
+            return
+        }
         statementsAccountID = null
         postboxConnectionID = null
         pollTimer.stop()
         activeSession = null; activeChallenge = null; syncingConnectionID = null
         resetSyncBatch()
         if (e.kind === "BrowserLoginRequired") { toast = e.message; webLoginConnection = connection; return }
+        if (isMissingProductID(e)) {
+            // Never a setup form for the optional FinTS registration: it would be an empty,
+            // seemingly mandatory field. Fall back to GiroCrab's registration (once), else offer the own ID.
+            if (recoverFromMissingProductID()) {
+                const c = connections.find(x => x.id === connection.id)
+                if (c) requestSync(c)
+                return
+            }
+            errorTitle = qsTr("Abruf von „%1“ fehlgeschlagen").arg(connection.display_name)
+            errorRetry = null
+            errorAlternatives = [{ title: qsTr("Eigene Registrierung eintragen …"), action: enterOwnProductID }]
+            errorMessage = qsTr("Diese Version enthält keine FinTS-Registrierung von GiroCrab. Tragen Sie Ihre eigene Registrierung ein.")
+            return
+        }
         if (e.kind === "MissingSetting") {
             const keys = missingSettings(connection)
             const m = /key: "([^"]+)"/.exec(e.debug || "")
@@ -2033,11 +2107,18 @@ QtObject {
         }
         return out
     }
-    /// After a rejected registration: switch to the own one and open Settings › Banken.
+    /// After a rejected registration: switch to the own one, open Settings › Banken (FinTS
+    /// registration) and put the cursor into its field (no extra field in the alert).
     function enterOwnProductID() {
-        setFintsProductIDMode("own")
+        // Mode `own` only once an ID is stored (OwnProductIDField.commit), or an existing one is replaced:
+        // an empty field must not leave the user in a mode without a registration.
+        const own = settingEntry("fints.product_id")
+        if (own && own.has_value) setFintsProductIDMode("own")
+        focusOwnProductID = true
         openSettings("banks")
     }
+    /// OwnProductIDField takes the focus once (and clears this) when it appears.
+    property bool focusOwnProductID: false
 
     /// Enable Banking redirect (ConsentRedirect.defaultURL unless configured).
     function consentRedirectURL() {
@@ -3538,6 +3619,7 @@ QtObject {
         activeSession = null; activeChallenge = null; payeeCheck = null
         pendingLogin = null; setupRequest = null; webLoginConnection = null
         syncingConnectionID = null; statementsAccountID = null; postboxConnectionID = null
+        quietSyncConnectionID = null
         failedSyncSecret = ""
         syncGeneration++
         resetSyncBatch()
@@ -3639,6 +3721,7 @@ QtObject {
 
     // Custom period (GitHub #53): remembered across launches.
     Component.onCompleted: {
+        AutoSync.stop()   // creates the schedule singleton; it starts once the own vault is open
         const d = periodRange(previousMonthPeriod())
         customPeriodFrom = String(defaults.value("period/customFrom", "")) || d[0]
         customPeriodTo = String(defaults.value("period/customTo", "")) || d[1]
@@ -3801,8 +3884,14 @@ QtObject {
     /// Bumped whenever a sync wrote a row; the log window reloads on it.
     property int syncLogVersion: 0
     /// Appends a finished sync; the core scrubs logins, PINs, TANs and long numbers.
-    /// SyncLog.swift › syncLogSource: what started the running sync (no scheduled syncs on Linux).
-    function syncLogSource() { return statementsAccountID !== null ? "Statements" : "Manual" }
+    /// SyncLog.swift › syncLogSource(for:): what started the running sync (`connectionID`
+    /// defaults to the running one).
+    function syncLogSource(connectionID) {
+        if (statementsAccountID !== null) return "Statements"
+        const id = connectionID === undefined ? syncingConnectionID : connectionID
+        if (id !== null && quietSyncConnectionID === id) return "Automatic"
+        return "Manual"
+    }
     function logSync(connectionID, outcome, message, imported, source) {
         if (!isUnlocked) return
         try {

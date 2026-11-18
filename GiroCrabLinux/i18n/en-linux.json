@@ -83,6 +83,7 @@
   "Die Tags werden bei allen Buchungen entfernt. Die Buchungen bleiben.": "The tags will be removed from all bookings. The bookings stay.",
   "Die empfangenen Schlüssel sind noch nicht vertrauenswürdig. Tragen Sie für beide Schlüssel den vollständigen SHA-256-Prüfwert aus der offiziellen Commerzbank-Quelle ein. Ein abweichender Prüfwert verhindert die Übernahme.": "The received keys are not trusted yet. For both keys, enter the full SHA-256 fingerprint from the official Commerzbank source. A differing fingerprint prevents the import.",
   "Diese Tags sind keiner Buchung zugeordnet.": "These tags are not on any booking.",
+  "Diese Version enthält keine FinTS-Registrierung von GiroCrab. Tragen Sie Ihre eigene Registrierung ein.": "This version does not include GiroCrab's FinTS registration. Enter your own registration.",
   "Druckvorschau": "Print Preview",
   "Eigenes Konto anlegen": "Create Own Account",
   "Ein Tag bleibt und übernimmt die Buchungen der anderen. Um einen anderen zu behalten, klicken Sie ihn an.": "One tag stays and takes over the bookings of the others. To keep a different one, click it.",
