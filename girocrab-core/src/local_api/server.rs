@@ -531,6 +531,12 @@ mod tests {
     use serde_json::{json, Value};
     use std::io::{BufRead, BufReader, Write};
 
+    /// Upper bound for "`stop()` returns at once". `stop()` takes no lock a
+    /// worker holds, but on a busy CI runner the test thread itself can lose
+    /// the CPU for tens of milliseconds (a 50 ms bound failed at 62 ms). A
+    /// `stop()` that waited for a worker would take `WRITE_TIMEOUT` or `IDLE`.
+    const STOP_AT_ONCE: Duration = Duration::from_secs(1);
+
     /// A short directory: `sun_path` holds only 104 bytes on macOS, the usual
     /// temp directory is too deep for it.
     struct ShortDir(PathBuf);
@@ -734,7 +740,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(300));
         let t = std::time::Instant::now();
         server.stop();
-        assert!(t.elapsed() < Duration::from_millis(50), "{:?}", t.elapsed());
+        assert!(t.elapsed() < STOP_AT_ONCE, "{:?}", t.elapsed());
         assert!(!d.socket().exists());
         drop(s);
     }
@@ -861,7 +867,7 @@ mod tests {
         let t = std::time::Instant::now();
         server.stop();
         c.assert_closed();
-        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert!(t.elapsed() < STOP_AT_ONCE, "{:?}", t.elapsed());
     }
 
     #[test]
