@@ -126,7 +126,7 @@ extension AppModel {
         guard let c = account.connector, account.kind != .loan else { return false }
         // switched off per connection (bank connection dialog): the core would refuse it
         if let cid = account.connectionId, documentsOffConnectionIDs.contains(cid) { return false }
-        return [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .easybank, .fordMoney, .opelDirektbank].contains(c)
+        return [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .easybank, .fordMoney, .opelDirektbank, .ffb].contains(c)
     }
 
     /// Explicit "Kontoauszüge abrufen": regular syncs never fetch statements (speed, no extra TAN).

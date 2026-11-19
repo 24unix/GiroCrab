@@ -15,6 +15,9 @@
 //!                                                -> invested capital per position (best effort)
 //!  GET  /api/kundenansicht/transaktion/query/?datumVon=…&datumBis=…
 //!                                                -> table `#view`, 20 orders per page, link "Nächste"
+//!  GET  /api/kundenansicht/postfach/overview, …/postfach/query?datumVon=…&datumBis=…
+//!                                                -> table `#view`, 50 documents per page, link "Nächste"
+//!  GET  /api/kundenansicht/postfach/document/<id> -> the PDF
 //!  GET  /action/logout                           -> best effort
 //!
 //! The session id travels in the URL (`;jsessionid=…`), like the site's own
@@ -35,9 +38,10 @@ use super::uberspace::{
     attr, attrs, element_by_id, parse_date, table_cells, text, FORM, INPUT, LINK,
 };
 use super::{
-    http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
+    http_client, BankConnector, ChallengeResponse, ConnectContext, Documents, FetchResult,
+    KnownDocuments, Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
 };
+use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 use crate::models::{AccountKind, Holding, SecurityDirection, SecurityTransaction};
@@ -50,7 +54,13 @@ pub(crate) const REF_PREFIX: &str = "ffb:";
 const MAX_PAGES: usize = 500;
 /// Earliest start the depot development pages accept.
 const DEVELOPMENT_START: &str = "01.01.2009";
+/// Start of the document search ("Gesamt" in the Postfach date picker).
+const POSTFACH_START: &str = "01.01.2000";
+/// PDFs per run; the rest follows with the next fetch.
+const MAX_DOCUMENT_DOWNLOADS: usize = 200;
 
+static DOCUMENT_ID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"/api/kundenansicht/postfach/document/(\d+)").unwrap());
 static ROW: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<tr\b([^>]*)>(.*?)</tr\s*>").unwrap());
 static SESSION: LazyLock<Regex> =
@@ -500,6 +510,61 @@ fn parse_transactions(
     Ok((out, next_page(html)))
 }
 
+// ------------------------------------------------------------------ Postfach
+
+#[derive(Debug, Clone, PartialEq)]
+struct PostfachRow {
+    id: String,
+    date: String,
+    category: String,
+    kind: String,
+}
+
+/// Rows of the Postfach result table: read mark, date, category, document
+/// type, WKNs, PDF link, postage order.
+fn parse_postfach(html: &str) -> Vec<PostfachRow> {
+    let Some(table) = element_by_id(html, "view") else {
+        return Vec::new();
+    };
+    ROW.captures_iter(table)
+        .filter_map(|r| {
+            let row = r.get(0)?.as_str();
+            let id = DOCUMENT_ID.captures(row)?[1].to_string();
+            let cells = table_cells(row).into_iter().next()?;
+            if cells.len() < 6 {
+                return None;
+            }
+            Some(PostfachRow {
+                id,
+                date: parse_date(&text(cells[1]))?,
+                category: text(cells[2]),
+                kind: text(cells[3]),
+            })
+        })
+        .collect()
+}
+
+fn document_type(row: &PostfachRow) -> &'static str {
+    let kind = row.kind.to_lowercase();
+    if row.category == "Steuerunterlagen" || kind.contains("steuer") {
+        "steuer"
+    } else if kind.contains("auszug") || kind.contains("auszuege") {
+        "kontoauszug"
+    } else {
+        "postbox"
+    }
+}
+
+/// `YYYY-MM-DD_<type>_<id>.pdf`, without path separators.
+fn document_file_name(row: &PostfachRow) -> String {
+    let kind: String = row
+        .kind
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .collect();
+    format!("{}_{}_{}.pdf", row.date, kind, row.id)
+}
+
 // ------------------------------------------------------------------ connector
 
 #[derive(Default)]
@@ -546,6 +611,77 @@ impl FfbConnector {
 
     async fn page(&self, path: &str, query: &[(&str, &str)]) -> CoreResult<String> {
         self.get(&self.url(path, query)).await
+    }
+
+    /// One Postfach PDF; `None` when the bank answers with anything else.
+    async fn download(&self, id: &str) -> CoreResult<Option<Vec<u8>>> {
+        let client = self.client.as_ref().ok_or(CoreError::SessionClosed)?;
+        let path = format!("/api/kundenansicht/postfach/document/{id}");
+        let target = url::Url::parse(&self.url(&path, &[])).map_err(|_| invalid())?;
+        ensure_ffb(&target)?;
+        let resp = client.get(target).send().await?;
+        ensure_ffb(resp.url())?;
+        let status = resp.status();
+        let body = super::read_body_limited(resp, super::MAX_DOC_BYTES).await?;
+        if !status.is_success() {
+            return Err(rejected(status));
+        }
+        Ok(body.starts_with(b"%PDF").then_some(body))
+    }
+
+    /// Postfach PDFs not in `known`, newest first. A failed download ends the
+    /// run; what was loaded until then is kept and the rest follows next time.
+    async fn documents(
+        &self,
+        depot_ref: &str,
+        today: &str,
+        known: &mut KnownDocuments,
+    ) -> CoreResult<Vec<RemoteDocument>> {
+        self.page("/api/kundenansicht/postfach/overview", &[])
+            .await?;
+        let end = site_date(today).unwrap_or_default();
+        let mut next = Some(self.url(
+            "/api/kundenansicht/postfach/query",
+            &[
+                ("datumVon", POSTFACH_START),
+                ("datumBis", end.as_str()),
+                ("applicationCategory", "UNDEFINED"),
+                ("wkn", ""),
+            ],
+        ));
+        let mut rows = Vec::new();
+        let mut pages = 0;
+        while let Some(url) = next.take() {
+            let html = self.get(&url).await?;
+            rows.extend(parse_postfach(&html));
+            pages += 1;
+            if pages < MAX_PAGES {
+                next = next_page(&html).map(|href| format!("{BASE}{href}"));
+            }
+        }
+        rows.retain(|r| !known.contains(&r.id));
+        rows.truncate(MAX_DOCUMENT_DOWNLOADS);
+        let mut out = Vec::new();
+        for row in rows {
+            let bytes = match self.download(&row.id).await {
+                Ok(Some(bytes)) => bytes,
+                Ok(None) => continue,
+                Err(_) => break,
+            };
+            known.insert(row.id.clone());
+            out.push(RemoteDocument {
+                account_ref: depot_ref.to_string(),
+                booking_external_id: None,
+                title: row.kind.clone(),
+                doc_type: document_type(&row).into(),
+                mime_type: "application/pdf".into(),
+                file_name: document_file_name(&row),
+                bytes,
+                source_url: format!("ffb:postfach:{}", row.id),
+                date: row.date.clone(),
+            });
+        }
+        Ok(out)
     }
 
     async fn fetch_depot(
@@ -698,8 +834,37 @@ impl BankConnector for FfbConnector {
 
     async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let today = super::today();
+        let mut known = KnownDocuments::from_state(&ctx.state);
+
+        // "Kontoauszüge abrufen": documents only.
+        if let Documents::StatementsOnly(only) = &ctx.documents {
+            let overview = self
+                .page("/api/kundenansicht/depotuebersicht/single/overview", &[])
+                .await?;
+            let (depot_no, _) = parse_overview(&overview)?;
+            if *only != format!("{REF_PREFIX}depot:{depot_no}") {
+                return Ok(FetchResult::default());
+            }
+            let documents = self.documents(only, &today, &mut known).await?;
+            return Ok(FetchResult {
+                documents,
+                state: Some(known.to_state()),
+                ..Default::default()
+            });
+        }
+
         let mut out = FetchResult::default();
         self.fetch_depot(ctx, &today, &mut out).await?;
+        let due = ctx.documents.due_statements();
+        let depot_ref = out.accounts.first().map(|a| a.external_ref.clone());
+        if let Some(depot_ref) = depot_ref.filter(|r| due.contains(r)) {
+            // Optional: a failed document list never fails the sync.
+            if let Ok(documents) = self.documents(&depot_ref, &today, &mut known).await {
+                out.documents = documents;
+                out.statements_fetched = due.to_vec();
+                out.state = Some(known.to_state());
+            }
+        }
         Ok(out)
     }
 
@@ -1287,6 +1452,37 @@ mod tests {
         .unwrap()
         .0
         .is_empty());
+    }
+
+    const POSTFACH: &str = r#"<div class='tabellenkopf'>Ergebnis Ihrer Suche: 3 Dokumente<br/>
+      <a href="/api/kundenansicht/postfach/query/;jsessionid=X?applicationCategory=UNDEFINED&amp;d-49751-p=2&amp;datumVon=01.01.2000" class="pagingbanner">N&auml;chste&nbsp;<img src="/images/pfeil_re_w.gif" /></a></div>
+      <table cellspacing="1" id="view" class="liste"><thead><tr><th>Gelesen</th><th>Datum</th><th>Kategorie</th><th>Dokumenttyp</th><th>WKN</th><th></th><th>Bestellung</th></tr></thead><tbody>
+      <tr><td><div class="icon-haken" /></td><td><span class="">06.02.2026</span></td><td><span class="">Depot</span></td><td><span class="">Quartalsdepotauszug</span></td><td><span title=""></span></td>
+        <td><a href="/api/kundenansicht/postfach/document/900000001;jsessionid=X" target="_top"><img src="/images/buttons/icon_pdf.gif" /></a></td><td><input type="checkbox" onchange="javascript:postageOrderSelection( this, '900000001' );" /></td></tr>
+      <tr class="grauezeile"><td></td><td><span class="unread">05.02.2026</span></td><td><span>Steuerunterlagen</span></td><td><span>Steuerbescheinigung PA (Steuerinland)</span></td><td></td>
+        <td><a href="/api/kundenansicht/postfach/document/900000002;jsessionid=X"><img /></a></td><td></td></tr>
+      <tr><td></td><td><span>04.02.2026</span></td><td><span>Abwicklungskonto</span></td><td><span>Konto Auszuege</span></td><td></td>
+        <td><a href="/api/kundenansicht/postfach/document/900000003;jsessionid=X"><img /></a></td><td></td></tr>
+      <tr><td></td><td><span>03.02.2026</span></td><td><span>Depot</span></td><td><span>Fondsabrechnung</span></td><td><span title="A0TEST">A0TEST</span></td>
+        <td><a href="/api/kundenansicht/postfach/document/900000004;jsessionid=X"><img /></a></td><td></td></tr>
+      </tbody></table>"#;
+
+    #[test]
+    fn reads_postfach_documents_and_the_next_page() {
+        let rows = parse_postfach(POSTFACH);
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[0].id, "900000001");
+        assert_eq!(rows[0].date, "2026-02-06");
+        let types: Vec<_> = rows.iter().map(document_type).collect();
+        assert_eq!(types, ["kontoauszug", "steuer", "kontoauszug", "postbox"]);
+        assert_eq!(
+            document_file_name(&rows[1]),
+            "2026-02-05_Steuerbescheinigung_PA__Steuerinland__900000002.pdf"
+        );
+        let next = next_page(POSTFACH).unwrap();
+        assert!(next.starts_with("/api/kundenansicht/postfach/query/;jsessionid=X?"));
+        assert!(next.contains("&d-49751-p=2&"), "{next}");
+        assert!(parse_postfach("<p>Es wurden keine Dokumente gefunden</p>").is_empty());
     }
 
     #[test]
