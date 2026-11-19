@@ -269,16 +269,16 @@ fn value_text(v: &Value) -> Option<String> {
 }
 
 /// Largest amount accepted from portal JSON: 10 trillion euro in cents.
-const MAX_PORTAL_CENTS: f64 = 1e15;
+const MAX_PORTAL_CENTS: i64 = 1_000_000_000_000_000;
 
 fn value_cents(v: &Value) -> Option<i64> {
     match v {
-        Value::Number(n) => {
-            let cents = (n.as_f64()? * 100.0).round();
-            // no real account holds more than this; beyond it `as i64` would saturate
-            // and the sign handling (`abs`, `-`) downstream would overflow
-            (cents.is_finite() && cents.abs() <= MAX_PORTAL_CENTS).then_some(cents as i64)
-        }
+        // Rounded from the number's text (1.005 -> 101, not 100 as in f64).
+        // No real account holds more than the cap; the sign handling (`abs`,
+        // `-`) downstream would overflow near i64::MAX.
+        Value::Number(_) => crate::money::json_number_to_cents_rounded(v)
+            .ok()
+            .filter(|c| c.abs() <= MAX_PORTAL_CENTS),
         Value::String(s) => parse_amount(s),
         // a single-currency list such as Open Bank's `amounts: [{…}]`
         Value::Array(a) => a.first().and_then(value_cents),
@@ -2065,6 +2065,16 @@ mod tests {
         assert_eq!(super::value_cents(&json!(1e30)), None);
         assert_eq!(super::value_cents(&json!(-1e30)), None);
         assert_eq!(super::value_cents(&json!(9.3e16)), None);
+    }
+
+    #[test]
+    fn json_amounts_round_from_their_text_not_from_f64() {
+        use serde_json::json;
+        // 1.005 * 100.0 is 100.4999… in f64
+        assert_eq!(super::value_cents(&json!(1.005)), Some(101));
+        assert_eq!(super::value_cents(&json!(-0.285)), Some(-29));
+        assert_eq!(super::value_cents(&json!(42)), Some(4200));
+        assert_eq!(super::value_cents(&json!(1e10)), Some(1_000_000_000_000));
     }
 
     #[test]
