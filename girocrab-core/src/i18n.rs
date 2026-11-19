@@ -471,6 +471,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Die Summe der Sammelüberweisung ist zu groß." => "The total of the batch transfer is too large.",
         "Der Verwendungszweck darf höchstens 140 Zeichen lang sein." => "The payment reference can be at most 140 characters.",
         "Dieses Konto hat keine Bankverbindung." => "This account has no bank connection.",
+        "Dieses Konto ist archiviert oder vom Abruf ausgenommen." => "This account is archived or excluded from syncing.",
         "Überweisungen sind nur für FinTS- und bunq-Konten möglich." => "Transfers are only possible for FinTS and bunq accounts.",
         "Das Konto hat keine IBAN." => "The account has no IBAN.",
         "Bankverbindung {0}" => "bank connection {0}",

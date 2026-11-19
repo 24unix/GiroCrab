@@ -1126,6 +1126,118 @@ async fn demo_push_tan_flow_imports_and_categorises() {
     let _ = std::fs::remove_file(path);
 }
 
+/// "<Konto> abrufen" (#1124): only that account of the login is stored.
+#[tokio::test]
+async fn account_sync_stores_only_that_account() {
+    let (v, path) = demo_vault();
+    let conn = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.connector == ConnectorKind::VolksbankKasselGoettingen)
+        .unwrap();
+    let accounts: Vec<_> = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .filter(|a| a.connection_id == Some(conn.id))
+        .collect();
+    assert!(accounts.len() > 1, "the demo login has several accounts");
+    let giro = accounts
+        .iter()
+        .find(|a| a.name == "Musterbank Girokonto")
+        .unwrap();
+    let other = accounts.iter().find(|a| a.id != giro.id).unwrap();
+    let last_sync = |v: &Arc<Vault>| {
+        v.list_bank_connections()
+            .unwrap()
+            .into_iter()
+            .find(|c| c.id == conn.id)
+            .unwrap()
+            .last_sync_unix
+    };
+    let synced_before = last_sync(&v);
+    async fn run(s: &SyncSession) -> SyncSummary {
+        let mut step = s.start().await.unwrap();
+        loop {
+            match step {
+                SyncStep::Finished { summary } => return summary,
+                _ => step = s.poll().await.unwrap(),
+            }
+        }
+    }
+    // The demo bank books its new entry on the giro account: syncing
+    // another account of the login leaves it out.
+    let s = v
+        .clone()
+        .begin_account_sync(other.id, "pin".into(), true)
+        .unwrap();
+    assert_eq!(run(&s).await.transactions_imported, 0);
+    let stored = |id: i64| {
+        v.list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.id == id)
+            .unwrap()
+    };
+    assert_eq!(stored(giro.id).balance_cents, giro.balance_cents);
+    assert!(accounts.iter().all(|a| !stored(a.id).access_revoked));
+    // the login counts as synced only after a full sync (automatic sync)
+    assert_eq!(last_sync(&v), synced_before);
+    let s = v
+        .clone()
+        .begin_account_sync(giro.id, "pin".into(), true)
+        .unwrap();
+    assert_eq!(run(&s).await.transactions_imported, 1);
+    assert_eq!(stored(giro.id).balance_cents, giro.balance_cents - 27_65);
+    // an archived account is not synced at all: everything would be dropped
+    v.set_account_archived(other.id, true).unwrap();
+    assert!(matches!(
+        v.clone().begin_account_sync(other.id, "pin".into(), true),
+        Err(CoreError::InvalidInput { .. })
+    ));
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn only_among_names_the_account_of_a_single_account_sync() {
+    let refs = vec!["a".to_string(), "b".to_string()];
+    let mut ctx = ConnectContext::default();
+    assert_eq!(ctx.only_among(&refs), None);
+    ctx.only_account = Some("b".into());
+    assert_eq!(ctx.only_among(&refs), Some("b"));
+    // not among the bank's accounts under its stored ref: all, cut down later
+    ctx.only_account = Some("old-b".into());
+    assert_eq!(ctx.only_among(&refs), None);
+}
+
+#[test]
+fn keep_only_follows_a_renamed_ref_and_keeps_revocations() {
+    let account = |r: &str| RemoteAccount {
+        external_ref: r.into(),
+        name: String::new(),
+        owner: String::new(),
+        iban: String::new(),
+        account_number: String::new(),
+        currency: "EUR".into(),
+        kind: AccountKind::Checking,
+        balance_cents: 0,
+        balance_date: String::new(),
+    };
+    let mut data = FetchResult {
+        accounts: vec![account("new-a"), account("b")],
+        renamed_refs: vec![("a".into(), "new-a".into())],
+        revoked_refs: vec!["c".into()],
+        accounts_complete: true,
+        ..Default::default()
+    };
+    data.keep_only("a");
+    assert_eq!(data.accounts.len(), 1);
+    assert_eq!(data.accounts[0].external_ref, "new-a");
+    assert_eq!(data.revoked_refs, ["c"]);
+    assert!(!data.accounts_complete && data.single_account);
+}
+
 #[tokio::test]
 async fn demo_code_and_redirect_flows() {
     let (v, path) = demo_vault();
