@@ -166,6 +166,7 @@ extension AppModel {
         listBalances = ListBalances()
         history = []
         categoryHistory = []
+        categoryOtherCurrencies = []
     }
 
     /// Everything a selection change needs, loaded off the main thread and
@@ -230,7 +231,10 @@ extension AppModel {
                     let categoryHistory = try categoryChart.map {
                         try vault.categoryHistoryByUnit(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to, keyLength: $0.keyLength)
                     } ?? []
-                    return (page: page, flow: flow, recurring: recurring, categories: categories, uncategorized: uncategorized, history: history, categoryHistory: categoryHistory)
+                    let otherCurrencies = try categoryChart.map {
+                        try vault.categoryOtherCurrencies(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to)
+                    } ?? []
+                    return (page: page, flow: flow, recurring: recurring, categories: categories, uncategorized: uncategorized, history: history, categoryHistory: categoryHistory, otherCurrencies: otherCurrencies)
                 }
                 // A newer selection or a synchronous reload cancelled this request.
                 guard !Task.isCancelled else { return }
@@ -248,6 +252,7 @@ extension AppModel {
                 self.categoryTree = Self.buildTree(loaded.categories)
                 self.history = Self.trimmedHistory(loaded.history, from: from, to: to)
                 self.categoryHistory = loaded.categoryHistory
+                self.categoryOtherCurrencies = loaded.otherCurrencies
                 Perf.signposter.endInterval("publishSelection", publish)
             } catch {
                 guard !Task.isCancelled, let self else { return }

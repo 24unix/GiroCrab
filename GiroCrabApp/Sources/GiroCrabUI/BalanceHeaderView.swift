@@ -87,7 +87,7 @@ struct StreamHeaderCard: View {
                     if !compactHeader {
                     Group {
                         if let a = account {
-                            Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
+                            Text(([model.isOffline(a.id) ? OfflineAccountOptions.subtitle(a) : ""] + [a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)]).filter { !$0.isEmpty }.joined(separator: " · "))
                                 .sensitive()
                             if let holder = accountHolderLine(a) {
                                 Text(holder)
@@ -133,7 +133,7 @@ struct StreamHeaderCard: View {
                 Spacer()
                 if let hb = model.headerBalance {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(Money.format(hb.cents))
+                        Text(Money.format(hb.cents, currency: model.balanceCurrency))
                             .sensitive(.amounts)
                             .appFont(compactHeader ? .subheadline : .largeTitle, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
@@ -149,6 +149,14 @@ struct StreamHeaderCard: View {
                                     .lineLimit(1)
                                     .help(fetch.help ?? "")
                             }
+                        }
+                        if case .category = model.sidebarSelection, !model.categoryOtherCurrencies.isEmpty {
+                            Text("Zusätzlich: \(model.categoryOtherCurrencies.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
+                                .sensitive(.amounts)
+                                .appFont(.caption, monospacedDigit: true)
+                                .foregroundStyle(Theme.secondary)
+                                .lineLimit(1)
+                                .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
                         }
                         if account == nil, let split = model.headerTotalSplit {
                             Text("Zusätzlich: \(split.others.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
@@ -253,14 +261,22 @@ struct StreamHeaderCard: View {
 
     /// The tiles belong to the selection: no stale sums while it loads.
     private func kpiValue(_ cents: Int64) -> String {
-        model.isLoadingSelection ? "–" : Money.format(cents)
+        model.isLoadingSelection ? "–" : Money.format(cents, currency: model.balanceCurrency)
+    }
+
+    /// "Zusätzlich" line of a tile: its value in the currencies other than EUR (#1049); none while loading.
+    private func kpiExtra(_ pick: (CurrencyFlow) -> Int64) -> String? {
+        model.isLoadingSelection ? nil : model.otherCurrencyText(pick)
     }
 
     @ViewBuilder
     private var kpis: some View {
-        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(-model.consumptionThisMonth), tint: Theme.outflow)
-        KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: kpiValue(model.investedThisMonth), tint: Theme.invest)
-        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(model.incomeThisMonth), tint: Theme.inflow)
+        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(-model.consumptionThisMonth), tint: Theme.outflow,
+            extra: kpiExtra { -$0.consumptionCents })
+        KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: kpiValue(model.investedThisMonth), tint: Theme.invest,
+            extra: kpiExtra { $0.investedCents })
+        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(model.incomeThisMonth), tint: Theme.inflow,
+            extra: kpiExtra { $0.incomeCents })
         fixedCostsKPI
     }
 
@@ -270,7 +286,7 @@ struct StreamHeaderCard: View {
         let open = model.recurringMonth?.items.filter { !$0.booked && $0.amountCents < 0 }.count ?? 0
         Button { model.showRecurringSheet = true } label: {
             KPI(title: "Fixkosten offen", subtitle: "Diesen Monat · \(open) offen",
-                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0)), tint: Theme.outflow,
+                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0), currency: model.balanceCurrency), tint: Theme.outflow,
                 disclosure: true)
         }
         .buttonStyle(.plain)
@@ -561,6 +577,8 @@ struct KPI: View {
     let tint: Color
     /// Tile opens a detail view: shows a chevron next to the title.
     var disclosure = false
+    /// Amounts in currencies other than EUR, which `value` leaves out (#1049).
+    var extra: String?
 
     var body: some View {
         // Title and amount sit at a fixed distance and the title keeps to one line, so the
@@ -579,6 +597,13 @@ struct KPI: View {
             Text(value).appFont(.title3, weight: .semibold, monospacedDigit: true).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .sensitive(.amounts)
+            if let extra {
+                Text("Zusätzlich: \(extra)")
+                    .appFont(.caption2, monospacedDigit: true).foregroundStyle(Theme.secondary)
+                    .lineLimit(1)
+                    .sensitive(.amounts)
+                    .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
+            }
             Spacer(minLength: 2)
             Text(subtitle).appFont(.caption2).foregroundStyle(Theme.tertiary)
                 .lineLimit(2)
@@ -804,15 +829,16 @@ struct BalanceChart: View {
             return String(localized: "Keine Daten")
         }
         let d = Date.FormatStyle.dateTime.day().month(.wide)
-        return String(localized: "Von \(Money.format(first.cents)) am \(first.date.formatted(d)) auf \(Money.format(last.cents)) am \(last.date.formatted(d)). Tiefststand \(Money.format(low.cents)) am \(low.date.formatted(d)), Höchststand \(Money.format(high.cents)) am \(high.date.formatted(d)).")
+        let cur = model.balanceCurrency
+        return String(localized: "Von \(Money.format(first.cents, currency: cur)) am \(first.date.formatted(d)) auf \(Money.format(last.cents, currency: cur)) am \(last.date.formatted(d)). Tiefststand \(Money.format(low.cents, currency: cur)) am \(low.date.formatted(d)), Höchststand \(Money.format(high.cents, currency: cur)) am \(high.date.formatted(d)).")
     }
 
     private var currentValue: String {
         if drawStyle == .bars, let b = hover.bar {
-            return String(localized: "\(barTitle(b)): Ø \(Money.format(b.averageCents)), Ende \(Money.format(b.closingCents))")
+            return String(localized: "\(barTitle(b)): Ø \(Money.format(b.averageCents, currency: model.balanceCurrency)), Ende \(Money.format(b.closingCents, currency: model.balanceCurrency))")
         }
         guard let h = hover.point else { return summary }
-        return "\(h.date.formatted(.dateTime.weekday(.wide).day().month(.wide))): \(Money.format(h.cents))"
+        return "\(h.date.formatted(.dateTime.weekday(.wide).day().month(.wide))): \(Money.format(h.cents, currency: model.balanceCurrency))"
     }
 
     private func barTitle(_ b: BalanceBucket) -> String {
@@ -872,7 +898,7 @@ struct BalanceChart: View {
                 }
             }
             .accessibilityAction(named: "Buchungen dieses Tages zeigen") { selectHovered() }
-            .accessibilityChartDescriptor(BalanceChartDescriptor(points: pts.map { ($0.date, $0.euros) }))
+            .accessibilityChartDescriptor(BalanceChartDescriptor(points: pts.map { ($0.date, $0.euros) }, currency: model.balanceCurrency))
     }
 
     @ViewBuilder private var interactiveChart: some View {
@@ -1154,7 +1180,7 @@ struct BalanceChart: View {
             AxisValueLabel {
                 if let d = v.as(Double.self) {
                     // fixed minimum width: changing values never shift the plot sideways
-                    Text(verbatim: Self.compactEuros(d))
+                    Text(verbatim: Self.compactEuros(d, currency: model.balanceCurrency))
                         .sensitive(.amounts)
                         .appFont(.caption2, monospacedDigit: true)
                         .foregroundStyle(Theme.tertiary)
@@ -1183,11 +1209,11 @@ struct BalanceChart: View {
     /// "4.820 €", "-850 €", "0 €", "1,2 Mio. €": three significant digits, short enough for the
     /// slim axis. German compact notation only abbreviates from millions on (and then drops
     /// the thousands separator below), so smaller amounts use the grouped number style.
-    static func compactEuros(_ euros: Double) -> String {
+    static func compactEuros(_ euros: Double, currency: String = "EUR") -> String {
         let digits = FloatingPointFormatStyle<Double>.number.precision(.significantDigits(1...3))
         // compact currency notation needs macOS 15; the compact number style is older
         let text = abs(euros) < 1_000_000 ? euros.formatted(digits) : euros.formatted(digits.notation(.compactName))
-        return text + " €"
+        return text + " " + Money.symbol(currency)
     }
 
     /// Every how many units (years, months, days) the x-axis gets a label: the smallest
@@ -1241,7 +1267,7 @@ struct BalanceChart: View {
             Text(title)
                 .appFont(.caption2)
                 .foregroundStyle(Theme.secondary)
-            Text(verbatim: prefix + Money.format(cents))
+            Text(verbatim: prefix + Money.format(cents, currency: model.balanceCurrency))
                 .sensitive(.amounts)
                 .appFont(.caption, weight: .semibold, monospacedDigit: true)
                 .foregroundStyle(cents < 0 ? Theme.outflow : Theme.text)
@@ -1298,6 +1324,7 @@ private struct ObservationScope<Content: View>: View {
 /// Audio Graph / VoiceOver chart description of the balance history.
 private struct BalanceChartDescriptor: AXChartDescriptorRepresentable {
     let points: [(Date, Double)]
+    var currency = "EUR"
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let dates = points.map(\.0)
@@ -1309,7 +1336,7 @@ private struct BalanceChartDescriptor: AXChartDescriptorRepresentable {
         ) { Date(timeIntervalSince1970: $0).formatted(date: .abbreviated, time: .omitted) }
         let y = AXNumericDataAxisDescriptor(
             title: String(localized: "Saldo"), range: (values.min() ?? 0)...max(values.max() ?? 1, (values.min() ?? 0) + 1), gridlinePositions: []
-        ) { Money.format(Int64(($0 * 100).rounded())) }
+        ) { Money.format(Int64(($0 * 100).rounded()), currency: currency) }
         let series = AXDataSeriesDescriptor(
             name: String(localized: "Saldo"), isContinuous: true,
             dataPoints: points.map { AXDataPoint(x: $0.0.timeIntervalSince1970, y: $0.1) }
@@ -1432,7 +1459,7 @@ struct AmountFilterForm: View {
                 .multilineTextAlignment(.trailing)
                 .frame(width: 125)
                 .onSubmit { apply() }
-            Text(verbatim: "€").fixedSize()
+            Text(verbatim: Money.symbol(model.balanceCurrency)).fixedSize()
         }
         .fixedSize()
     }

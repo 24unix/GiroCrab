@@ -791,6 +791,33 @@ pub struct DepotValuePoint {
     pub total_depots: u32,
 }
 
+/// An amount in one currency: what a category holds in currencies other than EUR (#1049).
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CurrencyAmount {
+    pub currency: String,
+    pub cents: i64,
+}
+
+/// What a category (with its subcategories) holds in one currency other than EUR (#1049).
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CategoryCurrencyAmount {
+    pub category_id: i64,
+    pub currency: String,
+    pub cents: i64,
+}
+
+/// The KPI tiles of one currency other than EUR (#1049): what `SelectionFlow` leaves out.
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CurrencyFlow {
+    pub currency: String,
+    pub consumption_cents: i64,
+    pub invested_cents: i64,
+    pub income_cents: i64,
+}
+
 /// Sum of one category (with subcategories) over one calendar day, month or year (`period` = `yyyy-MM-dd`, `yyyy-MM` or `yyyy`).
 #[derive(Debug, Clone, uniffi::Record)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

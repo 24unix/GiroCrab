@@ -62,7 +62,13 @@ public final class AppModel {
     var accountNotes: [Int64: String] = [:]
     /// Custom label for „Ohne Kategorie“ (vault setting `ui.uncategorized_name`, #597); empty = default.
     var uncategorizedName = ""
-    var categories: [GiroCrabCore.Category] = []
+    var categories: [GiroCrabCore.Category] = [] { didSet { refreshOtherCurrencies() } }
+    /// "Zusätzlich" next to the sidebar totals (#1049): per category (with subcategories) what it holds in
+    /// currencies other than EUR, which its total leaves out. Empty when no booking has another currency.
+    var categoryOtherTotals: [Int64: [CurrencyAmount]] = [:]
+    /// "Zusätzlich" in the KPI tiles (#1049): the same tiles for each currency other than EUR.
+    var otherCurrencyFlows: [CurrencyFlow] = []
+    @ObservationIgnored var otherCurrenciesTask: Task<Void, Never>?
     /// Live tags in list order with their booking counts (#228).
     var tags: [GiroCrabCore.Tag] = []
     var categoryTree: [CategoryNode] = []
@@ -87,7 +93,7 @@ public final class AppModel {
     /// Watches Ansicht › Saldo anzeigen, which the settings window can change too.
     @ObservationIgnored private var runningBalanceObserver: NSKeyValueObservation?
     /// Flows of the selected account/group in the selected period; nil = not loaded yet.
-    var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)?
+    var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)? { didSet { refreshOtherCurrencies() } }
     /// „Ohne Kategorie“ badge while list filters narrow the sums; nil = the accounts' own counts (#357).
     var uncategorizedFilteredCount: Int?
     var dashboard: InvestmentDashboard?
@@ -102,6 +108,8 @@ public final class AppModel {
     var history: [DailyBalance] = []
     /// Monthly sums of the selected category incl. subcategories (chart above its bookings, #502).
     var categoryHistory: [CategoryPeriodSum] = []
+    /// What the selected category holds in currencies other than EUR (#1049): "Zusätzlich: …" in the header.
+    var categoryOtherCurrencies: [CurrencyAmount] = []
     /// Bar width of the category chart (#557); `.automatic` follows the global setting (months if that is automatic too).
     var categoryBarUnit: BalanceBarUnit = .automatic
     var advanziaWorkflow: AdvanziaWorkflow?
@@ -1460,7 +1468,7 @@ public final class AppModel {
         AppDefaults.store.set(true, forKey: Self.realDataKey)
         logoCache = [:]
         // nothing of the vault shown before (demo) may appear under the new one
-        page = nil; bookings = []; history = []; listBalances = ListBalances()
+        page = nil; bookings = []; history = []; categoryOtherCurrencies = []; listBalances = ListBalances()
         assetClassificationVersion += 1
         // cheap, indexed calls; everything that scans bookings goes off the main thread
         reloadAccounts()
