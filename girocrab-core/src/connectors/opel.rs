@@ -393,7 +393,7 @@ fn german_iban(blz: &str, number: &str) -> Option<String> {
     Some(format!("DE{:02}{blz}{number}", 98 - rem))
 }
 
-/// "- 0,73 €", "+ 1,36 €", "97.000,00&nbsp;€" → cents.
+/// "- 1,17 €", "+ 5,55 €", "50.000,00&nbsp;€" → cents.
 fn parse_amount(s: &str) -> Option<i64> {
     let cleaned: String = text(s)
         .replace(['\u{2212}', '\u{2013}'], "-")
@@ -502,7 +502,7 @@ struct PostboxRow {
     link: String,
     date: String,
     subject: String,
-    /// "Tagesgeld 1000054713", "Info".
+    /// "Tagesgeld 1000000001", "Info".
     account: String,
     category: String,
     account_number: Option<String>,
@@ -1148,20 +1148,20 @@ mod tests {
     fn reads_accounts_and_derives_missing_ibans() {
         let html = format!(
             "{}{}{}",
-            account_row(0, "Tagesgeld", "DE88 5002 5000 1000 0000 01", "4.254,14"),
-            account_row(1, "Festgeld", "1000000002", "97.000,00"),
-            account_row(0, "Tagesgeld", "DE88 5002 5000 1000 0000 01", "4.254,14"),
+            account_row(0, "Tagesgeld", "DE88 5002 5000 1000 0000 01", "2.222,22"),
+            account_row(1, "Festgeld", "1000000002", "50.000,00"),
+            account_row(0, "Tagesgeld", "DE88 5002 5000 1000 0000 01", "2.222,22"),
         );
         let accounts = parse_accounts(&html).unwrap();
         assert_eq!(accounts.len(), 2, "duplicate rows are listed once");
         assert_eq!(accounts[0].product, "Tagesgeld");
         assert_eq!(accounts[0].iban, "DE88500250001000000001");
         assert_eq!(accounts[0].number, "1000000001");
-        assert_eq!(accounts[0].balance_cents, 425_414);
+        assert_eq!(accounts[0].balance_cents, 222_222);
         assert_eq!(accounts[0].bookings_page(), Some(DAILY));
         assert_eq!(accounts[1].number, "1000000002");
         assert_eq!(accounts[1].iban, german_iban(BLZ, "1000000002").unwrap());
-        assert_eq!(accounts[1].balance_cents, 9_700_000);
+        assert_eq!(accounts[1].balance_cents, 5_000_000);
         assert_eq!(accounts[1].bookings_page(), Some(FIXED));
         assert!(parse_accounts(&account_row(0, "Tagesgeld", "kaputt", "1,00")).is_err());
     }
@@ -1181,31 +1181,31 @@ mod tests {
         let table = [
             booking(
                 0,
-                "28.11.2025 <br />30.11.2025",
+                "12.02.2025 <br />14.02.2025",
                 "Abschluss",
                 "",
-                "+ 1,36 €",
+                "+ 5,55 €",
             ),
             booking(
                 1,
-                "28.11.2025 <br />30.11.2025",
+                "12.02.2025 <br />14.02.2025",
                 "Abschluss",
                 "",
-                "+ 1,36 €",
+                "+ 5,55 €",
             ),
             booking(
                 2,
-                "28.11.2025 <br />30.11.2025",
+                "12.02.2025 <br />14.02.2025",
                 "Kap.ertr.st1",
                 "",
-                "<span class=\"transaction-negative\">- 0,73 €</span>",
+                "<span class=\"transaction-negative\">- 1,17 €</span>",
             ),
             booking(
                 3,
-                "23.04.2026 <br />23.04.2026",
+                "19.05.2026 <br />19.05.2026",
                 "Zinsen",
                 "Festgeld Ablauf",
-                "+ 2.212,81 €",
+                "+ 3.333,33 €",
             ),
         ]
         .join("");
@@ -1213,7 +1213,7 @@ mod tests {
         assert_eq!(tx.len(), 4);
         assert_eq!(
             (tx[0].booking_date.as_str(), tx[0].value_date.as_str()),
-            ("2025-11-28", "2025-11-30")
+            ("2025-02-12", "2025-02-14")
         );
         assert_eq!(
             (
@@ -1221,23 +1221,23 @@ mod tests {
                 tx[0].booking_text.as_str(),
                 tx[0].purpose.as_str()
             ),
-            (136, "Abschluss", "Abschluss")
+            (555, "Abschluss", "Abschluss")
         );
         assert_ne!(
             tx[0].external_id, tx[1].external_id,
             "identical bookings stay two"
         );
-        assert_eq!(tx[2].amount_cents, -73);
+        assert_eq!(tx[2].amount_cents, -117);
         assert_eq!(
             (tx[3].amount_cents, tx[3].purpose.as_str()),
-            (221_281, "Festgeld Ablauf")
+            (333_333, "Festgeld Ablauf")
         );
         let again = parse_bookings(&table, "opeldirektbank:DE00", "2000-01-01").unwrap();
         assert_eq!(again[1].external_id, tx[1].external_id);
         let recent = parse_bookings(&table, "opeldirektbank:DE00", "2026-01-01").unwrap();
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].external_id, tx[3].external_id);
-        assert!(parse_bookings(&table.replace("- 0,73 €", "n/a"), "a", "2000-01-01").is_err());
+        assert!(parse_bookings(&table.replace("- 1,17 €", "n/a"), "a", "2000-01-01").is_err());
     }
 
     #[test]
@@ -1245,7 +1245,7 @@ mod tests {
         let table = [
             postbox_row(
                 0,
-                "30.10.2026",
+                "15.03.2026",
                 "Kontoauszug Nr. 10",
                 "<span class=\"\">Tagesgeld </span> <span>1000000001 </span>",
                 "Kontoauszug",
@@ -1274,7 +1274,7 @@ mod tests {
         );
         assert_eq!(
             (rows[0].date.as_str(), rows[0].subject.as_str()),
-            ("2026-10-30", "Kontoauszug Nr. 10")
+            ("2026-03-15", "Kontoauszug Nr. 10")
         );
         assert_eq!(rows[0].account, "Tagesgeld 1000000001");
         assert_eq!(rows[0].account_number.as_deref(), Some("1000000001"));
@@ -1284,11 +1284,11 @@ mod tests {
         assert_eq!(document_type(&rows[2]), "steuer");
         assert_eq!(
             document_file_name(&rows[0]),
-            "2026-10-30_Kontoauszug_Nr._10.pdf"
+            "2026-03-15_Kontoauszug_Nr._10.pdf"
         );
         assert_eq!(
             rows[0].key(),
-            "2026-10-30|Kontoauszug Nr. 10|Tagesgeld 1000000001"
+            "2026-03-15|Kontoauszug Nr. 10|Tagesgeld 1000000001"
         );
     }
 
@@ -1355,9 +1355,9 @@ mod tests {
 
     #[test]
     fn amounts_and_dates() {
-        assert_eq!(parse_amount("<span>- 0,73 €</span>"), Some(-73));
-        assert_eq!(parse_amount("+ 2.212,81 €"), Some(221_281));
-        assert_eq!(parse_amount("97.000,00&nbsp;€"), Some(9_700_000));
+        assert_eq!(parse_amount("<span>- 1,17 €</span>"), Some(-117));
+        assert_eq!(parse_amount("+ 3.333,33 €"), Some(333_333));
+        assert_eq!(parse_amount("50.000,00&nbsp;€"), Some(5_000_000));
         assert_eq!(parse_amount("—"), None);
         assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
     }
