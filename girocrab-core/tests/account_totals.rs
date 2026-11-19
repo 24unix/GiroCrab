@@ -175,8 +175,9 @@ fn excluded_group_leaves_dashboard_and_cashflow() {
         "only the included account's shopping"
     );
 
+    // the overview card is an overall money figure: totals context
     let cash = v
-        .cashflow_by_period(PeriodGranularity::Month, 1, None)
+        .cashflow_by_period(PeriodGranularity::Month, 1, None, true)
         .unwrap();
     let cp = cash.last().unwrap();
     assert_eq!(cp.income_cents, 100_000);
@@ -202,7 +203,7 @@ fn archived_accounts_leave_the_overall_flow() {
     assert_eq!(m.income_cents, 100_000);
     assert_eq!(m.consumption_cents, 4_000);
     let cash = v
-        .cashflow_by_period(PeriodGranularity::Month, 1, None)
+        .cashflow_by_period(PeriodGranularity::Month, 1, None, true)
         .unwrap();
     assert_eq!(cash.last().unwrap().expense_cents, 4_000);
 
@@ -216,6 +217,79 @@ fn archived_accounts_leave_the_overall_flow() {
     assert_eq!(own.total_count, 2);
     assert_eq!(own.flow.income_cents, 100_000);
     assert_eq!(own.flow.consumption_cents, 4_000);
+}
+
+/// The cashflow card follows its calculation context (#337): the overview card
+/// (`respect_in_total`) sums the effective total set; a directly requested
+/// account is a proof view and keeps its own flows — also when it is switched
+/// out of the totals or archived, the card never goes blank.
+#[test]
+fn cashflow_card_single_account_is_proof_overview_is_totals() {
+    let (v, tmp) = vault("totals-cash-context");
+    let c = tmp.conn("v.girocrab");
+    let (a, b) = seeded_pair(&c);
+    assert_eq!(
+        v.cashflow_by_period(PeriodGranularity::Month, 1, None, true)
+            .unwrap()
+            .last()
+            .unwrap()
+            .income_cents,
+        200_000,
+        "both accounts count while both are included"
+    );
+
+    // b out of the totals: the overview card drops it …
+    v.set_account_include_in_total(b, false).unwrap();
+    assert_eq!(
+        v.cashflow_by_period(PeriodGranularity::Month, 1, None, true)
+            .unwrap()
+            .last()
+            .unwrap()
+            .income_cents,
+        100_000,
+        "overview = effective total set (a only)"
+    );
+    // … the single-account card keeps b's own flows (proof view, default) …
+    assert_eq!(
+        v.cashflow_by_period(PeriodGranularity::Month, 1, Some(vec![b]), false)
+            .unwrap()
+            .last()
+            .unwrap()
+            .income_cents,
+        100_000,
+        "directly requested account keeps its sums"
+    );
+    // … and only an explicit totals context narrows that selection to zero.
+    assert_eq!(
+        v.cashflow_by_period(PeriodGranularity::Month, 1, Some(vec![b]), true)
+            .unwrap()
+            .last()
+            .unwrap()
+            .income_cents,
+        0,
+        "totals context drops the switched-out account"
+    );
+    assert_eq!(
+        v.cashflow_by_period(PeriodGranularity::Month, 1, Some(vec![a]), true)
+            .unwrap()
+            .last()
+            .unwrap()
+            .income_cents,
+        100_000,
+        "included account unaffected"
+    );
+
+    // archived is the same proof rule: the account's own card keeps working
+    v.set_account_archived(b, true).unwrap();
+    assert_eq!(
+        v.cashflow_by_period(PeriodGranularity::Month, 1, Some(vec![b]), false)
+            .unwrap()
+            .last()
+            .unwrap()
+            .income_cents,
+        100_000,
+        "archived account's card keeps its sums"
+    );
 }
 
 // ------------------------------------------------- explicit totals context (new APIs)

@@ -30,10 +30,13 @@ extension AppModel {
     }
 
     /// `nil` = locked, cancelled or the vault changed meanwhile (keep what is shown).
-    /// `accountIds` empty = all accounts.
-    func cashflow(_ g: PeriodGranularity, count: Int, accountIds: [Int64] = []) async -> [PeriodCashflow]? {
+    /// `accountIds` empty = all accounts. `respectInTotal`: the card as an
+    /// overall money figure (#337) — only the effective total set contributes;
+    /// the default `false` keeps the proof semantics of a directly requested
+    /// selection (single account).
+    func cashflow(_ g: PeriodGranularity, count: Int, accountIds: [Int64] = [], respectInTotal: Bool = false) async -> [PeriodCashflow]? {
         try? await vaultOffMain {
-            try $0.cashflowByPeriod(granularity: g, count: UInt32(count), accountIds: accountIds)
+            try $0.cashflowByPeriod(granularity: g, count: UInt32(count), accountIds: accountIds, respectInTotal: respectInTotal)
         }
     }
 
@@ -397,7 +400,11 @@ struct CashflowCard: View {
         // totalsVersion: an account/group switch changes the effective set
         // without moving the (proof) booking count (#337).
         .task(id: "\(granularity)#\(model.bookings.count)#\(accountIds)#\(model.totalsVersion)") {
-            if let loaded = await model.cashflow(granularity, count: granularity == .year ? 5 : 6, accountIds: accountIds) {
+            // calculation context like `currentFilter` (#337): overview, group,
+            // kind / bank = overall money figure; a directly requested single
+            // account is a proof view and keeps its sums
+            if let loaded = await model.cashflow(granularity, count: granularity == .year ? 5 : 6, accountIds: accountIds,
+                                                 respectInTotal: model.sidebarSelection?.usesTotalsContext ?? true) {
                 rows = loaded
             }
         }

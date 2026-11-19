@@ -459,7 +459,7 @@ fn small_results(vault: &Vault, all: &[girocrab_core::models::Booking]) {
     });
     time("cashflow_by_period(month, 12)", || {
         vault
-            .cashflow_by_period(PeriodGranularity::Month, 12, None)
+            .cashflow_by_period(PeriodGranularity::Month, 12, None, true)
             .unwrap()
     });
     let rule = |pattern: &str| Rule {

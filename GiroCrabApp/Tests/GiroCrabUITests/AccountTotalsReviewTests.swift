@@ -58,17 +58,18 @@ final class AccountTotalsReviewTests: XCTestCase {
         let target = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking && $0.inTotal })
         let vault = try XCTUnwrap(model.vault)
         let proofCount = model.bookings.count
-        let before = try vault.cashflowByPeriod(granularity: .month, count: 6).map(\.incomeCents)
+        // the overview card is an overall money figure (#337): totals context
+        let before = try vault.cashflowByPeriod(granularity: .month, count: 6, respectInTotal: true).map(\.incomeCents)
         var version = model.totalsVersion
         model.setAccountArchived(target, true)
-        let archived = try vault.cashflowByPeriod(granularity: .month, count: 6).map(\.incomeCents)
+        let archived = try vault.cashflowByPeriod(granularity: .month, count: 6, respectInTotal: true).map(\.incomeCents)
         XCTAssertNotEqual(archived, before, "the account contributes real demo cashflow")
         XCTAssertEqual(model.bookings.count, proofCount)
         XCTAssertGreaterThan(model.totalsVersion, version, "a visible cashflow card needs a new request")
         version = model.totalsVersion
         model.setAccountArchived(target, false)
         XCTAssertEqual(model.bookings.count, proofCount)
-        XCTAssertEqual(try vault.cashflowByPeriod(granularity: .month, count: 6).map(\.incomeCents), before)
+        XCTAssertEqual(try vault.cashflowByPeriod(granularity: .month, count: 6, respectInTotal: true).map(\.incomeCents), before)
         XCTAssertGreaterThan(model.totalsVersion, version)
     }
 
