@@ -22655,6 +22655,28 @@
         }
       }
     },
+    "Nicht alles abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not everything was fetched"
+          }
+        }
+      }
+    },
+    "Nicht alles abgerufen, Details im Abruf-Protokoll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not everything was fetched, details in the Fetch Log"
+          }
+        }
+      }
+    },
     "Nicht als Gehalt erkannt. Markieren Sie den Eingang, damit der Zeitraum „Seit letztem Gehalt“ ihn nutzt." : {
       "extractionState" : "manual",
       "localizations" : {

@@ -544,11 +544,7 @@ impl BankConnector for ComdirectConnector {
             });
             let mut ids = super::ContentIds::default();
             for t in &self.booked(&id, &ctx.since).await? {
-                let mut rt = map_transaction(t, &id);
-                if rt.external_id.is_empty() {
-                    rt.external_id = ids.next(&rt);
-                }
-                out.transactions.push(rt);
+                out.transactions.push(booked_transaction(t, &id, &mut ids));
             }
             // Not yet booked (card holds, pending transfers). Best effort: an error or a
             // missing right just means no holds; the booked bookings stay untouched.
@@ -560,19 +556,8 @@ impl BankConnector for ComdirectConnector {
             {
                 let mut hold_ids = super::ContentIds::default();
                 for t in page["values"].as_array().cloned().unwrap_or_default() {
-                    let mut rt = map_transaction(&t, &id);
-                    if rt.booking_date.is_empty() {
-                        rt.booking_date = if rt.value_date.is_empty() {
-                            super::today()
-                        } else {
-                            rt.value_date.clone()
-                        };
-                    }
-                    if rt.booking_text.is_empty() {
-                        rt.booking_text = tr("Vorgemerkt").into();
-                    }
-                    rt.external_id = format!("{HOLD_PREFIX}{}", hold_ids.next(&rt));
-                    out.transactions.push(rt);
+                    out.transactions
+                        .push(hold_transaction(&t, &id, &mut hold_ids));
                 }
             } else {
                 holds_ok = false;
@@ -759,6 +744,72 @@ fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
         mandate_id: sepa_ref(&t["directDebitMandateId"]),
         creditor_id: sepa_ref(&t["directDebitCreditorId"]),
         ..Default::default()
+    }
+}
+
+/// A booked entry with its id: the bank's `reference`, else a content id.
+/// The card merchant is filled in only afterwards, so the id stays the one
+/// earlier versions stored (#1135).
+fn booked_transaction(
+    t: &Value,
+    account_ref: &str,
+    ids: &mut super::ContentIds,
+) -> RemoteTransaction {
+    let mut rt = map_transaction(t, account_ref);
+    if rt.external_id.is_empty() {
+        rt.external_id = ids.next(&rt);
+    }
+    fill_card_merchant(&mut rt);
+    rt
+}
+
+/// A not yet booked entry (card hold, pending transfer) with its hold id and a
+/// date and text to show. Like [`booked_transaction`], the card merchant comes
+/// after the id.
+fn hold_transaction(
+    t: &Value,
+    account_ref: &str,
+    ids: &mut super::ContentIds,
+) -> RemoteTransaction {
+    let mut rt = map_transaction(t, account_ref);
+    if rt.booking_date.is_empty() {
+        rt.booking_date = if rt.value_date.is_empty() {
+            super::today()
+        } else {
+            rt.value_date.clone()
+        };
+    }
+    if rt.booking_text.is_empty() {
+        rt.booking_text = tr("Vorgemerkt").into();
+    }
+    rt.external_id = format!("{HOLD_PREFIX}{}", ids.next(&rt));
+    fill_card_merchant(&mut rt);
+    rt
+}
+
+/// The merchant of a comdirect Visa debit card payment. Neither the REST API
+/// nor FinTS name a counterparty for these bookings (GitHub #1135); the
+/// purpose reads `<merchant>, <place …> … comdirect Visa-Debitkarte <time>`.
+/// Returns the text before the first comma, `None` for any other purpose or
+/// when that comma does not come before the card note.
+pub(crate) fn visa_debit_merchant(purpose: &str) -> Option<String> {
+    const CARD: &str = "visa-debitkarte";
+    let (head, rest) = purpose.split_once(',')?;
+    if head.to_lowercase().contains(CARD) || !rest.to_lowercase().contains(CARD) {
+        return None;
+    }
+    let name = head.trim();
+    (name.chars().count() <= 60 && name.chars().any(char::is_alphabetic)).then(|| name.to_string())
+}
+
+/// Gives a booking without counterparty the merchant of its card payment
+/// (see [`visa_debit_merchant`]); a counterparty from the bank stays. Call it
+/// after the id is set: content ids include the counterparty.
+pub(crate) fn fill_card_merchant(t: &mut RemoteTransaction) {
+    if t.counterparty.trim().is_empty() {
+        if let Some(merchant) = visa_debit_merchant(&t.purpose) {
+            t.counterparty = merchant;
+        }
     }
 }
 
@@ -1199,5 +1250,106 @@ mod tests {
         assert_eq!(t.booking_date, "");
         assert_eq!(t.value_date, "2026-11-12");
         assert!(t.external_id.is_empty());
+    }
+
+    /// A Visa debit card payment as comdirect sends it (#1135): no creditor
+    /// name, the merchant first in 35-character remittance lines.
+    fn card_payment(creditor: &str, lines: &[&str]) -> serde_json::Value {
+        let info: String = lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| format!("{:02}{l:<35}", i + 1))
+            .collect();
+        serde_json::json!({
+            "reference": "R1", "bookingDate": "2026-11-14", "valutaDate": "2026-11-14",
+            "amount": {"value": "-23.40", "unit": "EUR"},
+            "creditor": {"holderName": creditor},
+            "remittanceInfo": info.trim_end(),
+            "transactionType": {"key": "DIRECT_DEBIT", "text": "Lastschrift / Belastung"}
+        })
+    }
+
+    #[test]
+    fn visa_debit_payment_gets_its_merchant_as_counterparty() {
+        let lines = [
+            "Beispielladen GmbH, Musterstadt DE",
+            "Kartenzahlung am 14.11.2026",
+            "comdirect Visa-Debitkarte 12:34:56",
+        ];
+        let mut ids = crate::connectors::ContentIds::default();
+        let t = super::booked_transaction(&card_payment("", &lines), "acc1", &mut ids);
+        assert_eq!(t.counterparty, "Beispielladen GmbH");
+        assert_eq!(t.external_id, "R1");
+        // the purpose stays as the bank sent it
+        assert_eq!(
+            t.purpose,
+            "Beispielladen GmbH, Musterstadt DE Kartenzahlung am 14.11.2026 comdirect Visa-Debitkarte 12:34:56"
+        );
+        // a name from the bank is kept
+        let named =
+            super::booked_transaction(&card_payment("Muster Markt", &lines), "acc1", &mut ids);
+        assert_eq!(named.counterparty, "Muster Markt");
+    }
+
+    #[test]
+    fn card_merchant_does_not_change_content_ids() {
+        // ids without the bank's reference come from the content, which includes
+        // the counterparty: they must stay the ones stored before #1135
+        let lines = [
+            "Beispielladen GmbH, Musterstadt DE",
+            "comdirect Visa-Debitkarte 12:34:56",
+        ];
+        let mut no_ref = card_payment("", &lines);
+        no_ref["reference"] = serde_json::Value::Null;
+        let before = |t: &serde_json::Value| {
+            let mut ids = crate::connectors::ContentIds::default();
+            ids.next(&super::map_transaction(t, "acc1"))
+        };
+        let booked = super::booked_transaction(
+            &no_ref,
+            "acc1",
+            &mut crate::connectors::ContentIds::default(),
+        );
+        assert_eq!(booked.counterparty, "Beispielladen GmbH");
+        assert_eq!(booked.external_id, before(&no_ref));
+        // a hold: the date it gets is part of its id, the merchant is not
+        no_ref["bookingDate"] = serde_json::Value::Null;
+        let hold = super::hold_transaction(
+            &no_ref,
+            "acc1",
+            &mut crate::connectors::ContentIds::default(),
+        );
+        assert_eq!(hold.counterparty, "Beispielladen GmbH");
+        let mut unnamed = super::map_transaction(&no_ref, "acc1");
+        unnamed.booking_date = "2026-11-14".into();
+        unnamed.booking_text = "Lastschrift / Belastung".into();
+        let id = crate::connectors::ContentIds::default().next(&unnamed);
+        assert_eq!(hold.external_id, format!("{}{id}", super::HOLD_PREFIX));
+    }
+
+    #[test]
+    fn visa_debit_merchant_only_for_card_payments() {
+        use super::visa_debit_merchant as merchant;
+        assert_eq!(
+            merchant("PAYPAL *SHOP, 4029357733 DE ... comdirect Visa-Debitkarte 08:15:00")
+                .as_deref(),
+            Some("PAYPAL *SHOP")
+        );
+        // no card payment, no comma, or nothing readable before the comma
+        assert_eq!(merchant("Miete Januar, Wohnung 3"), None);
+        assert_eq!(
+            merchant("Beispielladen comdirect Visa-Debitkarte 12:34:56"),
+            None
+        );
+        assert_eq!(
+            merchant("1234, Musterstadt comdirect Visa-Debitkarte"),
+            None
+        );
+        assert_eq!(merchant(", Musterstadt comdirect Visa-Debitkarte"), None);
+        // the only comma comes after the card note: no merchant from that part
+        assert_eq!(
+            merchant("Beispielladen Musterstadt comdirect Visa-Debitkarte 12:34:56, Ref 1"),
+            None
+        );
     }
 }

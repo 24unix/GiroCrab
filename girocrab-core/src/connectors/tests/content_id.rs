@@ -235,6 +235,47 @@ fn refetch_fills_empty_field_groups_and_heals_text() {
     );
 }
 
+#[test]
+fn refetch_names_a_stored_booking_without_counterparty() {
+    // comdirect card payments were stored without counterparty before #1135
+    let (v, conn) = setup();
+    let counterparty = || -> String {
+        v.db()
+            .unwrap()
+            .query_row("SELECT counterparty FROM transactions", [], |r| r.get(0))
+            .unwrap()
+    };
+    let mut first = tx("2026-11-14", -2_340, "");
+    first.external_id = "t1".into();
+    store_fetch(
+        &v,
+        ConnectorKind::Comdirect,
+        conn,
+        fetch(vec![first.clone()]),
+    )
+    .unwrap();
+    let named = RemoteTransaction {
+        counterparty: "Beispielladen GmbH".into(),
+        ..first
+    };
+    let s = store_fetch(
+        &v,
+        ConnectorKind::Comdirect,
+        conn,
+        fetch(vec![named.clone()]),
+    )
+    .unwrap();
+    assert_eq!(s.transactions_imported, 0);
+    assert_eq!(counterparty(), "Beispielladen GmbH");
+    // a stored name is never replaced by another one
+    let other = RemoteTransaction {
+        counterparty: "Anderer Name".into(),
+        ..named
+    };
+    store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(vec![other])).unwrap();
+    assert_eq!(counterparty(), "Beispielladen GmbH");
+}
+
 /// A booking imported from a MoneyMoney export into the fetched account.
 fn imported_row(v: &Vault, ext: &str, t: &RemoteTransaction, note: &str) {
     v.db()
