@@ -410,11 +410,11 @@ fn wire_import(win: &MainWindow) {
             "Datenbank wird gelesen …",
             move || {
                 let path = pick_file(
-                    "MoneyMoney-Datenbank wählen",
+                    "Datenbank wählen",
                     "Datenbank",
                     &["moneymoney", "sqlite", "db"],
                 )
-                .or_else(|| pick_dir("MoneyMoney-Ordner wählen"))
+                .or_else(|| pick_dir("Ordner mit Datenbank wählen"))
                 .ok_or("Import abgebrochen.".to_string())?;
                 let location = path.display().to_string();
                 let p = v

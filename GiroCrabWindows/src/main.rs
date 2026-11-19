@@ -791,7 +791,7 @@ impl DialogBridge {
         self.drain();
         self.show(
             "pin",
-            "Passwort der MoneyMoney-Datenbank".into(),
+            "Passwort der Datenbank".into(),
             "Das Passwort wird nur für diesen Import im Speicher gehalten.".into(),
             None,
         );
@@ -1275,7 +1275,7 @@ fn import_file(
                 .import_moneymoney_database(location, pw.to_string(), options)
                 .map_err(e)?;
             Ok(format!(
-                "MoneyMoney-Import: {} neue Umsätze, {} Duplikate, {} Konten neu, {} zusammengeführt.",
+                "Datenimport: {} neue Umsätze, {} Duplikate, {} Konten neu, {} zusammengeführt.",
                 r.bookings_new, r.bookings_duplicates, r.accounts_created, r.accounts_merged
             ))
         }
@@ -1288,7 +1288,7 @@ fn pick_import_file() -> Option<PathBuf> {
     rfd::FileDialog::new()
         .set_title("Umsätze importieren")
         .add_filter(
-            "MoneyMoney, CSV, CAMT",
+            "Datenbank, CSV, CAMT",
             &["moneymoney", "csv", "xml", "sta", "mt940", "txt"],
         )
         .pick_file()

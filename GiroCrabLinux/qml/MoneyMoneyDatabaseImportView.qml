@@ -60,7 +60,7 @@ ColumnLayout {
         progress = null; cancelling = false; error = ""; result = null; checksExpanded = false
         tableSelection = ({}); tableAnchor = -1
         if (AppModel.demoDbPreview) {
-            filePath = "/home/max/MoneyMoney"
+            filePath = "/home/max/Finanzdaten"
             fileIsFolder = true
             password = "demo-passwort"
             apply(AppModel.demoDbPreview)
@@ -256,13 +256,13 @@ ColumnLayout {
 
     FileDialog {
         id: filePicker
-        title: qsTr("MoneyMoney-Datenbank auswählen (MoneyMoney.sqlite)")
-        nameFilters: [qsTr("MoneyMoney-Datenbank (*.sqlite)"), qsTr("Alle Dateien (*)")]
+        title: qsTr("Datenbank auswählen (.sqlite)")
+        nameFilters: [qsTr("Datenbank (*.sqlite)"), qsTr("Alle Dateien (*)")]
         onAccepted: v.picked(v.pathOf(selectedFile), false)
     }
     FolderDialog {
         id: folderPicker
-        title: qsTr("Kopierten MoneyMoney-Ordner auswählen (mit Kontoauszügen)")
+        title: qsTr("Kopierten Ordner mit Datenbank und Kontoauszügen auswählen")
         onAccepted: v.picked(v.pathOf(selectedFolder), true)
     }
     FolderDialog {
@@ -398,7 +398,7 @@ ColumnLayout {
             }
             FormSection {
                 title: qsTr("Datenbank")
-                footers: [qsTr("MoneyMoney läuft nur auf dem Mac. Kopieren Sie dort den MoneyMoney-Ordner (~/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney) auf diesen Rechner und wählen Sie ihn hier, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datei (MoneyMoney.sqlite), etwa aus einem Backup, geht auch."),
+                footers: [qsTr("Kopieren Sie den Ordner mit Datenbank und Kontoauszügen vom Mac auf diesen Rechner und wählen Sie ihn hier, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datenbankdatei (.sqlite), etwa aus einem Backup, geht auch."),
                           qsTr("Kein Datenbank-Passwort festgelegt? Legen Sie vorher eines in dem Programm fest, das die Datenbank erstellt hat."),
                           qsTr("Das Passwort der Datenbank wurde nicht in GiroCrab festgelegt. Tragen Sie es hier im Feld oben ein.")]
                 ImportFileRow {
