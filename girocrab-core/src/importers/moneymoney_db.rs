@@ -2338,13 +2338,19 @@ pub(crate) fn adopt_account(
     } else {
         // Wallets in several currencies can share one IBAN (Finom EUR/USD):
         // never take over one in another currency, prefer the exact currency.
+        // The import puts a bank without own connector on a PSD2 connection;
+        // as long as that one never synced, a direct connector of the same
+        // bank takes its accounts over instead of adding a second set.
         let currency = currency.trim().to_uppercase();
         conn.query_row(
             // includes soft-deleted rows
-            "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1)
+            "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1
+                    OR connection_id IN (SELECT id FROM bank_connections
+                         WHERE id <> ?1 AND connector LIKE 'enablebanking%' AND last_sync_unix IS NULL))
                AND external_ref LIKE 'moneymoney-db:%' AND upper(replace(iban, ' ', '')) = ?2
                AND (?3 = '' OR upper(IFNULL(currency, '')) IN ('', ?3))
-             ORDER BY (connection_id IS NULL), (upper(IFNULL(currency, '')) <> ?3), id LIMIT 1",
+             ORDER BY CASE WHEN connection_id = ?1 THEN 0 WHEN connection_id IS NULL THEN 1 ELSE 2 END,
+                      (upper(IFNULL(currency, '')) <> ?3), id LIMIT 1",
             params![connection_id, iban, currency],
             |r| r.get(0),
         )

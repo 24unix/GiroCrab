@@ -96,8 +96,11 @@ pub(super) fn prepare(
             |r| r.get(0),
         )?;
         let mut existing = String::new();
+        // An imported account parked on a PSD2 connection that never synced is
+        // not "another connection's account": the fetch takes it over
+        // (`moneymoney_db::adopt_account`), so it is not held back for it.
         if !already {
-            let mut q = db.prepare("SELECT a.iban,a.account_number,a.bank_name,c.bank_code,c.connector,c.display_name FROM accounts a JOIN bank_connections c ON c.id=a.connection_id WHERE a.connection_id<>?1 AND a.deleted_ms IS NULL AND a.archived_unix IS NULL AND a.access_revoked=0 AND c.deleted_ms IS NULL AND a.currency=?2 AND a.kind=?3 ORDER BY c.id,a.id")?;
+            let mut q = db.prepare("SELECT a.iban,a.account_number,a.bank_name,c.bank_code,c.connector,c.display_name FROM accounts a JOIN bank_connections c ON c.id=a.connection_id WHERE a.connection_id<>?1 AND a.deleted_ms IS NULL AND a.archived_unix IS NULL AND a.access_revoked=0 AND c.deleted_ms IS NULL AND a.currency=?2 AND a.kind=?3 AND NOT (a.external_ref LIKE 'moneymoney-db:%' AND c.connector LIKE 'enablebanking%' AND c.last_sync_unix IS NULL) ORDER BY c.id,a.id")?;
             let candidates = q.query_map(params![id, a.currency, a.kind.as_str()], |r| {
                 Ok((
                     r.get::<_, String>(0)?,

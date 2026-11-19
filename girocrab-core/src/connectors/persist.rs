@@ -307,6 +307,22 @@ pub(crate) fn store_fetch(
                 Some(id) => Some(id),
                 None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
             };
+            // A deleted duplicate of an imported account (created before the
+            // import could be taken over) gives way to the imported account,
+            // also when the connection was added again (which would revive it).
+            let existing = match existing {
+                Some(id)
+                    if tx.query_row(
+                        // includes soft-deleted rows
+                        "SELECT deleted_ms IS NOT NULL FROM accounts WHERE id = ?1",
+                        [id],
+                        |r| r.get::<_, bool>(0),
+                    )? =>
+                {
+                    Some(adopt_past_deleted_twin(&tx, connection_id, id, acc)?.unwrap_or(id))
+                }
+                other => other,
+            };
             if let Some(id) = existing {
                 // Deleted accounts stay deleted (like archived ones, nothing is
                 // stored), unless the connection was added again since.
@@ -2354,6 +2370,63 @@ fn payment_job(
         instant: false,
         execution_date: batch.execution_date.clone(),
         end_to_end_id: p.end_to_end_id.clone(),
+    }
+}
+
+/// `deleted` is a deleted account of this connection with `acc`'s external
+/// ref, typically a duplicate the user removed because the connector had not
+/// taken over the imported account. If an imported account with the same IBAN
+/// can be taken over now, the deleted row moves aside (its key gets a suffix)
+/// and the imported one takes its place. The imported account is stamped as
+/// created now, so on other devices it wins over the deletion of that key.
+fn adopt_past_deleted_twin(
+    tx: &rusqlite::Connection,
+    connection_id: i64,
+    deleted: i64,
+    acc: &RemoteAccount,
+) -> CoreResult<Option<i64>> {
+    if acc.iban.trim().is_empty() {
+        return Ok(None);
+    }
+    // Only the connection's own row under this key (not an unlinked account
+    // `adopt_unlinked` found, which keeps its key and stays deleted).
+    let own: bool = tx.query_row(
+        // includes soft-deleted rows
+        "SELECT connection_id IS ?1 AND external_ref = ?2 FROM accounts WHERE id = ?3",
+        params![connection_id, acc.external_ref, deleted],
+        |r| r.get(0),
+    )?;
+    if !own {
+        return Ok(None);
+    }
+    let aside = format!("{}#deleted-{deleted}", acc.external_ref);
+    tx.execute(
+        "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
+        params![aside, deleted],
+    )?;
+    let twin = crate::importers::moneymoney_db::adopt_account(
+        tx,
+        connection_id,
+        &acc.external_ref,
+        &acc.iban,
+        &acc.currency,
+        acc.kind,
+    )?;
+    match twin {
+        Some(id) if id != deleted => {
+            tx.execute(
+                "UPDATE accounts SET created_ms = ?1 WHERE id = ?2",
+                params![crate::dates::now_ms(), id],
+            )?;
+            Ok(Some(id))
+        }
+        _ => {
+            tx.execute(
+                "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
+                params![acc.external_ref, deleted],
+            )?;
+            Ok(None)
+        }
     }
 }
 
