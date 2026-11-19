@@ -100,6 +100,28 @@ impl Vault {
             .flow)
     }
 
+    /// The same tiles as [`selection_flow`](Self::selection_flow), but for
+    /// overall money figures (#337): accounts outside the effective total set
+    /// (own switch off, excluded group, archived) contribute nothing. A
+    /// selection that is empty after that exclusion means "none" (zero sums),
+    /// never "all accounts".
+    pub fn selection_flow_for_totals(
+        &self,
+        account_ids: Vec<i64>,
+        date_from: Option<String>,
+        date_to: Option<String>,
+    ) -> Result<SelectionFlow, CoreError> {
+        Ok(self
+            .list_transactions(BookingFilter {
+                account_ids,
+                date_from,
+                date_to,
+                respect_in_total: true,
+                ..Default::default()
+            })?
+            .flow)
+    }
+
     /// "Sparpläne & Perks": recurring plans with a month grid, Saveback and
     /// Round up totals, and consumption vs. investment per month.
     pub fn investment_dashboard(&self, months: u32) -> Result<InvestmentDashboard, CoreError> {
@@ -107,6 +129,17 @@ impl Vault {
         let first_month = months_list.first().cloned().unwrap_or_default();
         let this_month = months_list.last().cloned().unwrap_or_default();
         let all = all_bookings(self, BookingScope::All)?;
+        // Overall money figure (#337): only accounts of the effective total set
+        // contribute — own switch, group and archiving, like the KPI tiles and
+        // the cashflow card. The booking list itself is never narrowed by this.
+        let allowed: std::collections::HashSet<i64> = {
+            let db = self.db()?;
+            crate::user_groups::total_account_ids(&db)?
+        };
+        let all: Vec<Booking> = all
+            .into_iter()
+            .filter(|b| allowed.contains(&b.account_id))
+            .collect();
 
         // Monthly flows
         let mut monthly: BTreeMap<String, MonthFlow> = months_list

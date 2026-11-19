@@ -243,25 +243,33 @@ fn group_sums_skip_archived_accounts_and_excluded_subgroups() {
     assert_eq!(alt_group.accounts.len(), 1, "archived account still listed");
     v.set_account_archived(ids[2], false).unwrap();
 
-    // "Alt" out of the total: keeps its own sum, "Alle" no longer adds it
+    // "Alt" out of the total: its money sum is 0 like every overall figure of
+    // an excluded selection (#337, E2) – its accounts and bookings stay; "Alle"
+    // no longer adds it
     v.update_user_group(alt.clone(), "Alt".into(), "archivebox".into(), false)
         .unwrap();
     let s = sums(&v);
-    assert_eq!(s["Alt"], -50_00);
+    assert_eq!(s["Alt"], 0);
     assert_eq!(s["Alle"], 5_100_00);
 
-    // the parent out of the total too: its own sum still shows everything
-    // inside it, apart from the subgroup excluded on its own
+    // the parent out of the total too: its money sum is 0 as well (E2), and a
+    // subgroup switched back on stays out while an above group is excluded
     v.update_user_group(alle.clone(), "Alle".into(), "folder".into(), false)
         .unwrap();
-    assert_eq!(sums(&v)["Alle"], 5_100_00);
+    let s = sums(&v);
+    assert_eq!(s["Alle"], 0);
+    assert_eq!(s["Alt"], 0, "subgroup only inherits the exclusion");
     v.update_user_group(alt.clone(), "Alt".into(), "archivebox".into(), true)
         .unwrap();
-    assert_eq!(
-        sums(&v)["Alle"],
-        5_050_00,
-        "subgroup only inherits the exclusion"
-    );
+    assert_eq!(sums(&v)["Alt"], 0, "the parent above still wins");
+    assert_eq!(sums(&v)["Alle"], 0);
+
+    // both back in: the full sums return
+    v.update_user_group(alle.clone(), "Alle".into(), "folder".into(), true)
+        .unwrap();
+    let s = sums(&v);
+    assert_eq!(s["Alle"], 5_050_00);
+    assert_eq!(s["Alt"], -50_00);
     let _ = std::fs::remove_dir_all(dir);
 }
 

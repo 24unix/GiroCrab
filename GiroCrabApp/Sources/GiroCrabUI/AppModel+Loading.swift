@@ -5,7 +5,16 @@ import GiroCrabCore
 extension AppModel {
     // MARK: - Loading
 
+    /// A totals reload supersedes category snapshots and refreshes the cashflow
+    /// card even when the proof list keeps exactly the same bookings.
+    func invalidateTotals() {
+        categoryRefreshTask?.cancel()
+        categoryRefreshTask = nil
+        totalsVersion += 1
+    }
+
     func reloadAll() {
+        invalidateTotals()
         assetClassificationVersion += 1
         let all = Perf.signposter.beginInterval("reloadAll")
         defer { Perf.signposter.endInterval("reloadAll", all) }
@@ -419,7 +428,11 @@ extension AppModel {
             tagIds: tagFilter.untagged ? [] : tagFilter.tagIDs.sorted(),
             untaggedOnly: tagFilter.untagged,
             amountMinCents: amountFilter.minCents,
-            amountMaxCents: amountFilter.maxCents
+            amountMaxCents: amountFilter.maxCents,
+            // Overall money contexts (#337) — overview, kind / bank / user
+            // group, also with exactly one account — sum the effective total
+            // set; single account, category and proof views keep their sums.
+            respectInTotal: sidebarSelection?.usesTotalsContext ?? true
         )
     }
 
@@ -610,8 +623,13 @@ extension AppModel {
             return
         }
         let ids = filter.accountIds
+        let forTotals = filter.respectInTotal
         runCore {
-            let f = try vault.selectionFlow(accountIds: ids, dateFrom: from, dateTo: to)
+            // the fallback must run in the filter's own calculation context
+            // (#337): overall figures respect the effective total set
+            let f = try (forTotals
+                ? vault.selectionFlowForTotals(accountIds: ids, dateFrom: from, dateTo: to)
+                : vault.selectionFlow(accountIds: ids, dateFrom: from, dateTo: to))
             selectionFlow = (f.consumptionCents, f.investedCents, f.incomeCents)
         }
     }
@@ -653,9 +671,11 @@ extension AppModel {
         var ids: [Int64]
         switch sidebarSelection {
         case .account(let id): ids = [id]
-        // same accounts as the group's sum in the header (#208)
-        case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.filter { !$0.isArchived }.map(\.id) ?? []
-        case .bank(let key): ids = bankGroup(for: key)?.accounts.filter { !$0.isArchived }.map(\.id) ?? []
+        // same accounts as the group's sum in the header (#208), and like that
+        // sum only the effectively included ones (#337; `inTotal` also covers
+        // archiving and the account's own switch)
+        case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.filter(\.inTotal).map(\.id) ?? []
+        case .bank(let key): ids = bankGroup(for: key)?.accounts.filter(\.inTotal).map(\.id) ?? []
         case .userGroup(let uuid): ids = userGroupBalanceAccountIDs(uuid)
         default: ids = liquidAccounts.map(\.id)
         }
@@ -815,12 +835,15 @@ extension AppModel {
     }
 
     /// Accounts behind the header total of the current selection (nil: single account / not a total).
+    /// Like the sum it shows: only effectively included accounts (#337).
     private var headerTotalAccounts: [Account]? {
         switch sidebarSelection {
         case .allAccounts, .none: return liquidAccounts
-        case .group(let id): return groups.first { $0.id == id }?.accounts
-        case .bank(let key): return bankGroup(for: key)?.accounts
-        case .userGroup(let uuid): let ids = Set(userGroupAccountIDs(uuid)); return allAccounts.filter { ids.contains($0.id) }
+        case .group(let id): return groups.first { $0.id == id }?.accounts.filter(\.inTotal)
+        case .bank(let key): return bankGroup(for: key)?.accounts.filter(\.inTotal)
+        case .userGroup(let uuid):
+            let ids = Set(userGroupAccountIDs(uuid))
+            return allAccounts.filter { ids.contains($0.id) && $0.inTotal }
         default: return nil
         }
     }

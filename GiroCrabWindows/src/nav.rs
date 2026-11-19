@@ -626,6 +626,7 @@ pub(crate) mod testing {
             new_count: 0,
             initial_balance_cents: None,
             user_group_uuid: None,
+            include_in_total: true,
             in_total: true,
             color_hex: String::new(),
             archived_unix: None,

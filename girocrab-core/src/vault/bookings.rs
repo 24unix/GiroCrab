@@ -1080,39 +1080,49 @@ impl Vault {
             ""
         };
         let sql = format!(
-            "{cte}SELECT t.id, t.booking_date, {share_sql} {BOOKING_FROM_SQL} WHERE {where_sql}{order}"
+            "{cte}SELECT t.id, t.booking_date, t.account_id, {share_sql} {BOOKING_FROM_SQL} WHERE {where_sql}{order}"
         );
         let mut stmt = db.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
             // the date only cuts the page: counts and sums skip the String
             let date = if with_rows { r.get(1)? } else { String::new() };
-            Ok((r.get::<_, i64>(0)?, date, r.get::<_, i64>(2)?))
+            Ok((
+                r.get::<_, i64>(0)?,
+                date,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
         })?;
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
         let mut flow = SelectionFlow::default();
         let mut kept: Vec<(i64, String)> = Vec::new();
         let mut total = 0u32;
+        let totals = totals_set(db, filter)?;
         for row in rows {
-            let (id, date, share) = row?;
+            let (id, date, account_id, share) = row?;
             let Some(class) = classes.get(&id) else {
                 return Ok(None);
             };
             if !keeps(filter, class.flow, &class.merchant) {
                 continue;
             }
-            match kpi_side(class.flow, share) {
-                KpiSide::Income => income += share,
-                KpiSide::Expense => expense += share,
-                KpiSide::Neutral => {}
+            // only accounts of the totals set contribute to the sums (#337);
+            // counts and rows stay complete
+            if totals.as_ref().is_none_or(|set| set.contains(&account_id)) {
+                match kpi_side(class.flow, share) {
+                    KpiSide::Income => income += share,
+                    KpiSide::Expense => expense += share,
+                    KpiSide::Neutral => {}
+                }
+                match class.flow {
+                    FlowKind::Consumption => consumption += share,
+                    FlowKind::Investment => investment += share,
+                    FlowKind::Perk => perk += share,
+                    _ => {}
+                }
+                flow.add(class.flow, share);
             }
-            match class.flow {
-                FlowKind::Consumption => consumption += share,
-                FlowKind::Investment => investment += share,
-                FlowKind::Perk => perk += share,
-                _ => {}
-            }
-            flow.add(class.flow, share);
             total += 1;
             if with_rows {
                 kept.push((id, date));
@@ -1188,21 +1198,31 @@ impl Vault {
         let mut flow = SelectionFlow::default();
         let mut txs: Vec<Booking> = Vec::new();
         let mut total = 0usize;
+        let totals = totals_set(db, filter)?;
         self.visit_bookings(db, filter, |share, t| {
             // One KPI definition (`kpi_side`) for the page sums and `SelectionFlow`;
             // transfers between own accounts are neutral (else counted on both sides).
-            match kpi_side(t.flow, share) {
-                KpiSide::Income => income += share,
-                KpiSide::Expense => expense += share,
-                KpiSide::Neutral => {}
+            // `share` is the full amount, or with a category filter only the split
+            // parts of that category. Only accounts of the totals set (#337)
+            // contribute to the sums — the booking itself always stays in the
+            // list and in the counts.
+            let counts_for_totals = totals
+                .as_ref()
+                .is_none_or(|set| set.contains(&t.account_id));
+            if counts_for_totals {
+                match kpi_side(t.flow, share) {
+                    KpiSide::Income => income += share,
+                    KpiSide::Expense => expense += share,
+                    KpiSide::Neutral => {}
+                }
+                match t.flow {
+                    FlowKind::Consumption => consumption += share,
+                    FlowKind::Investment => investment += share,
+                    FlowKind::Perk => perk += share,
+                    _ => {}
+                }
+                flow.add(t.flow, share);
             }
-            match t.flow {
-                FlowKind::Consumption => consumption += share,
-                FlowKind::Investment => investment += share,
-                FlowKind::Perk => perk += share,
-                _ => {}
-            }
-            flow.add(t.flow, share);
             // Only the page is kept. `whole_days` adds the rest of its last day:
             // sorted by day, it follows directly.
             let in_page = (start..end).contains(&total)
@@ -1229,6 +1249,25 @@ impl Vault {
             day_balances: Vec::new(),
         })
     }
+}
+
+/// The effective total set behind `BookingFilter.respect_in_total` (#337):
+/// `None` for a proof context (the default). An explicit `account_ids`
+/// selection narrows the set — an empty result means "none" (zero sums),
+/// never "all accounts".
+fn totals_set(
+    db: &rusqlite::Connection,
+    filter: &BookingFilter,
+) -> Result<Option<std::collections::HashSet<i64>>, CoreError> {
+    if !filter.respect_in_total {
+        return Ok(None);
+    }
+    let allowed = crate::user_groups::total_account_ids(db)?;
+    if filter.account_ids.is_empty() {
+        return Ok(Some(allowed));
+    }
+    let want: std::collections::HashSet<i64> = filter.account_ids.iter().copied().collect();
+    Ok(Some(allowed.intersection(&want).copied().collect()))
 }
 
 #[uniffi::export]

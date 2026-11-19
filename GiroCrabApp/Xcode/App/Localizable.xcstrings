@@ -5672,6 +5672,17 @@
         }
       }
     },
+    "Ausgeschaltet zählen die Konten dieser Gruppe und ihrer Untergruppen nicht zu den übergreifenden Geld- und Vermögenswerten – „Verfügbar“, Einnahmen, Konsum, Investitionen, Cashflow, Vermögen und die Saldoverläufe der Übersicht – z. B. für Geschäfts- oder Kinderkonten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When switched off, the accounts in this group and its subgroups are excluded from overall financial figures: available funds, income, consumption, investments, cashflow, wealth and overview balance history, for example for business or children's accounts."
+          }
+        }
+      }
+    },
     "Ausgeschaltet zählen die Konten dieser Gruppe und ihrer Untergruppen nicht zu „Verfügbar“ und zum Saldoverlauf der Übersicht – z. B. für Geschäfts- oder Kinderkonten." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11451,6 +11462,17 @@
         }
       }
     },
+    "Dieses Konto ist archiviert und zählt nicht zu den Gesamtsummen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This account is archived and does not count towards overall totals."
+          }
+        }
+      }
+    },
     "Dieses Konto stammt aus einer früheren Version. Wählen Sie es einmalig aus, um es mit seinen vorhandenen Umsätzen weiterzuverwenden." : {
       "localizations" : {
         "en" : {
@@ -12348,6 +12370,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "One file per selected account to Downloads"
+          }
+        }
+      }
+    },
+    "Eine Gruppe ist ausgeschlossen – dieses Konto zählt deshalb trotz eingeschaltetem Kontoschalter nicht zu den Gesamtsummen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A group is excluded, so this account does not count towards overall totals even though its own switch is on."
           }
         }
       }
@@ -15810,6 +15843,17 @@
         }
       }
     },
+    "Gruppe „%@“ ist ausgeschlossen – dieses Konto zählt deshalb trotz eingeschaltetem Kontoschalter nicht zu den Gesamtsummen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group “%@” is excluded, so this account does not count towards overall totals even though its own switch is on."
+          }
+        }
+      }
+    },
     "Gruppe „%@“ löschen?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16902,6 +16946,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Include in Total"
+          }
+        }
+      }
+    },
+    "In Gesamtsummen zählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Include in overall totals"
           }
         }
       }

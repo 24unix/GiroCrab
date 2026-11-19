@@ -51,7 +51,9 @@ final class AccountGroupsTests: XCTestCase {
         let listed = model.userGroups.flatMap(\.accounts).map(\.id)
         XCTAssertEqual(listed.sorted(), model.allAccounts.map(\.id).sorted(), "each account exactly once", file: file, line: line)
         for g in model.userGroups {
-            let sum = g.accounts.filter { $0.currency == "EUR" }.reduce(Int64(0)) { $0 + $1.balanceCents }
+            // like the core's sum (#337): only effectively included accounts
+            // count (`inTotal` covers the own switch, the group, archiving)
+            let sum = g.accounts.filter { $0.currency == "EUR" && $0.inTotal }.reduce(Int64(0)) { $0 + $1.balanceCents }
             XCTAssertEqual(g.balanceCents, sum, "sum of \(g.name)", file: file, line: line)
             for a in g.accounts {
                 XCTAssertEqual(a.userGroupUuid ?? "", g.uuid, "\(a.name) belongs to \(g.name)", file: file, line: line)
@@ -376,7 +378,7 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertFalse(try group(g.uuid).includeInTotal)
         XCTAssertTrue(try group(g.uuid).accounts.allSatisfy { !$0.inTotal })
         XCTAssertEqual(model.liquidBalance, liquidBefore - excludedLiquid, "'Verfügbar' drops by the group's liquid accounts")
-        XCTAssertEqual(try group(g.uuid).balanceCents, g.balanceCents, "the group header still shows its own sum")
+        XCTAssertEqual(try group(g.uuid).balanceCents, 0, "an excluded selection shows 0 as its money figure (#337)")
 
         model.updateUserGroup(try group(g.uuid), includeInTotal: true)
         XCTAssertEqual(model.liquidBalance, liquidBefore)
@@ -401,7 +403,7 @@ final class AccountGroupsTests: XCTestCase {
         model.updateUserGroup(try group(alt), includeInTotal: false)
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(try group(alle).balanceCents, kept.balanceCents, "archived account and excluded subgroup don't count")
-        XCTAssertEqual(try group(alt).balanceCents, old.balanceCents, "the excluded subgroup keeps its own sum")
+        XCTAssertEqual(try group(alt).balanceCents, 0, "the excluded subgroup shows 0 as its money figure (#337)")
         XCTAssertEqual(Set(try group(alle).accounts.map(\.id)), [kept.id, archived.id], "archived account stays listed")
         XCTAssertEqual(model.userGroupBalanceAccountIDs(alle), [kept.id], "chart follows the sum")
         XCTAssertEqual(Set(model.userGroupAccountIDs(alle)), [kept.id, archived.id, old.id], "bookings still cover everything")

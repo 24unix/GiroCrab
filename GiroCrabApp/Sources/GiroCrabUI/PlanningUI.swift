@@ -394,7 +394,9 @@ struct CashflowCard: View {
         }
         .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: collapsed))
         // Follows the sidebar: overview = all accounts, account/group = its accounts (#731).
-        .task(id: "\(granularity)#\(model.bookings.count)#\(accountIds)") {
+        // totalsVersion: an account/group switch changes the effective set
+        // without moving the (proof) booking count (#337).
+        .task(id: "\(granularity)#\(model.bookings.count)#\(accountIds)#\(model.totalsVersion)") {
             if let loaded = await model.cashflow(granularity, count: granularity == .year ? 5 : 6, accountIds: accountIds) {
                 rows = loaded
             }

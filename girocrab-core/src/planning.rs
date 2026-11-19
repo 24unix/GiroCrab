@@ -409,7 +409,13 @@ pub(crate) fn cashflow_for(
         PeriodGranularity::Year => format!("{first}-01-01"),
     };
     // Same bookings, transfer detection and flow classification as the booking
-    // list and its KPI tiles (`list_transactions` / `SelectionFlow`).
+    // list and its KPI tiles (`list_transactions` / `SelectionFlow`). The card
+    // is an overall money figure (#337): only accounts of the effective total
+    // set (own switch, group, archiving) contribute.
+    let allowed: std::collections::HashSet<i64> = {
+        let db = v.db()?;
+        crate::user_groups::total_account_ids(&db)?
+    };
     let filter = BookingFilter {
         account_ids: account_ids.to_vec(),
         date_from: Some(from),
@@ -417,6 +423,9 @@ pub(crate) fn cashflow_for(
     };
     let mut acc: HashMap<String, (i64, i64)> = HashMap::new();
     v.visit_bookings(&*v.db()?, &filter, |_, b| {
+        if !allowed.contains(&b.account_id) {
+            return;
+        }
         let (date, amt) = (&b.booking_date, b.amount_cents);
         // Non-ASCII / malformed dates are skipped instead of panicking on a slice.
         let key = match granularity {
