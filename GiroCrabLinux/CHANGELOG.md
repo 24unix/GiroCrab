@@ -39,8 +39,6 @@ Funktionsumfang der Oberfläche.
   Passwort bzw. PIN samt „im Tresor speichern“; Easybank, Ford Money und Opel Direktbank bieten
   „Kontoauszüge abrufen“ an. Bei der Commerzbank mit Schlüsseldatei (RAH-10) fragt der Dialog nach
   dem „Passwort der Schlüsseldatei“, die Benutzerkennung ist fest.
-- **EquatePlus** erscheint unter Linux vorerst nicht im Bankkatalog: Sein Anmeldeablauf ist noch
-  nicht übernommen, die Auswahl öffnete das falsche Browserfenster.
 - **Regeln, die nur Tags setzen** (in der Mac-App angelegt), zeigen „→ Nur Tags“ und ihre Tags statt
   einer leeren Kategorie; im Formular steht „Keine (nur Tags)“.
 
