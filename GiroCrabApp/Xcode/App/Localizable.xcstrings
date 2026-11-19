@@ -5407,6 +5407,17 @@
         }
       }
     },
+    "Aus Ihren bisherigen Zahlungen, je IBAN eine Zeile. Ausgeblendete IBANs schlägt „Neue Überweisung“ nicht mehr vor; die Buchungen bleiben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From your past payments, one row per IBAN. Hidden IBANs are no longer suggested in “New Transfer”; the transactions stay."
+          }
+        }
+      }
+    },
     "Aus Zwischenablage einfügen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12847,6 +12858,17 @@
         }
       }
     },
+    "Empfänger verwalten: veraltete IBANs nicht mehr vorschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage recipients: stop suggesting outdated IBANs"
+          }
+        }
+      }
+    },
     "Empfängerüberprüfung · %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16236,6 +16258,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetches from the last seven days appear here, with their result and error text."
+          }
+        }
+      }
+    },
+    "Hier erscheinen die Empfänger Ihrer Zahlungen, sobald Buchungen mit IBAN abgerufen sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recipients of your payments appear here once transactions with an IBAN have been retrieved."
           }
         }
       }
@@ -21819,6 +21852,17 @@
         }
       }
     },
+    "Name oder IBAN suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search name or IBAN"
+          }
+        }
+      }
+    },
     "Name stimmt nicht überein" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22831,6 +22875,17 @@
         }
       }
     },
+    "Nicht mehr vorschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop suggesting"
+          }
+        }
+      }
+    },
     "Nicht verbinden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23036,6 +23091,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No budgets yet. Set a monthly budget from a category's context menu."
+          }
+        }
+      }
+    },
+    "Noch keine Empfänger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recipients yet"
           }
         }
       }
@@ -30656,6 +30722,17 @@
         }
       }
     },
+    "Vorgeschlagen (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggested (%lld)"
+          }
+        }
+      }
+    },
     "Vorgewählt, weil die Datei zu diesem Konto passt. Bereits vorhandene Buchungen werden nicht doppelt übernommen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -31631,6 +31708,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show Again"
+          }
+        }
+      }
+    },
+    "Wieder vorschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggest again"
           }
         }
       }

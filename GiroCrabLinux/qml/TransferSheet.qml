@@ -106,6 +106,11 @@ Sheet {
         importNote = qsTr("Felder ausgefüllt – bitte prüfen")
     }
     function refreshSuggestions() { suggestions = nameField.activeFocus ? AppModel.suggestRecipients(draft.name) : [] }
+    /// "Nicht mehr vorschlagen" (#978): the chips are read again in place, whatever has the focus.
+    function hideRecipient(iban) {
+        AppModel.setRecipientHidden(iban, true)
+        suggestions = AppModel.suggestRecipients(draft.name)
+    }
 
     /// Fills name and IBAN from the chosen own account (owner, else account name).
     function applyOwnTarget(id) {
@@ -206,6 +211,13 @@ Sheet {
                 visible: !sheet.confirming
                 flat: true; icon.name: SF.icon("doc.on.doc"); text: qsTr("Vorlagen")
                 onClicked: templatesMenu.popup(templatesButton, 0, templatesButton.height)
+            }
+            Button {
+                visible: !sheet.confirming
+                flat: true; icon.name: SF.icon("person.2"); text: qsTr("Empfänger")
+                onClicked: recipientsDialog.open()
+                ToolTip.text: qsTr("Empfänger verwalten: veraltete IBANs nicht mehr vorschlagen")
+                ToolTip.visible: hovered; ToolTip.delay: 600
             }
             Button {
                 visible: !sheet.confirming
@@ -365,21 +377,35 @@ Sheet {
                         Row {
                             id: chips
                             spacing: 6
+                            // one chip per IBAN with its last use; ✕: "Nicht mehr vorschlagen" (#978). No
+                            // context menu: a menu takes the focus from the name field, which clears the chips.
                             Repeater {
                                 model: sheet.suggestions
                                 delegate: Rectangle {
+                                    id: chipBox
                                     required property var modelData
-                                    width: chip.implicitWidth + 16; height: chip.implicitHeight + 8
+                                    width: chip.implicitWidth + closeButton.width + 20; height: chip.implicitHeight + 8
                                     radius: 7; color: Theme.selection
                                     Column {
                                         id: chip
                                         x: 8; y: 4
                                         Text { text: modelData.name; font.pixelSize: Theme.callout; color: Theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, 180); Sensitive {} }
                                         Text { text: Fmt.iban(modelData.iban); font.pixelSize: Theme.caption2; font.family: "monospace"; color: Theme.secondary; Sensitive {} }
+                                        Text { text: qsTr("zuletzt %1").arg(Fmt.medium(modelData.last_used)); font.pixelSize: Theme.caption2; color: Theme.tertiary }
                                     }
                                     MouseArea {
                                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                         onClicked: { AppModel.setDraft({ name: modelData.name, iban: AppModel.groupedIBAN(modelData.iban) }); sheet.suggestions = [] }
+                                    }
+                                    IconButton {
+                                        id: closeButton
+                                        anchors.right: parent.right; anchors.rightMargin: 2; anchors.top: parent.top; anchors.topMargin: 2
+                                        // a click must leave the focus in the name field (it keeps the chips)
+                                        focusPolicy: Qt.NoFocus
+                                        symbol: "xmark.circle.fill"; symbolSize: 13; implicitWidth: 22; implicitHeight: 22
+                                        ToolTip.text: qsTr("Nicht mehr vorschlagen")
+                                        Accessible.name: qsTr("Nicht mehr vorschlagen")
+                                        onClicked: sheet.hideRecipient(chipBox.modelData.iban)
                                     }
                                 }
                             }
@@ -796,6 +822,9 @@ Sheet {
             onTriggered: { templateNameField.text = sheet.draft.name; templateName.open() }
         }
     }
+
+    // .capturableSheet { KnownRecipientsSheet() }: hidden IBANs drop out of the chips at once
+    KnownRecipientsDialog { id: recipientsDialog; onClosed: sheet.refreshSuggestions() }
 
     // .alert("Vorlage speichern") { TextField("Name der Vorlage") }
     Sheet {
