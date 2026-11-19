@@ -13,7 +13,9 @@
 //!  POST contentForm + submitLogin         -> login_2fa.jsf (approval in the Security-App)
 //!                                            or the login page again = wrong credentials
 //!  POST login_2fa.jsf (JSF ajax, click on `…:btnConfirm2FA`)
-//!                                         -> waits for the approval; `btnConfirmed1` = approved
+//!                                         -> the bank holds the answer, for some customers for
+//!                                            minutes; `btnConfirmed1` = approved. It runs in the
+//!                                            background and is never sent twice at the same time
 //!  POST login_2fa.jsf + `…:btnConfirmed1` -> account-overview_08.jsf
 //!  GET  …/pages/konten/account-overview_08.jsf
 //!                                         -> one `section.accordion` per account (IBAN, balance)
@@ -30,10 +32,13 @@
 //! have no ids either: they are remembered by date, subject and product.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use regex::Regex;
+use tokio::task::JoinHandle;
 use zeroize::Zeroize;
 
 use super::uberspace::{attr, attrs, parse_date, text, INPUT};
@@ -52,6 +57,9 @@ const LOGIN: &str = "/eBankingClient/pages/login/login.jsf";
 const OVERVIEW: &str = "/eBankingClient/pages/konten/account-overview_08.jsf";
 /// Account external refs: `fordmoney:<IBAN>`.
 pub(crate) const REF_PREFIX: &str = "fordmoney:";
+/// How long the bank may hold the approval request. A shorter limit would drop
+/// a request the bank is still answering and lose the approval with it.
+const APPROVAL_POLL_TIMEOUT: Duration = Duration::from_secs(300);
 /// Rows requested when the transaction list is expanded.
 const LIST_LIMIT: u32 = 1000;
 /// Start of the date range for the read Postbox documents.
@@ -292,6 +300,83 @@ fn partial_updates(xml: &str) -> Vec<(String, String)> {
         .captures_iter(xml)
         .map(|c| (c[1].to_string(), c[2].to_string()))
         .collect()
+}
+
+/// Fields of a JSF ajax request.
+fn ajax_fields(form: &Form, source: &str, render: &str, click: bool) -> Vec<(String, String)> {
+    let mut fields = form.fields.clone();
+    if click {
+        fields.push((source.to_string(), String::new()));
+        fields.push(("javax.faces.behavior.event".into(), "click".into()));
+        fields.push(("javax.faces.partial.event".into(), "click".into()));
+    }
+    fields.push(("javax.faces.source".into(), source.to_string()));
+    fields.push(("javax.faces.partial.execute".into(), source.to_string()));
+    fields.push(("javax.faces.partial.render".into(), render.to_string()));
+    fields.push(("javax.faces.partial.ajax".into(), "true".into()));
+    fields
+}
+
+/// The approval request, which the bank answers only when it has a result.
+async fn approval_request(
+    client: reqwest::Client,
+    form: Form,
+    poll: String,
+    render: String,
+) -> CoreResult<String> {
+    let target = url::Url::parse(&format!("{BASE}{}", form.action)).map_err(|_| page_changed())?;
+    ensure_host(&target)?;
+    let resp = client
+        .post(target)
+        .header("Faces-Request", "partial/ajax")
+        .timeout(APPROVAL_POLL_TIMEOUT)
+        .form(&ajax_fields(&form, &poll, &render, true))
+        .send()
+        .await?;
+    ensure_host(resp.url())?;
+    let status = resp.status();
+    let body = super::read_body_limited(resp, super::MAX_DOC_BYTES).await?;
+    if !status.is_success() {
+        return Err(CoreError::Bank {
+            code: status.as_u16().to_string(),
+            message: tr("Ford Money: Die Anfrage wurde abgelehnt.").into(),
+        });
+    }
+    let xml = crate::text::decode_bank_bytes(&body);
+    if xml.contains("<redirect") && xml.contains("/login/") {
+        return Err(session_ended());
+    }
+    Ok(xml)
+}
+
+/// State of the approval request after one poll of the app.
+#[derive(Debug)]
+enum PollStep {
+    Waiting,
+    Answer(CoreResult<String>),
+}
+
+/// Starts the request if none is open and reports its answer once it is there.
+/// The app polls every few seconds, but the bank sees one request at a time.
+async fn poll_step<F>(
+    open: &mut Option<JoinHandle<CoreResult<String>>>,
+    start: impl FnOnce() -> F,
+) -> PollStep
+where
+    F: Future<Output = CoreResult<String>> + Send + 'static,
+{
+    let running = open.get_or_insert_with(|| tokio::spawn(start()));
+    if !running.is_finished() {
+        return PollStep::Waiting;
+    }
+    let Some(done) = open.take() else {
+        return PollStep::Waiting;
+    };
+    PollStep::Answer(done.await.unwrap_or_else(|e| {
+        Err(CoreError::Network {
+            message: e.to_string(),
+        })
+    }))
 }
 
 /// The approval step of the login: its form and the generated names.
@@ -557,6 +642,8 @@ impl Page {
 pub struct FordMoneyConnector {
     client: Option<reqwest::Client>,
     two_factor: Option<TwoFactor>,
+    /// The approval request the bank has not answered yet.
+    approval_poll: Option<JoinHandle<CoreResult<String>>>,
     /// ViewState of the last page, for the logout.
     last_view_state: Option<String>,
 }
@@ -660,16 +747,7 @@ impl FordMoneyConnector {
         render: &str,
         click: bool,
     ) -> CoreResult<String> {
-        let mut fields = form.fields.clone();
-        if click {
-            fields.push((source.to_string(), String::new()));
-            fields.push(("javax.faces.behavior.event".into(), "click".into()));
-            fields.push(("javax.faces.partial.event".into(), "click".into()));
-        }
-        fields.push(("javax.faces.source".into(), source.to_string()));
-        fields.push(("javax.faces.partial.execute".into(), source.to_string()));
-        fields.push(("javax.faces.partial.render".into(), render.to_string()));
-        fields.push(("javax.faces.partial.ajax".into(), "true".into()));
+        let fields = ajax_fields(form, source, render, click);
         let target =
             url::Url::parse(&format!("{BASE}{}", form.action)).map_err(|_| page_changed())?;
         ensure_host(&target)?;
@@ -915,11 +993,19 @@ impl BankConnector for FordMoneyConnector {
 
     async fn respond(&mut self, _ctx: &ConnectContext, _r: ChallengeResponse) -> CoreResult<Phase> {
         let mut tf = self.two_factor.clone().ok_or(CoreError::SessionClosed)?;
-        let xml = match self.ajax(&tf.form, &tf.poll, &tf.render, true).await {
-            Ok(xml) => xml,
-            // The bank holds the request until the approval; a timeout = still pending.
-            Err(CoreError::Network { .. }) => return Ok(Phase::Pending(push_challenge())),
-            Err(e) => return Err(e),
+        let client = self.http()?.clone();
+        let (form, poll, render) = (tf.form.clone(), tf.poll.clone(), tf.render.clone());
+        let step = poll_step(&mut self.approval_poll, || {
+            approval_request(client, form, poll, render)
+        })
+        .await;
+        let xml = match step {
+            PollStep::Waiting => return Ok(Phase::Pending(push_challenge())),
+            PollStep::Answer(Ok(xml)) => xml,
+            PollStep::Answer(Err(CoreError::Network { .. })) => {
+                return Ok(Phase::Pending(push_challenge()))
+            }
+            PollStep::Answer(Err(e)) => return Err(e),
         };
         if let Some((_, vs)) = partial_updates(&xml)
             .into_iter()
@@ -1009,6 +1095,9 @@ impl BankConnector for FordMoneyConnector {
     }
 
     async fn finish(&mut self, _ctx: &ConnectContext) {
+        if let Some(open) = self.approval_poll.take() {
+            open.abort();
+        }
         if let (Some(client), Some(vs)) = (self.client.take(), self.last_view_state.take()) {
             let fields = [
                 ("headerForm", "headerForm"),
@@ -1028,6 +1117,7 @@ impl BankConnector for FordMoneyConnector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     // Invented pages in the shape of the Ford Money online banking; no real data.
     const LOGIN_PAGE: &str = r#"<html><body>
@@ -1182,6 +1272,52 @@ mod tests {
             ),
             Approval::Pending
         );
+    }
+
+    async fn held_step(
+        open: &mut Option<JoinHandle<CoreResult<String>>>,
+        held: &mut Option<tokio::sync::oneshot::Receiver<String>>,
+        started: &Arc<AtomicU32>,
+    ) -> PollStep {
+        let (held, started) = (held.take(), started.clone());
+        poll_step(open, || async move {
+            started.fetch_add(1, Ordering::SeqCst);
+            Ok(held.expect("only one request").await.unwrap())
+        })
+        .await
+    }
+
+    /// A bank that answers only after the former 60 s limit: the request stays
+    /// open and no second one is sent, so the approval cannot get lost.
+    #[tokio::test]
+    async fn a_held_approval_request_stays_open_until_the_bank_answers() {
+        assert!(APPROVAL_POLL_TIMEOUT > Duration::from_secs(60));
+        let (answer, held) = tokio::sync::oneshot::channel::<String>();
+        let mut held = Some(held);
+        let started = Arc::new(AtomicU32::new(0));
+        let mut open = None;
+        assert!(matches!(
+            held_step(&mut open, &mut held, &started).await,
+            PollStep::Waiting
+        ));
+        tokio::task::yield_now().await;
+        for _ in 0..3 {
+            assert!(matches!(
+                held_step(&mut open, &mut held, &started).await,
+                PollStep::Waiting
+            ));
+        }
+        assert_eq!(started.load(Ordering::SeqCst), 1);
+
+        answer.send("btnConfirmed1".to_string()).unwrap();
+        let xml = loop {
+            match held_step(&mut open, &mut held, &started).await {
+                PollStep::Waiting => tokio::task::yield_now().await,
+                PollStep::Answer(r) => break r.unwrap(),
+            }
+        };
+        assert_eq!(approval_of(&xml), Approval::Approved);
+        assert!(open.is_none());
     }
 
     #[test]
