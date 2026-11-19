@@ -13,7 +13,9 @@
 //!  POST contentForm + submitLogin         -> login_2fa.jsf (approval in the Security-App)
 //!                                            or the login page again = wrong credentials
 //!  POST login_2fa.jsf (JSF ajax, click on `…:btnConfirm2FA`)
-//!                                         -> waits for the approval; `btnConfirmed1` = approved
+//!                                         -> the bank holds the answer, for some customers for
+//!                                            minutes; `btnConfirmed1` = approved. It runs in the
+//!                                            background and is never sent twice at the same time
 //!  POST login_2fa.jsf + `…:btnConfirmed1` -> account-overview_08.jsf
 //!  GET  …/pages/konten/account-overview_08.jsf
 //!                                         -> one `section.accordion` per account (IBAN, balance)
@@ -30,10 +32,13 @@
 //! have no ids either: they are remembered by date, subject and product.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use regex::Regex;
+use tokio::task::JoinHandle;
 use zeroize::Zeroize;
 
 use super::uberspace::{attr, attrs, parse_date, text, INPUT};
@@ -52,6 +57,9 @@ const LOGIN: &str = "/eBankingClient/pages/login/login.jsf";
 const OVERVIEW: &str = "/eBankingClient/pages/konten/account-overview_08.jsf";
 /// Account external refs: `fordmoney:<IBAN>`.
 pub(crate) const REF_PREFIX: &str = "fordmoney:";
+/// How long the bank may hold the approval request. A shorter limit would drop
+/// a request the bank is still answering and lose the approval with it.
+const APPROVAL_POLL_TIMEOUT: Duration = Duration::from_secs(300);
 /// Rows requested when the transaction list is expanded.
 const LIST_LIMIT: u32 = 1000;
 /// Start of the date range for the read Postbox documents.
@@ -294,6 +302,83 @@ fn partial_updates(xml: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Fields of a JSF ajax request.
+fn ajax_fields(form: &Form, source: &str, render: &str, click: bool) -> Vec<(String, String)> {
+    let mut fields = form.fields.clone();
+    if click {
+        fields.push((source.to_string(), String::new()));
+        fields.push(("javax.faces.behavior.event".into(), "click".into()));
+        fields.push(("javax.faces.partial.event".into(), "click".into()));
+    }
+    fields.push(("javax.faces.source".into(), source.to_string()));
+    fields.push(("javax.faces.partial.execute".into(), source.to_string()));
+    fields.push(("javax.faces.partial.render".into(), render.to_string()));
+    fields.push(("javax.faces.partial.ajax".into(), "true".into()));
+    fields
+}
+
+/// The approval request, which the bank answers only when it has a result.
+async fn approval_request(
+    client: reqwest::Client,
+    form: Form,
+    poll: String,
+    render: String,
+) -> CoreResult<String> {
+    let target = url::Url::parse(&format!("{BASE}{}", form.action)).map_err(|_| page_changed())?;
+    ensure_host(&target)?;
+    let resp = client
+        .post(target)
+        .header("Faces-Request", "partial/ajax")
+        .timeout(APPROVAL_POLL_TIMEOUT)
+        .form(&ajax_fields(&form, &poll, &render, true))
+        .send()
+        .await?;
+    ensure_host(resp.url())?;
+    let status = resp.status();
+    let body = super::read_body_limited(resp, super::MAX_DOC_BYTES).await?;
+    if !status.is_success() {
+        return Err(CoreError::Bank {
+            code: status.as_u16().to_string(),
+            message: tr("Ford Money: Die Anfrage wurde abgelehnt.").into(),
+        });
+    }
+    let xml = crate::text::decode_bank_bytes(&body);
+    if xml.contains("<redirect") && xml.contains("/login/") {
+        return Err(session_ended());
+    }
+    Ok(xml)
+}
+
+/// State of the approval request after one poll of the app.
+#[derive(Debug)]
+enum PollStep {
+    Waiting,
+    Answer(CoreResult<String>),
+}
+
+/// Starts the request if none is open and reports its answer once it is there.
+/// The app polls every few seconds, but the bank sees one request at a time.
+async fn poll_step<F>(
+    open: &mut Option<JoinHandle<CoreResult<String>>>,
+    start: impl FnOnce() -> F,
+) -> PollStep
+where
+    F: Future<Output = CoreResult<String>> + Send + 'static,
+{
+    let running = open.get_or_insert_with(|| tokio::spawn(start()));
+    if !running.is_finished() {
+        return PollStep::Waiting;
+    }
+    let Some(done) = open.take() else {
+        return PollStep::Waiting;
+    };
+    PollStep::Answer(done.await.unwrap_or_else(|e| {
+        Err(CoreError::Network {
+            message: e.to_string(),
+        })
+    }))
+}
+
 /// The approval step of the login: its form and the generated names.
 #[derive(Debug, Clone, PartialEq)]
 struct TwoFactor {
@@ -345,7 +430,7 @@ struct Account {
     bookings_link: Option<String>,
 }
 
-/// "- 0,71 €", "+ 7,02 €", "58.824,77 €" → cents.
+/// "- 1,17 €", "+ 5,55 €", "12.345,67 €" → cents.
 fn parse_amount(s: &str) -> Option<i64> {
     let cleaned: String = text(s)
         .replace(['\u{2212}', '\u{2013}'], "-")
@@ -463,7 +548,7 @@ struct PostboxRow {
     link: String,
     date: String,
     subject: String,
-    /// "Tagesgeld 1010024077", "Info".
+    /// "Tagesgeld 1000000001", "Info".
     product: String,
     /// Account number from `product`, if any.
     account_number: Option<String>,
@@ -557,6 +642,8 @@ impl Page {
 pub struct FordMoneyConnector {
     client: Option<reqwest::Client>,
     two_factor: Option<TwoFactor>,
+    /// The approval request the bank has not answered yet.
+    approval_poll: Option<JoinHandle<CoreResult<String>>>,
     /// ViewState of the last page, for the logout.
     last_view_state: Option<String>,
 }
@@ -660,16 +747,7 @@ impl FordMoneyConnector {
         render: &str,
         click: bool,
     ) -> CoreResult<String> {
-        let mut fields = form.fields.clone();
-        if click {
-            fields.push((source.to_string(), String::new()));
-            fields.push(("javax.faces.behavior.event".into(), "click".into()));
-            fields.push(("javax.faces.partial.event".into(), "click".into()));
-        }
-        fields.push(("javax.faces.source".into(), source.to_string()));
-        fields.push(("javax.faces.partial.execute".into(), source.to_string()));
-        fields.push(("javax.faces.partial.render".into(), render.to_string()));
-        fields.push(("javax.faces.partial.ajax".into(), "true".into()));
+        let fields = ajax_fields(form, source, render, click);
         let target =
             url::Url::parse(&format!("{BASE}{}", form.action)).map_err(|_| page_changed())?;
         ensure_host(&target)?;
@@ -915,11 +993,19 @@ impl BankConnector for FordMoneyConnector {
 
     async fn respond(&mut self, _ctx: &ConnectContext, _r: ChallengeResponse) -> CoreResult<Phase> {
         let mut tf = self.two_factor.clone().ok_or(CoreError::SessionClosed)?;
-        let xml = match self.ajax(&tf.form, &tf.poll, &tf.render, true).await {
-            Ok(xml) => xml,
-            // The bank holds the request until the approval; a timeout = still pending.
-            Err(CoreError::Network { .. }) => return Ok(Phase::Pending(push_challenge())),
-            Err(e) => return Err(e),
+        let client = self.http()?.clone();
+        let (form, poll, render) = (tf.form.clone(), tf.poll.clone(), tf.render.clone());
+        let step = poll_step(&mut self.approval_poll, || {
+            approval_request(client, form, poll, render)
+        })
+        .await;
+        let xml = match step {
+            PollStep::Waiting => return Ok(Phase::Pending(push_challenge())),
+            PollStep::Answer(Ok(xml)) => xml,
+            PollStep::Answer(Err(CoreError::Network { .. })) => {
+                return Ok(Phase::Pending(push_challenge()))
+            }
+            PollStep::Answer(Err(e)) => return Err(e),
         };
         if let Some((_, vs)) = partial_updates(&xml)
             .into_iter()
@@ -1009,6 +1095,9 @@ impl BankConnector for FordMoneyConnector {
     }
 
     async fn finish(&mut self, _ctx: &ConnectContext) {
+        if let Some(open) = self.approval_poll.take() {
+            open.abort();
+        }
         if let (Some(client), Some(vs)) = (self.client.take(), self.last_view_state.take()) {
             let fields = [
                 ("headerForm", "headerForm"),
@@ -1028,6 +1117,7 @@ impl BankConnector for FordMoneyConnector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     // Invented pages in the shape of the Ford Money online banking; no real data.
     const LOGIN_PAGE: &str = r#"<html><body>
@@ -1184,6 +1274,52 @@ mod tests {
         );
     }
 
+    async fn held_step(
+        open: &mut Option<JoinHandle<CoreResult<String>>>,
+        held: &mut Option<tokio::sync::oneshot::Receiver<String>>,
+        started: &Arc<AtomicU32>,
+    ) -> PollStep {
+        let (held, started) = (held.take(), started.clone());
+        poll_step(open, || async move {
+            started.fetch_add(1, Ordering::SeqCst);
+            Ok(held.expect("only one request").await.unwrap())
+        })
+        .await
+    }
+
+    /// A bank that answers only after the former 60 s limit: the request stays
+    /// open and no second one is sent, so the approval cannot get lost.
+    #[tokio::test]
+    async fn a_held_approval_request_stays_open_until_the_bank_answers() {
+        assert!(APPROVAL_POLL_TIMEOUT > Duration::from_secs(60));
+        let (answer, held) = tokio::sync::oneshot::channel::<String>();
+        let mut held = Some(held);
+        let started = Arc::new(AtomicU32::new(0));
+        let mut open = None;
+        assert!(matches!(
+            held_step(&mut open, &mut held, &started).await,
+            PollStep::Waiting
+        ));
+        tokio::task::yield_now().await;
+        for _ in 0..3 {
+            assert!(matches!(
+                held_step(&mut open, &mut held, &started).await,
+                PollStep::Waiting
+            ));
+        }
+        assert_eq!(started.load(Ordering::SeqCst), 1);
+
+        answer.send("btnConfirmed1".to_string()).unwrap();
+        let xml = loop {
+            match held_step(&mut open, &mut held, &started).await {
+                PollStep::Waiting => tokio::task::yield_now().await,
+                PollStep::Answer(r) => break r.unwrap(),
+            }
+        };
+        assert_eq!(approval_of(&xml), Approval::Approved);
+        assert!(open.is_none());
+    }
+
     #[test]
     fn reads_accounts_with_iban_balance_and_bookings_link() {
         let accounts = parse_accounts(&overview()).unwrap();
@@ -1231,24 +1367,24 @@ mod tests {
     fn reads_signed_bookings_with_stable_content_ids() {
         let list = format!(
             r#"<ul id="contentForm:transactionList"><div style="display: none"><input id="contentForm:limit" type="text" name="contentForm:limit" value="1000" /></div>{}{}{}{}</ul>"#,
-            booking("30.10.2026", "SoliZuschl.1", "<em>- 0,71 €</em>"),
-            booking("30.10.2026", "Kap.ertr.st1", "<em>- 13,01 €</em>"),
-            booking("30.10.2026", "Abschluss   ", "+            7,02 €"),
-            booking("30.10.2026", "Abschluss   ", "+            7,02 €"),
+            booking("15.03.2026", "SoliZuschl.1", "<em>- 1,17 €</em>"),
+            booking("15.03.2026", "Kap.ertr.st1", "<em>- 21,37 €</em>"),
+            booking("15.03.2026", "Abschluss   ", "+            5,55 €"),
+            booking("15.03.2026", "Abschluss   ", "+            5,55 €"),
         );
         let mut ids = ContentIds::default();
         let tx = parse_bookings(&list, "fordmoney:DE00", "2000-01-01", &mut ids).unwrap();
         assert_eq!(tx.len(), 4);
         assert_eq!(
             (tx[0].amount_cents, tx[0].booking_text.as_str()),
-            (-71, "SoliZuschl.1")
+            (-117, "SoliZuschl.1")
         );
         assert_eq!(tx[0].purpose, "SoliZuschl.1");
-        assert_eq!(tx[0].booking_date, "2026-10-30");
-        assert_eq!(tx[1].amount_cents, -1_301);
+        assert_eq!(tx[0].booking_date, "2026-03-15");
+        assert_eq!(tx[1].amount_cents, -2_137);
         assert_eq!(
             (tx[2].amount_cents, tx[2].booking_text.as_str()),
-            (702, "Abschluss")
+            (555, "Abschluss")
         );
         assert_ne!(
             tx[2].external_id, tx[3].external_id,
@@ -1261,7 +1397,7 @@ mod tests {
         assert!(parse_bookings(&list, "a", "2026-11-01", &mut recent)
             .unwrap()
             .is_empty());
-        let broken = list.replace("- 13,01 €", "n/a");
+        let broken = list.replace("- 21,37 €", "n/a");
         assert!(parse_bookings(&broken, "a", "2000-01-01", &mut ContentIds::default()).is_err());
     }
 
@@ -1271,7 +1407,7 @@ mod tests {
             "<ul>{}{}{}</ul>",
             postbox_row(
                 0,
-                "30.10.2026",
+                "15.03.2026",
                 "Kontoauszug Tagesgeld lfd. Nr. 10/2026",
                 "Tagesgeld 1000000001"
             ),
@@ -1283,7 +1419,7 @@ mod tests {
             ),
             postbox_row(
                 2,
-                "25.02.2026",
+                "18.02.2026",
                 "Jahressteuerbescheinigung 2025",
                 "Tagesgeld 1000000002"
             ),
@@ -1291,7 +1427,7 @@ mod tests {
         let rows = parse_postbox(&html);
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].link, "contentForm:j_idt283:0:j_idt285");
-        assert_eq!(rows[0].date, "2026-10-30");
+        assert_eq!(rows[0].date, "2026-03-15");
         assert_eq!(rows[0].subject, "Kontoauszug Tagesgeld lfd. Nr. 10/2026");
         assert_eq!(rows[0].product, "Tagesgeld 1000000001");
         assert_eq!(rows[0].account_number.as_deref(), Some("1000000001"));
@@ -1307,11 +1443,11 @@ mod tests {
         );
         assert_eq!(
             document_file_name(&rows[0]),
-            "2026-10-30_Kontoauszug_Tagesgeld_lfd._Nr._10_2026.pdf"
+            "2026-03-15_Kontoauszug_Tagesgeld_lfd._Nr._10_2026.pdf"
         );
         assert_eq!(
             rows[2].key(),
-            "2026-02-25|Jahressteuerbescheinigung 2025|Tagesgeld 1000000002"
+            "2026-02-18|Jahressteuerbescheinigung 2025|Tagesgeld 1000000002"
         );
     }
 
@@ -1360,9 +1496,9 @@ mod tests {
 
     #[test]
     fn amounts_and_dates() {
-        assert_eq!(parse_amount("<em>- 0,71 €</em>"), Some(-71));
-        assert_eq!(parse_amount("+            97,02 €"), Some(9_702));
-        assert_eq!(parse_amount("58.824,77 €"), Some(5_882_477));
+        assert_eq!(parse_amount("<em>- 1,17 €</em>"), Some(-117));
+        assert_eq!(parse_amount("+            88,88 €"), Some(8_888));
+        assert_eq!(parse_amount("12.345,67 €"), Some(1_234_567));
         assert_eq!(parse_amount("—"), None);
         assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
     }
