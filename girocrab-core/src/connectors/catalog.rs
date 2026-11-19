@@ -210,7 +210,7 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             login_label: tr("Login / Benutzername").into(),
             secret_label: tr("Passwort / PIN").into(),
             required_settings: vec![],
-            note: tr("FFB-Fondsdepot: Fondsbestände (auch VL-Sparverträge) und Depotumsätze wie Sparplankäufe, Erträge und Entgelte. Das Abwicklungskonto wird nicht abgerufen. Nur Lesezugriff. Inoffiziell: liest die Seiten des Kundenbereichs, Änderungen sind möglich.").into(),
+            note: tr("FFB-Fondsdepot: Fondsbestände (auch VL-Sparverträge) und Depotumsätze wie Sparplankäufe, Erträge und Entgelte. Das Abwicklungskonto wird nicht abgerufen. Depot- und Kontoauszüge, Abrechnungen und Steuerunterlagen aus dem Postfach lassen sich abrufen; ungelesene Dokumente können danach bei der FFB als gelesen gelten. Nur Lesezugriff. Inoffiziell: liest die Seiten des Kundenbereichs, Änderungen sind möglich.").into(),
         },
         ConnectorKind::SchwaebischHall => BankDescriptor {
             kind,
@@ -698,6 +698,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Balances,
             Capability::Securities,
             Capability::SecurityTransactions,
+            Capability::Documents,
         ],
         status: Status::TestingWanted,
         issues: &[],

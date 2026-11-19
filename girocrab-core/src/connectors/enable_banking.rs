@@ -37,6 +37,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
+use crate::secret::{SecretJson, SecretString};
 use crate::vault::Vault;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -141,7 +142,7 @@ struct PsdState {
     // Optional: "Neu verbinden" / "Sitzung löschen" remove both from the
     // stored state; the account list must still be read (reconnect compare).
     #[serde(default)]
-    session_id: String,
+    session_id: SecretString,
     #[serde(default)]
     valid_until: String,
     #[serde(default, deserialize_with = "de_accounts")]
@@ -782,7 +783,7 @@ impl EnableBankingConnector {
             if a.name.is_empty() {
                 a.name = self.aspsp_default.clone();
             }
-            if a.currency.is_empty() {
+            if a.currency.is_empty() || a.currency.eq_ignore_ascii_case("XXX") {
                 a.currency = "EUR".into();
             }
         }
@@ -809,7 +810,7 @@ impl EnableBankingConnector {
                     .to_string(),
             ),
             (&mut acc.iban, s(&a["account_id"]["iban"]).replace(' ', "")),
-            (&mut acc.currency, s(&a["currency"])),
+            (&mut acc.currency, s(&a["currency"]).to_uppercase()),
             (&mut acc.cash_account_type, s(&a["cash_account_type"])),
             (&mut acc.identification_hash, s(&a["identification_hash"])),
             (&mut acc.account_number, other_account_id(a)),
@@ -872,8 +873,10 @@ impl EnableBankingConnector {
                 .as_str()
                 .filter(|s| !s.is_empty())
                 .map(|s| Some(s.to_string()));
-            let items = match page["transactions"].take() {
-                Value::Array(items) => items,
+            // `get_mut`, not `page["transactions"]`: `IndexMut` panics on a
+            // non-object body (array, string)
+            let items = match page.get_mut("transactions").map(Value::take) {
+                Some(Value::Array(items)) => items,
                 _ => Vec::new(),
             };
             Ok((items, next))
@@ -1176,7 +1179,7 @@ impl BankConnector for EnableBankingConnector {
         crate::depot_debug::log("enable_banking begin: entered");
         self.jwt = Self::make_jwt(ctx)?;
         self.client = Some(http_client()?);
-        if let Ok(st) = serde_json::from_value::<PsdState>(ctx.state.clone()) {
+        if let Ok(st) = ctx.state.decode::<PsdState>() {
             self.st = st;
         }
         let now = jiff::Timestamp::now().to_string();
@@ -1186,7 +1189,7 @@ impl BankConnector for EnableBankingConnector {
             }
             // Generic mode: make sure the consent was not revoked or closed
             // early (Enable Banking call, does not count against the bank's limit).
-            let path = format!("/sessions/{}", self.st.session_id);
+            let path = format!("/sessions/{}", self.st.session_id.expose());
             match self.call(reqwest::Method::GET, &path, None).await {
                 Ok(s) if s["status"].as_str().is_none_or(|st| st == "AUTHORIZED") => {
                     return Ok(Phase::Ready)
@@ -1339,7 +1342,7 @@ impl BankConnector for EnableBankingConnector {
                 Some(json!({"code": code})),
             )
             .await?;
-        self.st.session_id = v["session_id"].as_str().unwrap_or_default().to_string();
+        self.st.session_id = v["session_id"].as_str().unwrap_or_default().into();
         self.st.valid_until = v["access"]["valid_until"]
             .as_str()
             .unwrap_or_default()
@@ -1376,7 +1379,7 @@ impl BankConnector for EnableBankingConnector {
         if self.st.accounts.is_empty() && !self.st.session_id.is_empty() {
             // State lost its accounts (e.g. saved by an older build): re-read them
             // from the session instead of silently syncing nothing.
-            let path = format!("/sessions/{}", self.st.session_id);
+            let path = format!("/sessions/{}", self.st.session_id.expose());
             let sess = self.call(reqwest::Method::GET, &path, None).await?;
             self.st.accounts = self.parse_accounts(&sess);
             crate::depot_debug::log(&format!(
@@ -1386,11 +1389,17 @@ impl BankConnector for EnableBankingConnector {
         }
         self.upgrade_legacy_accounts().await;
         let mut out = FetchResult::default();
+        // One account (#1124): its requests only, for the PSD2 daily limit
+        // and the per-account history flags.
+        let refs: Vec<String> = self.st.accounts.iter().map(|a| a.ext_ref.clone()).collect();
+        let only = ctx.only_among(&refs);
+        let mut wanted = self.st.accounts.clone();
+        wanted.retain(|a| only.is_none_or(|o| a.ext_ref == o));
         if self.card_mode() {
-            for a in self.st.accounts.clone() {
+            for a in wanted {
                 self.fetch_card(ctx, &mut out, &a).await?;
             }
-            out.state = Some(serde_json::to_value(&self.st)?);
+            out.state = Some(SecretJson::encode(&self.st)?);
             return Ok(out);
         }
         out.hold_prefix = Some(HOLD_PREFIX.into());
@@ -1413,7 +1422,7 @@ impl BankConnector for EnableBankingConnector {
         // uid → every page of the account's bookings was read
         let mut listed: HashMap<String, bool> = HashMap::new();
         let mut stopped_early = false;
-        for a in self.st.accounts.clone() {
+        for a in wanted {
             let res = if kind_of(&a) == AccountKind::CreditCard {
                 let named = EbAccount {
                     name: display_name(&a),
@@ -1465,7 +1474,7 @@ impl BankConnector for EnableBankingConnector {
         // Renames travel with this result; the vault applies them.
         self.st.renames.clear();
         self.st.revoked.clear();
-        out.state = Some(serde_json::to_value(&self.st)?);
+        out.state = Some(SecretJson::encode(&self.st)?);
         Ok(out)
     }
 }
@@ -1482,7 +1491,12 @@ impl EnableBankingConnector {
         let uid = acc.uid.clone();
         let name = acc.name.clone();
         let iban = acc.iban.clone();
-        let currency = acc.currency.clone();
+        let currency = if acc.currency.trim().is_empty() || acc.currency.eq_ignore_ascii_case("XXX")
+        {
+            "EUR".to_string()
+        } else {
+            acc.currency.clone()
+        };
         let external_ref = acc.ext_ref.clone();
         {
             crate::depot_debug::log(&format!(

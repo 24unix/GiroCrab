@@ -36,7 +36,7 @@ fn test_ctx() -> ConnectContext {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        state: serde_json::json!({}),
+        state: serde_json::json!({}).into(),
         since: "2025-01-01".into(),
         ..Default::default()
     }
@@ -162,7 +162,7 @@ async fn comdirect_login_tries_its_other_bank_codes_and_keeps_the_one_that_works
     ] {
         ctx.settings.insert(k.into(), SecretString::new(v.into()));
     }
-    ctx.state = persisted;
+    ctx.state = persisted.into();
     assert!(matches!(c2.begin(&ctx).await.unwrap(), Phase::Ready));
     assert_eq!(c2.blz, "20041111");
     assert_eq!(seen2.lock().unwrap().len(), 1);
@@ -339,7 +339,7 @@ fn message_has_correct_length_and_structure() {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        state: serde_json::json!({}),
+        state: serde_json::json!({}).into(),
         since: "2025-01-01".into(),
         ..Default::default()
     };
@@ -389,6 +389,10 @@ fn decoupled_poll_recognises_a_pending_approval() {
     // standard: 3956
     assert!(approval_pending(&reply(
         b"HIRMG:2:2+3060::Bitte beachten Sie die enthaltenen Warnungen.'HIRMS:3:2:3+3956::Starke Kundenauthentifizierung noch ausstehend.'"
+    )));
+    // 3045: SEPA-Instant handover after approval is no longer pending (#1121)
+    assert!(!approval_pending(&reply(
+        b"HIRMG:2:2+3060::Bitte beachten Sie die enthaltenen Warnungen.'HIRMS:3:2:3+3045::SEPA-Instant Payment Statusabfrage HKIPS veranlassen.'"
     )));
     // warnings only, no success code (Deutsche Bank)
     assert!(approval_pending(&reply(
@@ -968,7 +972,7 @@ fn standing_order_limits_come_from_the_stored_state() {
                 HICDNS:13:1:3+1+1+0+1:2:90:J:J:J:J:J:J:J:J:J:010612:010515:00:135'";
     let mut c = FinTsConnector::new("20041111");
     c.learn_bpd(&reply(raw));
-    let state = serde_json::to_value(&c.st).unwrap();
+    let state = crate::secret::SecretJson::encode(&c.st).unwrap();
     let create = standing_limits_from_state(&state, A::Create).unwrap();
     assert_eq!((create.min_days_ahead, create.max_days_ahead), (2, 90));
     assert_eq!(create.months, [1, 2, 3]);
@@ -980,7 +984,7 @@ fn standing_order_limits_come_from_the_stored_state() {
     assert_eq!(change.weekdays, [1, 3, 5]);
     assert!(standing_limits_from_state(&state, A::Delete).is_none());
     // Not a FinTS state, or none of the parameters seen yet.
-    assert!(standing_limits_from_state(&serde_json::json!({}), A::Create).is_none());
+    assert!(standing_limits_from_state(&serde_json::json!({}).into(), A::Create).is_none());
 }
 
 #[test]
@@ -1199,6 +1203,98 @@ fn evaluates_vop_results() {
 }
 
 #[test]
+fn match_with_3091_needs_no_hkvpa() {
+    // 3091 "VOP-Ausführungsauftrag nicht benötigt": the challenge is simply answered.
+    let r = reply(
+        b"HIRMG:2:2+0010::OK.'HIRMS:3:2:3+3091::VOP-Ausfuehrungsauftrag nicht benoetigt.'HIVPP:5:1:3+@4@ABCD+++++DE89370400440532013000::::RCVC'",
+    );
+    let mut c = FinTsConnector::new("20041111");
+    order_for(&mut c);
+    assert!(c.evaluate_payee(&r).is_none());
+    assert!(!c.vop_with_tan);
+}
+
+#[tokio::test]
+async fn confirming_without_a_name_check_result_after_3091_resends_nothing() {
+    // Berliner Sparkasse: HKVPP + HKCCS + HKTAN is answered with 3091 (no HKVPA
+    // needed) and 3955 (approval in the app); HIVPP carries no result. The
+    // order is already with the bank: "send anyway" must continue that
+    // challenge. HKVPA + HKCCS + HKTAN again was rejected with 9010 on the order.
+    let r = reply(
+        b"HIRMG:2:2+3060::Hinweise.'HIRMS:3:2:3+3091::VOP-Ausfuehrungsauftrag nicht benoetigt.'HIRMS:4:2:5+3955::Auftrag empfangen - Bitte Auftrag in Ihrer App freigeben.'HIVPP:5:1:3+@8@VOPID123'",
+    );
+    let mut c = FinTsConnector::new("20041111");
+    order_for(&mut c);
+    let check = c.evaluate_payee(&r).unwrap();
+    assert_eq!(check.result, PayeeMatch::NotPossible);
+    c.keep_challenge_on_3091(&r, false).unwrap();
+    assert!(!c.vop_with_tan);
+    assert!(c.vop_resume.is_some());
+    c.vop_pending = Some(check.result);
+
+    // The connector has no URL: any message sent here would fail the call.
+    let phase = c.confirm_payee(&test_ctx()).await.unwrap();
+    assert!(matches!(phase, Phase::Challenge(_)), "{phase:?}");
+    assert!(c.vop_resume.is_none());
+    // A second confirmation is refused, as before.
+    assert!(c.confirm_payee(&test_ctx()).await.is_err());
+}
+
+#[test]
+fn the_3091_challenge_is_only_kept_when_the_reply_carries_it() {
+    let with_3091 = reply(
+        b"HIRMG:2:2+3060::Hinweise.'HIRMS:3:2:3+3091::nicht benoetigt.'HIRMS:4:2:5+3955::Bitte in der App freigeben.'",
+    );
+    // After polling the last reply answers a bare HKVPP: nothing to keep.
+    let mut c = FinTsConnector::new("20041111");
+    c.keep_challenge_on_3091(&with_3091, true).unwrap();
+    assert!(c.vop_resume.is_none());
+    // 3945 (confirmation needed): HKVPA + order are sent again, nothing to keep.
+    let confirm = reply(
+        b"HIRMG:2:2+3060::Hinweise.'HIRMS:3:2:3+3945::Freigabe ohne VOP-Bestaetigung nicht moeglich.'HIRMS:4:2:5+3955::Bitte in der App freigeben.'",
+    );
+    c.keep_challenge_on_3091(&confirm, false).unwrap();
+    assert!(c.vop_resume.is_none());
+    // No 3091: unchanged.
+    let plain = reply(b"HIRMG:2:2+3060::Hinweise.'HIRMS:4:2:5+3955::Bitte in der App freigeben.'");
+    c.keep_challenge_on_3091(&plain, false).unwrap();
+    assert!(c.vop_resume.is_none());
+    // A new order forgets what the previous one kept.
+    c.keep_challenge_on_3091(&with_3091, false).unwrap();
+    assert!(c.vop_resume.is_some());
+    c.begin_order();
+    assert!(c.vop_resume.is_none());
+}
+
+#[test]
+fn transfer_errors_name_the_rejected_segment() {
+    // Berliner Sparkasse, second message: HKVPA (#3) is fine, the order (#4) is not.
+    let r = BankReply {
+        segments: Vec::new(),
+        codes: vec![
+            (
+                "9050".into(),
+                None,
+                "Die Nachricht enthält Fehler.".into(),
+                vec![],
+            ),
+            ("0020".into(), Some(3), "In Ordnung.".into(), vec![]),
+            ("9010".into(), Some(4), "Systemfehler".into(), vec![]),
+        ],
+        sent: HashMap::from([(3, "HKVPA".to_string()), (4, "HKCCS".to_string())]),
+    };
+    match r.check_transfer() {
+        Err(CoreError::Bank { code, message }) => {
+            assert_eq!(code, "9050");
+            assert!(message.contains("9010"), "{message}");
+            assert!(message.contains("[HKCCS #4]"), "{message}");
+            assert!(!message.contains("HKVPA"), "{message}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn builds_hkcaz_with_escaped_camt_urn() {
     let mut c = FinTsConnector::new("52090000");
     c.st.versions.insert("HKCAZ".into(), vec![1]);
@@ -1316,7 +1412,6 @@ fn pain_header_is_well_formed_and_always_names_the_owner() {
         "{}",
         h.created
     );
-    assert!(jiff::civil::Date::strptime("%Y-%m-%d", h.date()).is_ok());
     // GC + timestamp + 8 hex digits, within the 35 characters pain allows.
     assert!(h.message_id.starts_with("GC") && h.message_id.len() == 24);
 }

@@ -337,7 +337,7 @@ impl Vault {
         action: crate::models::StandingOrderAction,
     ) -> Result<Option<crate::models::StandingOrderLimits>, crate::error::CoreError> {
         let db = self.db()?;
-        let state: Option<String> = db
+        let state: Option<crate::secret::SecretJson> = db
             .query_row(
                 "SELECT c.state_json FROM accounts a JOIN bank_connections c ON c.id = a.connection_id
                  WHERE a.id = ?1 AND a.deleted_ms IS NULL AND c.deleted_ms IS NULL",
@@ -345,8 +345,7 @@ impl Vault {
                 |r| r.get(0),
             )
             .optional()?;
-        let Some(state) = state.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        else {
+        let Some(state) = state else {
             return Ok(None);
         };
         Ok(crate::connectors::fints::standing_limits_from_state(

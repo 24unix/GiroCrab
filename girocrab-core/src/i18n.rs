@@ -471,6 +471,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Die Summe der Sammelüberweisung ist zu groß." => "The total of the batch transfer is too large.",
         "Der Verwendungszweck darf höchstens 140 Zeichen lang sein." => "The payment reference can be at most 140 characters.",
         "Dieses Konto hat keine Bankverbindung." => "This account has no bank connection.",
+        "Dieses Konto ist archiviert oder vom Abruf ausgenommen." => "This account is archived or excluded from syncing.",
         "Überweisungen sind nur für FinTS- und bunq-Konten möglich." => "Transfers are only possible for FinTS and bunq accounts.",
         "Das Konto hat keine IBAN." => "The account has no IBAN.",
         "Bankverbindung {0}" => "bank connection {0}",
@@ -753,7 +754,7 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ connectors/ffb.rs
         "Web-Kundenbereich (Direkt-Login)" => "Web customer area (direct login)",
         "Login / Benutzername" => "Login / user name",
-        "FFB-Fondsdepot: Fondsbestände (auch VL-Sparverträge) und Depotumsätze wie Sparplankäufe, Erträge und Entgelte. Das Abwicklungskonto wird nicht abgerufen. Nur Lesezugriff. Inoffiziell: liest die Seiten des Kundenbereichs, Änderungen sind möglich." => "FFB fund depot: fund positions (including VL savings contracts) and depot transactions such as savings plan purchases, income and fees. The settlement account is not fetched. Read-only. Unofficial: reads the pages of the customer area, changes are possible.",
+        "FFB-Fondsdepot: Fondsbestände (auch VL-Sparverträge) und Depotumsätze wie Sparplankäufe, Erträge und Entgelte. Das Abwicklungskonto wird nicht abgerufen. Depot- und Kontoauszüge, Abrechnungen und Steuerunterlagen aus dem Postfach lassen sich abrufen; ungelesene Dokumente können danach bei der FFB als gelesen gelten. Nur Lesezugriff. Inoffiziell: liest die Seiten des Kundenbereichs, Änderungen sind möglich." => "FFB fund depot: fund positions (including VL savings contracts) and depot transactions such as savings plan purchases, income and fees. The settlement account is not fetched. Depot and account statements, settlements and tax documents from the mailbox can be fetched; unread documents may then count as read at FFB. Read-only. Unofficial: reads the pages of the customer area, changes are possible.",
         "FFB: Anmeldeseite nicht erkannt (Webseite geändert?)." => "FFB: login page not recognised (website changed?).",
         "FFB: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen." => "FFB: Incomplete or invalid response. No data was imported.",
         "FFB: Anmeldung fehlgeschlagen. Bitte Login und Passwort/PIN prüfen." => "FFB: Login failed. Please check login and password/PIN.",
@@ -789,6 +790,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Keine Umsätze erkannt." => "No transactions found.",
         // ------------------------------------------------------------ vault/backup.rs
         "Falsches Passwort oder keine GiroCrab-Sicherung." => "Wrong password or not a GiroCrab backup.",
+        "Diese Datei ist keine GiroCrab-Sicherung, sondern die Datenbank einer anderen App. Zum Übernehmen bitte als Art des Imports diese App wählen." => "This file is not a GiroCrab backup but another app's database. To import it, choose that app as the import type.",
         "Bitte ein Passwort für die Sicherung angeben." => "Please enter a password for the backup.",
         "Das Passwort für die Sicherung muss mindestens 8 Zeichen lang sein." => "The backup password must be at least 8 characters long.",
         // ------------------------------------------------------------ importers/moneymoney_import.rs

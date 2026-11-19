@@ -20,7 +20,7 @@ for a in "$@"; do
     --lint-only) mode=lint ;;
     --tests) mode=tests ;;
     --all) all=true ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "verify-fast: unknown option $a" >&2; exit 2 ;;
   esac
 done

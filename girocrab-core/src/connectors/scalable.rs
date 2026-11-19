@@ -33,7 +33,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, Holding, SecurityDirection, SecurityTransaction};
 use crate::money::{json_number_to_cents, json_number_to_cents_rounded};
-use crate::secret::SecretString;
+use crate::secret::{SecretJson, SecretString};
 
 /// `https://` on `scalable.capital` or one of its subdomains, no user info.
 fn is_scalable_https(uri: &str) -> bool {
@@ -654,10 +654,6 @@ impl ScalableConnector {
 
     fn key(&self) -> CoreResult<&DpopKey> {
         self.key.as_ref().ok_or(CoreError::SessionClosed)
-    }
-
-    fn state_json(&self) -> Value {
-        serde_json::to_value(&self.session).unwrap_or(Value::Null)
     }
 
     /// POST a form to the issuer with a DPoP proof (one nonce retry).
@@ -1492,7 +1488,7 @@ impl ScalableConnector {
 #[async_trait]
 impl BankConnector for ScalableConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
-        self.session = serde_json::from_value(ctx.state.clone()).unwrap_or_default();
+        self.session = ctx.state.decode().unwrap_or_default();
         if self.session_usable() {
             match DpopKey::from_hex(self.session.dpop_key_hex.expose()) {
                 Ok(k) => self.key = Some(k),
@@ -1557,7 +1553,14 @@ impl BankConnector for ScalableConnector {
         // First sync of a connection: the whole history (the API has no range
         // limit and a depot needs its full purchase history). Later syncs are
         // incremental via the app-wide window in `ctx.since`.
-        let first_sync = ctx.state.get("login_at").is_none();
+        #[derive(Deserialize)]
+        struct LoginAt {
+            login_at: Option<serde::de::IgnoredAny>,
+        }
+        let first_sync = ctx
+            .state
+            .decode::<LoginAt>()
+            .map_or(true, |s| s.login_at.is_none());
         let since = if first_sync {
             "1970-01-01"
         } else {
@@ -1573,7 +1576,7 @@ impl BankConnector for ScalableConnector {
         if let Err(e) = self.fetch_fixed_term(&account_id, &mut out).await {
             log(&format!("fixed-term fetch failed: {e}"));
         }
-        out.state = Some(self.state_json());
+        out.state = SecretJson::encode(&self.session).ok();
         Ok(out)
     }
 }

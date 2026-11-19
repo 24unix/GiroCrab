@@ -1807,7 +1807,6 @@ QtObject {
         // would hand this login's PIN to another bank.
         if (statementsAccountID !== null && (!accountsByID[statementsAccountID] || accountsByID[statementsAccountID].connection_id !== connection.id))
             statementsAccountID = null
-            postboxConnectionID = null
         const statementsFor = statementsAccountID
         // "PostBox jetzt abrufen" (#838) only for exactly this login
         if (postboxConnectionID !== connection.id) postboxConnectionID = null
@@ -3578,11 +3577,24 @@ QtObject {
     /// screenshot, so the main window draws `Sensitive {}` content as opaque boxes.
     readonly property int redactPersonal: 1
     readonly property int redactLabels: 2
+    /// `.amounts` (#719): money, balances, sums, shares, chart axis values and readouts.
+    readonly property int redactAmounts: 4
     property int reportRedaction: 0
-    /// (developer) `--redact` / `--redact=labels`: main window drawn as in the screenshot.
-    readonly property int launchRedaction: launchArgs.indexOf("--redact=labels") >= 0 ? redactPersonal | redactLabels
-        : launchArgs.indexOf("--redact") >= 0 ? redactPersonal : 0
-    readonly property int redaction: reportRedaction | launchRedaction
+    /// (developer) `--redact` / `--redact=labels`: main window drawn as in the screenshot;
+    /// `--privacy[=all]` (LaunchOptions.swift): as in privacy mode (amounts, with `=all` personal data too).
+    readonly property int launchRedaction: (launchArgs.indexOf("--redact=labels") >= 0 ? redactPersonal | redactLabels
+        : launchArgs.indexOf("--redact") >= 0 ? redactPersonal : 0)
+        | (launchArgs.indexOf("--privacy=all") >= 0 ? PrivacyMode.scopeRedaction("personal") : 0)
+        | (launchArgs.indexOf("--privacy") >= 0 ? PrivacyMode.scopeRedaction("amounts") : 0)
+    /// The bug report's redaction united with privacy mode (`privacyModeEnvironment()`).
+    readonly property int redaction: reportRedaction | launchRedaction | PrivacyMode.redaction
+    /// `ReportRedaction.effective`: what is actually hidden, `.personal` implies `.amounts`.
+    readonly property int effectiveRedaction: (redaction & redactPersonal) !== 0 ? redaction | redactAmounts : redaction
+    /// `ReportRedaction.masking(_:_:)`: `text`, or the placeholder while `kind` (default
+    /// personal) is hidden – for tooltips and other parameter texts with names or amounts.
+    function masking(text, kind) {
+        return (effectiveRedaction & (kind === undefined ? redactPersonal : kind)) === 0 || !text ? text : searchPlaceholder
+    }
     /// BugReport.searchPlaceholder: stands in for typed search text in the picture.
     readonly property string searchPlaceholder: "•••"
     /// `text`, or the placeholder while the screenshot hides personal data (parameter texts

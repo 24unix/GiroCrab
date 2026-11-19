@@ -13,7 +13,7 @@ use crate::importers::portal_import::{CARD_BOOKING_TEXT, CARD_SEPARATOR};
 use crate::models::{
     AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
 };
-use crate::secret::SecretString;
+use crate::secret::{SecretJson, SecretString};
 use crate::vault::Vault;
 
 use super::*;
@@ -711,6 +711,15 @@ pub(crate) fn store_fetch(
                 }
             }
         }
+        // These banks abbreviate the tax lines that MoneyMoney shows in full.
+        if matches!(
+            kind,
+            ConnectorKind::FordMoney | ConnectorKind::OpelDirektbank
+        ) {
+            for id in account_ids.values() {
+                crate::importers::moneymoney_import::merge_synced_tax_twins(&tx, *id)?;
+            }
+        }
         // Securities transactions (#314): beside the cash bookings, then matched to them.
         // Standing orders: complete per account, so the stored ones are replaced.
         for r in &data.standing_orders_fetched {
@@ -741,11 +750,20 @@ pub(crate) fn store_fetch(
         }
         // Drop optimistic transfer bookings once the bank's real booking arrived
         // (same account, amount and recipient IBAN; a batch: amount only) or after 14 days.
+        // Connectors that report their complete open-hold list (`hold_prefix`) manage
+        // those holds below (#1111) so same-amount payments or >14d holds are not dropped early.
+        let managed_hold_like = data
+            .hold_prefix
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .map(|p| format!("{}%", p.replace('%', "").replace('_', "\\_")))
+            .unwrap_or_default();
         tx.execute(
             "UPDATE transactions SET deleted_ms = ?1
               WHERE external_id LIKE 'pending-%' AND deleted_ms IS NULL
                 -- web-portal holds (#629) are settled or discarded explicitly
-                AND external_id NOT LIKE 'pending-hold-portal-%' AND (
+                AND external_id NOT LIKE 'pending-hold-portal-%'
+                AND (?2 = '' OR external_id NOT LIKE ?2 ESCAPE '\\') AND (
                 imported_unix < strftime('%s','now') - 14*86400 OR EXISTS (
                     SELECT 1 FROM transactions r WHERE r.account_id = transactions.account_id
                       AND r.deleted_ms IS NULL
@@ -760,7 +778,7 @@ pub(crate) fn store_fetch(
                                AND (r.booking_text LIKE '%Sammel%' OR r.purpose LIKE '%Sammel%')
                                AND r.booking_date <= date(transactions.booking_date, '+7 days')))
                       AND r.booking_date >= transactions.booking_date))",
-            [crate::dates::now_ms()],
+            params![crate::dates::now_ms(), managed_hold_like],
         )?;
         // Entries the connector recognised as no real movement (stored by an older version).
         for (account_ref, external_id) in &data.withdrawn {
@@ -942,16 +960,16 @@ pub(crate) fn store_fetch(
             super::advanzia::settle_holds(&tx, &account_ids, &mut data)?;
         }
         let categorized = Vault::apply_rules_inner(&tx, true)?;
-        if let Some(state) = data.state {
+        if let Some(state) = &data.state {
+            crate::vault::connections::store_state(&tx, connection_id, state)?;
+        }
+        // one account: the others are as old as before (automatic sync, freshness)
+        if !data.single_account {
             tx.execute(
-                "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",
-                params![state.to_string(), connection_id],
+                "UPDATE bank_connections SET last_sync_unix = strftime('%s','now') WHERE id = ?1",
+                [connection_id],
             )?;
         }
-        tx.execute(
-            "UPDATE bank_connections SET last_sync_unix = strftime('%s','now') WHERE id = ?1",
-            [connection_id],
-        )?;
         tx.commit()?;
         if let Some(data) = deferred {
             vault
@@ -962,7 +980,10 @@ pub(crate) fn store_fetch(
         }
         // The catch-up after switching retrieval on again is done once a sync brings no new document
         // and left none out (a failed request, a limit).
-        if documents_stored == 0 && !documents_incomplete && documents_fetch_on(&db, connection_id)?
+        if documents_stored == 0
+            && !documents_incomplete
+            && !data.single_account
+            && documents_fetch_on(&db, connection_id)?
         {
             db.execute(
                 "DELETE FROM settings WHERE key = ?1",
@@ -1089,7 +1110,7 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
-        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Due)
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Due, None)
     }
 
     /// Like [`begin_sync`](Self::begin_sync) for an automatic sync in the
@@ -1101,7 +1122,22 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
-        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Off)
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Off, None)
+    }
+
+    /// Like [`begin_sync`](Self::begin_sync) for one account of its login
+    /// ("<Konto> abrufen", #1124): only its balance and bookings are fetched
+    /// and stored; the login's other accounts stay as they are. Documents
+    /// wait for the next full sync: connectors remember what they downloaded,
+    /// and a document of another account would be remembered but not stored.
+    pub fn begin_account_sync(
+        self: Arc<Self>,
+        account_id: i64,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<SyncSession>, CoreError> {
+        let (conn_id, ext) = self.account_login(account_id)?;
+        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, Some(ext))
     }
 
     /// Turns the PostBox fetch through comdirect's REST API on or off for a
@@ -1182,7 +1218,7 @@ impl Vault {
                 "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
             )));
         }
-        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Now)
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Now, None)
     }
 
     /// Whether this connection's bank delivers documents at all (`Capability::Documents` of its
@@ -1278,20 +1314,7 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
-        let (conn_id, ext): (Option<i64>, String) = {
-            let db = self.db()?;
-            db.query_row(
-                "SELECT connection_id, external_ref FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
-                [account_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()?
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf("Konto {0}", &[&account_id]),
-            })?
-        };
-        let conn_id = conn_id
-            .ok_or_else(|| CoreError::invalid(tr("Dieses Konto hat keine Bankverbindung.")))?;
+        let (conn_id, ext) = self.account_login(account_id)?;
         let kind: String = self.db()?.query_row(
             "SELECT connector FROM bank_connections WHERE id = ?1",
             [conn_id],
@@ -1306,6 +1329,7 @@ impl Vault {
                     | ConnectorKind::Easybank
                     | ConnectorKind::FordMoney
                     | ConnectorKind::OpelDirektbank
+                    | ConnectorKind::Ffb
             )
         });
         if !supports_statements {
@@ -1313,11 +1337,29 @@ impl Vault {
                 "Für diese Bank können keine Kontoauszüge abgerufen werden.",
             )));
         }
-        self.begin_sync_inner(conn_id, secret, demo, Some(ext), PostboxMode::Off)
+        self.begin_sync_inner(conn_id, secret, demo, Some(ext), PostboxMode::Off, None)
     }
 }
 
 impl Vault {
+    /// Login (connection id) and external ref of a synced account.
+    fn account_login(&self, account_id: i64) -> CoreResult<(i64, String)> {
+        let (conn_id, ext): (Option<i64>, String) = self
+            .db()?
+            .query_row(
+                "SELECT connection_id, external_ref FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
+                [account_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            })?;
+        let conn_id = conn_id
+            .ok_or_else(|| CoreError::invalid(tr("Dieses Konto hat keine Bankverbindung.")))?;
+        Ok((conn_id, ext))
+    }
+
     /// The documents a sync of this connection fetches; `statements_only` =
     /// external ref of the account whose statements were asked for.
     pub(super) fn documents_request(
@@ -1378,6 +1420,7 @@ impl Vault {
         demo: bool,
         statements_only: Option<String>,
         postbox: PostboxMode,
+        only_account: Option<String>,
     ) -> Result<Arc<SyncSession>, CoreError> {
         // No PIN typed: use the one stored in the vault ("PIN im Tresor speichern").
         let secret = if secret.is_empty() {
@@ -1388,9 +1431,9 @@ impl Vault {
             secret
         };
         let secret = SecretString::new(secret);
-        let (kind, key_str, login, state_json, ctx_settings, since, skipped, demo) = {
+        let (kind, key_str, login, state, ctx_settings, since, skipped, demo) = {
             let db = self.db()?;
-            let (kind, login, state): (String, String, String) = db
+            let (kind, login, state): (String, String, SecretJson) = db
                 .query_row(
                     "SELECT connector, login_name, state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                     [connection_id],
@@ -1499,10 +1542,19 @@ impl Vault {
                 )?;
                 let rows = st
                     .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                rows
+                    .collect::<Result<Vec<(String, Option<String>)>, _>>()?;
+                // one account: the window starts at its own newest booking
+                rows.into_iter()
+                    .filter(|(r, _)| only_account.as_ref().is_none_or(|o| o == r))
+                    .collect()
             };
             let skipped = super::account_selection::skipped_refs(&db, connection_id)?;
+            // one account, archived or switched off: store_fetch would drop all it brings
+            if only_account.as_ref().is_some_and(|r| skipped.contains(r)) {
+                return Err(CoreError::invalid(tr(
+                    "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
+                )));
+            }
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
@@ -1510,17 +1562,22 @@ impl Vault {
             (kind, key_str, login, state, settings, since, skipped, demo)
         };
         let (since, since_by_account) = since;
-        let documents = self.documents_request(connection_id, statements_only)?;
+        let documents = match only_account {
+            // see begin_account_sync
+            Some(_) => Documents::Off,
+            None => self.documents_request(connection_id, statements_only)?,
+        };
         let ctx = ConnectContext {
             connection_id,
             login_name: login,
             secret,
             settings: ctx_settings,
-            state: serde_json::from_str(&state_json).unwrap_or(serde_json::json!({})),
+            state,
             since,
             since_by_account,
             documents,
             skipped_accounts: skipped.into_iter().collect(),
+            only_account,
         };
         let mut connector = make_connector_for(kind, &key_str, demo);
         if !demo && is_comdirect_fints(&key_str) {

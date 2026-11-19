@@ -1288,6 +1288,7 @@ fn find_twin(
                 // the bank sends no counterparty (comdirect REST, some debits): the
                 // purposes still start the same (reference numbers, invoice text)
                 || purposes_alike(&n_purpose, &norm(&t.purpose))
+                || (n_name.is_empty() && same_tax_line(&n_purpose, &m_name, &norm(&t.purpose)))
         };
         if ok {
             hits.push(t);
@@ -1366,6 +1367,24 @@ fn purpose_without_refs(p: &str) -> String {
 fn purposes_alike(a: &str, b: &str) -> bool {
     const MIN: usize = 24;
     a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count() >= MIN
+}
+
+/// Tax lines of the first account holder: the bank's short text and the full
+/// names MoneyMoney shows for it (all normalised). The second holder's lines
+/// (`Kap.ertr.st2`, `SoliZuschl.2`) keep their text there and match exactly.
+const TAX_LINES: [(&str, &[&str]); 2] = [
+    (
+        "kapertrst1",
+        &["kapitalertragsteuer", "kapitalertragssteuer"],
+    ),
+    ("solizuschl1", &["solidaritätszuschlag"]),
+];
+
+/// The bank's short tax text and a MoneyMoney row carrying the full name.
+fn same_tax_line(bank_purpose: &str, mm_name: &str, mm_purpose: &str) -> bool {
+    TAX_LINES.iter().any(|(short, full)| {
+        bank_purpose == *short && (full.contains(&mm_name) || full.contains(&mm_purpose))
+    })
 }
 
 /// An imported row with fingerprint `?2`. `import_fp != ''` is always true for a
@@ -1492,6 +1511,34 @@ pub(crate) fn merge_synced_twin(
     )?;
     crate::sync_merge::soft_delete_booking(conn, bank_id)?;
     Ok(true)
+}
+
+/// Removes tax bookings that an earlier sync stored beside their MoneyMoney row
+/// because the texts differ ([`TAX_LINES`]). They can be older than the sync
+/// window, so the fetched bookings alone would not reach them.
+pub(crate) fn merge_synced_tax_twins(conn: &Connection, account_id: i64) -> CoreResult<()> {
+    let rows = conn
+        .prepare_cached(
+            "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose
+               FROM transactions
+              WHERE account_id = ?1 AND deleted_ms IS NULL AND external_id NOT LIKE 'mm-%'
+                AND purpose IN ('Kap.ertr.st1', 'SoliZuschl.1')",
+        )?
+        .query_map([account_id], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    for (id, date, cents, iban, name, purpose) in rows {
+        merge_synced_twin(conn, id, &date, cents, &iban, &name, &purpose)?;
+    }
+    Ok(())
 }
 
 fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
@@ -2572,6 +2619,89 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             )
             .unwrap();
         assert_eq!(note, "wichtig");
+    }
+
+    #[test]
+    fn short_tax_texts_adopt_the_full_names_of_the_first_holder_only() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(
+            &v,
+            "15.03.2026;Kapitalertragsteuer;;-21,37;Zins-Kosten;\n\
+             15.03.2026;;Solidaritätszuschlag;-1,17;Zins-Kosten;\n\
+             15.03.2026;;Kap.ertr.st2;-21,37;Zins-Kosten;\n",
+        );
+        let db = v.db().unwrap();
+        let adopt = |id: &str, cents: i64, text: &str| {
+            adopt_import(&db, acc, id, "2026-03-15", cents, "", "", text, text).unwrap()
+        };
+        assert!(adopt("c2", -2137, "Kap.ertr.st2"));
+        assert!(adopt("c1", -2137, "Kap.ertr.st1"));
+        assert!(adopt("s1", -117, "SoliZuschl.1"));
+        let name: String = db
+            .query_row(
+                "SELECT counterparty FROM transactions WHERE external_id = 'c1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Kapitalertragsteuer");
+
+        let (_dir2, v2) = vault();
+        let other = mm_acct(&v2, "15.03.2026;Kapitalertragsteuer;;-21,37;;\n");
+        let db2 = v2.db().unwrap();
+        assert!(
+            !adopt_import(
+                &db2,
+                other,
+                "c2",
+                "2026-03-15",
+                -2137,
+                "",
+                "",
+                "Kap.ertr.st2",
+                "Kap.ertr.st2"
+            )
+            .unwrap(),
+            "the second holder's tax is another booking"
+        );
+    }
+
+    #[test]
+    fn old_tax_duplicates_are_merged_unless_edited() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(
+            &v,
+            "17.02.2025;Kapitalertragsteuer;;-34,56;Zins-Kosten;wichtig\n\
+             17.02.2025;Solidaritätszuschlag;;-1,90;Zins-Kosten;\n",
+        );
+        let db = v.db().unwrap();
+        let ins = |ext: &str, cents: i64, purpose: &str, note: &str| {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose, booking_text, note)
+                 VALUES (?1, ?2, '2025-02-17', ?3, ?4, ?4, ?5)",
+                params![acc, ext, cents, purpose, note],
+            )
+            .unwrap();
+        };
+        ins("c1", -3456, "Kap.ertr.st1", "");
+        ins("s1", -190, "SoliZuschl.1", "meins");
+
+        merge_synced_tax_twins(&db, acc).unwrap();
+
+        let rows: Vec<(String, String)> = db
+            .prepare(
+                "SELECT external_id, note FROM transactions
+                  WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY amount_cents",
+            )
+            .unwrap()
+            .query_map([acc], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(rows.len(), 3, "{rows:?}");
+        assert_eq!(rows[0], ("c1".to_string(), "wichtig".to_string()));
+        assert!(rows[1].0.starts_with("mm-") || rows[2].0.starts_with("mm-"));
+        assert!(rows.iter().any(|r| r == &("s1".into(), "meins".into())));
     }
 
     #[test]

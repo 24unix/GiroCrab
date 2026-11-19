@@ -8,6 +8,21 @@ use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
 
 #[test]
+fn stored_state_keeps_its_json_shape_and_hides_secrets() {
+    let stored = json!({
+        "env": "sandbox", "key_fp": "fp", "private_key_pem": "pem-secret",
+        "installation_token": "install-secret", "server_public_key": "server-pem",
+        "device_registered": true, "session_token": "session-secret", "user_id": 9,
+        "receipts_checked": {"7": "2026-11-09"}, "receipt_cursor": {"42": 7},
+        "attachments_done": [3], "statements_done": ["42:2026-10"]
+    });
+    let state: BunqState = serde_json::from_value(stored.clone()).unwrap();
+    assert_eq!(state.session_token.expose(), "session-secret");
+    assert_eq!(serde_json::to_value(&state).unwrap(), stored);
+    assert!(!format!("{state:?}").contains("-secret"));
+}
+
+#[test]
 fn parses_accounts_and_payments() {
     let acc = json!({"MonetaryAccountSavings": {
         "id": 42, "description": "Rücklagen", "currency": "EUR", "status": "ACTIVE",
@@ -53,7 +68,7 @@ fn parses_accounts_and_payments() {
 fn signature_roundtrip_and_find() {
     let key = PrivateKey::new(&mut getrandom::SysRng, 1024).unwrap();
     let mut c = BunqConnector::new();
-    c.state.private_key_pem = key.to_pkcs8_pem(LineEnding::LF).unwrap().to_string();
+    c.state.private_key_pem = key.to_pkcs8_pem(LineEnding::LF).unwrap().as_str().into();
     c.state.server_public_key = key
         .to_public_key()
         .to_public_key_pem(LineEnding::LF)
@@ -407,7 +422,6 @@ async fn bunq_sandbox_live() {
     println!("accounts: {:?}", r.accounts);
     let (acc_id, _) = c.accounts().await.unwrap()[0].clone();
     // Ask the sandbox "Sugar Daddy" for money so there is a payment to read.
-    let token = c.state.session_token.clone();
     let path = format!(
         "/v1/user/{}/monetary-account/{acc_id}/request-inquiry",
         c.state.user_id
@@ -418,7 +432,7 @@ async fn bunq_sandbox_live() {
         "description": "GiroCrab test",
         "allow_bunqme": false
     });
-    c.call(reqwest::Method::POST, &path, Some(&body), Some(&token))
+    c.call(reqwest::Method::POST, &path, Some(&body), Auth::Session)
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -443,7 +457,7 @@ async fn bunq_sandbox_live() {
                 "counterparty_alias": {"type": "EMAIL", "value": "sugardaddy@bunq.com", "name": "Sugar Daddy"},
                 "description": "GiroCrab receipt test"
             })),
-            Some(&token),
+            Auth::Session,
         )
         .await
         .unwrap();
@@ -459,7 +473,7 @@ async fn bunq_sandbox_live() {
             &up_path,
             Some((png.clone(), "image/png")),
             &[("X-Bunq-Attachment-Description", "Kassenbon")],
-            Some(&token),
+            Auth::Session,
         )
         .await
         .unwrap();
@@ -473,7 +487,7 @@ async fn bunq_sandbox_live() {
         reqwest::Method::POST,
         &note_path,
         Some(&json!({"attachment_id": att_id, "description": "Kassenbon"})),
-        Some(&token),
+        Auth::Session,
     )
     .await
     .unwrap();
@@ -509,10 +523,10 @@ async fn bunq_sandbox_live() {
 
     // Second sync reuses the stored session.
     ctx.state = r.state.unwrap();
-    let token_before = ctx.state["session_token"].clone();
+    let token_before = ctx.state.decode::<Value>().unwrap()["session_token"].clone();
     let mut c2 = BunqConnector::new();
     assert!(matches!(c2.begin(&ctx).await.unwrap(), Phase::Ready));
-    assert_eq!(Value::String(c2.state.session_token.clone()), token_before);
+    assert_eq!(token_before, c2.state.session_token.expose());
 
     // Transfer: draft payment stays pending (no app in the sandbox), then
     // cancelling in GiroCrab withdraws it at bunq.
@@ -560,7 +574,7 @@ async fn bunq_sandbox_live() {
         reqwest::Method::PUT,
         &path,
         Some(&json!({"status": "REJECTED"})),
-        Some(&token),
+        Auth::Session,
     )
     .await
     .map_err(ApiError::into_core)
@@ -1460,14 +1474,13 @@ async fn bunq_pending_drafts() {
                     .unwrap_or_default(),
             );
             if target == Some(did) {
-                let token = c.state.session_token.clone();
                 let path = c.draft_path(id, Some(did));
                 match c
                     .call(
                         reqwest::Method::PUT,
                         &path,
                         Some(&json!({"status": "REJECTED"})),
-                        Some(&token),
+                        Auth::Session,
                     )
                     .await
                 {

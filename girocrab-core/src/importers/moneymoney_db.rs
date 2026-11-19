@@ -2309,11 +2309,30 @@ pub(crate) fn adopt_account(
                 .collect::<Result<_, _>>()?;
             Ok((ids.len() == 1).then(|| ids[0]))
         };
+        let currency = currency.trim().to_uppercase();
+        let single_cur = |extra_filter: &str| -> CoreResult<Option<i64>> {
+            let mut st = conn.prepare(&format!(
+                "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
+                   AND kind = ?2 AND archived_unix IS NULL
+                   AND (?3 = '' OR upper(IFNULL(currency, '')) IN ('', ?3)) {extra_filter} LIMIT 2"
+            ))?;
+            let ids: Vec<i64> = st
+                .query_map(params![connection_id, kind.as_str(), currency], |r| {
+                    r.get(0)
+                })?
+                .collect::<Result<_, _>>()?;
+            Ok((ids.len() == 1).then(|| ids[0]))
+        };
         match single("AND replace(IFNULL(iban, ''), ' ', '') = ''")? {
             Some(id) => Some(id),
-            // cards only: an account with an IBAN of its own (checking,
-            // savings) is never taken over without matching that IBAN
-            None if kind == AccountKind::CreditCard => single("")?,
+            // Connectors that omit the IBAN (e.g. Amazon Visa web login, Trade Republic
+            // clearing account) may still adopt a single imported account of the same kind
+            // and currency on this login (#1114).
+            None if kind == AccountKind::CreditCard
+                || (kind == AccountKind::Checking && external_ref == "tr:cash") =>
+            {
+                single_cur("")?
+            }
             None => None,
         }
     } else {

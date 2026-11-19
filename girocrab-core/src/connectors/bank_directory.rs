@@ -116,6 +116,7 @@ pub fn psd2_catalog() -> Vec<Psd2Bank> {
         psd2("Hanseatic Bank", "DE", "Hanseatic Bank", None),
         psd2("Santander", "DE", "Santander", None),
         psd2("Commerzbank", "DE", "Commerzbank", None),
+        psd2("ING Business", "DE", "ING Business", None),
         psd2("Trade Republic", "DE", "Trade Republic", None),
         psd2("Raiffeisen Bank (Österreich)", "AT", "Raiffeisen", None),
         psd2("Erste Bank (Österreich)", "AT", "Erste Bank", None),
@@ -673,6 +674,9 @@ mod tests {
         assert!(r
             .iter()
             .any(|b| b.mode == BankAccessMode::FinTs && b.blz == "50010517"));
+        assert!(r
+            .iter()
+            .any(|b| b.mode == BankAccessMode::Psd2 && b.name == "ING Business"));
         assert!(search("DKB", vec![], 5).iter().any(|b| b.blz == "12030000"));
         assert!(search("volksbank", vec![], 5)
             .iter()

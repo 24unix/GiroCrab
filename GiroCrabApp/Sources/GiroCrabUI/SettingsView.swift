@@ -282,7 +282,7 @@ struct BankConnectionsSettings: View {
                             .buttonStyle(.borderless)
                             .help("Bearbeiten / Details")
                             .accessibilityLabel("Bearbeiten / Details")
-                        Button { model.requestSync(c) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+                        Button { model.requestFullSync(c) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
                             .buttonStyle(.borderless)
                             .help(model.bankingGate(for: c)?.message ?? String(localized: "Jetzt abrufen"))
                             .accessibilityLabel("Jetzt abrufen")
@@ -335,23 +335,16 @@ struct BankConnectionsSettings: View {
     @ViewBuilder private var fintsRegistrationSection: some View {
         Section {
             if model.fintsBuiltinAvailable {
-                Picker("Verwenden", selection: Binding(
-                    get: { model.fintsProductIDMode == "own" ? "own" : "builtin" },
-                    set: { model.setFintsProductIDMode($0) }
-                )) {
-                    Text("GiroCrab-Registrierung (empfohlen)").tag("builtin")
-                    Text("Eigene Registrierung").tag("own")
-                }
-                #if os(macOS)
-                .pickerStyle(.radioGroup)
-                #endif
-            } else if AppUpdateChannel.current != .stable {
-                Label("Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern.", systemImage: "exclamationmark.triangle")
+                Label("Offizielle FinTS-Produktregistrierung von GiroCrab aktiv", systemImage: "checkmark.seal.fill")
                     .appFont(.callout)
-                    .foregroundStyle(Theme.warning)
-            }
-            // The own ID is entered right here, only when it is the one in use.
-            if !model.fintsBuiltinAvailable || model.fintsProductIDMode == "own" {
+                    .foregroundStyle(.secondary)
+            } else {
+                if AppUpdateChannel.current != .stable {
+                    Label("Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern.", systemImage: "exclamationmark.triangle")
+                        .appFont(.callout)
+                        .foregroundStyle(Theme.warning)
+                }
+                // Own product ID is only needed in self-built / developer binaries without embedded ID (#1092).
                 OwnProductIDField()
             }
         } header: {

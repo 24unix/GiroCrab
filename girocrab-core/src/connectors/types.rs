@@ -3,12 +3,12 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 use crate::models::{AccountKind, ConnectorKind};
-use crate::secret::SecretString;
+use crate::secret::{SecretJson, SecretString};
 
 // ------------------------------------------------------------------ FFI types
 
@@ -252,7 +252,7 @@ pub struct ConnectContext {
     /// Resolved settings (product ID, API keys ...), secrets included.
     pub settings: HashMap<String, SecretString>,
     /// Opaque connector state persisted between syncs (FinTS system id, PSD2 session ...).
-    pub state: serde_json::Value,
+    pub state: SecretJson,
     /// Fetch transactions booked on or after this date (YYYY-MM-DD): the
     /// earliest per-account start of [`since_by_account`](Self::since_by_account),
     /// so connectors that fetch all accounts at once miss none of them.
@@ -267,6 +267,10 @@ pub struct ConnectContext {
     /// Connectors that remember what they downloaded must not remember
     /// anything of these, or it is never fetched again once the account is back.
     pub skipped_accounts: HashSet<String>,
+    /// Sync of one account (external ref) of the login, from its sidebar menu
+    /// (#1124): the result is cut down to it in [`FetchResult::keep_only`];
+    /// connectors that request accounts one by one (FinTS) ask only for it.
+    pub only_account: Option<String>,
 }
 
 /// Document retrieval of one sync, set from the connection's settings.
@@ -361,6 +365,16 @@ pub(crate) fn since_window(
 }
 
 impl ConnectContext {
+    /// The one account a connector that requests its accounts one by one
+    /// asks for (`refs`: all it could ask for): [`only_account`](Self::only_account)
+    /// when it is among them. `None`: every account; a single-account sync
+    /// is then cut down by [`FetchResult::keep_only`].
+    pub fn only_among(&self, refs: &[String]) -> Option<&str> {
+        self.only_account
+            .as_deref()
+            .filter(|r| refs.iter().any(|x| x == r))
+    }
+
     /// Start date for one account (see [`since_by_account`](Self::since_by_account)).
     pub fn since_for(&self, account_ref: &str) -> &str {
         self.since_by_account
@@ -489,8 +503,9 @@ pub(crate) struct KnownDocuments(Vec<String>);
 impl KnownDocuments {
     const MAX: usize = 2000;
 
-    pub(crate) fn from_state(state: &serde_json::Value) -> Self {
-        Self(Vec::deserialize(&state["documents"]).unwrap_or_default())
+    pub(crate) fn from_state(state: &SecretJson) -> Self {
+        let stored = state.decode::<StoredDocuments<Vec<String>>>();
+        Self(stored.map(|s| s.documents).unwrap_or_default())
     }
 
     pub(crate) fn contains(&self, id: &str) -> bool {
@@ -501,10 +516,20 @@ impl KnownDocuments {
         self.0.push(id);
     }
 
-    pub(crate) fn to_state(&self) -> serde_json::Value {
+    pub(crate) fn to_state(&self) -> Option<SecretJson> {
         let keep = self.0.len().saturating_sub(Self::MAX);
-        serde_json::json!({ "documents": self.0[keep..] })
+        SecretJson::encode(&StoredDocuments {
+            documents: &self.0[keep..],
+        })
+        .ok()
     }
+}
+
+/// State shape of [`KnownDocuments`]: owned to read, borrowed to write.
+#[derive(Serialize, Deserialize)]
+struct StoredDocuments<D> {
+    #[serde(default)]
+    documents: D,
 }
 
 /// A securities transaction of a depot (#314). The cash side is a normal
@@ -544,7 +569,7 @@ pub struct FetchResult {
     /// including the ones that have none.
     pub standing_orders_fetched: Vec<String>,
     /// Updated connector state to persist.
-    pub state: Option<serde_json::Value>,
+    pub state: Option<SecretJson>,
     /// Keep stored balances and add newly imported bookings to them
     /// (for sources that don't report a balance).
     pub adjust_balances: bool,
@@ -589,6 +614,43 @@ pub struct FetchResult {
     /// (several cards behind one portal login, #243): they are held back
     /// like accounts another login already delivers.
     pub confirm_new_accounts: bool,
+    /// Cut down to one account ([`keep_only`](Self::keep_only)): the login's
+    /// last sync time and its documents catch-up stay as they are.
+    pub single_account: bool,
+}
+
+impl FetchResult {
+    /// Keeps the per-account data of the accounts (external refs) `keep` accepts.
+    pub fn retain_accounts(&mut self, keep: impl Fn(&str) -> bool) {
+        self.accounts.retain(|a| keep(&a.external_ref));
+        self.transactions.retain(|t| keep(&t.account_ref));
+        self.holdings.retain(|h| keep(&h.account_ref));
+        self.holdings_fetched.retain(|r| keep(r));
+        self.balances_unknown.retain(|r| keep(r));
+        self.balances_reported.retain(|r| keep(r));
+        self.security_transactions.retain(|t| keep(&t.account_ref));
+        self.standing_orders.retain(|o| keep(&o.account_ref));
+        self.standing_orders_fetched.retain(|r| keep(r));
+        self.statements_fetched.retain(|r| keep(r));
+        self.documents.retain(|d| keep(&d.account_ref));
+        self.withdrawn.retain(|(r, _)| keep(r));
+        self.name_updates.retain(|(r, ..)| keep(r));
+    }
+
+    /// Cuts the result down to one account (external ref, #1124): the
+    /// login's other accounts keep what they have and none of them counts as
+    /// missing. Renames and accounts the bank reported as revoked stay: the
+    /// connector does not report them again.
+    pub fn keep_only(&mut self, account_ref: &str) {
+        let renamed = self
+            .renamed_refs
+            .iter()
+            .find(|(old, _)| old == account_ref)
+            .map(|(_, new)| new.clone());
+        self.retain_accounts(|r| r == account_ref || renamed.as_deref() == Some(r));
+        self.accounts_complete = false;
+        self.single_account = true;
+    }
 }
 
 #[async_trait]
@@ -773,15 +835,15 @@ mod tests {
     #[test]
     fn known_documents_keep_the_newest_ids() {
         assert_eq!(
-            KnownDocuments::from_state(&serde_json::Value::Null),
+            KnownDocuments::from_state(&SecretJson::default()),
             KnownDocuments::default()
         );
-        let mut known = KnownDocuments::from_state(&serde_json::json!({"documents": ["a"]}));
+        let mut known = KnownDocuments::from_state(&serde_json::json!({"documents": ["a"]}).into());
         assert!(known.contains("a") && !known.contains("b"));
         for i in 0..KnownDocuments::MAX {
             known.insert(i.to_string());
         }
-        let kept = KnownDocuments::from_state(&known.to_state());
+        let kept = KnownDocuments::from_state(&known.to_state().unwrap());
         assert!(!kept.contains("a"));
         assert!(kept.contains("0") && kept.contains(&(KnownDocuments::MAX - 1).to_string()));
     }

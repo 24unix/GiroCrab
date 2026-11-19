@@ -11,12 +11,12 @@
 <p align="center">FinTS 3.0 · PSD2 · SEPA · Datenimport — 100&nbsp;% lokal verschlüsselt, kostenlos, Daten bleiben auf deinem Gerät.</p>
 
 <p align="center">
-  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.8.5 · Apple Silicon (.dmg)" width="260" height="56"></a>
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.8.6 · Apple Silicon (.dmg)" width="260" height="56"></a>
   &nbsp;
   <a href="https://testflight.apple.com/join/KBmvKVpT"><img src="docs/assets/download-ios.svg" alt="iOS &amp; iPadOS App – kostenlos via Apple TestFlight" width="260" height="56"></a>
 </p>
 
-<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.8.5</sub></p>
+<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.8.6</sub></p>
 <p align="center">
   <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/girocrab-windows-x86_64-setup.exe"><img src="docs/assets/download-windows-alpha.svg" alt="Für Windows laden (Alpha – Frühe Vorschau)" width="260" height="56"></a>
   &nbsp;
@@ -39,11 +39,11 @@
 <p align="center"><sub>⭐ Gefällt dir GiroCrab? Ein <a href="https://github.com/GiroCrab/GiroCrab/stargazers">Stern auf GitHub</a> hilft anderen, das Projekt zu finden. · <i>A star helps others find the project.</i></sub></p>
 
 > ### 🛠️ Mitbauen in 4 Schritten · Contribute in 4 steps
-> In den ersten 7 Tagen: **265+ GitHub-Sterne**, **280+ gemergte Pull Requests**, **15 Mitwirkende** mit eigenen Commits – Stand 16.11.2026, direkt von GitHub.
+> In den ersten 10 Tagen: **310+ GitHub-Sterne**, **580+ erledigte Pull Requests**, **25+ Mitwirkende** – direkt von GitHub.
 > Du brauchst **keine Swift- oder Rust-Erfahrung**: Mach aus deinem Funktionswunsch mit **Claude Code, Codex oder Cursor** und der [`CLAUDE.md`](CLAUDE.md) einen eigenen Pull Request.
 > 👉 [**Schritt-für-Schritt-Anleitung**](https://girocrab.de/girocrab_mitbau_anleitung.html) · [CONTRIBUTING.md](CONTRIBUTING.md)
 >
-> *In our first 7 days: 265+ stars, 280+ merged pull requests, 15 contributors with commits (as of 2026-11-16, from GitHub). No Swift or Rust experience needed – turn your own feature wish into a pull request with Claude Code, Codex or Cursor and [`CLAUDE.md`](CLAUDE.md). See the [step-by-step guide](https://girocrab.de/girocrab_mitbau_anleitung.html) and [CONTRIBUTING.md](CONTRIBUTING.md).*
+> *In our first 10 days: 310+ stars, 580+ closed/merged pull requests, 25+ contributors (from GitHub). No Swift or Rust experience needed – turn your own feature wish into a pull request with Claude Code, Codex or Cursor and [`CLAUDE.md`](CLAUDE.md). See the [step-by-step guide](https://girocrab.de/girocrab_mitbau_anleitung.html) and [CONTRIBUTING.md](CONTRIBUTING.md).*
 
 ---
 
@@ -57,6 +57,13 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 ### Für wen ist GiroCrab?
 
 GiroCrab ist eine freie, quelloffene Banking-App (GPLv3) für macOS, Linux (Qt 6 / QML) und – derzeit als Beta über TestFlight – für iPhone und iPad. Alle Daten liegen verschlüsselt auf deinem Gerät. GiroCrab ist ein junges Community-Projekt: Die Bankenabdeckung wächst noch (siehe Bank-Tabelle), und PSD2-Zugänge laufen über einen eigenen, kostenlosen Enable-Banking-Zugang.
+
+### ✨ Neu in v0.8.6
+
+- 🔍 **Natürliche Suche & Beleg-Filter:** Buchungen über natürliche Suchbegriffe finden und gezielt nach Belegen filtern.
+- 🏦 **Banken, Echtzeitüberweisung & Import-Korrekturen:** Consorsbank-Archiv, FFB-Postfach-PDFs (#1105) & FFB-Depot-Zusammenführung (#1103), Ford-Money-/Opel-Steuerabgleich (#1102), Ford-Money-Freigabe (#1101), Advanzia-Wiederanlegen (#1115), Trade-Republic-Verrechnungskonto beim Import (#1114), PayPal-Fremdwährungen (#1110) & Enable-Banking-Währungsanzeige (#1034), offene Reservierungen (#1111), ING Business im Bankverzeichnis (#974) sowie Echtzeitüberweisung-Statusrückmeldung `3045` (#1121).
+- 🔐 **Sicherheit & FinTS-Registrierung:** In offiziellen Builds wird ausschließlich GiroCrabs offizielle FinTS-Produktregistrierung genutzt (#1092), Connector-Zustände im Speicher geschützt (#1094) und die Schlüsselbund-Prüfung korrigiert (#1084).
+- 📱 **iOS / TestFlight – v0.8.6 unter der Haube (Build 22 unter Version 0.7.5):** Damit Updates ohne Review-Wartezeit sofort bei euch landen, erscheint der komplette **v0.8.6-Funktionsumfang** auf iOS direkt als Build 22 unter Version `0.7.5`.
 
 ### ✨ Neu in v0.8.5
 
@@ -145,7 +152,7 @@ nur um Kategorie und Notiz ergänzt.
 - 🏦 **FinTS 3.0 / HBCI-Client & PSD2 für macOS und iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisung & Echtzeitüberweisung via FinTS 3.0 / HKCCS** inkl. Verification of Payee (VoP), inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
 - 📑 **Sammelüberweisung via FinTS 3.0 / HKCCM:** mehrere Zahlungen von einem Konto in einem Auftrag mit einer TAN, inkl. CSV-Import; wahlweise als Sammelbuchung oder Einzelbuchungen. Verfügbar, wenn die Bank Sammelaufträge per FinTS anbietet; nicht als Echtzeitüberweisung.
-- 🗓️ **Seite „Geplant“ mit Daueraufträgen:** Terminüberweisungen und die per FinTS (HKCDB) abgerufenen Daueraufträge der Bank erscheinen mit ihren nächsten Ausführungsterminen. Daueraufträge werden derzeit nur gelesen; Anlegen, Ändern und Löschen sind noch nicht umgesetzt (#496).
+- 🗓️ **Seite „Geplant“ mit Daueraufträgen:** Terminüberweisungen und per FinTS (HKCDB) abgerufene Daueraufträge erscheinen mit ihren nächsten Ausführungsterminen und lassen sich direkt per FinTS mit TAN-Freigabe anlegen, ändern und löschen (#496).
 - 🧾 **SEPA-Lastschriften & Mandate:** Mandate und Gläubiger-ID verwalten, Einzüge als pain.008-Datei erzeugen (Basis, COR1, Firmen) und – sofern die Bank es per FinTS anbietet – mit TAN einreichen; Rücklastschriften werden erkannt und das Mandat zum Prüfen markiert.
 - 📤 **Export:** Buchungen u. a. als CAMT.053-Kontoauszug (jeweils ein Konto und ein Zeitraum, mit Anfangs- und Endsaldo).
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
@@ -205,7 +212,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | – | 🧪 Test gesucht |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Test gesucht |
 | EquatePlus | Web-Portal | – | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht |
-| FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht |
+| FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | 🧪 Test gesucht |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Ford Money | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Test gesucht |
 | Opel Direktbank | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Test gesucht |
@@ -231,6 +238,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verifiziert |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ⚠️ Mit Einschränkungen |
+| Finpension | Datei-Import | ✓ | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#300](https://github.com/GiroCrab/GiroCrab/issues/300) |
 
 Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und FinTS-URL anbinden (2.011 Institute im FinTS-Verzeichnis); europäische PSD2-Banken über Enable Banking mit einer eigenen, kostenlosen Anwendung.
 
@@ -265,7 +273,7 @@ Die Demo enthält fiktive Konten und erfundene Buchungen – keine echten Daten.
 ### 📦 Download (macOS)
 
 Das fertige Disk-Image [`GiroCrab-macOS-arm64.dmg`](https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg) (Apple Silicon, macOS 14+) gibt es unter [GitHub Releases](../../releases) – ohne Rust oder Xcode.
-Aktuelle Version: **v0.8.5**. DMG öffnen und `GiroCrab.app` nach `/Programme` ziehen – die App ist **von Apple notarisiert** und aktualisiert sich per Sparkle selbst.
+Aktuelle Version: **v0.8.6**. DMG öffnen und `GiroCrab.app` nach `/Programme` ziehen – die App ist **von Apple notarisiert** und aktualisiert sich per Sparkle selbst.
 **iPhone / iPad:** [TestFlight-Beta beitreten](https://testflight.apple.com/join/KBmvKVpT).
 
 **Intel-Macs:** Die offiziellen Binaries sind nur für Apple Silicon (`arm64`). Auf Intel-Macs lässt sich GiroCrab mit Swift/Xcode selbst aus dem Quellcode bauen (siehe [Schnellstart](#schnellstart)).
@@ -300,6 +308,13 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 ### Who is GiroCrab for?
 
 GiroCrab is a free, open-source banking app (GPLv3) for macOS, Linux (Qt 6 / QML) and – currently in beta via TestFlight – for iPhone and iPad. All data stays encrypted on your device. GiroCrab is a young community project: bank coverage is still growing (see the bank table), and PSD2 access works through your own free Enable Banking account.
+
+### ✨ What's new in v0.8.6
+
+- 🔍 **Natural Search & Document Filters:** Find bookings using natural-language queries and filter directly by attached documents.
+- 🏦 **Bank, Instant Transfer & Import Fixes:** Consorsbank archive support, FFB mailbox PDFs (#1105) & FFB depot twin folding (#1103), Ford Money / Opel tax-line matching (#1102), Ford Money approval polling (#1101), Advanzia account re-add fix (#1115), Trade Republic clearing account adoption (#1114), PayPal foreign-currency bookings (#1110) & Enable Banking currency display (#1034), pending reservation retention (#1111), ING Business in bank search (#974), and instant transfer `3045` handover handling (#1121).
+- 🔐 **Security & FinTS Registration:** Official releases always use GiroCrab's built-in FinTS product registration (#1092), harden in-memory connector state (#1094), and fix read-only keychain checks (#1084).
+- 📱 **iOS / TestFlight – Full v0.8.6 under the hood (Build 22 under version 0.7.5):** To deliver updates without Apple review delays, the complete **v0.8.6 feature set** ships on iOS as Build 22 under version `0.7.5`.
 
 ### ✨ What's new in v0.8.5
 
@@ -385,7 +400,7 @@ fetched later via FinTS are recognised as duplicates and not created twice – e
 - 🏦 **FinTS 3.0 / HBCI client & PSD2 for macOS and iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
 - 📑 **Batch transfers via FinTS 3.0 / HKCCM:** several payments from one account in a single order with one TAN, incl. CSV import; booked as one batch entry or as individual entries. Available where the bank offers batch orders via FinTS; not as instant transfers.
-- 🗓️ **"Planned" page with standing orders:** scheduled transfers and the bank's standing orders fetched via FinTS (HKCDB) are shown with their next execution dates. Standing orders are read-only for now; creating, changing and deleting them is not implemented yet (#496).
+- 🗓️ **"Planned" page with standing orders:** scheduled transfers and the bank's standing orders fetched via FinTS (HKCDB) are shown with their next execution dates and can be created, edited and deleted via FinTS with TAN approval (#496).
 - 🧾 **SEPA direct debits & mandates:** manage mandates and the creditor ID, create collections as pain.008 files (Core, COR1, B2B) and – where the bank offers it via FinTS – submit them with a TAN; returned debits are detected and the mandate is flagged for review.
 - 📤 **Export:** bookings among others as a CAMT.053 statement (one account and one period at a time, with opening and closing balance).
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
@@ -436,7 +451,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | – | 🧪 Testing wanted |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Testing wanted |
 | EquatePlus | Web-Portal | – | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted |
-| FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted |
+| FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | 🧪 Testing wanted |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Ford Money | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Testing wanted |
 | Opel Direktbank | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Testing wanted |
@@ -462,6 +477,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ⚠️ Limited |
 | PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verified |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | 🧪 Testing wanted [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
+| Finpension | Datei-Import | ✓ | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#300](https://github.com/GiroCrab/GiroCrab/issues/300) |
 
 Further German banks with FinTS 3.0 (PIN/TAN) can be connected via bank code and FinTS URL (2,011 institutions in the FinTS directory); European PSD2 banks via Enable Banking with your own free application.
 
@@ -474,7 +490,7 @@ Adding a bank usually takes under 100 lines – start from
 ### Download (macOS)
 
 The pre-built disk image [`GiroCrab-macOS-arm64.dmg`](https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg) (Apple Silicon, macOS 14+) is available under
-[GitHub Releases](../../releases) – no Rust or Xcode required. Current version: **v0.8.5**.
+[GitHub Releases](../../releases) – no Rust or Xcode required. Current version: **v0.8.6**.
 
 > 🧪 **Windows & Android (Early Alpha):** Experimental preview installers for [Windows (`x86_64-setup.exe`)](https://github.com/GiroCrab/GiroCrab/releases/latest/download/girocrab-windows-x86_64-setup.exe) and [Android (`.apk`)](https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-Android-alpha.apk) are available for early testing (best tried in demo mode). Open the DMG and drag `GiroCrab.app` to `/Applications` – the app is **notarized by Apple** and updates itself via Sparkle.
 **iPhone / iPad:** [join the TestFlight beta](https://testflight.apple.com/join/KBmvKVpT).
