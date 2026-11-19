@@ -1452,7 +1452,8 @@ fn files_under(dir: &std::path::Path) -> Vec<String> {
 ///   account, unlinked, search), `get_document_bytes`, `export_all_documents`,
 ///   `mirror_new_documents`, `auto_match_document` (text that fits the deleted
 ///   booking best)
-/// - transfers / statements: `suggest_recipients`, `auto_statements_enabled`
+/// - transfers / statements: `suggest_recipients`, `list_known_recipients`,
+///   `auto_statements_enabled`
 /// - imports: `preview_moneymoney_import` (rows unrelated to the deleted
 ///   bookings; rows that hit a deleted booking are kept from resurrecting it on
 ///   purpose, see Task 4)
@@ -1581,6 +1582,8 @@ fn soft_deleted_rows_appear_in_no_public_api() {
         .suggest_recipients(String::new(), 20));
     both!("suggest_recipients(query)", |v| v
         .suggest_recipients("Autobank".into(), 20));
+    both!("list_known_recipients", |v| v
+        .list_known_recipients(String::new()));
 
     for &id in &accounts {
         both!(format!("list_holdings({id})"), |v| v.list_holdings(id));

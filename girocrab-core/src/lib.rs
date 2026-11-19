@@ -58,6 +58,7 @@ pub mod payday_periods;
 pub mod payment_input;
 pub mod planned;
 pub mod planning;
+pub mod recipients;
 pub mod recurring;
 pub mod report_sanitizer;
 pub mod rules;
