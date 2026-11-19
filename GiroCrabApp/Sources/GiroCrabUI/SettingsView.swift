@@ -738,15 +738,14 @@ struct ICloudSyncSection: View {
                     .confirmationDialog("Tresor-Schlüssel kopieren?", isPresented: $confirmKeyCopy, titleVisibility: .visible) {
                         Button("Schlüssel kopieren") {
                             Task {
-                                // a failed keychain unlock used to leave the clipboard empty without a word (#1138)
+                                // keychain failures show in the section; a cancelled unlock stays silent
+                                keyCopyError = nil
                                 do {
                                     VaultKeyManager.copyKeyToPasteboard(try await VaultKeyManager.shared.exportKeyBase64())
                                     keyCopiedUntil = Date().addingTimeInterval(VaultKeyManager.keyClipboardLifetime)
-                                    keyCopyError = nil
                                 } catch VaultKeyManager.KeyError.cancelled {
-                                    keyCopyError = nil
                                 } catch {
-                                    keyCopyError = error.localizedDescription
+                                    keyCopyError = describe(error)
                                 }
                             }
                         }

@@ -5,6 +5,8 @@ import XCTest
 
 @MainActor
 final class VaultKeyPasteboardTests: XCTestCase {
+    private let key = Data(repeating: 7, count: 32).base64EncodedString()
+
     private func scratchPasteboard() -> NSPasteboard {
         NSPasteboard(name: NSPasteboard.Name("de.girocrab.test.\(UUID().uuidString)"))
     }
@@ -12,7 +14,6 @@ final class VaultKeyPasteboardTests: XCTestCase {
     func testKeyIsNeverOfferedAsPlainText() {
         let pb = scratchPasteboard()
         defer { pb.releaseGlobally() }
-        let key = Data(repeating: 7, count: 32).base64EncodedString()
         VaultKeyManager.copyKeyToPasteboard(key, pasteboard: pb)
         XCTAssertNil(pb.string(forType: .string), "the key must not be readable as text")
         XCTAssertEqual(VaultKeyManager.keyFromPasteboard(pb), key)
@@ -21,7 +22,7 @@ final class VaultKeyPasteboardTests: XCTestCase {
     func testKeyIsMarkedConcealedForClipboardManagers() {
         let pb = scratchPasteboard()
         defer { pb.releaseGlobally() }
-        VaultKeyManager.copyKeyToPasteboard("c2VjcmV0", pasteboard: pb)
+        VaultKeyManager.copyKeyToPasteboard(key, pasteboard: pb)
         let types = pb.types?.map(\.rawValue) ?? []
         XCTAssertTrue(types.contains("org.nspasteboard.ConcealedType"))
     }
@@ -30,7 +31,7 @@ final class VaultKeyPasteboardTests: XCTestCase {
     func testKeyIsNotMarkedTransient() {
         let pb = scratchPasteboard()
         defer { pb.releaseGlobally() }
-        VaultKeyManager.copyKeyToPasteboard("c2VjcmV0", pasteboard: pb)
+        VaultKeyManager.copyKeyToPasteboard(key, pasteboard: pb)
         XCTAssertFalse((pb.types?.map(\.rawValue) ?? []).contains("org.nspasteboard.TransientType"))
     }
 
@@ -38,7 +39,7 @@ final class VaultKeyPasteboardTests: XCTestCase {
         let pb = scratchPasteboard()
         defer { pb.releaseGlobally() }
         pb.clearContents()
-        pb.setString(Data(repeating: 7, count: 32).base64EncodedString(), forType: .string)
+        pb.setString(key, forType: .string)
         XCTAssertNil(VaultKeyManager.keyFromPasteboard(pb), "a hash or token on the clipboard must not pass as the key")
     }
 
@@ -53,7 +54,6 @@ final class VaultKeyPasteboardTests: XCTestCase {
     func testReadingTheKeyClearsThePasteboard() {
         let pb = scratchPasteboard()
         defer { pb.releaseGlobally() }
-        let key = Data(repeating: 7, count: 32).base64EncodedString()
         VaultKeyManager.copyKeyToPasteboard(key, pasteboard: pb)
         XCTAssertEqual(VaultKeyManager.keyFromPasteboard(pb), key)
         XCTAssertNil(pb.data(forType: NSPasteboard.PasteboardType(VaultKeyManager.keyPasteboardType)))
