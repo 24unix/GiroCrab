@@ -30,16 +30,22 @@ check = subprocess.run(
 if check.returncode:
     sys.exit(check.returncode)
 # The library build (not a test build) names its .rmeta; its dep-info lies next to it.
-rmeta = None
+# Its build script's OUT_DIR holds the generated product ID (the layout of build
+# directories differs between cargo versions, so take it from cargo).
+rmeta, out_dirs = None, {}
 for line in check.stdout.splitlines():
     msg = json.loads(line)
     target = msg.get("target") or {}
-    if (msg["reason"] == "compiler-artifact" and target["name"] == "girocrab_core"
+    if msg["reason"] == "build-script-executed":
+        out_dirs[msg["package_id"]] = msg["out_dir"]
+    elif (msg["reason"] == "compiler-artifact" and target["name"] == "girocrab_core"
             and "lib" in target["kind"] and not msg["profile"]["test"]):
         rmeta = next(f for f in msg["filenames"] if f.endswith(".rmeta"))
-if rmeta is None:
-    sys.exit("lint-no-obfuscation: cargo reported no girocrab_core library")
+        package = msg["package_id"]
+if rmeta is None or package not in out_dirs:
+    sys.exit("lint-no-obfuscation: cargo reported no girocrab_core library or no OUT_DIR for it")
 dep_info = os.path.join(os.path.dirname(rmeta), os.path.basename(rmeta)[3:-6] + ".d")
+product_id = os.path.normpath(os.path.join(out_dirs[package], "builtin_product_id.rs"))
 
 root = os.getcwd()
 test = re.compile(os.environ["TEST_RE"])
@@ -57,7 +63,7 @@ with open(dep_info) as f:
             rel = os.path.relpath(path, root)
             if re.fullmatch(r"girocrab-core/src/.+\.rs", rel) and not test.search(rel):
                 continue
-            if rel in data or re.search(r"/girocrab-core-[0-9a-f]+/out/builtin_product_id\.rs$", path):
+            if rel in data or path == product_id:
                 continue
             bad.append(rel)
 if bad:
@@ -71,11 +77,18 @@ PY
 fi
 
 fail=0
-report() { # <what is wrong> <offending lines, may be empty>
-    [ -n "$2" ] || return 0
-    printf '%s\n%s\n\n' "$1" "$2" >&2
+# Runs <command>, which prints the offending lines (none = passed). A command that
+# fails stops the script: a check that could not run must not pass.
+report() { # <what is wrong> <command…>
+    local what=$1 out
+    shift
+    out=$("$@") || { echo "lint-no-obfuscation: could not check: $what" >&2; exit 2; }
+    [ -n "$out" ] || return 0
+    printf '%s\n%s\n\n' "$what" "$out" >&2
     fail=1
 }
+# grep, where no match is a pass and only an error (2) fails.
+matches() { grep "$@" || [ $? -eq 1 ]; }
 
 # Prints `path:line: code` for each line matching the ERE <re>, skipping comment
 # lines, text matching the ERE <skip> and the exceptions in <allow> ("path|code"
@@ -83,6 +96,7 @@ report() { # <what is wrong> <offending lines, may be empty>
 find_code() { # <re> <skip> <allow> <files…>
     local re=$1 skip=$2 allow=$3
     shift 3
+    [ $# -gt 0 ] || return 0 # awk would read stdin
     RE=$re SKIP=$skip ALLOW=$allow awk '
         BEGIN {
             re = ENVIRON["RE"]; skip = ENVIRON["SKIP"]
@@ -135,11 +149,12 @@ src=$(git ls-files --cached --others --exclude-standard 'girocrab-core/src/*.rs'
 prod=$(grep -Ev "$test_re" <<<"$src")
 word='(^|[^A-Za-z0-9_])'
 
-report "unsafe_code in Cargo.toml [lints]:" "$(unsafe_levels)"
-report "Lint caps in the Cargo configuration:" \
-    "$(git ls-files '*.cargo/config*' '*Cargo.toml' | xargs grep -nE 'cap-lints|force-warn' || true)"
+cargo_config=$(git ls-files '*.cargo/config*' '*Cargo.toml')
+
+report "unsafe_code in Cargo.toml [lints]:" unsafe_levels
+report "Lint caps in the Cargo configuration:" matches -nE 'cap-lints|force-warn' $cargo_config
 report "unsafe_code lint changed outside girocrab-core/src/sys.rs:" \
-    "$(find_code 'unsafe_code' 'forbid[(]unsafe_code[)]' 'girocrab-core/src/sys.rs|#![allow(unsafe_code)]' $src)"
+    find_code 'unsafe_code' 'forbid[(]unsafe_code[)]' 'girocrab-core/src/sys.rs|#![allow(unsafe_code)]' $src
 # Clippy keeps all of its process and loader bans, and nothing lifts them.
 missing=""
 for p in std::process::Command tokio::process::Command libc::fork libc::execv libc::execve libc::execvp \
@@ -147,30 +162,30 @@ for p in std::process::Command tokio::process::Command libc::fork libc::execv li
     libc::dlopen libc::dlsym; do
     grep -qF "\"$p\"" girocrab-core/clippy.toml || missing+="$p"$'\n'
 done
-report "Ban missing from girocrab-core/clippy.toml:" "${missing%$'\n'}"
+report "Ban missing from girocrab-core/clippy.toml:" printf '%s' "${missing%$'\n'}"
 report "Clippy bans lifted (disallowed_*, or the whole group):" \
-    "$(find_code 'clippy::(all|style|disallowed_)' '' 'girocrab-core/src/connectors/mod.rs|#[allow(clippy::disallowed_methods)]' $prod)"
+    find_code 'clippy::(all|style|disallowed_)' '' 'girocrab-core/src/connectors/mod.rs|#[allow(clippy::disallowed_methods)]' $prod
 
 # No processes: no `Command` at all, from std::process only id() and exit(),
 # no spawning libc calls (clippy also catches them under another name).
 report "Process spawning (std::process, Command, libc):" \
-    "$(find_code "${word}Command([^A-Za-z0-9_]|$)|process::|(std|tokio)::process|libc::(fork|vfork|exec|posix_spawn|system|popen)" \
-        'process::(id|exit)[(]' '' $prod)"
+    find_code "${word}Command([^A-Za-z0-9_]|$)|process::|(std|tokio)::process|libc::(fork|vfork|exec|posix_spawn|system|popen)" \
+        'process::(id|exit)[(]' '' $prod
 
 # Files compiled into the binary: the data tables, the build script's FinTS
 # product ID (masked, docs/fints-registrierung.md) and test fixtures. The macros
 # also count when imported or renamed (`use std::include_str as …`).
 included='include_str![(]"(\.\./)+data/('"${tables// /|}"')\.tsv"[)]|include![(]concat![(]env![(]"OUT_DIR"[)], "/builtin_product_id\.rs"[)][)]|include_(str|bytes)![(]"(\.\./)+tests/fixtures/[^"]+"[)]'
 report "include!/include_str!/include_bytes! of another file:" \
-    "$(find_code '(^|[^A-Za-z0-9_@])include(_str|_bytes)?([!;,}]|[[:space:]]+as[[:space:]]|$)' "$included" '' $prod)"
+    find_code '(^|[^A-Za-z0-9_@])include(_str|_bytes)?([!;,}]|[[:space:]]+as[[:space:]]|$)' "$included" '' $prod
 
 # No code loaded at run time, no assembly, no native libraries or foreign
 # functions declared by hand (UniFFI generates its own; tests included), and no
 # build-script directive that links, sets cfgs or embeds an environment variable.
 report "Dynamic loading, assembly or foreign code:" \
-    "$(find_code "dlopen|dlsym|libloading|${word}(global_|naked_)?asm!|#\\[link[(]|extern *(\"[^\"]*\" *)?[{]|rustc-(env|link|flags|cfg|cdylib)" '' '' $src)"
+    find_code "dlopen|dlsym|libloading|${word}(global_|naked_)?asm!|#\\[link[(]|extern *(\"[^\"]*\" *)?[{]|rustc-(env|link|flags|cfg|cdylib)" '' '' $src
 report "Crates that load code or start processes (Cargo.lock):" \
-    "$(grep -nE '^name = "(libloading|dlopen|dlopen2|ctor|linkme|inventory|duct|subprocess|open|opener|webbrowser|async-process|process-wrap|command-group|nix)"$' Cargo.lock || true)"
+    matches -nE '^name = "(libloading|dlopen|dlopen2|ctor|linkme|inventory|duct|subprocess|open|opener|webbrowser|async-process|process-wrap|command-group|nix)"$' Cargo.lock
 
 # The payment path builds SEPA/FinTS/bunq orders and GiroCodes from plain fields:
 # nothing in it decodes Base64/hex or assembles text from escapes or byte values.
@@ -183,9 +198,9 @@ gone=""
 for f in payment_input.rs batch_csv.rs iban.rs mandates.rs connectors/transfer_session.rs connectors/persist.rs connectors/demo.rs; do
     if [ -f "girocrab-core/src/$f" ]; then pay_files+=$'\n'"girocrab-core/src/$f"; else gone+="girocrab-core/src/$f"$'\n'; fi
 done
-report "Payment path file moved or renamed (update the list in this script):" "${gone%$'\n'}"
+report "Payment path file moved or renamed (update the list in this script):" printf '%s' "${gone%$'\n'}"
 report "Encoded data in the payment path:" \
-    "$(find_code "base64|BASE64|${word}hex([^A-Za-z0-9_]|$)|data_encoding|from_str_radix|char::from_u32|from_utf8[a-z_]*[(](&|vec!|&vec!)? *\\[|${word}0x[0-9A-Fa-f]|\\\\x[0-9A-Fa-f][0-9A-Fa-f]|\\\\u[{][0-9A-Fa-f]+[}]\\\\u[{]" '' '' $pay_files)"
+    find_code "base64|BASE64|${word}hex([^A-Za-z0-9_]|$)|data_encoding|from_str_radix|char::from_u32|from_utf8[a-z_]*[(](&|vec!|&vec!)? *\\[|${word}0x[0-9A-Fa-f]|\\\\x[0-9A-Fa-f][0-9A-Fa-f]|\\\\u[{][0-9A-Fa-f]+[}]\\\\u[{]" '' '' $pay_files
 
 if [ "$fail" -ne 0 ]; then
     echo "System calls go into girocrab-core/src/sys.rs; any other exception needs its entry in $0 (#948)." >&2
