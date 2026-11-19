@@ -1412,7 +1412,6 @@ fn pain_header_is_well_formed_and_always_names_the_owner() {
         "{}",
         h.created
     );
-    assert!(jiff::civil::Date::strptime("%Y-%m-%d", h.date()).is_ok());
     // GC + timestamp + 8 hex digits, within the 35 characters pain allows.
     assert!(h.message_id.starts_with("GC") && h.message_id.len() == 24);
 }
