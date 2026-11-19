@@ -10041,13 +10041,13 @@
         }
       }
     },
-    "Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text, und lässt sich nur mit „Aus Zwischenablage einfügen“ in GiroCrab verwenden." : {
+    "Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text. Über die geteilte Zwischenablage (Handoff, gleicher Apple Account) übernehmen Sie ihn auf dem anderen Gerät mit „Schlüssel einfügen …“ › „Aus Zwischenablage einfügen“." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The key decrypts your entire vault. It stays on the clipboard for 60 seconds, not as text, and can only be used with “Paste from Clipboard” in GiroCrab."
+            "value" : "The key decrypts your entire vault. It stays on the clipboard for 60 seconds, not as text. Through the shared clipboard (Handoff, same Apple Account), take it over on your other device with “Paste key…” › “Paste from Clipboard”."
           }
         }
       }

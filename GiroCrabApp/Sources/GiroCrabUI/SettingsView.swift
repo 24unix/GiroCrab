@@ -736,15 +736,18 @@ struct ICloudSyncSection: View {
                     .confirmationDialog("Tresor-Schlüssel kopieren?", isPresented: $confirmKeyCopy, titleVisibility: .visible) {
                         Button("Schlüssel kopieren") {
                             Task {
-                                if let k = try? await VaultKeyManager.shared.exportKeyBase64() {
-                                    VaultKeyManager.copyKeyToPasteboard(k)
+                                // a failed keychain unlock used to leave the clipboard empty without a word (#1138)
+                                do {
+                                    VaultKeyManager.copyKeyToPasteboard(try await VaultKeyManager.shared.exportKeyBase64())
                                     keyCopiedUntil = Date().addingTimeInterval(VaultKeyManager.keyClipboardLifetime)
+                                } catch {
+                                    model.toast = error.localizedDescription
                                 }
                             }
                         }
                         Button("Abbrechen", role: .cancel) {}
                     } message: {
-                        Text("Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text, und lässt sich nur mit „Aus Zwischenablage einfügen“ in GiroCrab verwenden.")
+                        Text("Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text. Über die geteilte Zwischenablage (Handoff, gleicher Apple Account) übernehmen Sie ihn auf dem anderen Gerät mit „Schlüssel einfügen …“ › „Aus Zwischenablage einfügen“.")
                     }
                     Button("Schlüssel einfügen …", systemImage: "square.and.pencil") { showKeySheet = true }
                 }
