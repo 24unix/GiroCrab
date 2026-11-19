@@ -33,6 +33,7 @@ use super::{
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
+use crate::secret::{SecretJson, SecretString};
 
 use parse::*;
 use protocol::*;
@@ -70,11 +71,11 @@ struct BunqState {
     env: String,
     /// SHA-256 prefix of the API key – a new key starts over.
     key_fp: String,
-    private_key_pem: String,
-    installation_token: String,
+    private_key_pem: SecretString,
+    installation_token: SecretString,
     server_public_key: String,
     device_registered: bool,
-    session_token: String,
+    session_token: SecretString,
     user_id: i64,
     /// Payment id -> `updated` timestamp when its receipts were last checked.
     receipts_checked: BTreeMap<i64, String>,
@@ -522,7 +523,6 @@ impl BunqConnector {
             "/v1/user/{}/monetary-account/{account_id}/customer-statement",
             self.state.user_id
         );
-        let token = self.state.session_token.clone();
         let body = json!({
             "statement_format": "PDF",
             "date_start": crate::dates::iso(first),
@@ -530,7 +530,7 @@ impl BunqConnector {
             "include_attachment": false,
         });
         let v = self
-            .call(reqwest::Method::POST, &base, Some(&body), Some(&token))
+            .call(reqwest::Method::POST, &base, Some(&body), Auth::Session)
             .await?;
         let id = find(&v, "Id")["id"].as_i64().ok_or_else(|| ApiError {
             status: 0,
@@ -563,7 +563,7 @@ impl BunqConnector {
                 reqwest::Method::DELETE,
                 &format!("{base}/{id}"),
                 None,
-                Some(&token),
+                Auth::Session,
             )
             .await;
         result
@@ -683,13 +683,12 @@ impl BunqConnector {
             return CancelOutcome::Cancelled;
         };
         let path = self.draft_path(d.account_id, Some(d.draft_id));
-        let token = self.state.session_token.clone();
         let put = self
             .call(
                 reqwest::Method::PUT,
                 &path,
                 Some(&json!({"status": "REJECTED"})),
-                Some(&token),
+                Auth::Session,
             )
             .await;
         let status = self.draft_status(&d).await;
@@ -764,7 +763,7 @@ impl BankConnector for BunqConnector {
         self.client = Some(http_client_same_host()?);
 
         let fp = key_fingerprint(&api_key);
-        let stored: BunqState = serde_json::from_value(ctx.state.clone()).unwrap_or_default();
+        let stored: BunqState = ctx.state.decode().unwrap_or_default();
         self.state = if stored.env == env && stored.key_fp == fp {
             stored
         } else {
@@ -778,7 +777,7 @@ impl BankConnector for BunqConnector {
         if self.session_alive().await {
             return Ok(Phase::Ready);
         }
-        self.state.session_token.clear();
+        self.state.session_token = SecretString::default();
         if !self.state.installation_token.is_empty()
             && self.state.device_registered
             && self.open_session(&api_key).await.is_ok()
@@ -887,13 +886,12 @@ impl BankConnector for BunqConnector {
             }],
             "number_of_required_accepts": 1,
         });
-        let token = self.state.session_token.clone();
         let path = self.draft_path(account_id, None);
         self.result = TransferResult::default();
         // From here on a dropped connection may have left a draft at bunq.
         self.order_submitted = true;
         let v = match self
-            .call(reqwest::Method::POST, &path, Some(&body), Some(&token))
+            .call(reqwest::Method::POST, &path, Some(&body), Auth::Session)
             .await
         {
             Ok(v) => v,
@@ -1021,7 +1019,7 @@ impl BankConnector for BunqConnector {
         if holds_ok {
             out.hold_prefix = Some(HOLD_PREFIX.into());
         }
-        out.state = Some(serde_json::to_value(&self.state).unwrap_or(Value::Null));
+        out.state = SecretJson::encode(&self.state).ok();
         Ok(out)
     }
 }

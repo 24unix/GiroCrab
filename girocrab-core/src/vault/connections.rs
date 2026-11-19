@@ -7,6 +7,7 @@ use crate::connectors::trade_republic::normalize_phone;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::ConnectorKind;
+use crate::secret::{wipe, SecretJson, SecretString};
 use crate::vault::Vault;
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -41,17 +42,15 @@ pub(crate) fn pin_key(connection_id: i64) -> String {
 /// Forgets stored sessions (cookies, PSD2 session) of a login; keeps FinTS
 /// system data.
 pub(crate) fn clear_session_inner(db: &Connection, connection_id: i64) -> CoreResult<()> {
-    let state: Option<String> = db
+    // Unlike `connection_state`, a deleted or missing connection is no error here.
+    let state: Option<SecretJson> = db
         .query_row(
             "SELECT state_json FROM bank_connections WHERE id = ?1",
             [connection_id],
             |r| r.get(0),
         )
         .optional()?;
-    let mut v: serde_json::Value = state
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(serde_json::json!({}));
-    if let Some(o) = v.as_object_mut() {
+    update_state(db, connection_id, &state.unwrap_or_default(), |o| {
         for k in [
             "cookies",
             "session_token",
@@ -60,12 +59,55 @@ pub(crate) fn clear_session_inner(db: &Connection, connection_id: i64) -> CoreRe
             "saved_unix",
             "source",
         ] {
-            o.remove(k);
+            if let Some(mut old) = o.remove(k) {
+                wipe(&mut old);
+            }
         }
-    }
+    })
+}
+
+/// Stored connector state of a connection that is not deleted.
+fn connection_state(db: &Connection, connection_id: i64) -> CoreResult<SecretJson> {
+    db.query_row(
+        "SELECT state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
+        [connection_id],
+        |r| r.get(0),
+    )
+    .optional()?
+    .ok_or_else(|| CoreError::NotFound {
+        what: trf("Bankzugang {0}", &[&connection_id]),
+    })
+}
+
+/// Changes single keys of any connector's state and keeps the others. A state
+/// that is not a JSON object starts over empty. `edit` wipes what it removes.
+fn update_state(
+    db: &Connection,
+    connection_id: i64,
+    state: &SecretJson,
+    edit: impl FnOnce(&mut serde_json::Map<String, serde_json::Value>),
+) -> CoreResult<()> {
+    let updated = state.with_value(|v| {
+        if !v.is_object() {
+            wipe(v);
+            *v = serde_json::json!({});
+        }
+        if let Some(o) = v.as_object_mut() {
+            edit(o);
+        }
+        SecretJson::encode(v)
+    })?;
+    store_state(db, connection_id, &updated)
+}
+
+pub(crate) fn store_state(
+    db: &Connection,
+    connection_id: i64,
+    state: &SecretJson,
+) -> CoreResult<()> {
     db.execute(
         "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",
-        params![v.to_string(), connection_id],
+        params![state, connection_id],
     )?;
     Ok(())
 }
@@ -404,30 +446,24 @@ impl Vault {
         connection_id: i64,
         cookies: String,
     ) -> Result<(), CoreError> {
-        if !cookies.contains('=') {
+        let cookies = SecretString::new(cookies);
+        if !cookies.expose().contains('=') {
             return Err(CoreError::invalid(tr("Keine Sitzungs-Cookies übergeben")));
         }
         let db = self.db()?;
-        let state: String = db
-            .query_row(
-                "SELECT state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
-                [connection_id],
-                |r| r.get(0),
-            )
-            .optional()?
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf("Bankzugang {0}", &[&connection_id]),
-            })?;
-        let mut v: serde_json::Value =
-            serde_json::from_str(&state).unwrap_or(serde_json::json!({}));
-        v["cookies"] = serde_json::json!(cookies);
-        v["saved_unix"] = serde_json::json!(jiff::Timestamp::now().as_second());
-        v["source"] = serde_json::json!("browser");
-        db.execute(
-            "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",
-            params![v.to_string(), connection_id],
-        )?;
-        Ok(())
+        let state = connection_state(&db, connection_id)?;
+        update_state(&db, connection_id, &state, |o| {
+            let saved_unix = jiff::Timestamp::now().as_second();
+            for (key, value) in [
+                ("cookies", cookies.expose().into()),
+                ("saved_unix", saved_unix.into()),
+                ("source", "browser".into()),
+            ] {
+                if let Some(mut old) = o.insert(key.into(), value) {
+                    wipe(&mut old);
+                }
+            }
+        })
     }
 
     /// Forgets stored sessions (cookies, PSD2 session); keeps FinTS system data.
@@ -438,30 +474,21 @@ impl Vault {
 
     pub fn connection_status(&self, connection_id: i64) -> Result<ConnectionStatus, CoreError> {
         let db = self.db()?;
-        let state: String = db
-            .query_row(
-                "SELECT state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
-                [connection_id],
-                |r| r.get(0),
-            )
-            .optional()?
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf("Bankzugang {0}", &[&connection_id]),
-            })?;
-        let v: serde_json::Value = serde_json::from_str(&state).unwrap_or(serde_json::json!({}));
+        let state = connection_state(&db, connection_id)?;
         let has_pin: bool = db.query_row(
             "SELECT count(*) FROM settings WHERE key = ?1 AND value != ''",
             [pin_key(connection_id)],
             |r| r.get::<_, i64>(0),
         )? > 0;
-        let has_session = v["cookies"]
-            .as_str()
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
-            || v["session_id"]
+        let (has_session, session_saved_unix, consent_valid_until) = state.with_value(|v| {
+            let filled = |key: &str| v[key].as_str().is_some_and(|s| !s.is_empty());
+            let has_session = filled("cookies") || filled("session_id");
+            let valid_until = v["valid_until"]
                 .as_str()
-                .map(|s| !s.is_empty())
-                .unwrap_or(false);
+                .filter(|s| !s.is_empty() && has_session)
+                .map(str::to_string);
+            (has_session, v["saved_unix"].as_i64(), valid_until)
+        });
         let (accounts, bookings, revoked): (i64, i64, i64) = db.query_row(
             "SELECT (SELECT count(*) FROM accounts WHERE connection_id = ?1 AND deleted_ms IS NULL),
                     (SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id
@@ -474,13 +501,10 @@ impl Vault {
             connection_id,
             has_pin,
             has_session,
-            session_saved_unix: v["saved_unix"].as_i64(),
+            session_saved_unix,
             account_count: accounts as u32,
             booking_count: bookings as u32,
-            consent_valid_until: v["valid_until"]
-                .as_str()
-                .filter(|s| !s.is_empty() && has_session)
-                .map(str::to_string),
+            consent_valid_until,
             revoked_account_count: revoked as u32,
         })
     }
@@ -726,6 +750,42 @@ impl Vault {
 mod tests {
     use super::*;
     use crate::models::BookingFilter;
+
+    #[test]
+    fn session_hand_over_and_clear_keep_the_other_state() {
+        let dir = crate::test_support::TempDir::new("girocrab-session");
+        let path = dir.join("v.db");
+        let v = Vault::open(path.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
+        let c = v
+            .add_bank_connection(ConnectorKind::TradeRepublic, String::new(), "+49170".into())
+            .unwrap();
+        let stored = |v: &Vault| -> serde_json::Value {
+            let db = v.db().unwrap();
+            connection_state(&db, c).unwrap().decode().unwrap()
+        };
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE bank_connections SET state_json = '{\"doc_items\":[\"a\"]}' WHERE id = ?1",
+                [c],
+            )
+            .unwrap();
+        assert!(v.set_connection_session(c, "no-cookie".into()).is_err());
+
+        v.set_connection_session(c, "tr_session=s".into()).unwrap();
+        let status = v.connection_status(c).unwrap();
+        assert!(status.has_session && status.session_saved_unix.is_some());
+        let state = stored(&v);
+        assert_eq!(
+            (state["cookies"].as_str(), state["source"].as_str()),
+            (Some("tr_session=s"), Some("browser"))
+        );
+        assert_eq!(state["doc_items"], serde_json::json!(["a"]));
+
+        v.clear_connection_session(c).unwrap();
+        assert!(!v.connection_status(c).unwrap().has_session);
+        assert_eq!(stored(&v), serde_json::json!({"doc_items": ["a"]}));
+    }
 
     /// Direct debit, standing order and planned data hang on the duplicate
     /// account: merging must neither fail on the foreign keys nor lose them.

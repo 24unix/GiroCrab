@@ -967,7 +967,7 @@ impl BankConnector for FordMoneyConnector {
             let documents = self.documents(&wanted, &mut known).await?;
             return Ok(FetchResult {
                 documents,
-                state: Some(known.to_state()),
+                state: known.to_state(),
                 ..Default::default()
             });
         }
@@ -1004,7 +1004,7 @@ impl BankConnector for FordMoneyConnector {
                 known = fetched;
             }
         }
-        out.state = Some(known.to_state());
+        out.state = known.to_state();
         Ok(out)
     }
 
