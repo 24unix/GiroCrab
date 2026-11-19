@@ -290,7 +290,8 @@ extension AppModel {
 
     /// Errors answered with a prompt (setup form, browser login, FinTS registration)
     /// instead of a failure: in "Alle abrufen" the batch waits for the prompt, whose
-    /// "Überspringen" goes on with the next login (#1041).
+    /// "Überspringen" goes on with the next login (#1041). The Trade Republic PIN
+    /// prompt (#1128) depends on the login, so `finishSync` handles it before this.
     nonisolated static func errorOpensPrompt(_ error: Error) -> Bool {
         if isMissingProductID(error) { return true }
         guard let ce = error as? CoreError else { return false }
@@ -630,6 +631,16 @@ extension AppModel {
         activeSession = nil
         activeChallenge = nil
         syncingConnectionID = nil
+        // Trade Republic on its stored session alone (no PIN given, none stored) whose session
+        // expired (#1128): the core asks for the PIN, which only the PIN sheet takes (it also
+        // offers the browser login). A PIN typed there that fails stays an error.
+        if let ce = error as? CoreError, case .Authentication = ce, retrySecret?.isEmpty ?? true,
+           let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }),
+           conn.connector == .tradeRepublic, connectionStatus(conn.id)?.hasPin != true {
+            toast = describe(error)
+            pendingLogin = PendingLogin(connection: conn)
+            return
+        }
         // "Alle abrufen" (#1041): an error ends only this login. Its alert shows right away;
         // the batch goes on once it is closed ("Überspringen"), retries this login, or ends.
         if syncBatchTotal > 1, !Self.errorOpensPrompt(error),
