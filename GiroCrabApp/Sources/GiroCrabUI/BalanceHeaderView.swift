@@ -835,6 +835,13 @@ struct BalanceChart: View {
         drawStyle == .bars ? spanDays(buckets.first?.start, buckets.last?.last) : spanDays(pts.first?.date, pts.last?.date)
     }
 
+    /// Keeps `xStride` at the spacing the axis draws. A new span or text size changes the drawn
+    /// spacing without a width change; a stale value could then swallow the next real change.
+    private func syncXStride() {
+        let count = Self.xAxisStride(span: xSpan, width: chartWidth.value, textScale: textScale)
+        if count != xStride { xStride = count }
+    }
+
     private func clearHover() { hover.point = nil; hover.bar = nil }
 
     /// Jumps to the bookings of the hovered day / bar; false if nothing is hovered.
@@ -876,12 +883,13 @@ struct BalanceChart: View {
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             chartWidth.value = width
-            let count = Self.xAxisStride(span: xSpan, width: width, textScale: textScale)
-            if count != xStride { xStride = count }
+            syncXStride()
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chartHeight = $0 }
         .onChange(of: points.first?.date) { _, _ in clearHover() }
         .onChange(of: points.count) { _, _ in clearHover() }
+        .onChange(of: xSpan) { _, _ in syncXStride() }
+        .onChange(of: textScale) { _, _ in syncXStride() }
         .onChange(of: style) { _, _ in clearHover() }
         .onChange(of: barUnit) { _, _ in hover.bar = nil }
         .onDisappear { model.chartHoverDay = nil }
