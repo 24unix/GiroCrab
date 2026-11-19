@@ -95,7 +95,8 @@ struct KnownRecipientsSheet: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
-                Text("\(Int(r.timesUsed)) Buchungen")
+                // spelled out like the export sheet: the plural rule of the catalog is not in every build
+                if r.timesUsed == 1 { Text("1 Buchung") } else { Text("\(Int(r.timesUsed)) Buchungen") }
                 Text("zuletzt \(DateText.medium(r.lastUsed))")
             }
             .appFont(.caption)

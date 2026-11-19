@@ -86,7 +86,7 @@ Sheet {
             Text { text: Fmt.iban(row.modelData.iban); font.pixelSize: Theme.caption; font.family: "monospace"; color: Theme.secondary
                    elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} } }
         ColumnLayout { spacing: 1
-            Text { Layout.alignment: Qt.AlignRight; text: qsTr("%1 Buchungen").arg(row.modelData.times_used); font.pixelSize: Theme.caption; color: Theme.tertiary }
+            Text { Layout.alignment: Qt.AlignRight; text: row.modelData.times_used === 1 ? qsTr("1 Buchung") : qsTr("%1 Buchungen").arg(row.modelData.times_used); font.pixelSize: Theme.caption; color: Theme.tertiary }
             Text { Layout.alignment: Qt.AlignRight; text: qsTr("zuletzt %1").arg(Fmt.medium(row.modelData.last_used)); font.pixelSize: Theme.caption; color: Theme.tertiary } }
         Button { flat: true; text: row.modelData.hidden ? qsTr("Einblenden") : qsTr("Ausblenden"); onClicked: sheet.toggle(row.modelData)
                  ToolTip.text: row.modelData.hidden ? qsTr("Wieder vorschlagen") : qsTr("Nicht mehr vorschlagen")
