@@ -407,3 +407,32 @@ fn legacy_holds_never_adopt_or_replace_an_imported_posting() {
         }
     }
 }
+
+#[test]
+fn readding_a_login_after_deleting_its_legacy_account_imports_to_a_new_account() {
+    let (v, id, _dir) = setup();
+    let account = legacy(&v, id);
+    let old = old_row(&v, account, false, "old-posting");
+    v.set_account_archived(account, true).unwrap();
+    v.delete_account(account).unwrap();
+    let readded = v
+        .add_bank_connection(
+            ConnectorKind::Advanzia,
+            "Testkarte".into(),
+            "fictional-login".into(),
+        )
+        .unwrap();
+    assert_eq!(readded, id, "the same login reuses its existing connection");
+    import(&v, readded, None, vec![posted("new-posting")]).unwrap();
+    let accounts = v.list_accounts().unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_ne!(accounts[0].id, account);
+    assert!(rows(&v).iter().any(|row| row.0 == old && row.3.is_some()));
+    assert!(v.advanzia_profile(id).unwrap().has_account);
+    assert_eq!(
+        import(&v, id, None, vec![posted("new-posting")])
+            .unwrap()
+            .transactions_imported,
+        0
+    );
+}
