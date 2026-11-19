@@ -518,14 +518,23 @@ extension AppModel {
         AppDefaults.store.bool(forKey: ViewLayout.runningBalanceKey) && selectionHasBalances
     }
 
-    /// Currency of the running balances: one account's own, else the EUR sum (as the core sums).
-    var balanceCurrency: String {
-        if case .account(let id) = sidebarSelection, let a = account(for: id), !a.currency.isEmpty { return a.currency.uppercased() }
-        // A category filtered to one account is summed in that account's currency (#1049); else EUR only.
-        if case .category = sidebarSelection, categoryAccountIDs.count == 1, let a = account(for: categoryAccountIDs[0]), !a.currency.isEmpty {
-            return a.currency.uppercased()
-        }
+    /// Currency the core sums a selection of accounts in (#1049, as `counts_in_sums`): exactly one
+    /// account its own, otherwise (none, several, all) EUR only.
+    func sumCurrency(forAccounts ids: [Int64]) -> String {
+        if ids.count == 1, let a = account(for: ids[0]), !a.currency.isEmpty { return a.currency.uppercased() }
         return "EUR"
+    }
+
+    /// Currency of the sidebar's category sums: they follow the account filter of the category views.
+    var categorySumCurrency: String { sumCurrency(forAccounts: categorySumFilter.accounts) }
+
+    /// Currency of the running balances, KPIs and chart: that of the accounts the list shows
+    /// (one account, also a group or filter that narrows to one, its own; else the EUR sum).
+    var balanceCurrency: String {
+        switch sidebarSelection {
+        case .documents, .planned, .directDebits, .wealth, .none: return "EUR"
+        default: return sumCurrency(forAccounts: currentFilter.accountIds)
+        }
     }
 
     /// Ansicht › Saldo anzeigen changed (also from the settings window): switching it on

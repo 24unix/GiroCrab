@@ -860,7 +860,7 @@ struct CategoryRow: View {
             if category.totalCents != 0 || !other.isEmpty {
                 VStack(alignment: .trailing, spacing: 1) {
                     if category.totalCents != 0 {
-                        Text(Money.format(category.totalCents))
+                        Text(Money.format(category.totalCents, currency: model.categorySumCurrency))
                             .sensitive(.amounts)
                             .appFont(.caption, monospacedDigit: true)
                             .fixedSize()

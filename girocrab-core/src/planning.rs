@@ -31,11 +31,6 @@ CREATE TABLE IF NOT EXISTS transfer_templates (
     default_purpose      TEXT    NOT NULL DEFAULT ''
 );";
 
-/// Bookings as (category_id, amount_cents, booking_date) rows where a split
-/// booking contributes its split amounts instead of the parent category.
-/// `extra`: more columns of `t` (e.g. ", t.currency AS currency"); `condition`:
-/// more conditions on `t` (e.g. " AND t.account_id = ?1"). Both appear in both
-/// halves of the UNION, so `condition` must use numbered parameters.
 /// Whether a booking in `currency` enters the sums (category totals, history, KPI tiles) of a
 /// selection of `account_count` accounts (#1049, as in `balances::chosen` and #569): one account
 /// counts in its own currency, several (or all) only EUR; amounts in other currencies are never
@@ -63,6 +58,11 @@ pub(crate) fn has_other_currencies(conn: &rusqlite::Connection) -> rusqlite::Res
     )
 }
 
+/// Bookings as (category_id, amount_cents, booking_date) rows where a split
+/// booking contributes its split amounts instead of the parent category.
+/// `extra`: more columns of `t` (e.g. ", t.currency AS currency"); `condition`:
+/// more conditions on `t` (e.g. " AND t.account_id = ?1"). Both appear in both
+/// halves of the UNION, so `condition` must use numbered parameters.
 pub(crate) fn effective_sql(extra: &str, condition: &str) -> String {
     format!(
         "(

@@ -140,6 +140,28 @@ final class OfflineAccountsTests: XCTestCase {
         XCTAssertTrue(Money.format(100, currency: "").contains("€"))
     }
 
+    /// #1049 (review): sums follow the currency of exactly one account, whether it is chosen by the
+    /// selection or by the account filter; several accounts sum in EUR only (as the core does).
+    func testSumCurrencyFollowsOneAccountOnly() async throws {
+        let vault = try XCTUnwrap(model.vault)
+        let id = try vault.createOfflineAccount(name: "Dollar", kind: .cash, currency: "USD", openingCents: 0)
+        model.offlineStore.accountIDs.insert(id)
+        model.reloadAccounts()
+        try await awaitBalance(of: id, 0)
+        XCTAssertEqual(model.sumCurrency(forAccounts: [id]), "USD")
+        XCTAssertEqual(model.sumCurrency(forAccounts: []), "EUR")
+        XCTAssertEqual(model.sumCurrency(forAccounts: [id, try XCTUnwrap(model.allAccounts.first { $0.id != id }).id]), "EUR")
+        model.sidebarSelection = .allAccounts
+        model.categoryAccountFilter = [id]
+        XCTAssertEqual(model.balanceCurrency, "USD")
+        XCTAssertEqual(model.categorySumCurrency, "EUR") // the sidebar sums ignore the filter outside the category views
+        model.sidebarSelection = .uncategorized
+        XCTAssertEqual(model.categorySumCurrency, "USD")
+        model.categoryAccountFilter = []
+        XCTAssertEqual(model.balanceCurrency, "EUR")
+        XCTAssertEqual(model.categorySumCurrency, "EUR")
+    }
+
     /// #1049 (maintainer decision): curated list plus an own ISO code, and the header line "Sparkonto · USD".
     func testCurrencyChoiceAndSubtitle() async throws {
         XCTAssertEqual(OfflineAccountOptions.currencies,
