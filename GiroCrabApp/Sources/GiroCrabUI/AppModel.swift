@@ -778,6 +778,10 @@ public final class AppModel {
     var statementsCountBefore = 0
     /// comdirect FinTS login whose PostBox is fetched now ("PostBox jetzt abrufen", #838).
     var postboxConnectionID: Int64?
+    /// Account whose login syncs only it ("<Konto> abrufen", #1124). Set by
+    /// `requestSyncAccount`, kept through prompts and retries, cleared by a
+    /// finished or cancelled sync and by `requestFullSync`.
+    var syncAccountID: Int64?
     /// Decrypted copy shown in QuickLook; removed again as soon as the
     /// preview closes or shows another document (and on lock / quit).
     var quickLookURL: URL? {
@@ -1608,8 +1612,7 @@ public final class AppModel {
         quietSyncConnectionID = nil
         // the failure text may name a bank: gone with the vault
         autoSyncStatus = AutoSyncStatus()
-        statementsAccountID = nil
-        postboxConnectionID = nil
+        clearSyncTargets()
         syncGeneration &+= 1
         resetSyncBatch()
         transferBusy = false

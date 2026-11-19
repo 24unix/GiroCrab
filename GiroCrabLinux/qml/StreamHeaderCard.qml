@@ -59,7 +59,7 @@ Card {
                     text: note; font.pixelSize: Theme.caption; color: Theme.secondary
                     wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true
                     HoverHandler { id: noteHover }
-                    ToolTip.visible: noteHover.hovered && truncated; ToolTip.delay: 600; ToolTip.text: note
+                    ToolTip.visible: noteHover.hovered && truncated; ToolTip.delay: 600; ToolTip.text: AppModel.masking(note)
                     Sensitive {}
                 }
                 // AccountCopyMenu on the title
@@ -112,7 +112,7 @@ Card {
                     text: card.balance ? Fmt.money(card.balance.cents) : ""
                     font.pixelSize: card.compact ? Theme.title3 + 3 : Theme.largeTitle + 4; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                     color: card.account && card.account.kind === "Loan" ? Theme.loan : Theme.text
-                    Sensitive {}
+                    Sensitive { amounts: true }
                 }
                 Text { visible: !card.compact; Layout.alignment: Qt.AlignRight; text: card.balance ? card.balance.label : ""; font.pixelSize: Theme.caption; color: Theme.secondary }
             }

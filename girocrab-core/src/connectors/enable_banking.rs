@@ -873,8 +873,10 @@ impl EnableBankingConnector {
                 .as_str()
                 .filter(|s| !s.is_empty())
                 .map(|s| Some(s.to_string()));
-            let items = match page["transactions"].take() {
-                Value::Array(items) => items,
+            // `get_mut`, not `page["transactions"]`: `IndexMut` panics on a
+            // non-object body (array, string)
+            let items = match page.get_mut("transactions").map(Value::take) {
+                Some(Value::Array(items)) => items,
                 _ => Vec::new(),
             };
             Ok((items, next))
@@ -1387,8 +1389,14 @@ impl BankConnector for EnableBankingConnector {
         }
         self.upgrade_legacy_accounts().await;
         let mut out = FetchResult::default();
+        // One account (#1124): its requests only, for the PSD2 daily limit
+        // and the per-account history flags.
+        let refs: Vec<String> = self.st.accounts.iter().map(|a| a.ext_ref.clone()).collect();
+        let only = ctx.only_among(&refs);
+        let mut wanted = self.st.accounts.clone();
+        wanted.retain(|a| only.is_none_or(|o| a.ext_ref == o));
         if self.card_mode() {
-            for a in self.st.accounts.clone() {
+            for a in wanted {
                 self.fetch_card(ctx, &mut out, &a).await?;
             }
             out.state = Some(SecretJson::encode(&self.st)?);
@@ -1414,7 +1422,7 @@ impl BankConnector for EnableBankingConnector {
         // uid → every page of the account's bookings was read
         let mut listed: HashMap<String, bool> = HashMap::new();
         let mut stopped_early = false;
-        for a in self.st.accounts.clone() {
+        for a in wanted {
             let res = if kind_of(&a) == AccountKind::CreditCard {
                 let named = EbAccount {
                     name: display_name(&a),

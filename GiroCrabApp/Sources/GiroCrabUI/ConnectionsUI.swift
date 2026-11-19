@@ -704,7 +704,7 @@ struct ConnectionEditSheet: View {
             Task { @MainActor in
                 guard let updated = await advanziaSettings.save(connection: connection, name: name, login: login, model: model) else { return }
                 dismiss()
-                if thenSync { model.requestSync(updated) }
+                if thenSync { model.requestFullSync(updated) }
             }
             return
         }
@@ -713,7 +713,7 @@ struct ConnectionEditSheet: View {
         let draft = selection
         Task { @MainActor in
             if await draft.saveIfChanged(model: model, connectionId: id) {
-                if thenSync, let c = model.connections.first(where: { $0.id == id }) { model.requestSync(c) }
+                if thenSync, let c = model.connections.first(where: { $0.id == id }) { model.requestFullSync(c) }
             } else if let message = draft.error {
                 model.showError(String(localized: "Kontenauswahl nicht gespeichert"), message)
             }

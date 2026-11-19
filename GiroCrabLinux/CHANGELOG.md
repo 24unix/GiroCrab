@@ -28,6 +28,19 @@ Funktionsumfang der Oberfläche.
 - Die Skripte im Browser sind die der Mac-App (`scripts/gen-equateplus-qml.py`, abgeglichen von
   `scripts/test-equateplus-linux.cjs`). Mit einem echten EquatePlus-Zugang noch nicht getestet.
 
+### Privatmodus (#719)
+
+- **Darstellung › Privatmodus** (Strg+Umschalt+H) und das **Auge in der Symbolleiste** blenden
+  Beträge aus, wenn Sie die App jemandem zeigen: Salden, Buchungsbeträge, Summen, Anteile,
+  Budgets, Kredittilgung, Depot und Vermögen, Achsenwerte und Ablesewerte der Diagramme.
+- **Einstellungen › Allgemein:** Schalter „Privatmodus“ und „Im Privatmodus ausblenden“ mit
+  **Beträge** oder **Beträge und persönliche Angaben** (dann auch Namen, Kontonummern und
+  Verwendungszwecke). Die Wahl bleibt über Neustarts erhalten.
+- Gilt im Hauptfenster, in den Sheets und in den Einstellungen; Tooltips mit Beträgen oder Namen
+  zeigen dann „•••“. „Problem melden“ schwärzt wie bisher und zusätzlich alles, was der
+  Privatmodus verdeckt.
+- Startoption `--privacy[=all]` für Screenshots.
+
 ## Korrekturen (Kern 0.8.6)
 
 - **„PostBox jetzt abrufen“** (comdirect, #838) ruft die PostBox jetzt wirklich ab; die Anforderung

@@ -282,7 +282,7 @@ struct BankConnectionsSettings: View {
                             .buttonStyle(.borderless)
                             .help("Bearbeiten / Details")
                             .accessibilityLabel("Bearbeiten / Details")
-                        Button { model.requestSync(c) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+                        Button { model.requestFullSync(c) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
                             .buttonStyle(.borderless)
                             .help(model.bankingGate(for: c)?.message ?? String(localized: "Jetzt abrufen"))
                             .accessibilityLabel("Jetzt abrufen")

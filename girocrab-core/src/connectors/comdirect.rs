@@ -708,9 +708,11 @@ fn postbox_path(route: &str, first: usize) -> String {
 /// The entries of one offset-paged answer that started at `first`, and the
 /// offset of the next page (`None` after the last one). Without
 /// `paging.matches` a full page means "maybe more" (the next request then
-/// ends with an empty page).
+/// ends with an empty page). A body that is not an object (array, string,
+/// error page) counts as an empty last page.
 fn next_page(mut page: Value, first: usize, page_size: usize) -> (Vec<Value>, Option<usize>) {
-    let Value::Array(values) = page["values"].take() else {
+    // `get_mut`, not `page["values"]`: `IndexMut` panics on a non-object
+    let Some(Value::Array(values)) = page.get_mut("values").map(Value::take) else {
         return (Vec::new(), None);
     };
     let fetched = first + values.len();
@@ -1054,6 +1056,21 @@ mod tests {
         assert_eq!(next(0, 500, None), Some(500));
         assert_eq!(next(0, 120, None), None);
         assert_eq!(next(500, 0, None), None);
+    }
+
+    #[test]
+    fn paging_ends_on_a_body_that_is_not_an_object() {
+        for page in [
+            serde_json::json!([{"values": []}]),
+            serde_json::json!("<html>Wartung</html>"),
+            serde_json::json!(42),
+            serde_json::json!(null),
+            serde_json::json!({"values": "x"}),
+        ] {
+            let (values, next) = super::next_page(page, 0, 500);
+            assert!(values.is_empty());
+            assert_eq!(next, None);
+        }
     }
 
     #[test]
