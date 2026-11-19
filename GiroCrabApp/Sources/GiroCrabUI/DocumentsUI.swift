@@ -524,7 +524,7 @@ struct DocumentsView: View {
                 }
                 .appFont(.caption).foregroundStyle(Theme.secondary)
                 Button("Einstellungen › Banken öffnen") { model.openSettings(.banks) }
-                    .buttonStyle(.link).appFont(.caption)
+                    .buttonStyle(.plain).appFont(.caption).foregroundStyle(Theme.accent)
                     .help("Beim Zugang „Dokumente abrufen“ einschalten")
             }
         }
