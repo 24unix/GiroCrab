@@ -246,7 +246,11 @@ fn a_connection_added_again_takes_over_instead_of_reviving_the_duplicate() {
     };
     v.set_account_archived(dup, true).unwrap();
     v.delete_account(dup).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(5));
+    // Deleted long before the connection is added again (no wall-clock race).
+    v.db()
+        .unwrap()
+        .execute("UPDATE accounts SET deleted_ms = 1 WHERE id = ?1", [dup])
+        .unwrap();
     let again = v
         .add_bank_connection(ConnectorKind::FordMoney, String::new(), "login".into())
         .unwrap();
@@ -256,6 +260,99 @@ fn a_connection_added_again_takes_over_instead_of_reviving_the_duplicate() {
     };
     store_fetch(&v, ConnectorKind::FordMoney, again, fetch).unwrap();
     assert_eq!(live(&v), vec![(savings, again, "Imported".to_string())]);
+    drop(v);
+    std::fs::remove_file(path).ok();
+}
+
+/// Without the same IBAN nothing is taken over, so the account stays held back
+/// for the user's choice (no second account): here the imported account has
+/// no IBAN and is matched by bank code and account number only.
+#[test]
+fn an_imported_account_without_the_same_iban_is_still_held_back() {
+    let (v, path) = vault("girocrab-takeover-noiban");
+    let p = psd2(&v);
+    let savings = imported(&v, Some(p), "moneymoney-db:2", "", "savings");
+    let conn = v
+        .add_bank_connection(ConnectorKind::FordMoney, String::new(), "login".into())
+        .unwrap();
+    {
+        let db = v.db().unwrap();
+        db.execute(
+            "UPDATE bank_connections SET bank_code = '10000000' WHERE id IN (?1, ?2)",
+            params![p, conn],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE accounts SET account_number = '1000000002' WHERE id = ?1",
+            [savings],
+        )
+        .unwrap();
+    }
+    let mut acc = remote("fordmoney:2", SAVINGS_IBAN, AccountKind::Savings);
+    acc.account_number = "1000000002".into();
+    let fetch = FetchResult {
+        accounts: vec![acc],
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::FordMoney, conn, fetch).unwrap();
+    assert_eq!(live(&v), vec![(savings, p, "Imported".to_string())]);
+    drop(v);
+    std::fs::remove_file(path).ok();
+}
+
+/// A duplicate the user deleted next to an imported account outside the PSD2
+/// case (here: without a connection) stays deleted; the imported account is
+/// left as it is.
+#[test]
+fn a_deleted_duplicate_stays_deleted_outside_the_psd2_case() {
+    let (v, path) = vault("girocrab-takeover-unlinked");
+    let unlinked = imported(&v, None, "moneymoney-db:1", CARD_IBAN, "credit_card");
+    let conn = v
+        .add_bank_connection(ConnectorKind::FordMoney, String::new(), "login".into())
+        .unwrap();
+    let other = imported(&v, None, "other", "", "savings");
+    let dup = {
+        let db = v.db().unwrap();
+        db.execute("UPDATE bank_connections SET created_ms = 1", [])
+            .unwrap();
+        db.execute(
+            "UPDATE accounts SET connection_id = ?1, external_ref = 'fordmoney:other' WHERE id = ?2",
+            params![conn, other],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, currency, kind)
+             VALUES (?1, (SELECT id FROM account_groups LIMIT 1), 'fordmoney:1', 'Duplicate', ?2, 'EUR', 'credit_card')",
+            params![conn, CARD_IBAN],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    };
+    v.set_account_archived(dup, true).unwrap();
+    v.delete_account(dup).unwrap();
+    let fetch = FetchResult {
+        accounts: vec![remote("fordmoney:1", CARD_IBAN, AccountKind::CreditCard)],
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::FordMoney, conn, fetch).unwrap();
+    let db = v.db().unwrap();
+    let (key, deleted): (String, bool) = db
+        .query_row(
+            "SELECT external_ref, deleted_ms IS NOT NULL FROM accounts WHERE id = ?1",
+            [dup],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((key.as_str(), deleted), ("fordmoney:1", true));
+    let linked: Option<i64> = db
+        .query_row(
+            "SELECT connection_id FROM accounts WHERE id = ?1",
+            [unlinked],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(linked, None);
+    drop(db);
     drop(v);
     std::fs::remove_file(path).ok();
 }

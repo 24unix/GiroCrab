@@ -2374,22 +2374,25 @@ fn payment_job(
 }
 
 /// `deleted` is a deleted account of this connection with `acc`'s external
-/// ref, typically a duplicate the user removed because the connector had not
-/// taken over the imported account. If an imported account with the same IBAN
-/// can be taken over now, the deleted row moves aside (its key gets a suffix)
-/// and the imported one takes its place. The imported account is stamped as
-/// created now, so on other devices it wins over the deletion of that key.
+/// ref: a duplicate the user removed because the connector had not taken over
+/// the imported account. Only that case is handled: a live imported account
+/// (`moneymoney-db:`) with the same IBAN and currency, parked on a PSD2
+/// connection that never synced. The deleted row moves aside (its key gets a
+/// suffix) and the imported one takes its place; it is stamped as created now,
+/// so on other devices it wins over the deletion of that key. Any other
+/// deleted account keeps its key and its fate (stays deleted or is revived).
 fn adopt_past_deleted_twin(
     tx: &rusqlite::Connection,
     connection_id: i64,
     deleted: i64,
     acc: &RemoteAccount,
 ) -> CoreResult<Option<i64>> {
-    if acc.iban.trim().is_empty() {
+    let iban = crate::iban::normalize_iban(&acc.iban);
+    if iban.is_empty() {
         return Ok(None);
     }
     // Only the connection's own row under this key (not an unlinked account
-    // `adopt_unlinked` found, which keeps its key and stays deleted).
+    // `adopt_unlinked` found, which keeps its key).
     let own: bool = tx.query_row(
         // includes soft-deleted rows
         "SELECT connection_id IS ?1 AND external_ref = ?2 FROM accounts WHERE id = ?3",
@@ -2399,35 +2402,36 @@ fn adopt_past_deleted_twin(
     if !own {
         return Ok(None);
     }
-    let aside = format!("{}#deleted-{deleted}", acc.external_ref);
+    let currency = acc.currency.trim().to_uppercase();
+    let twin: Option<i64> = tx
+        .query_row(
+            "SELECT a.id FROM accounts a JOIN bank_connections c ON c.id = a.connection_id
+              WHERE a.deleted_ms IS NULL AND a.external_ref LIKE 'moneymoney-db:%'
+                AND upper(replace(a.iban, ' ', '')) = ?1
+                AND (?2 = '' OR upper(a.currency) IN ('', ?2))
+                AND c.id <> ?3 AND c.connector LIKE 'enablebanking%' AND c.last_sync_unix IS NULL
+              ORDER BY (upper(a.currency) <> ?2), a.id LIMIT 1",
+            params![iban, currency, connection_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(twin) = twin else {
+        return Ok(None);
+    };
     tx.execute(
         "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
-        params![aside, deleted],
+        params![format!("{}#deleted-{deleted}", acc.external_ref), deleted],
     )?;
-    let twin = crate::importers::moneymoney_db::adopt_account(
-        tx,
-        connection_id,
-        &acc.external_ref,
-        &acc.iban,
-        &acc.currency,
-        acc.kind,
+    tx.execute(
+        "UPDATE accounts SET connection_id = ?1, external_ref = ?2, created_ms = ?3 WHERE id = ?4",
+        params![
+            connection_id,
+            acc.external_ref,
+            crate::dates::now_ms(),
+            twin
+        ],
     )?;
-    match twin {
-        Some(id) if id != deleted => {
-            tx.execute(
-                "UPDATE accounts SET created_ms = ?1 WHERE id = ?2",
-                params![crate::dates::now_ms(), id],
-            )?;
-            Ok(Some(id))
-        }
-        _ => {
-            tx.execute(
-                "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
-                params![acc.external_ref, deleted],
-            )?;
-            Ok(None)
-        }
-    }
+    Ok(Some(twin))
 }
 
 /// Links an unconnected stored account to `connection_id` when it matches the
