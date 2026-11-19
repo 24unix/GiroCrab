@@ -742,7 +742,7 @@ fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
         &t["remitter"]
     };
     let text = |v: &Value| v.as_str().unwrap_or_default().to_string();
-    RemoteTransaction {
+    let mut rt = RemoteTransaction {
         account_ref: account_ref.to_string(),
         external_id: text(&t["reference"]),
         booking_date: text(&t["bookingDate"]),
@@ -757,6 +757,30 @@ fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
         mandate_id: sepa_ref(&t["directDebitMandateId"]),
         creditor_id: sepa_ref(&t["directDebitCreditorId"]),
         ..Default::default()
+    };
+    fill_card_merchant(&mut rt);
+    rt
+}
+
+/// The merchant of a comdirect Visa debit card payment. Neither the REST API
+/// nor FinTS name a counterparty for these bookings (GitHub #1135); the
+/// purpose reads `<merchant>, <place …> … comdirect Visa-Debitkarte <time>`.
+/// Returns the text before the first comma, `None` for any other purpose.
+pub(crate) fn visa_debit_merchant(purpose: &str) -> Option<String> {
+    if !purpose.to_lowercase().contains("visa-debitkarte") {
+        return None;
+    }
+    let name = purpose.split_once(',')?.0.trim();
+    (name.chars().count() <= 60 && name.chars().any(char::is_alphabetic)).then(|| name.to_string())
+}
+
+/// Gives a booking without counterparty the merchant of its card payment
+/// (see [`visa_debit_merchant`]); a counterparty from the bank stays.
+pub(crate) fn fill_card_merchant(t: &mut RemoteTransaction) {
+    if t.counterparty.trim().is_empty() {
+        if let Some(merchant) = visa_debit_merchant(&t.purpose) {
+            t.counterparty = merchant;
+        }
     }
 }
 
@@ -1182,5 +1206,62 @@ mod tests {
         assert_eq!(t.booking_date, "");
         assert_eq!(t.value_date, "2026-11-12");
         assert!(t.external_id.is_empty());
+    }
+
+    /// A Visa debit card payment as comdirect sends it (#1135): no creditor
+    /// name, the merchant first in 35-character remittance lines.
+    fn card_payment(creditor: &str, lines: &[&str]) -> serde_json::Value {
+        let info: String = lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| format!("{:02}{l:<35}", i + 1))
+            .collect();
+        serde_json::json!({
+            "reference": "R1", "bookingDate": "2026-11-14", "valutaDate": "2026-11-14",
+            "amount": {"value": "-23.40", "unit": "EUR"},
+            "creditor": {"holderName": creditor},
+            "remittanceInfo": info.trim_end(),
+            "transactionType": {"key": "DIRECT_DEBIT", "text": "Lastschrift / Belastung"}
+        })
+    }
+
+    #[test]
+    fn visa_debit_payment_gets_its_merchant_as_counterparty() {
+        let lines = [
+            "Beispielladen GmbH, Musterstadt DE",
+            "Kartenzahlung am 14.11.2026",
+            "comdirect Visa-Debitkarte 12:34:56",
+        ];
+        let t = super::map_transaction(&card_payment("", &lines), "acc1");
+        assert_eq!(t.counterparty, "Beispielladen GmbH");
+        // the purpose stays as the bank sent it
+        assert_eq!(
+            t.purpose,
+            "Beispielladen GmbH, Musterstadt DE Kartenzahlung am 14.11.2026 comdirect Visa-Debitkarte 12:34:56"
+        );
+        // a name from the bank is kept
+        let named = super::map_transaction(&card_payment("Muster Markt", &lines), "acc1");
+        assert_eq!(named.counterparty, "Muster Markt");
+    }
+
+    #[test]
+    fn visa_debit_merchant_only_for_card_payments() {
+        use super::visa_debit_merchant as merchant;
+        assert_eq!(
+            merchant("PAYPAL *SHOP, 4029357733 DE ... comdirect Visa-Debitkarte 08:15:00")
+                .as_deref(),
+            Some("PAYPAL *SHOP")
+        );
+        // no card payment, no comma, or nothing readable before the comma
+        assert_eq!(merchant("Miete Januar, Wohnung 3"), None);
+        assert_eq!(
+            merchant("Beispielladen comdirect Visa-Debitkarte 12:34:56"),
+            None
+        );
+        assert_eq!(
+            merchant("1234, Musterstadt comdirect Visa-Debitkarte"),
+            None
+        );
+        assert_eq!(merchant(", Musterstadt comdirect Visa-Debitkarte"), None);
     }
 }

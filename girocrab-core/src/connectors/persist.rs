@@ -106,7 +106,7 @@ impl Stored {
 }
 
 /// A booking the bank delivers again: fills bank fields an older version did
-/// not store yet (codes, SEPA references, product ids) and heals corrupted text
+/// not store yet (codes, SEPA references, product ids, an empty counterparty) and heals corrupted text
 /// (U+FFFD / mojibake) with the freshly decoded one. Writes only when a column
 /// changes, since most bookings of every fetch are already stored.
 fn refresh_existing(
@@ -130,8 +130,11 @@ fn refresh_existing(
         [&t.end_to_end_id, &t.mandate_id, &t.creditor_id],
     );
     let [items] = fill([&s.item_refs], [&t.item_refs]);
+    // a counterparty the bank (or a newer version) names now fills an empty one,
+    // e.g. the merchant of a comdirect card payment (#1135)
+    let [named] = fill([&s.counterparty], [&t.counterparty]);
     let set = [
-        heal(&s.counterparty, &t.counterparty),
+        heal(&s.counterparty, &t.counterparty).or(named),
         heal(&s.purpose, &t.purpose),
         code,
         gvc,

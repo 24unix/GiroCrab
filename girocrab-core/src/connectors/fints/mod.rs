@@ -725,6 +725,11 @@ impl BankConnector for FinTsConnector {
                     }
                 }
             }
+            // comdirect names no counterparty for Visa debit card payments (#1135)
+            if is_comdirect(&self.blz) {
+                txs.iter_mut()
+                    .for_each(super::comdirect::fill_card_merchant);
+            }
             result.transactions.extend(txs);
 
             // --- Standing orders (HKCDB), read-only. Sent right after the statements,
