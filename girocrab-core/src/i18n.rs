@@ -789,6 +789,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Keine Umsätze erkannt." => "No transactions found.",
         // ------------------------------------------------------------ vault/backup.rs
         "Falsches Passwort oder keine GiroCrab-Sicherung." => "Wrong password or not a GiroCrab backup.",
+        "Diese Datei ist keine GiroCrab-Sicherung, sondern die Datenbank einer anderen App. Zum Übernehmen bitte als Art des Imports diese App wählen." => "This file is not a GiroCrab backup but another app's database. To import it, choose that app as the import type.",
         "Bitte ein Passwort für die Sicherung angeben." => "Please enter a password for the backup.",
         "Das Passwort für die Sicherung muss mindestens 8 Zeichen lang sein." => "The backup password must be at least 8 characters long.",
         // ------------------------------------------------------------ importers/moneymoney_import.rs

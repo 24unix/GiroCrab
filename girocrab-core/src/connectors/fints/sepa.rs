@@ -138,6 +138,12 @@ pub fn format_amount(cents: i64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
 }
 
+/// `ReqdExctnDt` of a transfer that names no date (HKCCS, HKIPZ, HKCCM). The field is mandatory
+/// in the schema, but these orders run at once and some banks (Postbank, error 9150 "Ausführungsdatum
+/// darf nicht belegt werden") reject today's date there. `1999-01-01` is the FinTS convention for
+/// "no date"; only a scheduled transfer (HKCSE) carries a real one.
+pub(crate) const IMMEDIATE_EXECUTION_DATE: &str = "1999-01-01";
+
 /// Group header fields of every pain.001 and pain.008 message GiroCrab builds.
 pub(crate) struct PainHeader<'a> {
     pub(crate) message_id: String,
@@ -164,11 +170,6 @@ impl<'a> PainHeader<'a> {
                 owner
             },
         }
-    }
-
-    /// `YYYY-MM-DD` of `created`: the execution date of an order that names none.
-    pub(crate) fn date(&self) -> &str {
-        &self.created[..10]
     }
 }
 
@@ -470,6 +471,20 @@ mod tests {
     }
 
     #[test]
+    fn immediate_orders_carry_the_placeholder_date() {
+        assert!(jiff::civil::Date::strptime("%Y-%m-%d", IMMEDIATE_EXECUTION_DATE).is_ok());
+        let mut p = sample("Max Muster", "Miete");
+        p.execution_date = IMMEDIATE_EXECUTION_DATE;
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>1999-01-01</ReqdExctnDt>"));
+        p.version = PainVersion::V09;
+        p.instant = true;
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt><Dt>1999-01-01</Dt></ReqdExctnDt>"));
+        assert!(!xml.contains("2026-11-09</Dt>"));
+    }
+
+    #[test]
     fn regular_pain_03_is_unchanged() {
         let xml = build_pain001(&sample("Max Muster", "Miete")).unwrap();
         assert!(xml.contains("<EndToEndId>NOTPROVIDED</EndToEndId>"));
@@ -625,6 +640,36 @@ mod tests {
         let xml = build_pain001_batch(&b).unwrap();
         assert!(xml.contains("<ReqdExctnDt><Dt>2026-11-09</Dt></ReqdExctnDt>"));
         assert!(xml.contains("<CdtrAgt><FinInstnId><BICFI>COBADEFFXXX</BICFI>"));
+    }
+
+    #[test]
+    fn batch_without_a_date_carries_the_placeholder_and_a_dated_one_keeps_its_date() {
+        let pays = [pay("A", "DE89370400440532013000", 100, "E1")];
+        let mut b = batch(&pays, true);
+        b.execution_date = IMMEDIATE_EXECUTION_DATE;
+        let xml = build_pain001_batch(&b).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>1999-01-01</ReqdExctnDt>"));
+        b.execution_date = "2027-01-15";
+        let xml = build_pain001_batch(&b).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>2027-01-15</ReqdExctnDt>"));
+        assert!(!xml.contains("1999-01-01"));
+        b.version = PainVersion::V09;
+        let xml = build_pain001_batch(&b).unwrap();
+        assert!(xml.contains("<ReqdExctnDt><Dt>2027-01-15</Dt></ReqdExctnDt>"));
+    }
+
+    #[test]
+    fn a_scheduled_transfer_keeps_its_real_date() {
+        // HKCSE: the job names a date, so the 1999-01-01 placeholder must not appear.
+        let mut p = sample("Max Muster", "Miete");
+        p.execution_date = "2027-01-15";
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>2027-01-15</ReqdExctnDt>"));
+        assert!(!xml.contains("1999-01-01"));
+        p.version = PainVersion::V09;
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt><Dt>2027-01-15</Dt></ReqdExctnDt>"));
+        assert!(!xml.contains("1999-01-01"));
     }
 
     #[test]

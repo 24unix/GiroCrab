@@ -101,6 +101,35 @@ fn not_a_backup_is_refused() {
     assert!(matches!(err, CoreError::InvalidInput { .. }), "{err:?}");
 }
 
+fn set_user_version(db: &Path, password: &str, version: i64) {
+    let c = Connection::open(db).unwrap();
+    c.pragma_update(None, "key", password).unwrap();
+    c.execute_batch(&format!("PRAGMA user_version = {version}"))
+        .unwrap();
+}
+
+/// Another app's encrypted database opened with its own password also holds
+/// `accounts` and `transactions`: it is named as such, never restored, also
+/// when its version number is above ours.
+#[test]
+fn other_apps_database_is_refused_with_its_own_message() {
+    use crate::importers::moneymoney_db::tests::{fake_db, PW};
+    let (dest, _) = filled(2);
+    let before = bookings(&dest);
+    let db = fake_db();
+    for version in [None, Some(SCHEMA_VERSION + 1)] {
+        if let Some(v) = version {
+            set_user_version(Path::new(&db), PW, v);
+        }
+        let err = dest.restore_backup(db.clone(), PW.into()).unwrap_err();
+        assert!(
+            matches!(&err, CoreError::InvalidInput { message } if message.contains("anderen App")),
+            "{err:?}"
+        );
+        assert_eq!(bookings(&dest), before);
+    }
+}
+
 #[test]
 fn empty_password_is_refused() {
     let (src, _) = filled(1);
@@ -115,12 +144,7 @@ fn backup_from_a_newer_app_is_refused() {
     let (src, _) = filled(1);
     let backup = temp_path("bak");
     src.write_backup(path(&backup), PASSWORD.into()).unwrap();
-    {
-        let c = Connection::open(&backup).unwrap();
-        c.pragma_update(None, "key", PASSWORD).unwrap();
-        c.execute_batch(&format!("PRAGMA user_version = {}", SCHEMA_VERSION + 1))
-            .unwrap();
-    }
+    set_user_version(&backup, PASSWORD, SCHEMA_VERSION + 1);
     let dest = Vault::open(path(&temp_path("dest")), vec![2u8; 32]).unwrap();
     let err = dest
         .restore_backup(path(&backup), PASSWORD.into())
