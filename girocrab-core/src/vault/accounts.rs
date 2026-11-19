@@ -171,6 +171,12 @@ impl Vault {
                 format!("fints.rah10.bank_keys.{connection_id}")
             ],
         )?;
+        // portal session cookies the Linux front end keeps per login; dropped here
+        // so cleanup does not depend on which UI path deleted the login
+        db.execute(
+            "DELETE FROM settings WHERE key = ?1",
+            [format!("web.secret_cookies.{connection_id}")],
+        )?;
         // stored secrets of this connection (PIN, portal user name `pin.conn.<id>.login`);
         // the soft delete blanked the session (state_json)
         db.execute(

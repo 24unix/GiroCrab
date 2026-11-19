@@ -4261,3 +4261,24 @@ fn category_role_merge_converges_in_every_order() {
         }
     }
 }
+
+#[test]
+fn deleting_the_last_account_of_a_login_drops_its_portal_cookies() {
+    let v = open(&temp_dir("cookiedel"), "a.db");
+    let (c, a1, a2, _) = bank_fixture(&v);
+    let key = format!("web.secret_cookies.{c}");
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, '[]', 1)",
+            [&key],
+        )
+        .unwrap();
+    let cookies = format!("SELECT count(*) FROM settings WHERE key = '{key}'");
+    v.set_account_archived(a1, true).unwrap();
+    v.set_account_archived(a2, true).unwrap();
+    v.delete_account(a1).unwrap();
+    assert_eq!(n(&v, &cookies), 1, "login still has an account");
+    v.delete_account(a2).unwrap();
+    assert_eq!(n(&v, &cookies), 0);
+}
