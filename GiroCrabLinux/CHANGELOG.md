@@ -8,6 +8,13 @@ Verhalten und Texte kommen dabei 1:1 aus der Mac-App, auf Deutsch und Englisch. 
 Einstellungen › Sicherheit steht deshalb „Kern-Version“: Die Nummer gehört zum Kern, nicht zum
 Funktionsumfang der Oberfläche.
 
+## Korrekturen (Kern 0.8.6)
+
+- **„PostBox jetzt abrufen“** (comdirect, #838) ruft die PostBox jetzt wirklich ab; die Anforderung
+  ging bisher vor jedem Abruf verloren.
+- **Eigene FinTS-Produktregistrierung:** Das Feld in Einstellungen › Banken steht wie in der Mac-App
+  ohne Rahmen rechtsbündig in der Zeile; nach dem Eintragen gilt „Eigene Registrierung“.
+
 ## Korrekturen (Kern 0.8.0)
 
 - **Belegvorschau:** In „Belege & PostBox“ füllt das PDF die Breite der Vorschau und bleibt beim
