@@ -39,11 +39,11 @@
 <p align="center"><sub>⭐ Gefällt dir GiroCrab? Ein <a href="https://github.com/GiroCrab/GiroCrab/stargazers">Stern auf GitHub</a> hilft anderen, das Projekt zu finden. · <i>A star helps others find the project.</i></sub></p>
 
 > ### 🛠️ Mitbauen in 4 Schritten · Contribute in 4 steps
-> In den ersten 7 Tagen: **265+ GitHub-Sterne**, **280+ gemergte Pull Requests**, **15 Mitwirkende** mit eigenen Commits – Stand 16.11.2026, direkt von GitHub.
+> In den ersten 10 Tagen: **310+ GitHub-Sterne**, **580+ erledigte Pull Requests**, **25+ Mitwirkende** – direkt von GitHub.
 > Du brauchst **keine Swift- oder Rust-Erfahrung**: Mach aus deinem Funktionswunsch mit **Claude Code, Codex oder Cursor** und der [`CLAUDE.md`](CLAUDE.md) einen eigenen Pull Request.
 > 👉 [**Schritt-für-Schritt-Anleitung**](https://girocrab.de/girocrab_mitbau_anleitung.html) · [CONTRIBUTING.md](CONTRIBUTING.md)
 >
-> *In our first 7 days: 265+ stars, 280+ merged pull requests, 15 contributors with commits (as of 2026-11-16, from GitHub). No Swift or Rust experience needed – turn your own feature wish into a pull request with Claude Code, Codex or Cursor and [`CLAUDE.md`](CLAUDE.md). See the [step-by-step guide](https://girocrab.de/girocrab_mitbau_anleitung.html) and [CONTRIBUTING.md](CONTRIBUTING.md).*
+> *In our first 10 days: 310+ stars, 580+ closed/merged pull requests, 25+ contributors (from GitHub). No Swift or Rust experience needed – turn your own feature wish into a pull request with Claude Code, Codex or Cursor and [`CLAUDE.md`](CLAUDE.md). See the [step-by-step guide](https://girocrab.de/girocrab_mitbau_anleitung.html) and [CONTRIBUTING.md](CONTRIBUTING.md).*
 
 ---
 
@@ -145,7 +145,7 @@ nur um Kategorie und Notiz ergänzt.
 - 🏦 **FinTS 3.0 / HBCI-Client & PSD2 für macOS und iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisung & Echtzeitüberweisung via FinTS 3.0 / HKCCS** inkl. Verification of Payee (VoP), inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
 - 📑 **Sammelüberweisung via FinTS 3.0 / HKCCM:** mehrere Zahlungen von einem Konto in einem Auftrag mit einer TAN, inkl. CSV-Import; wahlweise als Sammelbuchung oder Einzelbuchungen. Verfügbar, wenn die Bank Sammelaufträge per FinTS anbietet; nicht als Echtzeitüberweisung.
-- 🗓️ **Seite „Geplant“ mit Daueraufträgen:** Terminüberweisungen und die per FinTS (HKCDB) abgerufenen Daueraufträge der Bank erscheinen mit ihren nächsten Ausführungsterminen. Daueraufträge werden derzeit nur gelesen; Anlegen, Ändern und Löschen sind noch nicht umgesetzt (#496).
+- 🗓️ **Seite „Geplant“ mit Daueraufträgen:** Terminüberweisungen und per FinTS (HKCDB) abgerufene Daueraufträge erscheinen mit ihren nächsten Ausführungsterminen und lassen sich direkt per FinTS mit TAN-Freigabe anlegen, ändern und löschen (#496).
 - 🧾 **SEPA-Lastschriften & Mandate:** Mandate und Gläubiger-ID verwalten, Einzüge als pain.008-Datei erzeugen (Basis, COR1, Firmen) und – sofern die Bank es per FinTS anbietet – mit TAN einreichen; Rücklastschriften werden erkannt und das Mandat zum Prüfen markiert.
 - 📤 **Export:** Buchungen u. a. als CAMT.053-Kontoauszug (jeweils ein Konto und ein Zeitraum, mit Anfangs- und Endsaldo).
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
@@ -385,7 +385,7 @@ fetched later via FinTS are recognised as duplicates and not created twice – e
 - 🏦 **FinTS 3.0 / HBCI client & PSD2 for macOS and iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
 - 📑 **Batch transfers via FinTS 3.0 / HKCCM:** several payments from one account in a single order with one TAN, incl. CSV import; booked as one batch entry or as individual entries. Available where the bank offers batch orders via FinTS; not as instant transfers.
-- 🗓️ **"Planned" page with standing orders:** scheduled transfers and the bank's standing orders fetched via FinTS (HKCDB) are shown with their next execution dates. Standing orders are read-only for now; creating, changing and deleting them is not implemented yet (#496).
+- 🗓️ **"Planned" page with standing orders:** scheduled transfers and the bank's standing orders fetched via FinTS (HKCDB) are shown with their next execution dates and can be created, edited and deleted via FinTS with TAN approval (#496).
 - 🧾 **SEPA direct debits & mandates:** manage mandates and the creditor ID, create collections as pain.008 files (Core, COR1, B2B) and – where the bank offers it via FinTS – submit them with a TAN; returned debits are detected and the mandate is flagged for review.
 - 📤 **Export:** bookings among others as a CAMT.053 statement (one account and one period at a time, with opening and closing balance).
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.

@@ -44,7 +44,8 @@ Database schema changes are a new migration step plus a fixture vault, see
    in `sync_session.rs` / `transfer_session.rs`, and storing fetched data is `persist.rs`.
    File importers (database, CSV/CAMT/MT940, portal imports) are not connectors: see
    `girocrab-core/src/importers/`.
-   Add the Swift display name/colour in `GiroCrabUI/Formatting.swift`.
+   For curated PSD2 presets, add the bank to `psd2_catalog()` in `connectors/bank_directory.rs`.
+   Add the Swift display name/colour in `GiroCrabUI/Formatting.swift` and run `bash scripts/lint-connectors.sh`.
 3. **Test it with fake data.** Unit-test your parser with invented fixtures, then check the UI via
    `GIROCRAB_DEMO_SEED=1`. Run `cargo fmt`, `cargo clippy` and `cargo test -p girocrab-core`.
    Optional: `git config core.hooksPath .githooks` runs `cargo fmt --check` before every push, like CI does,
@@ -98,8 +99,7 @@ automatically get a monogram, never a logo.
 ## Testing with demo data
 
 `GIROCRAB_DEMO_SEED=1 cargo run` (or `cargo run -- --demo-seed`) opens a throw-away vault with
-5 fictional accounts, exactly 52 invented bookings and 2 ETF depot positions
-(`girocrab-core/src/demo.rs`). Change the data
+fictional accounts, invented bookings and demo depot positions (`girocrab-core/src/demo.rs`). Change the data
 there only with invented names and amounts.
 
 ## Mit KI-Unterstützung beitragen (In 4 Schritten zum PR) / Contributing with AI Agents
@@ -151,7 +151,7 @@ To avoid two people building the same thing (it has happened, e.g. account group
 
 ## Pull requests
 
-* Keep PRs focused; describe what and why.
+* **Keep PRs small and focused (one concern per PR):** Oversized PRs touching dozens of files or bundling multiple features and schema versions are automatically held for splitting. For larger features, split into (1) schema + core logic and (2) UI + tests.
 * CI runs `cargo fmt --check`, `cargo clippy`, `cargo test -p girocrab-core` and a Swift build.
 * Work through the checklist below. Tick what applies, write "n/a: <why>" for the rest.
 * By contributing you agree to license your work under GPL-3.0-or-later.
