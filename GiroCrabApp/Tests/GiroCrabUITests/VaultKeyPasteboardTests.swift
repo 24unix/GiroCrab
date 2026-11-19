@@ -12,9 +12,10 @@ final class VaultKeyPasteboardTests: XCTestCase {
     func testKeyIsNeverOfferedAsPlainText() {
         let pb = scratchPasteboard()
         defer { pb.releaseGlobally() }
-        VaultKeyManager.copyKeyToPasteboard("c2VjcmV0", pasteboard: pb)
+        let key = Data(repeating: 7, count: 32).base64EncodedString()
+        VaultKeyManager.copyKeyToPasteboard(key, pasteboard: pb)
         XCTAssertNil(pb.string(forType: .string), "the key must not be readable as text")
-        XCTAssertEqual(VaultKeyManager.keyFromPasteboard(pb), "c2VjcmV0")
+        XCTAssertEqual(VaultKeyManager.keyFromPasteboard(pb), key)
     }
 
     func testKeyIsMarkedConcealedForClipboardManagers() {
@@ -33,16 +34,29 @@ final class VaultKeyPasteboardTests: XCTestCase {
         XCTAssertFalse((pb.types?.map(\.rawValue) ?? []).contains("org.nspasteboard.TransientType"))
     }
 
-    func testPlainTextIsTakenOnlyWhenItIsAKey() {
+    func testPlainTextIsNeverTaken() {
+        let pb = scratchPasteboard()
+        defer { pb.releaseGlobally() }
+        pb.clearContents()
+        pb.setString(Data(repeating: 7, count: 32).base64EncodedString(), forType: .string)
+        XCTAssertNil(VaultKeyManager.keyFromPasteboard(pb), "a hash or token on the clipboard must not pass as the key")
+    }
+
+    func testInvalidKeyTypeIsRejected() {
+        let pb = scratchPasteboard()
+        defer { pb.releaseGlobally() }
+        VaultKeyManager.copyKeyToPasteboard("kein Schlüssel", pasteboard: pb)
+        XCTAssertNil(VaultKeyManager.keyFromPasteboard(pb))
+    }
+
+    /// A copy received via Universal Clipboard has no timer here, so reading it removes it.
+    func testReadingTheKeyClearsThePasteboard() {
         let pb = scratchPasteboard()
         defer { pb.releaseGlobally() }
         let key = Data(repeating: 7, count: 32).base64EncodedString()
-        pb.clearContents()
-        pb.setString(" \(key)\n", forType: .string)
+        VaultKeyManager.copyKeyToPasteboard(key, pasteboard: pb)
         XCTAssertEqual(VaultKeyManager.keyFromPasteboard(pb), key)
-        pb.clearContents()
-        pb.setString("Einkaufsliste", forType: .string)
-        XCTAssertNil(VaultKeyManager.keyFromPasteboard(pb))
+        XCTAssertNil(pb.data(forType: NSPasteboard.PasteboardType(VaultKeyManager.keyPasteboardType)))
     }
 
     func testNothingToReadFromAnEmptyPasteboard() {

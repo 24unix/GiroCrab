@@ -333,12 +333,10 @@ public final class VaultKeyManager: @unchecked Sendable {
     /// How long the copied key stays on the clipboard; Settings counts it down.
     public static let keyClipboardLifetime: TimeInterval = 60
 
-    /// The key from the pasteboard: GiroCrab's own type, else plain text that
-    /// parses as a key (typed into a note on the other device and copied there).
-    static func pastedKey(custom: String?, plain: String?) -> String? {
-        if let custom { return custom }
-        guard let plain, (try? parseKey(plain)) != nil else { return nil }
-        return plain.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// The pasted key, if `data` (the [`keyPasteboardType`] item) holds a valid one.
+    static func pastedKey(_ data: Data?) -> String? {
+        guard let text = data.flatMap({ String(data: $0, encoding: .utf8) }), (try? parseKey(text)) != nil else { return nil }
+        return text
     }
 
     #if os(macOS)
@@ -358,10 +356,13 @@ public final class VaultKeyManager: @unchecked Sendable {
         }
     }
 
-    /// The key copied by [`copyKeyToPasteboard`] (here or on another device), if the pasteboard still holds it.
+    /// The key copied by [`copyKeyToPasteboard`] (here or on another device), if the
+    /// pasteboard still holds it. Clears it then: a copy that came in via Universal
+    /// Clipboard has no 60 s timer on this device.
     @MainActor public static func keyFromPasteboard(_ pb: NSPasteboard = .general) -> String? {
-        pastedKey(custom: pb.data(forType: NSPasteboard.PasteboardType(keyPasteboardType)).flatMap { String(data: $0, encoding: .utf8) },
-                  plain: pb.string(forType: .string))
+        guard let key = pastedKey(pb.data(forType: NSPasteboard.PasteboardType(keyPasteboardType))) else { return nil }
+        pb.clearContents()
+        return key
     }
     #else
     /// Not `.localOnly`: the key has to reach the Mac via Universal Clipboard (#1138).
@@ -370,10 +371,11 @@ public final class VaultKeyManager: @unchecked Sendable {
                                       options: [.expirationDate: Date().addingTimeInterval(keyClipboardLifetime)])
     }
 
+    /// See the macOS variant: clears the pasteboard once the key is read.
     @MainActor public static func keyFromPasteboard() -> String? {
-        let pb = UIPasteboard.general
-        return pastedKey(custom: pb.data(forPasteboardType: keyPasteboardType).flatMap { String(data: $0, encoding: .utf8) },
-                         plain: pb.hasStrings ? pb.string : nil)
+        guard let key = pastedKey(UIPasteboard.general.data(forPasteboardType: keyPasteboardType)) else { return nil }
+        UIPasteboard.general.items = []
+        return key
     }
     #endif
 

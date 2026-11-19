@@ -642,6 +642,8 @@ struct ICloudSyncSection: View {
     /// When the copied key leaves the clipboard; the button counts down to it (#909).
     @State private var keyCopiedUntil: Date?
     @State private var confirmKeyCopy = false
+    /// Shown in the section: a toast would land in the main window, behind Settings on macOS.
+    @State private var keyCopyError: String?
 
     var body: some View {
         Section {
@@ -740,14 +742,17 @@ struct ICloudSyncSection: View {
                                 do {
                                     VaultKeyManager.copyKeyToPasteboard(try await VaultKeyManager.shared.exportKeyBase64())
                                     keyCopiedUntil = Date().addingTimeInterval(VaultKeyManager.keyClipboardLifetime)
+                                    keyCopyError = nil
+                                } catch VaultKeyManager.KeyError.cancelled {
+                                    keyCopyError = nil
                                 } catch {
-                                    model.toast = error.localizedDescription
+                                    keyCopyError = error.localizedDescription
                                 }
                             }
                         }
                         Button("Abbrechen", role: .cancel) {}
                     } message: {
-                        Text("Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text. Über die geteilte Zwischenablage (Handoff, gleicher Apple Account) übernehmen Sie ihn auf dem anderen Gerät mit „Schlüssel einfügen …“ › „Aus Zwischenablage einfügen“.")
+                        Text("Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text. Über die geteilte Zwischenablage (Handoff, gleicher Apple Account) übernehmen Sie ihn auf dem anderen Gerät mit „Schlüssel einfügen …“ › „Aus Zwischenablage einfügen“; danach wird er dort aus der Zwischenablage gelöscht.")
                     }
                     Button("Schlüssel einfügen …", systemImage: "square.and.pencil") { showKeySheet = true }
                 }
@@ -756,6 +761,10 @@ struct ICloudSyncSection: View {
                 // "Tresor-Schlüssel kopieren" opened the paste sheet too (#909).
                 .buttonStyle(.borderless)
                 #endif
+                if let keyCopyError {
+                    Label(keyCopyError, systemImage: "exclamationmark.triangle.fill")
+                        .appFont(.caption).foregroundStyle(Theme.negative)
+                }
                 if sync.keyMismatch {
                     Label("Der iCloud-Tresor nutzt einen anderen Schlüssel. Fügen Sie den Schlüssel von Ihrem anderen Gerät ein.", systemImage: "exclamationmark.triangle.fill")
                         .appFont(.caption).foregroundStyle(Theme.warning)
