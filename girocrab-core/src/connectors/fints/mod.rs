@@ -286,6 +286,12 @@ pub struct FinTsConnector {
     vop_with_tan: bool,
     /// Name-check result shown to the user, awaiting confirmation.
     vop_pending: Option<PayeeMatch>,
+    /// The bank answered the order with 3091 ("VOP-Ausführungsauftrag nicht
+    /// benötigt"): it has accepted the order already and issued its challenge
+    /// (the flag says whether that approval is a pending decoupled one). After
+    /// the user's confirmation this challenge continues; HKVPA and the order
+    /// are not sent again, a second order in the same dialog is rejected.
+    vop_resume: Option<(Challenge, bool)>,
     /// The last dialog init was rejected because the bank code does not
     /// belong to this login (9210, see [`blz_mismatch`]).
     blz_rejected: bool,
@@ -354,6 +360,7 @@ impl FinTsConnector {
             vop_id: None,
             vop_with_tan: false,
             vop_pending: None,
+            vop_resume: None,
             blz_rejected: false,
         }
     }
