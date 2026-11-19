@@ -23,6 +23,13 @@ Funktionsumfang der Oberfläche.
   Privatmodus verdeckt.
 - Startoption `--privacy[=all]` für Screenshots.
 
+## Korrekturen (Kern 0.8.6)
+
+- **„PostBox jetzt abrufen“** (comdirect, #838) ruft die PostBox jetzt wirklich ab; die Anforderung
+  ging bisher vor jedem Abruf verloren.
+- **Eigene FinTS-Produktregistrierung:** Das Feld in Einstellungen › Banken steht wie in der Mac-App
+  ohne Rahmen rechtsbündig in der Zeile; nach dem Eintragen gilt „Eigene Registrierung“.
+
 ## Korrekturen (Kern 0.8.0)
 
 - **Belegvorschau:** In „Belege & PostBox“ füllt das PDF die Breite der Vorschau und bleibt beim
