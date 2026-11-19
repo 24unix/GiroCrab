@@ -880,7 +880,7 @@ impl BankConnector for Fin4uConnector {
             ));
             out.accounts.push(account);
         }
-        out.state = Some(known.to_state());
+        out.state = known.to_state();
         Ok(out)
     }
 

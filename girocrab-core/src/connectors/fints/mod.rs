@@ -78,6 +78,7 @@ use super::{
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
+use crate::secret::SecretJson;
 
 const COUNTRY: &str = "280";
 
@@ -415,7 +416,7 @@ impl BankConnector for FinTsConnector {
                 message: tr("PIN ist leer").into(),
             });
         }
-        if let Ok(st) = serde_json::from_value::<FinTsState>(ctx.state.clone()) {
+        if let Ok(st) = ctx.state.decode::<FinTsState>() {
             self.st = st;
         }
         // comdirect: log in under the bank code found last time (the address
@@ -534,7 +535,7 @@ impl BankConnector for FinTsConnector {
                 }
                 Err(e) => return Err(e),
             };
-            result.state = Some(serde_json::to_value(&self.st)?);
+            result.state = Some(SecretJson::encode(&self.st)?);
             return Ok(result);
         }
         for (acc, upd) in &accounts {
@@ -795,7 +796,7 @@ impl BankConnector for FinTsConnector {
         if holds_listed && holds_complete {
             result.hold_prefix = Some(camt::HOLD_PREFIX.into());
         }
-        result.state = Some(serde_json::to_value(&self.st)?);
+        result.state = Some(SecretJson::encode(&self.st)?);
         Ok(result)
     }
 

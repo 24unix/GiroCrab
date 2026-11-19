@@ -31,8 +31,7 @@ pub(crate) fn settle_holds(
     accounts: &HashMap<String, i64>,
     data: &mut FetchResult,
 ) -> CoreResult<()> {
-    let mut state: State = serde_json::from_value(data.state.clone().unwrap_or(Value::Null))
-        .map_err(|_| invalid("Ungültiger Sitzungszustand."))?;
+    let mut state = decode_state(data.state.as_ref())?;
     let current: HashSet<_> = data
         .transactions
         .iter()
@@ -116,6 +115,6 @@ pub(crate) fn settle_holds(
     }
     state.target_account_id = None;
     state.import_aliases.clear();
-    data.state = Some(serialize(&state)?);
+    data.state = Some(encode_state(&state)?);
     Ok(())
 }

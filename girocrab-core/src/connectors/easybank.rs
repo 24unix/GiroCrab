@@ -8,10 +8,12 @@
 //! response), the `XSRF-TOKEN` cookie and an Application-Insights style
 //! `Request-Id` (`<trace uuid>.2.<uuid>`); other ids are rejected with
 //! `VINZ_PV_001`. Details: `docs/easybank-connector.md`.
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use reqwest::cookie::{CookieStore, Jar};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{
@@ -22,6 +24,7 @@ use crate::{
     error::{CoreError, CoreResult},
     i18n::tr,
     models::AccountKind,
+    secret::{SecretJson, SecretString},
 };
 
 const BASE: &str = "https://banking.easybank.de";
@@ -354,10 +357,11 @@ impl EasybankConnector {
         Ok(c)
     }
 
-    fn restore_cookies(&self, state: &Value) {
+    fn restore_cookies(&self, cookies: &[SecretString]) {
         let url = Self::url();
-        for c in state["cookies"].as_array().into_iter().flatten() {
-            if let Some(c) = c.as_str().filter(|c| valid_cookie(c)) {
+        for c in cookies {
+            let c = c.expose();
+            if valid_cookie(c) {
                 self.jar.add_cookie_str(
                     &format!("{c}; Domain=banking.easybank.de; Path=/; Secure; HttpOnly"),
                     &url,
@@ -520,7 +524,7 @@ impl BankConnector for EasybankConnector {
                 message: tr("Benutzername und Passwort erforderlich").into(),
             });
         }
-        self.restore_cookies(&ctx.state);
+        self.restore_cookies(&stored_state(&ctx.state).cookies);
         self.trace_id = uuid::Uuid::new_v4().to_string();
         let client = self.client()?;
         let html =
@@ -604,13 +608,13 @@ impl BankConnector for EasybankConnector {
         }
         // "Kontoauszüge abrufen" for one card: statements only, no bookings.
         if let Documents::StatementsOnly(card) = &ctx.documents {
-            let mut known = known_statements(&ctx.state);
+            let mut known = stored_state(&ctx.state).statements;
             let documents = self
                 .statements(std::slice::from_ref(card), &mut known, true)
                 .await?;
             return Ok(FetchResult {
                 documents,
-                state: Some(self.state(&known)),
+                state: self.state(known),
                 ..Default::default()
             });
         }
@@ -644,7 +648,7 @@ impl BankConnector for EasybankConnector {
         }
         let mut out = snapshot(&json!({ "version": 1, "cards": cards }).to_string())?;
         let due = ctx.documents.due_statements();
-        let mut known = known_statements(&ctx.state);
+        let mut known = stored_state(&ctx.state).statements;
         if !due.is_empty() {
             // Optional: a failed download never fails the sync. On failure the
             // dates of what was downloaded so far are dropped with the documents.
@@ -655,19 +659,33 @@ impl BankConnector for EasybankConnector {
                 known = fetched;
             }
         }
-        out.state = Some(self.state(&known));
+        out.state = self.state(known);
         Ok(out)
     }
 }
 
-/// Statement dates already downloaded per card (`card:<n>` → `[YYYY-MM-DD]`).
-fn known_statements(state: &Value) -> std::collections::HashMap<String, Vec<String>> {
-    serde_json::from_value(state["statements"].clone()).unwrap_or_default()
+/// Connection state saved between syncs (inside the encrypted vault).
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
+struct StoredState {
+    cookies: Vec<SecretString>,
+    /// Statement dates already downloaded per card (`card:<n>` → `[YYYY-MM-DD]`).
+    statements: HashMap<String, Vec<String>>,
+}
+
+fn stored_state(state: &SecretJson) -> StoredState {
+    state.decode().unwrap_or_default()
 }
 
 impl EasybankConnector {
-    fn state(&self, known: &std::collections::HashMap<String, Vec<String>>) -> Value {
-        json!({ "cookies": persistent_cookies(&self.cookie_header()), "statements": known })
+    fn state(&self, statements: HashMap<String, Vec<String>>) -> Option<SecretJson> {
+        let header = SecretString::from(self.cookie_header());
+        let cookies = persistent_cookies(header.expose());
+        SecretJson::encode(&StoredState {
+            cookies: cookies.into_iter().map(SecretString::from).collect(),
+            statements,
+        })
+        .ok()
     }
 
     /// Monthly statements (PDF) of the given cards. Opens the statements
@@ -676,7 +694,7 @@ impl EasybankConnector {
     async fn statements(
         &mut self,
         cards: &[String],
-        known: &mut std::collections::HashMap<String, Vec<String>>,
+        known: &mut HashMap<String, Vec<String>>,
         all: bool,
     ) -> CoreResult<Vec<crate::documents::RemoteDocument>> {
         let flow = self
@@ -918,14 +936,14 @@ mod tests {
     #[test]
     fn restore_cookies_rejects_attribute_and_header_injection() {
         let c = EasybankConnector::new();
-        c.restore_cookies(&json!({"cookies": [
+        let cookies = [
             "good=1",
             "evil=1; Domain=attacker.example",
             "crlf=1\r\nX-Injected: 1",
             "=novalue",
             "noequals",
-            42,
-        ]}));
+        ];
+        c.restore_cookies(&cookies.map(SecretString::from));
         let header = c.cookie_header();
         assert!(header.contains("good=1"), "{header}");
         for bad in ["evil", "crlf", "Injected", "noequals", "novalue"] {
@@ -1015,12 +1033,11 @@ mod tests {
             ("kontoauszug", "2026-11-10")
         );
         assert_eq!(d.account_ref, "card:1234567890");
-        let state = json!({"cookies": [], "statements": {"card:1234567890": ["2026-10-10"]}});
-        assert_eq!(
-            known_statements(&state)["card:1234567890"],
-            vec!["2026-10-10".to_string()]
-        );
-        assert!(known_statements(&json!({})).is_empty());
+        let state = json!({"cookies": ["c=1"], "statements": {"card:1234567890": ["2026-10-10"]}});
+        let stored = stored_state(&state.clone().into());
+        assert_eq!(stored.statements["card:1234567890"], ["2026-10-10"]);
+        assert_eq!(serde_json::to_value(&stored).unwrap(), state);
+        assert!(stored_state(&SecretJson::default()).statements.is_empty());
     }
 
     #[test]

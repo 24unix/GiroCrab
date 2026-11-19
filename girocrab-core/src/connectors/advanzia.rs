@@ -9,7 +9,8 @@ use crate::{
     error::{CoreError, CoreResult},
     i18n::tr,
     models::{AccountKind, ConnectorKind},
-    vault::Vault,
+    secret::SecretJson,
+    vault::{connections::store_state, Vault},
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -104,7 +105,7 @@ struct State {
     import_aliases: HashMap<String, String>,
 }
 fn connection(db: &Connection, id: i64) -> CoreResult<(String, State)> {
-    let row: Option<(String, String, String)> = db.query_row(
+    let row: Option<(String, String, SecretJson)> = db.query_row(
         "SELECT connector,display_name,state_json FROM bank_connections WHERE id=?1 AND deleted_ms IS NULL",
         [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
     let Some((kind, name, raw)) = row else {
@@ -113,10 +114,11 @@ fn connection(db: &Connection, id: i64) -> CoreResult<(String, State)> {
     if kind != "advanzia" {
         return Err(invalid("Falscher Bankzugang."));
     }
-    let state = if raw == "{}" || raw == "null" || raw.is_empty() {
+    let state = if raw.is_empty() {
         State::default()
     } else {
-        serde_json::from_str(&raw).map_err(|_| invalid("Ungültiger Sitzungszustand."))?
+        raw.decode()
+            .map_err(|_| invalid("Ungültiger Sitzungszustand."))?
     };
     Ok((name, state))
 }
@@ -129,15 +131,20 @@ fn login_scope(db: &Connection, id: i64) -> CoreResult<String> {
     )?;
     Ok(hex::encode(Sha256::digest(login.as_bytes())))
 }
-fn serialize(state: &State) -> CoreResult<Value> {
-    serde_json::to_value(state).map_err(|_| invalid("Ungültiger Sitzungszustand."))
+fn encode_state(state: &State) -> CoreResult<SecretJson> {
+    SecretJson::encode(state).map_err(|_| invalid("Ungültiger Sitzungszustand."))
+}
+
+fn decode_state(state: Option<&SecretJson>) -> CoreResult<State> {
+    state
+        .and_then(|s| s.decode().ok())
+        .ok_or_else(|| invalid("Ungültiger Sitzungszustand."))
 }
 
 /// Runs inside store_fetch's transaction, before any adoption or account selection.
 pub(crate) fn prepare_import(db: &Connection, id: i64, data: &mut FetchResult) -> CoreResult<()> {
     let (_, stored) = connection(db, id)?;
-    let next: State = serde_json::from_value(data.state.clone().unwrap_or(Value::Null))
-        .map_err(|_| invalid("Ungültiger Sitzungszustand."))?;
+    let next = decode_state(data.state.as_ref())?;
     if stored.login_scope != login_scope(db, id)?
         || stored.profile_id.is_empty()
         || stored.profile_id != next.profile_id
@@ -206,10 +213,7 @@ impl Vault {
         if state.profile_id.is_empty() || state.login_scope != scope {
             state.login_scope = scope;
             state.profile_id = uuid::Uuid::new_v4().to_string();
-            db.execute(
-                "UPDATE bank_connections SET state_json=?1 WHERE id=?2",
-                params![serialize(&state)?.to_string(), connection_id],
-            )?;
+            store_state(&db, connection_id, &encode_state(&state)?)?;
         }
         let has_account = db.query_row(
             "SELECT EXISTS(SELECT 1 FROM accounts WHERE connection_id=?1)",
@@ -276,7 +280,7 @@ impl Vault {
             }],
             transactions: entries.into_iter().map(|e| e.remote(&reference)).collect(),
             balances_reported: vec![reference],
-            state: Some(serialize(&state)?),
+            state: Some(encode_state(&state)?),
             // A truncated transaction window is NOT a complete open-hold inventory.
             hold_prefix: None,
             ..Default::default()

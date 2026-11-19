@@ -6,6 +6,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::{key_of_connection, twins};
 use crate::error::{CoreError, CoreResult};
+use crate::secret::SecretJson;
 
 /// Joins the life of a connection or account: the newest `created_ms` and
 /// the newest deletion (`extra`: the deletion of its connection) count, and
@@ -88,7 +89,7 @@ pub(crate) fn merge_connections(conn: &Connection) -> CoreResult<HashMap<i64, i6
         String,
         String,
         String,
-        String,
+        SecretJson,
         Option<i64>,
         i64,
         Option<i64>,
@@ -148,7 +149,7 @@ pub(crate) fn merge_connections(conn: &Connection) -> CoreResult<HashMap<i64, i6
                         bank,
                         sym,
                         // a deleted connection keeps no bank session
-                        if deleted.is_some() { "{}".to_string() } else { state },
+                        if deleted.is_some() { SecretJson::from_text("{}".into()) } else { state },
                         last,
                         created,
                         deleted

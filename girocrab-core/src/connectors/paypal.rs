@@ -14,6 +14,7 @@
 
 use async_trait::async_trait;
 use jiff::civil::Date;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::paypal_nvp::{NvpClient, NvpCredentials};
@@ -24,7 +25,7 @@ use super::{
 use crate::error::{CoreError, CoreResult};
 use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
-use crate::secret::SecretString;
+use crate::secret::{SecretJson, SecretString};
 
 pub struct PayPalConnector {
     client: Option<reqwest::Client>,
@@ -33,8 +34,13 @@ pub struct PayPalConnector {
     nvp: Option<NvpClient>,
 }
 
-/// Connector state key: ids whose GetTransactionDetails were already looked up.
-const DETAILS_DONE_KEY: &str = "nvp_details_done";
+/// Connector state of the classic NVP API.
+#[derive(Default, Serialize, Deserialize)]
+struct NvpState {
+    /// Ids whose GetTransactionDetails were already looked up.
+    #[serde(default)]
+    nvp_details_done: Vec<String>,
+}
 
 /// True when the classic NVP API (API signature) is configured.
 pub(crate) fn nvp_configured(settings: &std::collections::HashMap<String, SecretString>) -> bool {
@@ -150,23 +156,12 @@ impl BankConnector for PayPalConnector {
             out.hold_prefix = Some(super::paypal_nvp::HOLD_PREFIX.into());
             retain_known(&mut out);
             // Purpose from GetTransactionDetails, once per booking (ids kept in the state).
-            let mut done: Vec<String> = ctx.state[DETAILS_DONE_KEY]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-            nvp.fill_details(&mut out.transactions, &mut done).await;
-            let keep_from = done.len().saturating_sub(super::paypal_nvp::MAX_DONE_IDS);
-            let mut state = if ctx.state.is_object() {
-                ctx.state.clone()
-            } else {
-                serde_json::json!({})
-            };
-            state[DETAILS_DONE_KEY] = serde_json::json!(done[keep_from..]);
-            out.state = Some(state);
+            let mut state: NvpState = ctx.state.decode().unwrap_or_default();
+            nvp.fill_details(&mut out.transactions, &mut state.nvp_details_done)
+                .await;
+            let done = &mut state.nvp_details_done;
+            done.drain(..done.len().saturating_sub(super::paypal_nvp::MAX_DONE_IDS));
+            out.state = SecretJson::encode(&state).ok();
             return Ok(out);
         }
         let balances = self.get("/v1/reporting/balances?currency_code=ALL").await?;
