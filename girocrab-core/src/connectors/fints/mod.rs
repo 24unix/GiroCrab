@@ -725,7 +725,8 @@ impl BankConnector for FinTsConnector {
                     }
                 }
             }
-            // comdirect names no counterparty for Visa debit card payments (#1135)
+            // comdirect names no counterparty for Visa debit card payments (#1135);
+            // the ids are set by now, so content ids stay as stored
             if is_comdirect(&self.blz) {
                 txs.iter_mut()
                     .for_each(super::comdirect::fill_card_merchant);
