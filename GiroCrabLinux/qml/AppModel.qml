@@ -1807,7 +1807,6 @@ QtObject {
         // would hand this login's PIN to another bank.
         if (statementsAccountID !== null && (!accountsByID[statementsAccountID] || accountsByID[statementsAccountID].connection_id !== connection.id))
             statementsAccountID = null
-            postboxConnectionID = null
         const statementsFor = statementsAccountID
         // "PostBox jetzt abrufen" (#838) only for exactly this login
         if (postboxConnectionID !== connection.id) postboxConnectionID = null
