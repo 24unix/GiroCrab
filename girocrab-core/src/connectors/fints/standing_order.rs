@@ -109,10 +109,10 @@ impl StandingRules {
 /// The limits stored in a FinTS connection's state for creating or changing
 /// (`None` = the bank stated none, or the state is not FinTS).
 pub(crate) fn limits_from_state(
-    state: &serde_json::Value,
+    state: &crate::secret::SecretJson,
     action: StandingOrderAction,
 ) -> Option<crate::models::StandingOrderLimits> {
-    let st: super::FinTsState = serde_json::from_value(state.clone()).ok()?;
+    let st: super::FinTsState = state.decode().ok()?;
     let rules = match action {
         StandingOrderAction::Create => st.standing_params.create,
         StandingOrderAction::Change => st.standing_params.change,

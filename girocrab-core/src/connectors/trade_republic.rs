@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use reqwest::cookie::{CookieStore, Jar};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ORIGIN, REFERER, SET_COOKIE, USER_AGENT};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
@@ -40,6 +41,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, Holding};
 use crate::money::json_number_to_cents;
+use crate::secret::{SecretJson, SecretString};
 
 const API: &str = "https://api.traderepublic.com";
 const WS: &str = "wss://api.traderepublic.com";
@@ -1014,17 +1016,36 @@ where
     Some(holdings)
 }
 
+/// Connection state saved between syncs (inside the encrypted vault).
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
+struct StoredSession {
+    /// "tr_session=…; tr_refresh=…"
+    cookies: SecretString,
+    session_token: SecretString,
+    phone: String,
+    saved_unix: i64,
+    /// Timeline item ids whose documents were already downloaded, oldest first.
+    doc_items: Vec<String>,
+}
+
+/// Document ids kept in the state; the oldest are dropped first.
+const MAX_DOC_ITEMS: usize = 2000;
+
+/// Body of the PIN login; borrowed so the PIN is not copied before sending.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoginRequest<'a> {
+    phone_number: &'a str,
+    pin: &'a str,
+}
+
 pub struct TradeRepublicConnector {
     jar: Arc<Jar>,
     client: Option<reqwest::Client>,
     process_id: String,
-    phone: String,
-    /// "tr_session=…; tr_refresh=…"
-    cookies: String,
-    session_token: String,
+    session: StoredSession,
     challenge: Option<Challenge>,
-    /// Timeline item ids whose documents were already downloaded.
-    known_doc_items: Vec<String>,
 }
 
 impl TradeRepublicConnector {
@@ -1033,11 +1054,8 @@ impl TradeRepublicConnector {
             jar: Arc::new(Jar::default()),
             client: None,
             process_id: String::new(),
-            phone: String::new(),
-            cookies: String::new(),
-            session_token: String::new(),
+            session: StoredSession::default(),
             challenge: None,
-            known_doc_items: Vec::new(),
         }
     }
 
@@ -1117,15 +1135,12 @@ impl TradeRepublicConnector {
         Phase::Challenge(c)
     }
 
-    fn state(&self) -> Value {
-        let keep: Vec<&String> = self.known_doc_items.iter().rev().take(2000).collect();
-        json!({
-            "cookies": self.cookies,
-            "session_token": self.session_token,
-            "phone": self.phone,
-            "saved_unix": jiff::Timestamp::now().as_second(),
-            "doc_items": keep,
-        })
+    fn state(&mut self) -> Option<SecretJson> {
+        let session = &mut self.session;
+        session.saved_unix = jiff::Timestamp::now().as_second();
+        let old = session.doc_items.len().saturating_sub(MAX_DOC_ITEMS);
+        session.doc_items.drain(..old);
+        SecretJson::encode(session).ok()
     }
 
     /// Tries to refresh a stored session. Ok(true) = usable.
@@ -1133,12 +1148,12 @@ impl TradeRepublicConnector {
         let client = self.client()?;
         let resp = client
             .get(format!("{API}/api/v1/auth/web/session"))
-            .header("Cookie", self.cookies.clone())
+            .header("Cookie", self.session.cookies.expose())
             .send()
             .await?;
         let (status, set, _body) = Self::read(resp).await;
         if (200..300).contains(&status) {
-            self.cookies = merge_cookies(&self.cookies, &set);
+            self.session.cookies = merge_cookies(self.session.cookies.expose(), &set).into();
             return Ok(true);
         }
         // 401/403: expired. Anything else (endpoint moved …): try the WebSocket anyway.
@@ -1174,25 +1189,10 @@ impl Default for TradeRepublicConnector {
 #[async_trait]
 impl BankConnector for TradeRepublicConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
-        self.phone = normalize_phone(&ctx.login_name);
-        self.cookies = ctx.state["cookies"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
-        self.session_token = ctx.state["session_token"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
-        self.known_doc_items = ctx.state["doc_items"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
+        self.session = ctx.state.decode().unwrap_or_default();
+        self.session.phone = normalize_phone(&ctx.login_name);
         // 1) Stored browser/API session (tr_session) -> no PIN, no 2FA.
-        let had_session = self.cookies.contains("tr_session=");
+        let had_session = self.session.cookies.expose().contains("tr_session=");
         if had_session && self.refresh_session().await? {
             return Ok(Phase::Ready);
         }
@@ -1201,13 +1201,13 @@ impl BankConnector for TradeRepublicConnector {
         let expired = had_session;
         // 2) Direct login only with a WAF token harvested by the browser
         //    (aws-waf-token cookie); a bare request gets HTTP 405 from AWS WAF.
-        let waf = cookie_value(&self.cookies, "aws-waf-token");
+        let waf = cookie_value(self.session.cookies.expose(), "aws-waf-token");
         if waf.is_none() {
             return Err(CoreError::BrowserLoginRequired {
                 message: browser_login_message(expired).into(),
             });
         }
-        if self.phone.len() < 8 {
+        if self.session.phone.len() < 8 {
             return Err(CoreError::InvalidInput { message: trf("Telefonnummer fehlt oder ist ungültig („{0}“). Bitte z. B. +4915112345678 eintragen.", &[&ctx.login_name]) });
         }
         if ctx.secret.is_empty() {
@@ -1216,18 +1216,20 @@ impl BankConnector for TradeRepublicConnector {
             });
         }
         let client = self.client()?;
-        let body = json!({"phoneNumber": self.phone, "pin": ctx.secret.expose()});
         let mut last = (0u16, String::new());
         for version in ["v1", "v2"] {
             let resp = client
                 .post(format!("{API}/api/{version}/auth/web/login"))
                 .header("x-aws-waf-token", waf.clone().unwrap_or_default())
-                .header("Cookie", self.cookies.clone())
-                .json(&body)
+                .header("Cookie", self.session.cookies.expose())
+                .json(&LoginRequest {
+                    phone_number: &self.session.phone,
+                    pin: ctx.secret.expose(),
+                })
                 .send()
                 .await?;
             let (status, set, text) = Self::read(resp).await;
-            self.cookies = merge_cookies(&self.cookies, &set);
+            self.session.cookies = merge_cookies(self.session.cookies.expose(), &set).into();
             if (200..300).contains(&status) {
                 let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
                 self.process_id = v["processId"].as_str().unwrap_or_default().to_string();
@@ -1306,21 +1308,23 @@ impl BankConnector for TradeRepublicConnector {
             return Err(Self::http_error(tr("2FA-Bestätigung"), status, &text));
         }
         // HTTP 200 with an EMPTY body (or {}) is normal: the session comes as Set-Cookie.
-        self.cookies = merge_cookies(&self.cookies, &set);
+        self.session.cookies = merge_cookies(self.session.cookies.expose(), &set).into();
         if let Ok(v) = serde_json::from_str::<Value>(&text) {
             if let Some(t) = v["sessionToken"].as_str() {
-                self.session_token = t.to_string();
+                self.session.session_token = t.into();
             }
         }
-        if self.cookies.is_empty() {
+        if self.session.cookies.is_empty() {
             let url: url::Url = API.parse().map_err(|e| CoreError::Protocol {
                 message: format!("{e}"),
             })?;
             if let Some(h) = self.jar.cookies(&url) {
-                self.cookies = h.to_str().unwrap_or_default().to_string();
+                self.session.cookies = h.to_str().unwrap_or_default().into();
             }
         }
-        if !self.cookies.contains("tr_session") && self.session_token.is_empty() {
+        if !self.session.cookies.expose().contains("tr_session")
+            && self.session.session_token.is_empty()
+        {
             return Err(CoreError::Authentication {
                 message: trf(
                     "Trade Republic hat keine Sitzung (tr_session) gesetzt. HTTP {0}, Antwort: {1}",
@@ -1335,10 +1339,10 @@ impl BankConnector for TradeRepublicConnector {
         let mut req = WS.into_client_request().map_err(Self::ws_err)?;
         {
             let h = req.headers_mut();
-            if !self.cookies.is_empty() {
+            if !self.session.cookies.is_empty() {
                 h.insert(
                     "Cookie",
-                    HeaderValue::from_str(&self.cookies).map_err(Self::ws_err)?,
+                    HeaderValue::from_str(self.session.cookies.expose()).map_err(Self::ws_err)?,
                 );
             }
             h.insert("Origin", HeaderValue::from_static(APP_ORIGIN));
@@ -1392,11 +1396,12 @@ impl BankConnector for TradeRepublicConnector {
             }
         }
 
-        let token = self.session_token.clone();
+        let session_token = self.session.session_token.clone();
+        let token = session_token.expose();
         let mut out = FetchResult::default();
-        let cash = match request(&mut ws, 1, json!({"type": "cash"}), &token).await {
+        let cash = match request(&mut ws, 1, json!({"type": "cash"}), token).await {
             Ok(v) => v,
-            Err(_) => request(&mut ws, 3, json!({"type": "availableCash"}), &token)
+            Err(_) => request(&mut ws, 3, json!({"type": "availableCash"}), token)
                 .await
                 .unwrap_or(Value::Null),
         };
@@ -1429,7 +1434,7 @@ impl BankConnector for TradeRepublicConnector {
             name: "Verrechnungskonto".into(),
             owner: String::new(),
             iban,
-            account_number: self.phone.clone(),
+            account_number: self.session.phone.clone(),
             currency: "EUR".into(),
             kind: AccountKind::Checking,
             balance_cents: balance,
@@ -1451,7 +1456,7 @@ impl BankConnector for TradeRepublicConnector {
             if let Some(c) = &cursor {
                 payload["after"] = json!(c);
             }
-            let page = request(&mut ws, sub_id, payload, &token).await?;
+            let page = request(&mut ws, sub_id, payload, token).await?;
             sub_id += 2;
             for item in page["items"].as_array().cloned().unwrap_or_default() {
                 let date: String = item["timestamp"]
@@ -1476,7 +1481,7 @@ impl BankConnector for TradeRepublicConnector {
                 )
                 .to_lowercase();
                 if !item_id.is_empty()
-                    && !self.known_doc_items.contains(&item_id)
+                    && !self.session.doc_items.contains(&item_id)
                     && [
                         "sparplan",
                         "savings_plan",
@@ -1561,7 +1566,7 @@ impl BankConnector for TradeRepublicConnector {
                 &mut ws,
                 sub_id,
                 json!({"type": "timelineDetailV2", "id": item_id}),
-                &token,
+                token,
             )
             .await
             else {
@@ -1594,7 +1599,7 @@ impl BankConnector for TradeRepublicConnector {
                     // Cookie header on cross-host redirects.)
                     let mut req = client.get(parsed.clone());
                     if is_trade_republic_host(&parsed) {
-                        req = req.header("Cookie", self.cookies.clone());
+                        req = req.header("Cookie", self.session.cookies.expose());
                     }
                     let Ok(resp) = req.send().await else {
                         docs_incomplete = true;
@@ -1640,7 +1645,7 @@ impl BankConnector for TradeRepublicConnector {
                     });
                 }
             }
-            self.known_doc_items.push(item_id);
+            self.session.doc_items.push(item_id);
         }
         out.documents_incomplete = docs_incomplete;
         // --- Wertpapierseite (#314): units, price, fees and taxes of the newest
@@ -1655,7 +1660,7 @@ impl BankConnector for TradeRepublicConnector {
                         &mut ws,
                         sub_id,
                         json!({"type": "timelineDetailV2", "id": row.id}),
-                        &token,
+                        token,
                     )
                     .await
                     {
@@ -1677,7 +1682,7 @@ impl BankConnector for TradeRepublicConnector {
                 trade_names.entry(isin).or_insert_with(|| row.title.clone());
             }
         }
-        let portfolio = fetch_portfolio(&mut ws, &mut sub_id, &token, &trade_names).await;
+        let portfolio = fetch_portfolio(&mut ws, &mut sub_id, token, &trade_names).await;
         let has_depot = portfolio.as_ref().is_some_and(|h| !h.is_empty())
             || !out.security_transactions.is_empty()
             || ctx.since_by_account.contains_key(DEPOT_REF);
@@ -1709,7 +1714,7 @@ impl BankConnector for TradeRepublicConnector {
             });
         }
         let _ = ws.close(None).await;
-        out.state = Some(self.state());
+        out.state = self.state();
         Ok(out)
     }
 }
@@ -1727,6 +1732,39 @@ fn is_trade_republic_host(url: &reqwest::Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stored_session_keeps_its_json_shape() {
+        let stored = json!({
+            "cookies": "tr_session=abc", "session_token": "st", "phone": "+491701234567",
+            "saved_unix": 7, "doc_items": ["a", "b"]
+        });
+        let session: StoredSession = SecretJson::from(stored.clone()).decode().unwrap();
+        assert_eq!(session.cookies.expose(), "tr_session=abc");
+        assert_eq!(serde_json::to_value(&session).unwrap(), stored);
+    }
+
+    #[test]
+    fn login_request_uses_the_api_field_names() {
+        let body = LoginRequest {
+            phone_number: "+491701234567",
+            pin: "1234",
+        };
+        assert_eq!(
+            serde_json::to_value(&body).unwrap(),
+            json!({"phoneNumber": "+491701234567", "pin": "1234"})
+        );
+    }
+
+    #[test]
+    fn saved_state_keeps_the_newest_doc_items_in_order() {
+        let mut c = TradeRepublicConnector::new();
+        c.session.doc_items = (0..=MAX_DOC_ITEMS).map(|i| i.to_string()).collect();
+        let saved: StoredSession = c.state().unwrap().decode().unwrap();
+        assert_eq!(saved.doc_items.len(), MAX_DOC_ITEMS);
+        assert_eq!(saved.doc_items.first().unwrap(), "1");
+        assert_eq!(saved.doc_items.last().unwrap(), &MAX_DOC_ITEMS.to_string());
+    }
 
     fn detail(extra_rows: serde_json::Value) -> Value {
         json!({"sections": [

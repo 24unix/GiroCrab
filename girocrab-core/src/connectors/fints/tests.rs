@@ -36,7 +36,7 @@ fn test_ctx() -> ConnectContext {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        state: serde_json::json!({}),
+        state: serde_json::json!({}).into(),
         since: "2025-01-01".into(),
         ..Default::default()
     }
@@ -162,7 +162,7 @@ async fn comdirect_login_tries_its_other_bank_codes_and_keeps_the_one_that_works
     ] {
         ctx.settings.insert(k.into(), SecretString::new(v.into()));
     }
-    ctx.state = persisted;
+    ctx.state = persisted.into();
     assert!(matches!(c2.begin(&ctx).await.unwrap(), Phase::Ready));
     assert_eq!(c2.blz, "20041111");
     assert_eq!(seen2.lock().unwrap().len(), 1);
@@ -339,7 +339,7 @@ fn message_has_correct_length_and_structure() {
         connection_id: 1,
         login_name: "user:1".into(),
         secret: SecretString::new("12345".into()),
-        state: serde_json::json!({}),
+        state: serde_json::json!({}).into(),
         since: "2025-01-01".into(),
         ..Default::default()
     };
@@ -968,7 +968,7 @@ fn standing_order_limits_come_from_the_stored_state() {
                 HICDNS:13:1:3+1+1+0+1:2:90:J:J:J:J:J:J:J:J:J:010612:010515:00:135'";
     let mut c = FinTsConnector::new("20041111");
     c.learn_bpd(&reply(raw));
-    let state = serde_json::to_value(&c.st).unwrap();
+    let state = crate::secret::SecretJson::encode(&c.st).unwrap();
     let create = standing_limits_from_state(&state, A::Create).unwrap();
     assert_eq!((create.min_days_ahead, create.max_days_ahead), (2, 90));
     assert_eq!(create.months, [1, 2, 3]);
@@ -980,7 +980,7 @@ fn standing_order_limits_come_from_the_stored_state() {
     assert_eq!(change.weekdays, [1, 3, 5]);
     assert!(standing_limits_from_state(&state, A::Delete).is_none());
     // Not a FinTS state, or none of the parameters seen yet.
-    assert!(standing_limits_from_state(&serde_json::json!({}), A::Create).is_none());
+    assert!(standing_limits_from_state(&serde_json::json!({}).into(), A::Create).is_none());
 }
 
 #[test]

@@ -54,14 +54,21 @@ impl From<CoreError> for ApiError {
     }
 }
 
+/// Stored token sent as `X-Bunq-Client-Authentication`.
+#[derive(Clone, Copy)]
+pub(super) enum Auth {
+    None,
+    Installation,
+    Session,
+}
+
 impl BunqConnector {
     pub(super) fn signing_key(&self) -> CoreResult<SigningKey<Sha256>> {
-        let key = PrivateKey::from_pkcs8_pem(&self.state.private_key_pem)
+        let key = PrivateKey::from_pkcs8_pem(self.state.private_key_pem.expose())
             .map_err(|e| CoreError::protocol(format!("bunq key: {e}")))?;
         Ok(SigningKey::<Sha256>::new(key))
     }
 
-    /// One API call. `auth` = token for `X-Bunq-Client-Authentication`.
     /// One API call returning the raw body and its content type.
     /// `body` = (bytes, content type); it is signed as sent.
     pub(super) async fn send(
@@ -70,7 +77,7 @@ impl BunqConnector {
         path: &str,
         body: Option<(Vec<u8>, &str)>,
         extra_headers: &[(&str, &str)],
-        auth: Option<&str>,
+        auth: Auth,
     ) -> ApiResult<(Vec<u8>, String)> {
         // Paths can come from bunq (pagination); the session token must
         // never leave the bunq host, so only plain API paths are sent.
@@ -103,8 +110,13 @@ impl BunqConnector {
             for (k, v) in extra_headers {
                 req = req.header(*k, *v);
             }
-            if let Some(token) = auth {
-                req = req.header("X-Bunq-Client-Authentication", token);
+            let token = match auth {
+                Auth::None => None,
+                Auth::Installation => Some(&self.state.installation_token),
+                Auth::Session => Some(&self.state.session_token),
+            };
+            if let Some(token) = token {
+                req = req.header("X-Bunq-Client-Authentication", token.expose());
             }
             if let Some((bytes, content_type)) = &body {
                 // Sign exactly the bytes we send.
@@ -152,13 +164,13 @@ impl BunqConnector {
         }
     }
 
-    /// JSON API call. `auth` = token for `X-Bunq-Client-Authentication`.
+    /// JSON API call.
     pub(super) async fn call(
         &mut self,
         method: reqwest::Method,
         path: &str,
         body: Option<&Value>,
-        auth: Option<&str>,
+        auth: Auth,
     ) -> ApiResult<Value> {
         let body = match body {
             Some(b) => Some((
@@ -173,8 +185,7 @@ impl BunqConnector {
 
     /// Raw GET with the session token (attachments, statement files).
     pub(super) async fn get_raw(&mut self, path: &str) -> ApiResult<(Vec<u8>, String)> {
-        let token = self.state.session_token.clone();
-        self.send(reqwest::Method::GET, path, None, &[], Some(&token))
+        self.send(reqwest::Method::GET, path, None, &[], Auth::Session)
             .await
     }
 
@@ -198,8 +209,7 @@ impl BunqConnector {
     }
 
     pub(super) async fn get(&mut self, path: &str) -> ApiResult<Value> {
-        let token = self.state.session_token.clone();
-        self.call(reqwest::Method::GET, path, None, Some(&token))
+        self.call(reqwest::Method::GET, path, None, Auth::Session)
             .await
     }
 
@@ -219,7 +229,8 @@ impl BunqConnector {
             private_key_pem: key
                 .to_pkcs8_pem(LineEnding::LF)
                 .map_err(|e| CoreError::protocol(e.to_string()))?
-                .to_string(),
+                .to_string()
+                .into(),
             ..Default::default()
         };
         let v = self
@@ -227,14 +238,15 @@ impl BunqConnector {
                 reqwest::Method::POST,
                 "/v1/installation",
                 Some(&json!({ "client_public_key": public_pem })),
-                None,
+                Auth::None,
             )
             .await
             .map_err(ApiError::into_core)?;
         self.state.installation_token = find(&v, "Token")["token"]
             .as_str()
             .unwrap_or_default()
-            .to_string();
+            .to_string()
+            .into();
         self.state.server_public_key = find(&v, "ServerPublicKey")["server_public_key"]
             .as_str()
             .unwrap_or_default()
@@ -248,7 +260,6 @@ impl BunqConnector {
     /// POST /device-server. Asks for "any IP" first so the Mac keeps working
     /// when its address changes; keys bound to one IP fall back to that IP.
     pub(super) async fn register_device(&mut self, api_key: &str) -> CoreResult<()> {
-        let token = self.state.installation_token.clone();
         let mut body = json!({
             "description": "GiroCrab",
             "secret": api_key,
@@ -259,7 +270,7 @@ impl BunqConnector {
                 reqwest::Method::POST,
                 "/v1/device-server",
                 Some(&body),
-                Some(&token),
+                Auth::Installation,
             )
             .await;
         if let Err(e) = first {
@@ -271,7 +282,7 @@ impl BunqConnector {
                 reqwest::Method::POST,
                 "/v1/device-server",
                 Some(&body),
-                Some(&token),
+                Auth::Installation,
             )
             .await
             .map_err(ApiError::into_core)?;
@@ -282,13 +293,12 @@ impl BunqConnector {
 
     /// POST /session-server -> session token + user id.
     pub(super) async fn open_session(&mut self, api_key: &str) -> ApiResult<()> {
-        let token = self.state.installation_token.clone();
         let v = self
             .call(
                 reqwest::Method::POST,
                 "/v1/session-server",
                 Some(&json!({ "secret": api_key })),
-                Some(&token),
+                Auth::Installation,
             )
             .await?;
         let session = find(&v, "Token")["token"].as_str().unwrap_or_default();
@@ -304,7 +314,7 @@ impl BunqConnector {
         if session.is_empty() || user_id == 0 {
             return Err(CoreError::protocol("bunq session: missing token or user").into());
         }
-        self.state.session_token = session.to_string();
+        self.state.session_token = session.into();
         self.state.user_id = user_id;
         Ok(())
     }

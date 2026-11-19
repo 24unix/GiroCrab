@@ -13,7 +13,7 @@ use crate::importers::portal_import::{CARD_BOOKING_TEXT, CARD_SEPARATOR};
 use crate::models::{
     AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
 };
-use crate::secret::SecretString;
+use crate::secret::{SecretJson, SecretString};
 use crate::vault::Vault;
 
 use super::*;
@@ -936,11 +936,8 @@ pub(crate) fn store_fetch(
             super::advanzia::settle_holds(&tx, &account_ids, &mut data)?;
         }
         let categorized = Vault::apply_rules_inner(&tx, true)?;
-        if let Some(state) = data.state {
-            tx.execute(
-                "UPDATE bank_connections SET state_json = ?1 WHERE id = ?2",
-                params![state.to_string(), connection_id],
-            )?;
+        if let Some(state) = &data.state {
+            crate::vault::connections::store_state(&tx, connection_id, state)?;
         }
         tx.execute(
             "UPDATE bank_connections SET last_sync_unix = strftime('%s','now') WHERE id = ?1",
@@ -1382,9 +1379,9 @@ impl Vault {
             secret
         };
         let secret = SecretString::new(secret);
-        let (kind, key_str, login, state_json, ctx_settings, since, skipped, demo) = {
+        let (kind, key_str, login, state, ctx_settings, since, skipped, demo) = {
             let db = self.db()?;
-            let (kind, login, state): (String, String, String) = db
+            let (kind, login, state): (String, String, SecretJson) = db
                 .query_row(
                     "SELECT connector, login_name, state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                     [connection_id],
@@ -1510,7 +1507,7 @@ impl Vault {
             login_name: login,
             secret,
             settings: ctx_settings,
-            state: serde_json::from_str(&state_json).unwrap_or(serde_json::json!({})),
+            state,
             since,
             since_by_account,
             documents,
