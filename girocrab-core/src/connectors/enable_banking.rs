@@ -873,8 +873,10 @@ impl EnableBankingConnector {
                 .as_str()
                 .filter(|s| !s.is_empty())
                 .map(|s| Some(s.to_string()));
-            let items = match page["transactions"].take() {
-                Value::Array(items) => items,
+            // `get_mut`, not `page["transactions"]`: `IndexMut` panics on a
+            // non-object body (array, string)
+            let items = match page.get_mut("transactions").map(Value::take) {
+                Some(Value::Array(items)) => items,
                 _ => Vec::new(),
             };
             Ok((items, next))
