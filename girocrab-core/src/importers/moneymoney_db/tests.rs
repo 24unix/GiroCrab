@@ -1060,6 +1060,59 @@ fn comdirect_can_be_connected_via_fints() {
     assert_eq!(giro.connection_id, Some(fints.id));
 }
 
+/// #1377: the FinTS endpoint URL MoneyMoney stores in `banks.server` is
+/// taken over to `fints.url.<blz>`. Without this the connection settings
+/// show an empty URL field and the user has to copy it from the DK list by
+/// hand. The server URL wins over GiroCrab's built-in directory entry, so a
+/// bank that moved to a new host keeps the MoneyMoney address.
+#[test]
+fn fints_server_url_is_imported_from_moneymoney() {
+    // Sparkasse Rosenheim-Bad/Aibling (BLZ 71150000) is in the FinTS directory,
+    // so it maps to `ConnectorKind::FinTsGeneric`. MoneyMoney stores its own
+    // URL which may differ from the bundled directory (bank-side migrations).
+    const MM_URL: &str = "https://banking-by2.s-fints-pt-by.de/fints30";
+    let extra = format!(
+        "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, server, systemid, local_storage) \
+         VALUES (4, 'DE', '71150000', 'max.m', 'max.m', 'GEHEIM-4', 'Sparkasse Rosenheim', '{MM_URL}', 'SYS', 'LS');"
+    );
+    let path = fake_db_with(false, &extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let bank = p.banks.iter().find(|b| b.mm_id == 4).unwrap();
+    assert_eq!(bank.connector, Some(ConnectorKind::FinTsGeneric));
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    assert_eq!(
+        v.get_setting("fints.url.71150000".into())
+            .unwrap()
+            .as_deref(),
+        Some(MM_URL),
+        "MoneyMoney's banks.server URL must be stored as fints.url.<blz>"
+    );
+}
+
+/// A bogus or http URL in `banks.server` must not be written through. The
+/// connector then falls back to the built-in FinTS directory at sync time.
+#[test]
+fn fints_server_url_is_rejected_when_not_https() {
+    let extra = "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, server, systemid, local_storage) \
+         VALUES (4, 'DE', '71150000', 'max.m', 'max.m', 'GEHEIM-4', 'Sparkasse Rosenheim', 'http://evil.example/fints', 'SYS', 'LS');";
+    let path = fake_db_with(false, extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    assert_eq!(
+        v.get_setting("fints.url.71150000".into()).unwrap(),
+        None,
+        "an http URL must not become a FinTS endpoint setting"
+    );
+}
+
 #[test]
 fn connections_for_supported_banks_only_and_never_a_pin() {
     let v = vault();
