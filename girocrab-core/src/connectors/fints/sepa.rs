@@ -472,6 +472,7 @@ mod tests {
 
     #[test]
     fn immediate_orders_carry_the_placeholder_date() {
+        assert!(jiff::civil::Date::strptime("%Y-%m-%d", IMMEDIATE_EXECUTION_DATE).is_ok());
         let mut p = sample("Max Muster", "Miete");
         p.execution_date = IMMEDIATE_EXECUTION_DATE;
         let xml = build_pain001(&p).unwrap();
@@ -639,6 +640,36 @@ mod tests {
         let xml = build_pain001_batch(&b).unwrap();
         assert!(xml.contains("<ReqdExctnDt><Dt>2026-11-09</Dt></ReqdExctnDt>"));
         assert!(xml.contains("<CdtrAgt><FinInstnId><BICFI>COBADEFFXXX</BICFI>"));
+    }
+
+    #[test]
+    fn batch_without_a_date_carries_the_placeholder_and_a_dated_one_keeps_its_date() {
+        let pays = [pay("A", "DE89370400440532013000", 100, "E1")];
+        let mut b = batch(&pays, true);
+        b.execution_date = IMMEDIATE_EXECUTION_DATE;
+        let xml = build_pain001_batch(&b).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>1999-01-01</ReqdExctnDt>"));
+        b.execution_date = "2027-01-15";
+        let xml = build_pain001_batch(&b).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>2027-01-15</ReqdExctnDt>"));
+        assert!(!xml.contains("1999-01-01"));
+        b.version = PainVersion::V09;
+        let xml = build_pain001_batch(&b).unwrap();
+        assert!(xml.contains("<ReqdExctnDt><Dt>2027-01-15</Dt></ReqdExctnDt>"));
+    }
+
+    #[test]
+    fn a_scheduled_transfer_keeps_its_real_date() {
+        // HKCSE: the job names a date, so the 1999-01-01 placeholder must not appear.
+        let mut p = sample("Max Muster", "Miete");
+        p.execution_date = "2027-01-15";
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>2027-01-15</ReqdExctnDt>"));
+        assert!(!xml.contains("1999-01-01"));
+        p.version = PainVersion::V09;
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt><Dt>2027-01-15</Dt></ReqdExctnDt>"));
+        assert!(!xml.contains("1999-01-01"));
     }
 
     #[test]
