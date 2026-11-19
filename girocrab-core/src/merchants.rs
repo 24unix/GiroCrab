@@ -394,6 +394,33 @@ fn needle_in(text: &str, needle: &str) -> bool {
 /// counterparty or purpose names the sub-brand, it wins over the parent.
 const SUB_BRANDS: &[(&str, &[&str])] = &[("telekom", &["fraenk", "congstar"])];
 
+/// Entries that stand for a whole group of independent banks (#1365). The booking
+/// keeps the group's logo, colour and key, but shows the bank's own name from the
+/// counterparty ("Volksbank Mittelhessen", "Stadtsparkasse München").
+const GROUP_BRANDS: &[&str] = &["volksbank", "sparkasse"];
+
+/// `entry` named after the member bank in `counterparty`; `None` for other entries
+/// or when the counterparty leaves no usable name.
+fn group_member(entry: &Entry, counterparty: &str) -> Option<MerchantInfo> {
+    if !GROUP_BRANDS.contains(&entry.key) {
+        return None;
+    }
+    // "VOLKSBANK MITTELHESSEN EG": `clean_name` only knows the mixed-case " eG".
+    let cp = counterparty.trim();
+    let cp = match cp.rsplit_once(' ') {
+        Some((head, last)) if last.eq_ignore_ascii_case("eg") => head,
+        _ => cp,
+    };
+    let name = clean_name(cp);
+    if name.is_empty() || name.chars().count() > 40 {
+        return None;
+    }
+    let mut info = to_info(entry);
+    info.monogram = monogram(&name);
+    info.name = name;
+    Some(info)
+}
+
 fn entry_by_key(key: &str) -> Option<&'static Entry> {
     entries().iter().find(|e| e.key == key)
 }
@@ -974,7 +1001,7 @@ impl MerchantResolver {
                     return to_info(sub);
                 }
             }
-            return to_info(entry);
+            return group_member(entry, counterparty).unwrap_or_else(|| to_info(entry));
         }
         if let Some(entry) = find_checked(&pu, &ctx).filter(|e| {
             matches!(e.kind, K::Etf | K::Crypto | K::Stock | K::PaymentService)
@@ -1566,9 +1593,35 @@ mod tests {
             name("Dt. Bausparkasse Badenia AG", ""),
             "Dt. Bausparkasse Badenia"
         );
-        assert_eq!(name("Stadtsparkasse Muenchen", ""), "Sparkasse");
-        assert_eq!(name("Kreissparkasse Koeln", ""), "Sparkasse");
-        assert_eq!(name("Sparkasse Hannover", ""), "Sparkasse");
+        let key = |cp: &str| resolve_merchant(cp.into(), String::new()).key;
+        assert_eq!(key("Stadtsparkasse Muenchen"), "sparkasse");
+        assert_eq!(key("Kreissparkasse Koeln"), "sparkasse");
+        assert_eq!(key("Sparkasse Hannover"), "sparkasse");
+    }
+
+    #[test]
+    fn group_banks_keep_their_own_name() {
+        // #1365: every Volksbank showed up as "Volksbank Kassel Göttingen".
+        let m = |cp: &str, pu: &str| resolve_merchant(cp.into(), pu.into());
+        for (cp, want) in [
+            ("Volksbank Mittelhessen eG", "Volksbank Mittelhessen"),
+            ("VOLKSBANK MITTELHESSEN EG", "Volksbank Mittelhessen"),
+            ("VR Bank Nord eG", "VR Bank Nord"),
+            ("Raiffeisenbank Musterdorf eG", "Raiffeisenbank Musterdorf"),
+            ("Stadtsparkasse München", "Stadtsparkasse München"),
+        ] {
+            let info = m(cp, "Kontoführung");
+            assert_eq!(info.name, want, "{cp}");
+            assert!(info.known && info.kind == K::Bank, "{cp}");
+        }
+        let vb = m("Volksbank Mittelhessen eG", "");
+        assert_eq!((vb.key.as_str(), vb.monogram.as_str()), ("volksbank", "VM"));
+        // Only the purpose names the bank: the group's neutral name.
+        assert_eq!(
+            m("", "Abschluss Volksbank").name,
+            "Volksbank / Raiffeisenbank"
+        );
+        assert_eq!(m("", "Sparkasse Entgelt").name, "Sparkasse");
     }
 
     #[test]
