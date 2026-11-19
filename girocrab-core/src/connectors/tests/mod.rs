@@ -1581,6 +1581,7 @@ mod batch_transfer;
 mod body_limit;
 mod content_id;
 mod direct_debit;
+mod import_takeover;
 mod payment_method;
 mod postbox;
 mod standing_order;
