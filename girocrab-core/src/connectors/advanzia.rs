@@ -171,8 +171,9 @@ pub(crate) fn prepare_import(db: &Connection, id: i64, data: &mut FetchResult) -
     {
         let eligible: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=?1 AND connection_id IS NULL AND kind='credit_card' AND currency='EUR' AND deleted_ms IS NULL AND archived_unix IS NULL)", [target], |r| r.get(0))?;
         let existing: i64 = db.query_row(
-            "SELECT count(*) FROM accounts WHERE connection_id=?1",
-            [id],
+            "SELECT count(*) FROM accounts
+              WHERE connection_id=?1 AND (deleted_ms IS NULL OR external_ref=?2)",
+            params![id, ref_id],
             |r| r.get(0),
         )?;
         if !eligible || existing != 0 {
@@ -185,8 +186,11 @@ pub(crate) fn prepare_import(db: &Connection, id: i64, data: &mut FetchResult) -
             params![id, ref_id, target],
         )?;
     }
+    // Re-adding a login can reuse a connection with deleted accounts. A
+    // different deleted reference must not block the newly verified card.
     let conflict: bool = db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM accounts WHERE connection_id=?1 AND external_ref<>?2)",
+        "SELECT EXISTS(SELECT 1 FROM accounts
+                        WHERE connection_id=?1 AND deleted_ms IS NULL AND external_ref<>?2)",
         params![id, ref_id],
         |r| r.get(0),
     )?;
@@ -216,7 +220,10 @@ impl Vault {
             store_state(&db, connection_id, &encode_state(&state)?)?;
         }
         let has_account = db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM accounts WHERE connection_id=?1)",
+            // Canonical references can be revived by store_fetch after re-adding
+            // the login. Deleted legacy references do not identify a bank card.
+            "SELECT EXISTS(SELECT 1 FROM accounts
+                            WHERE connection_id=?1 AND (deleted_ms IS NULL OR external_ref LIKE 'advanzia:%'))",
             [connection_id],
             |r| r.get(0),
         )?;

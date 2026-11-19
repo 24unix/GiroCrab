@@ -23,7 +23,7 @@ fn legacy_reference(reference: &str) -> bool {
 }
 /// Only one active EUR credit card already bound to this exact login is eligible.
 pub(super) fn legacy_account(db: &Connection, id: i64) -> CoreResult<Option<(i64, String)>> {
-    let mut q = db.prepare("SELECT id,external_ref,kind,currency,deleted_ms,archived_unix FROM accounts WHERE connection_id=?1")?;
+    let mut q = db.prepare("SELECT id,external_ref,kind,currency,archived_unix FROM accounts WHERE connection_id=?1 AND deleted_ms IS NULL")?;
     let rows = q
         .query_map([id], |r| {
             Ok((
@@ -32,12 +32,11 @@ pub(super) fn legacy_account(db: &Connection, id: i64) -> CoreResult<Option<(i64
                 r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
                 r.get::<_, Option<i64>>(4)?,
-                r.get::<_, Option<i64>>(5)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(match rows.as_slice() {
-        [(account, reference, kind, currency, None, None)]
+        [(account, reference, kind, currency, None)]
             if legacy_reference(reference) && kind == "credit_card" && currency == "EUR" =>
         {
             Some((*account, reference.clone()))
