@@ -183,15 +183,7 @@ pub(super) fn skipped_refs(db: &Connection, connection_id: i64) -> CoreResult<Ve
 /// Retain only pending accounts for an immediate replay after the user chooses.
 pub(super) fn deferred(data: &FetchResult, pending: &HashSet<String>) -> FetchResult {
     let mut copy = data.clone();
-    copy.accounts.retain(|a| pending.contains(&a.external_ref));
-    copy.transactions
-        .retain(|a| pending.contains(&a.account_ref));
-    copy.holdings.retain(|a| pending.contains(&a.account_ref));
-    copy.security_transactions
-        .retain(|a| pending.contains(&a.account_ref));
-    copy.holdings_fetched.retain(|a| pending.contains(a));
-    copy.balances_unknown.retain(|a| pending.contains(a));
-    copy.documents.retain(|a| pending.contains(&a.account_ref));
+    copy.retain_accounts(|r| pending.contains(r));
     copy.accounts_complete = false;
     copy.state = None;
     copy.revoked_refs.clear();

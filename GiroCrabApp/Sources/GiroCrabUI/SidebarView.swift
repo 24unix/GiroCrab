@@ -136,7 +136,7 @@ struct SidebarView: View {
                                 .foregroundStyle(model.missingSettings(for: c).isEmpty ? Theme.secondary : Theme.warning)
                         }
                         Spacer()
-                        Button(model.missingSettings(for: c).isEmpty ? "Abrufen" : "Einrichten") { model.requestSync(c) }
+                        Button(model.missingSettings(for: c).isEmpty ? "Abrufen" : "Einrichten") { model.requestFullSync(c) }
                             .controlSize(.small)
                             .disabled(model.bankingGate(for: c) != nil)
                             .help(model.bankingGate(for: c)?.message ?? "")
@@ -478,8 +478,8 @@ struct SidebarView: View {
         ManualLoanAccountMenu(model: model, account: account)
         OfflineAccountMenuItems(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
-            Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
-                .disabled(model.bankingGate(for: conn) != nil)
+            Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSyncAccount(account) }
+                .disabled(model.bankingGate(for: conn) != nil || model.syncingConnectionID != nil)
         }
         AccountCopyMenu(account: account)
         Button("Belege anzeigen", systemImage: "doc.text.magnifyingglass") {

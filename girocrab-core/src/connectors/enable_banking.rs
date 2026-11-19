@@ -1387,8 +1387,14 @@ impl BankConnector for EnableBankingConnector {
         }
         self.upgrade_legacy_accounts().await;
         let mut out = FetchResult::default();
+        // One account (#1124): its requests only, for the PSD2 daily limit
+        // and the per-account history flags.
+        let refs: Vec<String> = self.st.accounts.iter().map(|a| a.ext_ref.clone()).collect();
+        let only = ctx.only_among(&refs);
+        let mut wanted = self.st.accounts.clone();
+        wanted.retain(|a| only.is_none_or(|o| a.ext_ref == o));
         if self.card_mode() {
-            for a in self.st.accounts.clone() {
+            for a in wanted {
                 self.fetch_card(ctx, &mut out, &a).await?;
             }
             out.state = Some(SecretJson::encode(&self.st)?);
@@ -1414,7 +1420,7 @@ impl BankConnector for EnableBankingConnector {
         // uid → every page of the account's bookings was read
         let mut listed: HashMap<String, bool> = HashMap::new();
         let mut stopped_early = false;
-        for a in self.st.accounts.clone() {
+        for a in wanted {
             let res = if kind_of(&a) == AccountKind::CreditCard {
                 let named = EbAccount {
                     name: display_name(&a),

@@ -155,6 +155,16 @@ impl BankConnector for PayPalConnector {
             // Every search succeeded: the holds listed are all that are open in the period.
             out.hold_prefix = Some(super::paypal_nvp::HOLD_PREFIX.into());
             retain_known(&mut out);
+            // One account (#1124): no details for bookings the vault drops,
+            // their ids would count as done.
+            let refs: Vec<String> = out
+                .accounts
+                .iter()
+                .map(|a| a.external_ref.clone())
+                .collect();
+            if let Some(only) = ctx.only_among(&refs) {
+                out.transactions.retain(|t| t.account_ref == only);
+            }
             // Purpose from GetTransactionDetails, once per booking (ids kept in the state).
             let mut state: NvpState = ctx.state.decode().unwrap_or_default();
             nvp.fill_details(&mut out.transactions, &mut state.nvp_details_done)
