@@ -964,6 +964,23 @@ pub(crate) fn store_fetch(
                 [connection_id],
             )?;
         }
+        // Accounts by the name they carry here instead of their bank reference (an IBAN).
+        let mut warnings = std::mem::take(&mut data.warnings);
+        if !warnings.is_empty() {
+            for acc in data.accounts.iter().filter(|a| !a.external_ref.is_empty()) {
+                let name: Option<String> = tx
+                    .query_row(
+                        "SELECT name FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND deleted_ms IS NULL",
+                        params![connection_id, acc.external_ref],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let name = name.unwrap_or_else(|| acc.name.clone());
+                for w in &mut warnings {
+                    *w = w.replace(&acc.external_ref, &name);
+                }
+            }
+        }
         tx.commit()?;
         if let Some(data) = deferred {
             vault
@@ -992,6 +1009,7 @@ pub(crate) fn store_fetch(
             new_accounts,
             revoked_accounts,
             postbox_documents,
+            warnings,
         })
     }
 }
