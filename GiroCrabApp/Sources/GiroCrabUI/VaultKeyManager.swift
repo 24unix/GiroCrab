@@ -56,23 +56,27 @@ public final class VaultKeyManager: @unchecked Sendable {
     /// the switch could only fail there, so Settings disables it up front.
     public static let canShareViaICloudKeychain = iCloudKeychainAvailable(probe: probeDataProtectionKeychain())
 
-    /// Only a missing entitlement rules sharing out; "not found" means the keychain is reachable.
+    /// Only a missing entitlement rules sharing out; any other status means the keychain is reachable.
     static func iCloudKeychainAvailable(probe status: OSStatus) -> Bool {
         status != errSecMissingEntitlement
     }
 
-    /// Looks up an item that never exists, without any prompt.
+    /// Writes and removes a throw-away item, without any prompt. A lookup is no test:
+    /// without the entitlement it answers "not found" (-25300), only a write fails (-34018).
     private static func probeDataProtectionKeychain() -> OSStatus {
-        let context = LAContext()
-        context.interactionNotAllowed = true
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "de.girocrab.keychain-probe",
-            kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseDataProtectionKeychain as String: true,
-            kSecUseAuthenticationContext as String: context,
         ]
-        return SecItemCopyMatching(q as CFDictionary, nil)
+        var item = q
+        item[kSecValueData as String] = Data([0])
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(item as CFDictionary, nil)
+        if status == errSecSuccess || status == errSecDuplicateItem {
+            SecItemDelete(q as CFDictionary)
+        }
+        return status
     }
 
     private let service = "de.girocrab.vault"
