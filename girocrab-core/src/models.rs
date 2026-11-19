@@ -62,6 +62,9 @@ pub enum ConnectorKind {
     FordMoney,
     /// Opel Direktbank savings accounts and Postbox PDFs via the web banking (TwoVerify approval).
     OpelDirektbank,
+    /// Hanseatic Bank credit cards, savings products and Postbox PDFs via the online banking's
+    /// JSON API (approval in the bank's app).
+    HanseaticBank,
     /// Finpension (CH): Säule 3a, Freizügigkeit, 1e – import of the CSV/JSON export (#300).
     Finpension,
 }
@@ -94,6 +97,7 @@ impl ConnectorKind {
             ConnectorKind::Ffb => "ffb",
             ConnectorKind::FordMoney => "fordmoney",
             ConnectorKind::OpelDirektbank => "opeldirektbank",
+            ConnectorKind::HanseaticBank => "hanseatic",
             ConnectorKind::Finpension => "finpension",
         }
     }
@@ -154,6 +158,7 @@ impl ConnectorKind {
             ConnectorKind::Ffb,
             ConnectorKind::FordMoney,
             ConnectorKind::OpelDirektbank,
+            ConnectorKind::HanseaticBank,
             ConnectorKind::Finpension,
         ]
     }

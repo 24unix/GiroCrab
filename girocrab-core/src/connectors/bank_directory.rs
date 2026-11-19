@@ -165,6 +165,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "ford money fordmoney fordbank tagesgeld festgeld",
         ),
         (
+            ConnectorKind::HanseaticBank,
+            "Hanseatic Bank",
+            "hanseatic hanseaticbank hanseatic bank genialcard goldcard kreditkarte sparbrief tagesgeld festgeld",
+        ),
+        (
             ConnectorKind::OpelDirektbank,
             "Opel Direktbank",
             "opel direktbank opelbank opel-direktbank stellantis tagesgeld festgeld",
@@ -266,6 +271,8 @@ const FFB_BLZ: &str = "50021120";
 const FORD_BANK_BLZ: &str = "37021548";
 /// Opel Direktbank: its FinTS server offers no statements; served by its own web connector.
 const OPEL_DIREKTBANK_BLZ: &str = "50025000";
+/// Hanseatic Bank, no FinTS: served by its own connector (PSD2 stays in the catalog).
+const HANSEATIC_BLZ: &str = "20120700";
 const SCHWAEBISCH_HALL_BLZ: &str = "62220000";
 
 fn own_result(kind: ConnectorKind, name: &str) -> BankSearchResult {
@@ -345,6 +352,8 @@ pub fn search(
             out.push(own_result(ConnectorKind::Fnz, "FNZ Bank"));
         } else if blz == OPEL_DIREKTBANK_BLZ {
             out.push(own_result(ConnectorKind::OpelDirektbank, "Opel Direktbank"));
+        } else if blz == HANSEATIC_BLZ {
+            out.push(own_result(ConnectorKind::HanseaticBank, "Hanseatic Bank"));
         } else if blz == FORD_BANK_BLZ {
             out.push(own_result(ConnectorKind::FordMoney, "Ford Money"));
         } else if blz == FFB_BLZ {

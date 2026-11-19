@@ -178,6 +178,7 @@ public struct BankingGate: Equatable, Sendable {
         case "ffb": base = "FFB"
         case "fordmoney": base = "Ford Money"
         case "opeldirektbank": base = "Opel Direktbank"
+        case "hanseatic": base = "Hanseatic Bank"
         case "finpension": base = "Finpension"
         default: base = parts.first ?? id
         }

@@ -168,6 +168,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Uberspace-Hosting: Guthaben und Buchungen aller Asteroids, die zur E-Mail-Adresse des Dashboards gehören. Inoffiziell: liest die Seiten des Dashboards, Änderungen sind möglich.").into(),
         },
+        ConnectorKind::HanseaticBank => BankDescriptor {
+            kind,
+            name: "Hanseatic Bank".into(),
+            protocol: tr("Online-Banking (Direkt-Login, Freigabe in der App)").into(),
+            bank_code: "20120700".into(),
+            sf_symbol: "creditcard".into(),
+            login_label: tr("Kundennummer").into(),
+            secret_label: tr("Passwort").into(),
+            required_settings: vec![],
+            note: tr("Hanseatic Bank: Kreditkarten mit vorgemerkten Umsätzen sowie SparBriefe, Tages- und Festgeld mit Saldo und Umsätzen. Ältere Umsätze, für die die Bank eine zusätzliche Freigabe verlangt, werden nicht abgerufen. Die erste Anmeldung wird in der App der Hanseatic Bank (oder per smsTAN) bestätigt; danach merkt sich GiroCrab das Gerät. Kontoauszüge und weitere Dokumente aus der Postbox lassen sich abrufen; ungelesene Dokumente gelten danach bei der Bank als gelesen. Inoffiziell: nutzt die Schnittstelle des Online-Bankings, Änderungen sind möglich.").into(),
+        },
         ConnectorKind::OpelDirektbank => BankDescriptor {
             kind,
             name: "Opel Direktbank".into(),
@@ -663,6 +674,19 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[300],
     },
     MatrixEntry {
+        name: "Hanseatic Bank",
+        kind: Some(ConnectorKind::HanseaticBank),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Documents,
+        ],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Opel Direktbank",
         kind: Some(ConnectorKind::OpelDirektbank),
         interface: Interface::WebPortal,
@@ -787,6 +811,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Ffb => Box::new(ffb::FfbConnector::new()),
         ConnectorKind::FordMoney => Box::new(fordmoney::FordMoneyConnector::new()),
         ConnectorKind::OpelDirektbank => Box::new(opel::OpelDirektbankConnector::new()),
+        ConnectorKind::HanseaticBank => Box::new(hanseatic::HanseaticConnector::new()),
         ConnectorKind::Finpension => Box::new(finpension::FinpensionConnector),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
