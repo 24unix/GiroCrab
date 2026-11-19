@@ -453,7 +453,7 @@ extension AppModel {
             // a scheduled sync of another login leaves a pending "<Konto> abrufen" alone
             if account(syncAccountID, of: connection) != nil { syncAccountID = nil }
             logSync(connectionID: connection.id, source: syncLogSource(for: connection.id), outcome: .ok,
-                    imported: Int(s.transactionsImported))
+                    message: s.warnings.joined(separator: " / "), imported: Int(s.transactionsImported))
             activeChallenge = nil
             syncingConnectionID = nil
             activeSession = nil
@@ -471,7 +471,8 @@ extension AppModel {
             } else {
                 let quiet = quietSyncConnectionID == connection.id
                 // scheduled syncs only speak up when something changed
-                if !quiet || s.transactionsImported > 0 || !s.newAccounts.isEmpty || !s.revokedAccounts.isEmpty {
+                if !quiet || s.transactionsImported > 0 || !s.newAccounts.isEmpty || !s.revokedAccounts.isEmpty
+                    || !s.warnings.isEmpty {
                     var note = syncNotice(connection, s) + Self.skippedArchivedNote(s)
                     if let n = s.postboxDocuments, n > 0 { note += " · " + Self.postboxNote(s, connection) }
                     toast = note

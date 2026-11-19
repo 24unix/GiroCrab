@@ -131,6 +131,65 @@ fn unread_depot_keeps_its_positions_and_value() {
 }
 
 #[test]
+fn fetch_warnings_name_accounts_by_their_stored_name() {
+    // #1083: a FinTS failure names the account by its IBAN; the summary uses
+    // the name the account carries here (renamed by the user), never the IBAN.
+    let p_dir = crate::test_support::TempDir::new("girocrab-fetch-warnings");
+    let p = p_dir.join("v.db");
+    let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
+    let conn = v
+        .add_bank_connection(
+            ConnectorKind::FinTsGeneric,
+            "fints:50010517".into(),
+            "login".into(),
+        )
+        .unwrap();
+    let iban = "DE02120300000000202051";
+    let account = |balance_cents: i64| RemoteAccount {
+        external_ref: iban.into(),
+        name: "Verrechnungskonto".into(),
+        owner: String::new(),
+        iban: iban.into(),
+        account_number: String::new(),
+        currency: "EUR".into(),
+        kind: AccountKind::Checking,
+        balance_cents,
+        balance_date: "2026-11-10".into(),
+    };
+    let first = FetchResult {
+        accounts: vec![account(250_00)],
+        ..Default::default()
+    };
+    let s = store_fetch(&v, ConnectorKind::FinTsGeneric, conn, first).unwrap();
+    assert!(s.warnings.is_empty());
+    let id = v.list_accounts().unwrap().pop().unwrap().id;
+    v.rename_account(id, "Cash".into()).unwrap();
+
+    let failed = FetchResult {
+        accounts: vec![account(0)],
+        balances_unknown: vec![iban.into()],
+        warnings: vec![
+            format!("{iban}: Umsätze (HKCAZ/camt.052) – TAN verlangt"),
+            "Kontenliste (HKSPA) – abgelehnt".into(),
+        ],
+        ..Default::default()
+    };
+    let s = store_fetch(&v, ConnectorKind::FinTsGeneric, conn, failed).unwrap();
+    assert_eq!(
+        s.warnings,
+        vec![
+            "Cash: Umsätze (HKCAZ/camt.052) – TAN verlangt".to_string(),
+            "Kontenliste (HKSPA) – abgelehnt".to_string(),
+        ]
+    );
+    // the balance that was not read stays
+    assert_eq!(
+        v.list_accounts().unwrap().pop().unwrap().balance_cents,
+        250_00
+    );
+}
+
+#[test]
 fn depot_value_points_follow_what_a_fetch_confirms() {
     // total without positions, unknown balance, unconfirmed 0, confirmed 0
     let p_dir = crate::test_support::TempDir::new("girocrab-depot-points");

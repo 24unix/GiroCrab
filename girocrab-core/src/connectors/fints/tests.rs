@@ -1478,3 +1478,43 @@ async fn order_source_account_without_upd_restrictions_allows_every_order() {
         assert_eq!(acc.map(|a| a.iban).as_deref(), Some(iban));
     }
 }
+
+#[tokio::test]
+async fn bookings_that_need_a_tan_are_reported_and_not_requested_twice() {
+    // #1083 (flatex): the camt request gets 0030, a TAN the running fetch cannot
+    // ask for. MT940 would only send the next TAN to the app; the other
+    // account's balance is stored and the failure reported with the sync.
+    const BALANCE: &str = "HNHBK:1:3+000000000000+300+DIALOG1+1'HIRMG:2:2+0010::Nachricht entgegengenommen.'HISAL:3:7:3+X+Girokonto+EUR+C:1234,56:EUR:20250102'";
+    const TAN: &str = "HNHBK:1:3+000000000000+300+DIALOG1+1'HIRMG:2:2+0010::Nachricht entgegengenommen.'HIRMS:3:2:4+0030::Auftrag empfangen - TAN erforderlich.'HITAN:4:6:4+4++TASK1+TAN eingeben'";
+    let (url, seen) = mock_bank(vec![BALANCE, TAN]);
+    let state = serde_json::json!({"system_id": "123", "sec_func": "946", "tan_method_name": "", "tan_medium": "", "versions": {"HKSAL": [7], "HKCAZ": [1], "HKKAZ": [7]}, "tan_required": {"HKCAZ": true, "HKKAZ": true}, "camt_formats": ["urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"]});
+    let mut c = two_step_connector(&url, state);
+    c.upd = vec![
+        upd_acc("0532013000", "", IBAN_A, "Girokonto", &["HKSAL"]),
+        upd_acc(
+            "0000202051",
+            "",
+            IBAN_B,
+            "Verrechnungskonto",
+            &["HKCAZ", "HKKAZ"],
+        ),
+    ];
+    let r = c.fetch(&test_ctx()).await.unwrap();
+    {
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "{seen:?}");
+        assert!(seen[1].iter().any(|i| i == "HKCAZ"), "{seen:?}");
+        assert!(!seen.iter().flatten().any(|i| i == "HKKAZ"), "{seen:?}");
+    }
+    assert_eq!(r.warnings.len(), 1, "{:?}", r.warnings);
+    assert!(r.warnings[0].starts_with(IBAN_B), "{:?}", r.warnings);
+    assert!(r.warnings[0].contains("HKCAZ"), "{:?}", r.warnings);
+    // B's balance was not read: the stored one stays; A's was
+    assert_eq!(r.balances_unknown, vec![IBAN_B.to_string()]);
+    let a = r
+        .accounts
+        .iter()
+        .find(|a| a.external_ref == IBAN_A)
+        .unwrap();
+    assert_eq!(a.balance_cents, 123_456);
+}
