@@ -345,7 +345,7 @@ struct Account {
     bookings_link: Option<String>,
 }
 
-/// "- 0,71 €", "+ 7,02 €", "58.824,77 €" → cents.
+/// "- 1,17 €", "+ 5,55 €", "12.345,67 €" → cents.
 fn parse_amount(s: &str) -> Option<i64> {
     let cleaned: String = text(s)
         .replace(['\u{2212}', '\u{2013}'], "-")
@@ -463,7 +463,7 @@ struct PostboxRow {
     link: String,
     date: String,
     subject: String,
-    /// "Tagesgeld 1010024077", "Info".
+    /// "Tagesgeld 1000000001", "Info".
     product: String,
     /// Account number from `product`, if any.
     account_number: Option<String>,
@@ -1231,24 +1231,24 @@ mod tests {
     fn reads_signed_bookings_with_stable_content_ids() {
         let list = format!(
             r#"<ul id="contentForm:transactionList"><div style="display: none"><input id="contentForm:limit" type="text" name="contentForm:limit" value="1000" /></div>{}{}{}{}</ul>"#,
-            booking("30.10.2026", "SoliZuschl.1", "<em>- 0,71 €</em>"),
-            booking("30.10.2026", "Kap.ertr.st1", "<em>- 13,01 €</em>"),
-            booking("30.10.2026", "Abschluss   ", "+            7,02 €"),
-            booking("30.10.2026", "Abschluss   ", "+            7,02 €"),
+            booking("15.03.2026", "SoliZuschl.1", "<em>- 1,17 €</em>"),
+            booking("15.03.2026", "Kap.ertr.st1", "<em>- 21,37 €</em>"),
+            booking("15.03.2026", "Abschluss   ", "+            5,55 €"),
+            booking("15.03.2026", "Abschluss   ", "+            5,55 €"),
         );
         let mut ids = ContentIds::default();
         let tx = parse_bookings(&list, "fordmoney:DE00", "2000-01-01", &mut ids).unwrap();
         assert_eq!(tx.len(), 4);
         assert_eq!(
             (tx[0].amount_cents, tx[0].booking_text.as_str()),
-            (-71, "SoliZuschl.1")
+            (-117, "SoliZuschl.1")
         );
         assert_eq!(tx[0].purpose, "SoliZuschl.1");
-        assert_eq!(tx[0].booking_date, "2026-10-30");
-        assert_eq!(tx[1].amount_cents, -1_301);
+        assert_eq!(tx[0].booking_date, "2026-03-15");
+        assert_eq!(tx[1].amount_cents, -2_137);
         assert_eq!(
             (tx[2].amount_cents, tx[2].booking_text.as_str()),
-            (702, "Abschluss")
+            (555, "Abschluss")
         );
         assert_ne!(
             tx[2].external_id, tx[3].external_id,
@@ -1261,7 +1261,7 @@ mod tests {
         assert!(parse_bookings(&list, "a", "2026-11-01", &mut recent)
             .unwrap()
             .is_empty());
-        let broken = list.replace("- 13,01 €", "n/a");
+        let broken = list.replace("- 21,37 €", "n/a");
         assert!(parse_bookings(&broken, "a", "2000-01-01", &mut ContentIds::default()).is_err());
     }
 
@@ -1271,7 +1271,7 @@ mod tests {
             "<ul>{}{}{}</ul>",
             postbox_row(
                 0,
-                "30.10.2026",
+                "15.03.2026",
                 "Kontoauszug Tagesgeld lfd. Nr. 10/2026",
                 "Tagesgeld 1000000001"
             ),
@@ -1283,7 +1283,7 @@ mod tests {
             ),
             postbox_row(
                 2,
-                "25.02.2026",
+                "18.02.2026",
                 "Jahressteuerbescheinigung 2025",
                 "Tagesgeld 1000000002"
             ),
@@ -1291,7 +1291,7 @@ mod tests {
         let rows = parse_postbox(&html);
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].link, "contentForm:j_idt283:0:j_idt285");
-        assert_eq!(rows[0].date, "2026-10-30");
+        assert_eq!(rows[0].date, "2026-03-15");
         assert_eq!(rows[0].subject, "Kontoauszug Tagesgeld lfd. Nr. 10/2026");
         assert_eq!(rows[0].product, "Tagesgeld 1000000001");
         assert_eq!(rows[0].account_number.as_deref(), Some("1000000001"));
@@ -1307,11 +1307,11 @@ mod tests {
         );
         assert_eq!(
             document_file_name(&rows[0]),
-            "2026-10-30_Kontoauszug_Tagesgeld_lfd._Nr._10_2026.pdf"
+            "2026-03-15_Kontoauszug_Tagesgeld_lfd._Nr._10_2026.pdf"
         );
         assert_eq!(
             rows[2].key(),
-            "2026-02-25|Jahressteuerbescheinigung 2025|Tagesgeld 1000000002"
+            "2026-02-18|Jahressteuerbescheinigung 2025|Tagesgeld 1000000002"
         );
     }
 
@@ -1360,9 +1360,9 @@ mod tests {
 
     #[test]
     fn amounts_and_dates() {
-        assert_eq!(parse_amount("<em>- 0,71 €</em>"), Some(-71));
-        assert_eq!(parse_amount("+            97,02 €"), Some(9_702));
-        assert_eq!(parse_amount("58.824,77 €"), Some(5_882_477));
+        assert_eq!(parse_amount("<em>- 1,17 €</em>"), Some(-117));
+        assert_eq!(parse_amount("+            88,88 €"), Some(8_888));
+        assert_eq!(parse_amount("12.345,67 €"), Some(1_234_567));
         assert_eq!(parse_amount("—"), None);
         assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
     }
