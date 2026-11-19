@@ -63,6 +63,9 @@ QtObject {
     /// startAutoSync / stopAutoSync: runs while the own vault is open, never in the demo.
     readonly property bool active: AppModel.isUnlocked && !AppModel.isDemo
     onActiveChanged: active ? start() : stop()
+    // onActiveChanged does not fire for the initial value: a vault that is already open when the
+    // singleton is created must start the schedule too
+    Component.onCompleted: if (active) start()
     property Timer timer: Timer {
         repeat: true
         onTriggered: { interval = 15 * 60 * 1000; auto.tick() }
