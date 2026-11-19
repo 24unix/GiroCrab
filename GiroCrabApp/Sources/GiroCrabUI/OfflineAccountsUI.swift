@@ -115,7 +115,10 @@ extension AppModel {
             do {
                 let id = try vault.createOfflineAccount(name: name, kind: .cash, openingCents: openingCents)
                 offlineStore.accountIDs.insert(id)
-                if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { setAccountNote(note, for: id) }
+                // one reload for the account and its note
+                if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    runCore { try vault.setAccountNote(accountId: id, note: note) }
+                }
                 reloadAccounts()
                 sidebarSelection = .account(id)
             } catch {

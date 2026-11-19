@@ -3804,11 +3804,20 @@ fn moneymoney_twin_of_a_bank_account_is_folded_on_open() {
         &v,
         &format!("UPDATE transactions SET note = 'Miete', note_ms = 9 WHERE account_id = {twin} AND external_id = 'mm-2'"),
     );
+    exec(
+        &v,
+        &format!("UPDATE accounts SET note = 'Haushalt', note_ms = 7 WHERE id = {twin}"),
+    );
     drop(v);
     let v = open(&dir, "a.db");
     assert_eq!(
         n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
         1
+    );
+    assert_eq!(
+        text(&v, &format!("SELECT note FROM accounts WHERE id = {bank}")),
+        "Haushalt",
+        "the account note goes with the twin's bookings"
     );
     assert_eq!(
         n(
@@ -4050,6 +4059,31 @@ fn folded_twin_tombstone_does_not_delete_the_other_devices_account() {
     for v in [&a, &b] {
         assert_eq!(live_bookings(v), "b1::0 mm-1::0 mm-2::0 mm-4::0");
     }
+}
+
+/// #980 review: a note edited on the twin by a device that hadn't folded it
+/// yet reaches the bank account the twin was folded into here.
+#[test]
+fn note_on_an_already_folded_twin_reaches_the_bank_account() {
+    let dir = temp_dir("twin-note");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let ca = comdirect(&a);
+    let cb = comdirect(&b);
+    giro(&a, ca, MM_GIRO, &["mm-1", "mm-2"]);
+    let bank = giro(&a, ca, "API1", &["mm-1", "mm-2", "b1"]);
+    let twin = giro(&b, cb, MM_GIRO, &["mm-1", "mm-2"]);
+    for v in [&a, &b] {
+        exec(v, "UPDATE bank_connections SET created_ms = 1");
+        exec(v, "UPDATE accounts SET created_ms = 1");
+    }
+    drop(a);
+    let a = open(&dir, "a.db");
+    b.set_account_note(twin, "Haushalt".into()).unwrap();
+    merge(&a, &b);
+    assert_eq!(
+        text(&a, &format!("SELECT note FROM accounts WHERE id = {bank}")),
+        "Haushalt"
+    );
 }
 
 /// Issue #94: a closed MoneyMoney account and its successor share the

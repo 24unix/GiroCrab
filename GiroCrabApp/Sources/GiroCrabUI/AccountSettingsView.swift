@@ -21,7 +21,8 @@ struct AccountSettingsView: View {
     @State private var login = ""
     @State private var advanziaSettings = AdvanziaConnectionSettingsState()
     @State private var showIcons = false
-    @State private var loaded = false
+    /// The account when the sheet opened: what a sync changes meanwhile is no edit here (#980).
+    @State private var original: Account?
     private var account: Account? { model.account(for: accountID) }
     private var advanziaConnection: BankConnection? {
         guard let a = account, a.connector == .advanzia, let id = a.connectionId else { return nil }
@@ -132,12 +133,12 @@ struct AccountSettingsView: View {
     }
 
     private func load() {
-        guard !loaded, let a = account else { return }
-        loaded = true
+        guard original == nil, let a = account else { return }
+        original = a
         name = a.name
         owner = a.owner
         kind = a.kind
-        note = model.accountNote(for: a.id)
+        note = a.note
         archived = a.isArchived
         openingText = a.openingBalanceCents.map(Money.plain) ?? ""
     }
@@ -176,19 +177,19 @@ struct AccountSettingsView: View {
 
     private func save() {
         guard let a = account else { dismiss(); return }
-        let newName = name.trimmingCharacters(in: .whitespaces)
-        if newName != a.name { model.renameAccount(a.id, to: newName) }
-        if owner.trimmingCharacters(in: .whitespaces) != a.owner { model.setAccountOwner(a.id, to: owner) }
-        if kind != a.kind, !model.isOffline(a.id) { model.setAccountKind(a.id, to: kind) }
-        if note.trimmingCharacters(in: .whitespacesAndNewlines) != model.accountNote(for: a.id) {
-            model.setAccountNote(note, for: a.id)
-        }
+        let o = original ?? a
+        model.saveAccountEdits(
+            o,
+            name: name.trimmingCharacters(in: .whitespaces),
+            owner: owner.trimmingCharacters(in: .whitespaces),
+            kind: kind,
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines))
         if showsOpeningBalance {
             let text = openingText.trimmingCharacters(in: .whitespaces)
             do {
                 if text.isEmpty {
-                    if a.openingBalanceCents != nil { try model.setOpeningBalance(a.id, cents: nil, date: "") }
-                } else if let cents = openingCents, cents != a.openingBalanceCents {
+                    if o.openingBalanceCents != nil { try model.setOpeningBalance(a.id, cents: nil, date: "") }
+                } else if let cents = openingCents, cents != o.openingBalanceCents {
                     try model.setOpeningBalance(a.id, cents: cents, date: a.openingBalanceDate)
                 }
             } catch {
@@ -197,7 +198,7 @@ struct AccountSettingsView: View {
             }
         }
         // last: archiving reloads everything
-        if archived != a.isArchived { model.setAccountArchived(a, archived) }
+        if archived != o.isArchived { model.setAccountArchived(a, archived) }
         dismiss()
     }
 }

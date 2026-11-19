@@ -2590,6 +2590,10 @@ QtObject {
     function setAccountOwner(id, owner) {
         if (run(() => { core("set_account_owner", { account_id: id, owner: owner }); return true })) reloadAccounts()
     }
+    /// AppModel.swift › setAccountNote: empty clears it; synced like the name (#980).
+    function setAccountNote(id, note) {
+        if (run(() => { core("set_account_note", { account_id: id, note: note }); return true })) reloadAccounts()
+    }
     /// AccountGroupsModel.swift › setAccountKind ("Kontoart ändern …").
     function setAccountKind(id, kind) {
         if (run(() => { core("set_account_kind", { account_id: id, kind: kind }); return true })) { reloadAccounts(); reloadDashboard() }
