@@ -3870,6 +3870,114 @@ fn empty_depot_twin_is_folded() {
     );
 }
 
+fn ffb_login(v: &Vault, login: &str) -> i64 {
+    v.add_bank_connection(ConnectorKind::Ffb, String::new(), login.into())
+        .unwrap()
+}
+
+fn depot(v: &Vault, c: i64, ext: &str, name: &str) {
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, currency, kind)
+             VALUES (?1, 1, ?2, ?3, '1000000001', 'EUR', 'brokerage')",
+            params![c, ext, name],
+        )
+        .unwrap();
+}
+
+fn live_refs(v: &Vault) -> String {
+    text(
+        v,
+        "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL",
+    )
+}
+
+/// MoneyMoney writes "FFB-Fondsdepot", the connector "FFB Fondsdepot", and
+/// the import may sit on another login of the same bank.
+#[test]
+fn depot_twin_with_other_punctuation_or_login_is_folded() {
+    for second_login in [false, true] {
+        let dir = temp_dir(if second_login { "depot-b" } else { "depot-a" });
+        let v = open(&dir, "a.db");
+        exec(&v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+        let bank = ffb_login(&v, "login-a");
+        let imported = if second_login {
+            ffb_login(&v, "login-b")
+        } else {
+            bank
+        };
+        depot(&v, bank, "ffb:depot:1000000001", "FFB Fondsdepot");
+        depot(&v, imported, "moneymoney-db:22:4de55d4e", "FFB-Fondsdepot");
+        drop(v);
+        let v = open(&dir, "a.db");
+        assert_eq!(live_refs(&v), "ffb:depot:1000000001");
+    }
+}
+
+/// The MoneyMoney depot was imported without a login: number, name and bank
+/// identify it, as long as only one bank depot fits.
+#[test]
+fn unlinked_depot_twin_is_folded_when_unambiguous() {
+    for (case, mm_bank, folded) in [
+        ("unlinked-a", "FIL Fondsbank GmbH", true),
+        ("unlinked-b", "FIL Fondsbank GmbH", false),
+        ("unlinked-c", "Andere Bank AG", false),
+    ] {
+        let second_bank_depot = case == "unlinked-b";
+        let dir = temp_dir(case);
+        let v = open(&dir, "a.db");
+        exec(&v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+        let bank = ffb_login(&v, "login-a");
+        depot(&v, bank, "ffb:depot:1000000001", "FFB Fondsdepot");
+        if second_bank_depot {
+            let other = ffb_login(&v, "login-b");
+            depot(&v, other, "ffb:depot:x", "FFB Fondsdepot");
+        }
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, account_number, currency, kind)
+                 VALUES (NULL, 1, 'moneymoney-db:22:4de55d4e', 'FFB-Fondsdepot', ?1, '1000000001', 'EUR', 'brokerage')",
+                [mm_bank],
+            )
+            .unwrap();
+        exec(
+            &v,
+            "UPDATE accounts SET bank_name = 'FFB (FIL Fondsbank)' WHERE external_ref LIKE 'ffb:%'",
+        );
+        drop(v);
+        let v = open(&dir, "a.db");
+        let mm_live = text(
+            &v,
+            "SELECT CAST(count(*) AS TEXT) FROM accounts
+              WHERE external_ref LIKE 'moneymoney-db:%' AND deleted_ms IS NULL",
+        );
+        assert_eq!(mm_live, if folded { "0" } else { "1" }, "{case}");
+    }
+}
+
+#[test]
+fn depot_with_another_name_or_connector_stays() {
+    let dir = temp_dir("depot-other");
+    let v = open(&dir, "a.db");
+    exec(&v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+    let bank = ffb_login(&v, "login-a");
+    let other = comdirect(&v);
+    depot(&v, bank, "ffb:depot:1000000001", "FFB Fondsdepot");
+    depot(&v, bank, "moneymoney-db:22:aaaaaaaa", "Altersvorsorge");
+    depot(&v, other, "moneymoney-db:23:bbbbbbbb", "FFB Fondsdepot");
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        text(
+            &v,
+            "SELECT CAST(count(*) AS TEXT) FROM accounts WHERE deleted_ms IS NULL"
+        ),
+        "3"
+    );
+}
+
 /// B never fetched: it still holds the MoneyMoney account that A's fetch
 /// took over. The merge maps the two onto each other instead of adding the
 /// bank account a second time, and both devices converge on the bank's key.
