@@ -286,6 +286,12 @@ pub struct FinTsConnector {
     vop_with_tan: bool,
     /// Name-check result shown to the user, awaiting confirmation.
     vop_pending: Option<PayeeMatch>,
+    /// The bank answered the order with 3091 ("VOP-Ausführungsauftrag nicht
+    /// benötigt"): it has accepted the order already and issued its challenge
+    /// (the flag says whether that approval is a pending decoupled one). After
+    /// the user's confirmation this challenge continues; HKVPA and the order
+    /// are not sent again, a second order in the same dialog is rejected.
+    vop_resume: Option<(Challenge, bool)>,
     /// The last dialog init was rejected because the bank code does not
     /// belong to this login (9210, see [`blz_mismatch`]).
     blz_rejected: bool,
@@ -354,6 +360,7 @@ impl FinTsConnector {
             vop_id: None,
             vop_with_tan: false,
             vop_pending: None,
+            vop_resume: None,
             blz_rejected: false,
         }
     }
@@ -538,13 +545,18 @@ impl BankConnector for FinTsConnector {
             result.state = Some(SecretJson::encode(&self.st)?);
             return Ok(result);
         }
-        for (acc, upd) in &accounts {
+        // One account (#1124): ask the bank only for it.
+        let labels: Vec<String> = accounts.iter().map(|(a, _)| account_label(a)).collect();
+        let only = ctx.only_among(&labels);
+        for ((acc, upd), label) in accounts.iter().zip(&labels) {
+            if only.is_some_and(|o| o != label) {
+                continue;
+            }
             let allowed = |tx: &str| upd.as_ref().is_none_or(|u| u.allows(tx));
             let mut kind = upd
                 .as_ref()
                 .map(|u| kind_from_code(u.kind_code))
                 .unwrap_or(AccountKind::Checking);
-            let label = account_label(acc);
             // Some banks report depots with a generic Kontoart; trust the product name.
             if kind == AccountKind::Checking
                 && (upd
@@ -654,7 +666,7 @@ impl BankConnector for FinTsConnector {
                     kind = AccountKind::CreditCard;
                 }
                 match self
-                    .statements_card(ctx, card_tx, acc, &label, &currency)
+                    .statements_card(ctx, card_tx, acc, label, &currency)
                     .await
                 {
                     Ok((t, bal)) => {
@@ -682,7 +694,7 @@ impl BankConnector for FinTsConnector {
                 let can_mt940 = self.bank_supports("HKKAZ") && allowed("HKKAZ");
                 let mut done = false;
                 if can_camt {
-                    match self.statements_camt(ctx, acc, &label).await {
+                    match self.statements_camt(ctx, acc, label).await {
                         Ok((t, closing)) => {
                             holds_listed = true;
                             // Loan sub-accounts ("Darlehen") often answer camt with an empty
@@ -703,7 +715,7 @@ impl BankConnector for FinTsConnector {
                     }
                 }
                 if !done && can_mt940 {
-                    match self.statements_mt940(ctx, acc, &label, &currency).await {
+                    match self.statements_mt940(ctx, acc, label, &currency).await {
                         Ok((t, closing)) => {
                             if !t.is_empty() || txs.is_empty() {
                                 txs = t;
@@ -731,7 +743,7 @@ impl BankConnector for FinTsConnector {
             // in the same dialog: a bank that wants SCA for it usually accepts the
             // approval just given. A decoupled (push) approval is handled by `request`.
             if kind == AccountKind::Checking && self.bank_supports("HKCDB") && allowed("HKCDB") {
-                match self.standing_orders(ctx, acc, &label).await {
+                match self.standing_orders(ctx, acc, label).await {
                     Ok(orders) => {
                         result.standing_orders.extend(orders);
                         result.standing_orders_fetched.push(label.clone());
@@ -742,12 +754,12 @@ impl BankConnector for FinTsConnector {
 
             // Opt-in (GitHub #57): PDF statements, at most weekly per account. A failure
             // never fails the sync; the explicit fetch reports errors instead.
-            if auto_statements.contains(&label) {
+            if auto_statements.contains(label) {
                 let tx = self.statement_tx();
                 let upd_ok = tx.is_some_and(allowed);
                 self.log_statement_support(Some(upd_ok));
                 if upd_ok {
-                    match self.statements_pdf(ctx, acc, &label).await {
+                    match self.statements_pdf(ctx, acc, label).await {
                         Ok(docs) => {
                             crate::depot_debug::log(&format!(
                                 "statements: auto fetch ok, {} PDF(s)",

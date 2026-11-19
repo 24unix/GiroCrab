@@ -136,7 +136,7 @@ struct SidebarView: View {
                                 .foregroundStyle(model.missingSettings(for: c).isEmpty ? Theme.secondary : Theme.warning)
                         }
                         Spacer()
-                        Button(model.missingSettings(for: c).isEmpty ? "Abrufen" : "Einrichten") { model.requestSync(c) }
+                        Button(model.missingSettings(for: c).isEmpty ? "Abrufen" : "Einrichten") { model.requestFullSync(c) }
                             .controlSize(.small)
                             .disabled(model.bankingGate(for: c) != nil)
                             .help(model.bankingGate(for: c)?.message ?? "")
@@ -350,7 +350,7 @@ struct SidebarView: View {
                     return model.canDropGroup(dragged, on: group, into: into) ? (into ? .into : .above) : nil
                 }, perform: { items, edge in
                     handleDrop(items, into: group, row: nil, edge: edge)
-                }, freeLeading: 12))  // the expand/collapse arrow
+                }, freeLeading: DisclosureChevron.width))  // the expand/collapse arrow
                 .padding(.top, group.depth == 0 ? 10 : 4)
                 .padding(.leading, indent)
                 .listRowInsets(Self.rowInsets)
@@ -478,8 +478,8 @@ struct SidebarView: View {
         ManualLoanAccountMenu(model: model, account: account)
         OfflineAccountMenuItems(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
-            Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
-                .disabled(model.bankingGate(for: conn) != nil)
+            Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSyncAccount(account) }
+                .disabled(model.bankingGate(for: conn) != nil || model.syncingConnectionID != nil)
         }
         AccountCopyMenu(account: account)
         Button("Belege anzeigen", systemImage: "doc.text.magnifyingglass") {
@@ -522,7 +522,7 @@ struct SidebarView: View {
                 .listRowInsets(Self.rowInsets)
                 #if os(macOS)
                 // a category dragged here goes above this row, or into it (lower half)
-                .modifier(categoryDropSlot(node, indent: indent, takesBookings: false, freeLeading: 12))
+                .modifier(categoryDropSlot(node, indent: indent, takesBookings: false, chevron: true))
                 #endif
                 .tag(SidebarItem.category(node.id))
                 .contextMenu { categoryMenu(node.category) }
@@ -559,8 +559,10 @@ struct SidebarView: View {
     /// Drop zones of a category row (#977): a category goes above the row (upper
     /// half), below it or – on a row with sub-categories or a main category – into
     /// it as its last sub-category (lower half). Bookings (`takesBookings`, leaves
-    /// only) are assigned to the row's category.
-    private func categoryDropSlot(_ node: CategoryNode, indent: CGFloat, takesBookings: Bool, freeLeading: CGFloat = 0) -> DropSlot {
+    /// only) are assigned to the row's category. The slot sits outside the row's
+    /// `indent` padding, so on a row with a `chevron` the zones leave the indent
+    /// and the arrow free, else it takes no clicks below the first level (#1137).
+    private func categoryDropSlot(_ node: CategoryNode, indent: CGFloat, takesBookings: Bool, chevron: Bool = false) -> DropSlot {
         DropSlot(key: "c:\(node.id)", inset: indent, line: $dropLine, edge: { half in
             guard let dragged = GroupDrag.draggedCategory else { return .into }
             guard model.canDropCategory(dragged, on: node.id) else { return nil }
@@ -570,7 +572,7 @@ struct SidebarView: View {
                 return model.dropCategory(items, onto: node.id, place: edge == .into ? .into : edge == .below ? .after : .before)
             }
             return takesBookings && model.dropBookings(items, onCategory: node.id)
-        }, freeLeading: freeLeading, takesBookings: takesBookings, takesCategories: true)
+        }, freeLeading: chevron ? indent + DisclosureChevron.width : 0, takesBookings: takesBookings, takesCategories: true)
     }
     #endif
 

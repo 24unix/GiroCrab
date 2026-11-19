@@ -10,8 +10,7 @@ extension AppModel {
     func requestSync(_ connection: BankConnection) {
         withFreshBankingPolicy { [self] in
             if let gate = bankingGate(for: connection) {
-                statementsAccountID = nil
-                postboxConnectionID = nil
+                clearSyncTargets()
                 if syncBatchTotal > 1, !gate.all {
                     // A lock published while "Alle abrufen" runs: skip this
                     // login, go on with the rest, name it in the closing notice.
@@ -69,6 +68,25 @@ extension AppModel {
         }
     }
 
+    /// "Abrufen" of a login: all its accounts, also after an earlier
+    /// "<Konto> abrufen" of it ended in an error.
+    func requestFullSync(_ connection: BankConnection) {
+        syncAccountID = nil
+        requestSync(connection)
+    }
+
+    /// "<Konto> abrufen": only this account of its login (#1124). Login
+    /// prompts and retries of this sync keep to it.
+    func requestSyncAccount(_ account: Account) {
+        guard syncingConnectionID == nil, !account.isArchived, let cid = account.connectionId,
+              let connection = connections.first(where: { $0.id == cid }) else { return }
+        // logins with their own flow (web portal, file import, Advanzia) fetch everything
+        if !usesPortal(connection), !usesFileImport(connection), connection.connector != .advanzia {
+            syncAccountID = account.id
+        }
+        requestSync(connection)
+    }
+
     func requestSyncAll() {
         // portal connections need an interactive login – not part of "sync all"
         // logins whose accounts are all archived are not asked at all
@@ -90,7 +108,7 @@ extension AppModel {
     /// What a pull-to-refresh starts besides the iCloud merge.
     enum RefreshSyncAction: Equatable {
         case none
-        case connection(Int64)
+        case account(Int64)
         case group(String)
         case all
     }
@@ -101,10 +119,10 @@ extension AppModel {
     func refreshSyncAction() -> RefreshSyncAction {
         switch sidebarSelection {
         case .account(let id):
-            guard let cid = allAccounts.first(where: { $0.id == id })?.connectionId,
-                  let c = connections.first(where: { $0.id == cid }),
-                  !usesPortal(c), !usesFileImport(c), !c.allAccountsArchived else { return .none }
-            return .connection(cid)
+            guard let account = accountsByID[id], !account.isArchived,
+                  let c = connections.first(where: { $0.id == account.connectionId }),
+                  !usesPortal(c), !usesFileImport(c) else { return .none }
+            return .account(id)
         case .userGroup(let uuid) where !uuid.isEmpty:
             return .group(uuid)
         case .documents, .wealth:
@@ -132,9 +150,9 @@ extension AppModel {
         if let hook = refreshSyncOverride { hook(action); return }
         switch action {
         case .none: return
-        case .connection(let id):
-            guard let c = connections.first(where: { $0.id == id }) else { return }
-            requestSync(c)
+        case .account(let id):
+            guard let account = accountsByID[id] else { return }
+            requestSyncAccount(account)
         case .group(let uuid):
             guard let g = userGroups.first(where: { $0.uuid == uuid }) else { return }
             requestSyncGroup(g)
@@ -179,6 +197,7 @@ extension AppModel {
             syncQueue = Array(allowed.dropFirst())
             syncBatchTotal = allowed.count
             syncBatchSkipped = blocked.map { String(localized: "\($0.displayName) (Sicherheitssperre)") }
+            syncAccountID = nil
             requestSyncChecked(head)
         }
     }
@@ -205,8 +224,7 @@ extension AppModel {
         let s = activeSession
         activeSession = nil
         activeChallenge = nil
-        statementsAccountID = nil
-        postboxConnectionID = nil
+        clearSyncTargets()
         syncGeneration &+= 1
         let generation = syncGeneration
         Task {
@@ -258,8 +276,7 @@ extension AppModel {
     private func skipPrompt(for connection: BankConnection?) {
         // A cancelled "Kontoauszüge abrufen" must never carry over to the next
         // sync – it would send that login's PIN for another bank's account.
-        statementsAccountID = nil
-        postboxConnectionID = nil
+        clearSyncTargets()
         guard syncBatchTotal > 1 else { resetSyncBatch(); return }
         if let name = connection?.displayName { syncBatchSkipped.append(name) }
         syncNextInQueue()
@@ -329,6 +346,24 @@ extension AppModel {
         resetSyncBatch()
     }
 
+    /// Forgets what the next sync was asked to fetch besides (or instead of)
+    /// the login's bookings: statements, PostBox, one account.
+    func clearSyncTargets() {
+        statementsAccountID = nil
+        postboxConnectionID = nil
+        syncAccountID = nil
+    }
+
+    /// `accountID` when it is an account of exactly this login.
+    private func account(_ accountID: Int64?, of connection: BankConnection) -> Int64? {
+        accountID.flatMap { accountsByID[$0]?.connectionId == connection.id ? $0 : nil }
+    }
+
+    /// Like `account(_:of:)`, and never in a scheduled sync.
+    private func ownAccount(_ accountID: Int64?, of connection: BankConnection) -> Int64? {
+        quietSyncConnectionID == connection.id ? nil : account(accountID, of: connection)
+    }
+
     func startSync(_ connection: BankConnection, secret: String) {
         guard let vault else { return }
         if connection.connector == .advanzia, !isDemo, !Self.isMagicDemoLogin(connection.loginName) {
@@ -338,17 +373,15 @@ extension AppModel {
         pendingLogin = nil
         // Statements only for an account of exactly this login: a stale value
         // would hand this login's PIN to another bank.
-        if let accountID = statementsAccountID,
-           allAccounts.first(where: { $0.id == accountID })?.connectionId != connection.id
-            || quietSyncConnectionID == connection.id {
-            statementsAccountID = nil
-        }
+        if ownAccount(statementsAccountID, of: connection) == nil { statementsAccountID = nil }
         let statementsFor = statementsAccountID
         // "PostBox jetzt abrufen" only for exactly this login, never in an automatic sync
         if postboxConnectionID != connection.id || quietSyncConnectionID == connection.id {
             postboxConnectionID = nil
         }
         let postboxNow = postboxConnectionID != nil
+        // kept when another login syncs first (e.g. a scheduled one)
+        let accountOnly = ownAccount(syncAccountID, of: connection)
         let quiet = quietSyncConnectionID == connection.id
         syncingConnectionID = connection.id
         syncGeneration &+= 1
@@ -360,6 +393,8 @@ extension AppModel {
                     session = try vault.fetchAccountStatements(accountId: accountID, secret: secret, demo: isDemo)
                 } else if postboxNow {
                     session = try vault.fetchComdirectPostbox(connectionId: connection.id, secret: secret, demo: isDemo)
+                } else if let accountID = accountOnly {
+                    session = try vault.beginAccountSync(accountId: accountID, secret: secret, demo: isDemo)
                 } else if quiet {
                     // no new approval in the background (e.g. the comdirect PostBox, #838)
                     session = try vault.beginQuietSync(connectionId: connection.id, secret: secret, demo: isDemo)
@@ -414,6 +449,8 @@ extension AppModel {
             }
             schedulePoll(connection: connection, interval: c.pollIntervalSeconds)
         case .finished(let s):
+            // a scheduled sync of another login leaves a pending "<Konto> abrufen" alone
+            if account(syncAccountID, of: connection) != nil { syncAccountID = nil }
             logSync(connectionID: connection.id, source: syncLogSource(for: connection.id), outcome: .ok,
                     imported: Int(s.transactionsImported))
             activeChallenge = nil
@@ -562,8 +599,7 @@ extension AppModel {
         activeChallenge = nil
         pendingLogin = nil
         syncingConnectionID = nil
-        statementsAccountID = nil
-        postboxConnectionID = nil
+        clearSyncTargets()
         syncGeneration &+= 1
         resetSyncBatch()
         Task { await s?.cancel() }
@@ -588,6 +624,7 @@ extension AppModel {
         }
         statementsAccountID = nil
         postboxConnectionID = nil
+        // syncAccountID stays: the retry and the prompts below keep to the account
         syncingConnectionIDBeforeError = syncingConnectionID
         pollTask?.cancel()
         activeSession = nil

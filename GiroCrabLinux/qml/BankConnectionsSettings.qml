@@ -125,7 +125,9 @@ Item {
         function commit() {
             const v = field.text.trim()
             field.text = ""
-            if (v !== "") AppModel.saveSetting("fints.product_id", v)
+            if (v === "") return
+            AppModel.saveSetting("fints.product_id", v)
+            AppModel.setFintsProductIDMode("own")
         }
         /// After a rejected registration the alert sends the user here (AppModel.enterOwnProductID).
         function focusIfAsked() {
@@ -138,11 +140,11 @@ Item {
         Connections { target: AppModel; function onFocusOwnProductIDChanged() { own.focusIfAsked() } }
         SettingsFormRow {
             label: qsTr("Eigene Produktregistrierung")
-            TextField {
+            // SecureField in the grouped Form: no bezel, trailing text, at most 340 wide
+            FormTextField {
                 id: field
-                Layout.fillWidth: true; Layout.preferredWidth: 340
+                Layout.fillWidth: false; Layout.preferredWidth: 340
                 echoMode: TextInput.Password
-                horizontalAlignment: TextInput.AlignRight
                 placeholderText: own.hasValue ? qsTr("Gespeichert – zum Ersetzen neu eingeben") : qsTr("Registrierungsnummer eintragen")
                 onAccepted: own.commit()
                 onActiveFocusChanged: if (!activeFocus) own.commit()

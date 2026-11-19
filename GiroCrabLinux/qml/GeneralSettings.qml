@@ -96,6 +96,24 @@ ScrollView {
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
                    text: qsTr("Vergrößert die Schrift in der ganzen App. Auch im Menü Darstellung mit %1 / %2 / %3.")
                              .arg(Fmt.keys("Strg+Plus")).arg(Fmt.keys("Strg+Minus")).arg(Fmt.keys("Strg+0")) }
+            // SettingsView.swift › Toggle("Privatmodus") + Picker("Im Privatmodus ausblenden") (#719)
+            CheckBox {
+                text: qsTr("Privatmodus")
+                checked: PrivacyMode.enabled
+                onToggled: PrivacyMode.setEnabled(checked)
+            }
+            SettingsFormRow {
+                label: qsTr("Im Privatmodus ausblenden")
+                AppComboBox {
+                    Layout.preferredWidth: 260 * Theme.textScale
+                    model: PrivacyMode.scopes
+                    textRole: "title"; valueRole: "id"
+                    currentIndex: PrivacyMode.scopes.findIndex(s => s.id === PrivacyMode.scope)
+                    onActivated: PrivacyMode.setScope(currentValue)
+                }
+            }
+            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                   text: qsTr("Blendet Beträge, Namen, Kontonummern und Verwendungszwecke aus, wenn du die App jemandem zeigst. Auf Wunsch nur die Beträge.") }
             CheckBox {
                 text: qsTr("Auswertungen in der Übersicht anzeigen")
                 checked: AppModel.showStatistics

@@ -13,6 +13,7 @@ use zeroize::Zeroizing;
 use super::Vault;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
+use crate::schema::has_table;
 
 /// Shortest password `write_backup` accepts (the macOS dialog requires the same).
 pub(crate) const MIN_BACKUP_PASSWORD_CHARS: usize = 8;
@@ -26,6 +27,14 @@ const DEVICE_SETTINGS_WHERE: &str = "key LIKE 'fints.url.%' OR key LIKE 'fints.t
 
 fn not_a_backup() -> CoreError {
     CoreError::invalid(tr("Falsches Passwort oder keine GiroCrab-Sicherung."))
+}
+
+/// The password opened the file, but it is another app's database (which may
+/// also have `accounts` and `transactions` tables).
+fn other_apps_database() -> CoreError {
+    CoreError::invalid(tr(
+        "Diese Datei ist keine GiroCrab-Sicherung, sondern die Datenbank einer anderen App. Zum Übernehmen bitte als Art des Imports diese App wählen.",
+    ))
 }
 
 fn remove_with_sidecars(path: &str) {
@@ -161,15 +170,11 @@ impl Vault {
             params![backup_path, password],
         )
         .map_err(|_| not_a_backup())?;
-        let tables: Vec<String> = tmp
-            .prepare("SELECT name FROM bak.sqlite_master WHERE type = 'table'")
-            .and_then(|mut s| s.query_map([], |r| r.get(0))?.collect())
-            .map_err(|_| not_a_backup())?;
-        if !["accounts", "transactions"]
-            .iter()
-            .all(|t| tables.iter().any(|n| n == t))
-        {
-            return Err(not_a_backup());
+        // every GiroCrab vault since the first release has these tables
+        for table in ["accounts", "transactions", "settings", "bank_connections"] {
+            if !has_table(&tmp, "bak", table).map_err(|_| not_a_backup())? {
+                return Err(other_apps_database());
+            }
         }
         let version: i64 = tmp.query_row("PRAGMA bak.user_version", [], |r| r.get(0))?;
         if version > super::SCHEMA_VERSION {

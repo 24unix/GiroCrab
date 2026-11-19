@@ -444,10 +444,10 @@ Rectangle {
                 Text { visible: nh.account !== null; Layout.alignment: Qt.AlignRight
                        text: nh.account ? Fmt.money(nh.account.balance_cents, nh.account.currency) : ""
                        font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
-                       color: nh.account && nh.account.balance_cents < 0 ? Theme.negative : Theme.text; Sensitive {} }
+                       color: nh.account && nh.account.balance_cents < 0 ? Theme.negative : Theme.text; Sensitive { amounts: true } }
                 Text { visible: nh.section !== null && nh.section.pendingCents !== 0; Layout.alignment: Qt.AlignRight
                        text: nh.section ? qsTr("Vorgemerkt: %1").arg(Fmt.money(nh.section.pendingCents, nh.account ? nh.account.currency : "EUR")) : ""
-                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive {} }
+                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive { amounts: true } }
             }
         }
     }
@@ -465,7 +465,7 @@ Rectangle {
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16
             Text { text: day ? Fmt.dayHeader(day.date) : ""; font.pixelSize: Theme.subheadline + 1; font.weight: Font.DemiBold; color: Theme.text; Layout.fillWidth: true }
-            Text { text: day ? Fmt.signed(day.sum) : ""; font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: day && day.sum > 0 ? Theme.inflow : Theme.secondary; Sensitive {} }
+            Text { text: day ? Fmt.signed(day.sum) : ""; font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: day && day.sum > 0 ? Theme.inflow : Theme.secondary; Sensitive { amounts: true } }
         }
     }
 
@@ -859,7 +859,7 @@ Rectangle {
                         text: br.amazonRef === null ? "" : br.amazonRef.isRefund ? Fmt.signed(br.booking.amount_cents) : Fmt.money(-Math.abs(br.booking.amount_cents))
                         font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                         color: br.amazonRef !== null && br.amazonRef.isRefund ? Theme.inflow : Theme.charge
-                        Sensitive {}
+                        Sensitive { amounts: true }
                     }
                     HoverHandler { id: orderAmountHover }
                     ToolTip.visible: orderAmountHover.hovered; ToolTip.delay: 600

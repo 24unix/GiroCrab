@@ -69,7 +69,7 @@ extension AppModel {
             errorMessage = describe(error)
             return
         }
-        requestSync(connections.first { $0.id == connection.id } ?? connection)
+        requestFullSync(connections.first { $0.id == connection.id } ?? connection)
     }
 
     // MARK: scheduled sync
