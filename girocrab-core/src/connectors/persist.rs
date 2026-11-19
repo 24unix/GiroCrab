@@ -705,6 +705,15 @@ pub(crate) fn store_fetch(
                 }
             }
         }
+        // These banks abbreviate the tax lines that MoneyMoney shows in full.
+        if matches!(
+            kind,
+            ConnectorKind::FordMoney | ConnectorKind::OpelDirektbank
+        ) {
+            for id in account_ids.values() {
+                crate::importers::moneymoney_import::merge_synced_tax_twins(&tx, *id)?;
+            }
+        }
         // Securities transactions (#314): beside the cash bookings, then matched to them.
         // Standing orders: complete per account, so the stored ones are replaced.
         for r in &data.standing_orders_fetched {
