@@ -282,16 +282,21 @@ struct StreamHeaderCard: View {
     @ViewBuilder
     private var filterRow: some View {
         @Bindable var model = model
-        // Never let the fixed-size filter controls widen the header card:
-        // fits -> normal row (count right-aligned); too narrow -> scrolls.
-        ViewThatFits(in: .horizontal) {
-            filterContent
+        // Never let the fixed-size filter controls widen the header card: they scroll when the
+        // row is too narrow, the count stays at its end. Always the scroll view, no `ViewThatFits`:
+        // the split view measures the column at width 0 on every frame of a sidebar animation or
+        // window resize, and `ViewThatFits` then built a scrolling copy of the controls (menus,
+        // pop-up buttons) and dropped it again in the layout right after (#1131).
+        HStack(spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
-                filterContent.fixedSize(horizontal: true, vertical: false)
+                filterControls.fixedSize(horizontal: true, vertical: false)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            bookingCount
         }
+        .appFont(.caption)
+        .foregroundStyle(Theme.secondary)
         .coordinateSpace(.named(TagFilterButton.rowSpace))
-        // Outside ViewThatFits: its candidates must not each carry the popover.
         .capturablePopover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
             CustomPeriodForm()
         }
@@ -401,7 +406,7 @@ struct StreamHeaderCard: View {
     }
 
     @ViewBuilder
-    private var filterContent: some View {
+    private var filterControls: some View {
         @Bindable var model = model
         let account = self.account
         HStack(spacing: 12) {
@@ -489,25 +494,26 @@ struct StreamHeaderCard: View {
                     .foregroundStyle(showAnalytics ? Color.accentColor : Theme.secondary)
                     .help("Cashflow und Budgets für dieses Konto ein-/ausblenden")
                 }
-                Spacer()
-                #if os(iOS)
-                if sizeClass != .compact {
-                    Text("\(model.bookingCountLabel) Buchungen")
-                        .appFont(.caption)
-                        .foregroundStyle(Theme.secondary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                #else
-                Text("\(model.bookingCountLabel) Buchungen")
-                    .appFont(.caption)
-                    .foregroundStyle(Theme.secondary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                #endif
             }
-        .appFont(.caption)
-        .foregroundStyle(Theme.secondary)
+    }
+
+    @ViewBuilder
+    private var bookingCount: some View {
+        #if os(iOS)
+        if sizeClass != .compact {
+            Text("\(model.bookingCountLabel) Buchungen")
+                .appFont(.caption)
+                .foregroundStyle(Theme.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        #else
+        Text("\(model.bookingCountLabel) Buchungen")
+            .appFont(.caption)
+            .foregroundStyle(Theme.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        #endif
     }
 }
 
@@ -599,10 +605,19 @@ struct BalanceChart: View {
     @AppStorage(BalanceChartStyle.defaultsKey) private var style: BalanceChartStyle = .line
     @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
-    /// Width of the chart: the x-axis spaces its labels by it (no overlapping years).
-    @State private var chartWidth: CGFloat = 600
+    /// Width of the chart: the x-axis spaces its labels by it (no overlapping years). A reference,
+    /// so a new width is no state change: a sidebar animation or window resize changes it every
+    /// frame, and each body run makes Charts rebuild the chart.
+    @State private var chartWidth = ChartWidth()
+    /// Label spacing at the last width: the only state the width changes, so the body runs
+    /// again only when the labels move.
+    @State private var xStride = 0
     /// Height of the chart: the y-axis keeps its labels apart by it (large text in a small chart).
     @State private var chartHeight: CGFloat = 0
+
+    private final class ChartWidth {
+        var value: CGFloat = 600
+    }
 
     @Observable fileprivate final class Hover {
         /// Day under the mouse pointer (hover readout: date + balance).
@@ -815,6 +830,11 @@ struct BalanceChart: View {
         return last.timeIntervalSince(first) / 86_400
     }
 
+    /// Days the x-axis covers in the drawn style.
+    private var xSpan: Double {
+        drawStyle == .bars ? spanDays(buckets.first?.start, buckets.last?.last) : spanDays(pts.first?.date, pts.last?.date)
+    }
+
     private func clearHover() { hover.point = nil; hover.bar = nil }
 
     /// Jumps to the bookings of the hovered day / bar; false if nothing is hovered.
@@ -849,10 +869,16 @@ struct BalanceChart: View {
     }
 
     @ViewBuilder private var interactiveChart: some View {
+        // reads `xStride`, so a new spacing runs the body again
+        let _ = xStride
         Group {
             if drawStyle == .bars { barChart } else { lineChart }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chartWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            chartWidth.value = width
+            let count = Self.xAxisStride(span: xSpan, width: width, textScale: textScale)
+            if count != xStride { xStride = count }
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chartHeight = $0 }
         .onChange(of: points.first?.date) { _, _ in clearHover() }
         .onChange(of: points.count) { _, _ in clearHover() }
@@ -964,7 +990,7 @@ struct BalanceChart: View {
         .chartXScale(domain: cur.xDomain)
         .chartYScale(domain: yDomain)
         .chartYAxis { yAxis(min: cur.low, max: cur.high, domain: yDomain) }
-        .chartXAxis { xAxis(span: spanDays(pts.first?.date, pts.last?.date)) }
+        .chartXAxis { xAxis(span: xSpan) }
         .chartOverlay { proxy in
             GeometryReader { geo in
                 ObservationScope { marker(in: pts, proxy: proxy, geo: geo) }
@@ -1026,7 +1052,7 @@ struct BalanceChart: View {
             yAxis(min: bars.map(\.euros).min() ?? 0, max: bars.map(\.euros).max() ?? 0,
                   domain: (lo - (lo < 0 ? pad : 0))...(hi + pad))
         }
-        .chartXAxis { xAxis(span: spanDays(bars.first?.start, bars.last?.last), centered: barUnit != .day) }
+        .chartXAxis { xAxis(span: xSpan, centered: barUnit != .day) }
         .chartOverlay { proxy in
             GeometryReader { geo in
                 ObservationScope { barHighlight(in: bars, unit: barUnit, proxy: proxy, geo: geo) }
@@ -1163,27 +1189,35 @@ struct BalanceChart: View {
         return steps.first { units / Double($0) <= fit } ?? steps.last ?? 1
     }
 
+    /// Label spacing of the x-axis over `span` days: years for long periods (every 1/2/5/10 so
+    /// the labels never crowd), weekly days for short ones (this/last month), else months.
+    static func xAxisStride(span: Double, width: CGFloat, textScale: CGFloat) -> Int {
+        if span > 400 {
+            axisStride(units: span / 365.25, width: width, labelWidth: 64 * textScale, steps: [1, 2, 5, 10, 20])
+        } else if span < 62 {
+            axisStride(units: span, width: width, labelWidth: 64 * textScale, steps: [7, 14, 28])
+        } else {
+            axisStride(units: span / 30.44, width: width, labelWidth: 44 * textScale, steps: [1, 2, 3, 6])
+        }
+    }
+
     /// `centered`: bar mode puts a year/month label under the middle of its bar, not its start.
     @AxisContentBuilder private func xAxis(span: Double, centered: Bool = false) -> some AxisContent {
+        let count = Self.xAxisStride(span: span, width: chartWidth.value, textScale: textScale)
         if span > 400 {
-            // long periods: years, every 1/2/5/10 so the labels never crowd
-            let years = Self.axisStride(units: span / 365.25, width: chartWidth, labelWidth: 64 * textScale, steps: [1, 2, 5, 10, 20])
-            AxisMarks(values: .stride(by: .year, count: years)) { v in
+            AxisMarks(values: .stride(by: .year, count: count)) { v in
                 // centred = midway to the next label: only right if that is the next year
-                AxisValueLabel(centered: centered && years == 1) { Self.axisDate(v, .dateTime.year()) }
+                AxisValueLabel(centered: centered && count == 1) { Self.axisDate(v, .dateTime.year()) }
                     .foregroundStyle(Theme.tertiary)
             }
         } else if span < 62 {
-            // short periods (this/last month): weekly day labels
-            let days = Self.axisStride(units: span, width: chartWidth, labelWidth: 64 * textScale, steps: [7, 14, 28])
-            AxisMarks(values: .stride(by: .day, count: days)) { v in
+            AxisMarks(values: .stride(by: .day, count: count)) { v in
                 AxisValueLabel { Self.axisDate(v, .dateTime.day().month(.abbreviated)) }
                     .foregroundStyle(Theme.tertiary)
             }
         } else {
-            let months = Self.axisStride(units: span / 30.44, width: chartWidth, labelWidth: 44 * textScale, steps: [1, 2, 3, 6])
-            AxisMarks(values: .stride(by: .month, count: months)) { v in
-                AxisValueLabel(centered: centered && months == 1) { Self.axisDate(v, .dateTime.month(.abbreviated)) }
+            AxisMarks(values: .stride(by: .month, count: count)) { v in
+                AxisValueLabel(centered: centered && count == 1) { Self.axisDate(v, .dateTime.month(.abbreviated)) }
                     .foregroundStyle(Theme.tertiary)
             }
         }
