@@ -1705,3 +1705,77 @@ fn portal_connections_list_nothing_to_download_while_retrieval_is_off() {
         .unwrap()
         .is_empty());
 }
+
+#[test]
+fn managed_hold_prefix_survives_same_amount_payment_until_removed_from_list() {
+    let _p_dir = crate::test_support::TempDir::new("girocrab-hold-1111");
+    let v = Vault::open(
+        _p_dir.join("v.db").to_string_lossy().to_string(),
+        vec![3u8; 32],
+    )
+    .unwrap();
+    let conn = v
+        .add_bank_connection(
+            ConnectorKind::PayPal,
+            String::new(),
+            "user@example.com".into(),
+        )
+        .unwrap();
+    let mut f1 = FetchResult::default();
+    f1.accounts.push(RemoteAccount {
+        external_ref: "paypal:EUR".into(),
+        name: "PayPal".into(),
+        owner: "user@example.com".into(),
+        iban: String::new(),
+        account_number: "user@example.com".into(),
+        currency: "EUR".into(),
+        kind: AccountKind::PaymentService,
+        balance_cents: 100_00,
+        balance_date: "2026-11-18".into(),
+    });
+    f1.hold_prefix = Some("pending-hold-paypal-".into());
+    f1.transactions.push(RemoteTransaction {
+        account_ref: "paypal:EUR".into(),
+        external_id: "pending-hold-paypal-H1".into(),
+        booking_date: "2026-11-18".into(),
+        value_date: "2026-11-18".into(),
+        amount_cents: -30_00,
+        currency: "EUR".into(),
+        counterparty: "Hotel".into(),
+        ..Default::default()
+    });
+    // Gleich hoher anderer Kauf am Folgetag ohne Gegen-IBAN
+    f1.transactions.push(RemoteTransaction {
+        account_ref: "paypal:EUR".into(),
+        external_id: "TX-OTHER-30".into(),
+        booking_date: "2026-11-19".into(),
+        value_date: "2026-11-19".into(),
+        amount_cents: -30_00,
+        currency: "EUR".into(),
+        counterparty: "Shop".into(),
+        ..Default::default()
+    });
+    let saved_accounts = f1.accounts.clone();
+    store_fetch(&v, ConnectorKind::PayPal, conn, f1).unwrap();
+
+    let active_holds = || -> Vec<String> {
+        let db = v.db().unwrap();
+        let mut q = db
+            .prepare("SELECT external_id FROM transactions WHERE external_id LIKE 'pending-hold-paypal-%' AND deleted_ms IS NULL")
+            .unwrap();
+        q.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    assert_eq!(active_holds(), vec!["pending-hold-paypal-H1"]);
+
+    // Erst wenn die Reservierung nicht mehr in der offenen Liste steht, wird sie gelöscht
+    let f2 = FetchResult {
+        accounts: saved_accounts,
+        hold_prefix: Some("pending-hold-paypal-".into()),
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::PayPal, conn, f2).unwrap();
+    assert!(active_holds().is_empty());
+}

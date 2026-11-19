@@ -3488,3 +3488,45 @@ fn external_refs_never_change() {
     // Imported accounts are matched again by this ref on the next import.
     assert_eq!(fnv("12345678|0532013000"), "663cb359");
 }
+
+#[test]
+fn adopt_account_reuses_imported_trade_republic_checking_account_without_iban() {
+    let _p_dir = crate::test_support::TempDir::new("girocrab-tr-1114");
+    let v = Vault::open(
+        _p_dir.join("v.db").to_string_lossy().to_string(),
+        vec![3u8; 32],
+    )
+    .unwrap();
+    let conn_id = v
+        .add_bank_connection(
+            ConnectorKind::TradeRepublic,
+            String::new(),
+            "+491701234567".into(),
+        )
+        .unwrap();
+    {
+        let db = v.db().unwrap();
+        let gid = Vault::ensure_group(&db, "Girokonten", "banknote", 1).unwrap();
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, iban, currency, kind, balance_cents, balance_date, sf_symbol, sort_order, created_ms)
+             VALUES (?1, ?2, 'moneymoney-db:tr-cash-1', 'Verrechnungskonto', 'Trade Republic', 'DE02100123450000000001', 'EUR', 'checking', 12345, '2026-11-18', 'banknote', 1, 1000)",
+            params![conn_id, gid],
+        )
+        .unwrap();
+        let adopted =
+            super::adopt_account(&db, conn_id, "tr:cash", "", "EUR", AccountKind::Checking)
+                .unwrap();
+        assert!(
+            adopted.is_some(),
+            "imported TR checking account must be adopted"
+        );
+        let ext: String = db
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                params![adopted.unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ext, "tr:cash");
+    }
+}

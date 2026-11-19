@@ -7,14 +7,13 @@ extension AppModel {
     /// registration; users who already entered their own are asked once.
     func reloadProductIDState(_ vault: Vault) {
         var mode = (try? vault.fintsProductIdMode()) ?? ""
-        let hasOwn = settingEntry("fints.product_id")?.hasValue == true
-        if fintsBuiltinAvailable, mode.isEmpty, !hasOwn, !isDemo {
+        if fintsBuiltinAvailable, mode != "builtin", !isDemo {
             try? vault.setFintsProductIdMode(mode: "builtin")
             mode = "builtin"
         }
         fintsProductIDMode = mode
         fintsProductIDSource = (try? vault.fintsProductIdSource()) ?? ""
-        offerProductIDChoice = fintsBuiltinAvailable && mode.isEmpty && hasOwn && !isDemo
+        offerProductIDChoice = false
     }
 
     /// Stores the choice. The user's own ID always stays in the vault.

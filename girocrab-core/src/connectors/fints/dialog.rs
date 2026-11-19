@@ -20,7 +20,10 @@ use crate::i18n::{tr, trf};
 /// is still outstanding. Standard is 3956; Deutsche Bank answers with warnings
 /// only (3060, no success code) until the user has confirmed.
 pub(super) fn approval_pending(reply: &BankReply) -> bool {
+    // 3045 ("SEPA-Instant Payment Statusabfrage HKIPS veranlassen"): bank accepted the
+    // instant payment for processing after approval; polling HKTAN again fails with 9210 (#1121).
     reply.errors().is_empty()
+        && !reply.has("3045")
         && (reply.has("3956") || !reply.codes.iter().any(|c| c.0.starts_with('0')))
 }
 

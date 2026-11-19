@@ -290,12 +290,91 @@ fn fallback_account(ctx: &ConnectContext) -> RemoteAccount {
     }
 }
 
-/// Only keep transactions for accounts we know.
+/// Ensure every currency present in fetched transactions has a PayPal account
+/// (even when its balance is 0 and omitted by GetBalance / /balances, #1110),
+/// then keep only transactions belonging to known accounts.
 fn retain_known(out: &mut FetchResult) {
+    let owner = out
+        .accounts
+        .first()
+        .map(|a| a.owner.clone())
+        .unwrap_or_default();
+    let account_number = out
+        .accounts
+        .first()
+        .map(|a| a.account_number.clone())
+        .unwrap_or_else(|| owner.clone());
+    let balance_date = out
+        .accounts
+        .first()
+        .map(|a| a.balance_date.clone())
+        .unwrap_or_else(super::today);
+
+    for t in &out.transactions {
+        let Some(cur) = t.account_ref.strip_prefix("paypal:") else {
+            continue;
+        };
+        let cur = cur.trim();
+        if cur.is_empty() || out.accounts.iter().any(|a| a.external_ref == t.account_ref) {
+            continue;
+        }
+        out.accounts.push(RemoteAccount {
+            external_ref: t.account_ref.clone(),
+            name: format!("PayPal {cur}"),
+            owner: owner.clone(),
+            iban: String::new(),
+            account_number: account_number.clone(),
+            currency: cur.to_string(),
+            kind: AccountKind::PaymentService,
+            balance_cents: 0,
+            balance_date: balance_date.clone(),
+        });
+    }
+
     let known: Vec<String> = out
         .accounts
         .iter()
         .map(|a| a.external_ref.clone())
         .collect();
     out.transactions.retain(|t| known.contains(&t.account_ref));
+}
+
+#[cfg(test)]
+mod currency_tests {
+    use super::*;
+
+    #[test]
+    fn retain_known_creates_zero_balance_account_for_foreign_currency_transactions() {
+        let mut out = FetchResult::default();
+        out.accounts.push(RemoteAccount {
+            external_ref: "paypal:EUR".into(),
+            name: "PayPal".into(),
+            owner: "alice@example.com".into(),
+            iban: String::new(),
+            account_number: "alice@example.com".into(),
+            currency: "EUR".into(),
+            kind: AccountKind::PaymentService,
+            balance_cents: 50_00,
+            balance_date: "2026-11-19".into(),
+        });
+        out.transactions.push(RemoteTransaction {
+            account_ref: "paypal:USD".into(),
+            external_id: "USD-PURCHASE-1".into(),
+            booking_date: "2026-11-19".into(),
+            value_date: "2026-11-19".into(),
+            amount_cents: -11_90,
+            currency: "USD".into(),
+            counterparty: "US Merchant".into(),
+            ..Default::default()
+        });
+        retain_known(&mut out);
+        assert_eq!(out.transactions.len(), 1);
+        let usd = out
+            .accounts
+            .iter()
+            .find(|a| a.external_ref == "paypal:USD")
+            .unwrap();
+        assert_eq!(usd.currency, "USD");
+        assert_eq!(usd.balance_cents, 0);
+    }
 }

@@ -390,6 +390,10 @@ fn decoupled_poll_recognises_a_pending_approval() {
     assert!(approval_pending(&reply(
         b"HIRMG:2:2+3060::Bitte beachten Sie die enthaltenen Warnungen.'HIRMS:3:2:3+3956::Starke Kundenauthentifizierung noch ausstehend.'"
     )));
+    // 3045: SEPA-Instant handover after approval is no longer pending (#1121)
+    assert!(!approval_pending(&reply(
+        b"HIRMG:2:2+3060::Bitte beachten Sie die enthaltenen Warnungen.'HIRMS:3:2:3+3045::SEPA-Instant Payment Statusabfrage HKIPS veranlassen.'"
+    )));
     // warnings only, no success code (Deutsche Bank)
     assert!(approval_pending(&reply(
         b"HIRMG:2:2+3060::Teilweise liegen Warnungen vor.'HIRMS:3:2:3+3060::Hinweis.'"

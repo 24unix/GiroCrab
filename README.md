@@ -58,6 +58,13 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 
 GiroCrab ist eine freie, quelloffene Banking-App (GPLv3) für macOS, Linux (Qt 6 / QML) und – derzeit als Beta über TestFlight – für iPhone und iPad. Alle Daten liegen verschlüsselt auf deinem Gerät. GiroCrab ist ein junges Community-Projekt: Die Bankenabdeckung wächst noch (siehe Bank-Tabelle), und PSD2-Zugänge laufen über einen eigenen, kostenlosen Enable-Banking-Zugang.
 
+### ✨ Neu in v0.8.6
+
+- 🔍 **Natürliche Suche & Beleg-Filter:** Buchungen über natürliche Suchbegriffe finden und gezielt nach Belegen filtern.
+- 🏦 **Banken, Echtzeitüberweisung & Import-Korrekturen:** Consorsbank-Archiv, FFB-Postfach-PDFs (#1105) & FFB-Depot-Zusammenführung (#1103), Ford-Money-/Opel-Steuerabgleich (#1102), Ford-Money-Freigabe (#1101), Advanzia-Wiederanlegen (#1115), Trade-Republic-Verrechnungskonto beim Import (#1114), PayPal-Fremdwährungen (#1110) & Enable-Banking-Währungsanzeige (#1034), offene Reservierungen (#1111), ING Business im Bankverzeichnis (#974) sowie Echtzeitüberweisung-Statusrückmeldung `3045` (#1121).
+- 🔐 **Sicherheit & FinTS-Registrierung:** In offiziellen Builds wird ausschließlich GiroCrabs offizielle FinTS-Produktregistrierung genutzt (#1092), Connector-Zustände im Speicher geschützt (#1094) und die Schlüsselbund-Prüfung korrigiert (#1084).
+- 📱 **iOS / TestFlight – v0.8.6 unter der Haube (Build 22 unter Version 0.7.5):** Damit Updates ohne Review-Wartezeit sofort bei euch landen, erscheint der komplette **v0.8.6-Funktionsumfang** auf iOS direkt als Build 22 unter Version `0.7.5`.
+
 ### ✨ Neu in v0.8.5
 
 - 🔐 **Schlüsselbund- & iCloud-Übernahme:** Verbesserte Wiederherstellung und Übernahme bestehender Tresorschlüssel auf macOS und iOS sowie klarerer Hinweis im Demo-Modus.
@@ -300,6 +307,13 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 ### Who is GiroCrab for?
 
 GiroCrab is a free, open-source banking app (GPLv3) for macOS, Linux (Qt 6 / QML) and – currently in beta via TestFlight – for iPhone and iPad. All data stays encrypted on your device. GiroCrab is a young community project: bank coverage is still growing (see the bank table), and PSD2 access works through your own free Enable Banking account.
+
+### ✨ What's new in v0.8.6
+
+- 🔍 **Natural Search & Document Filters:** Find bookings using natural-language queries and filter directly by attached documents.
+- 🏦 **Bank, Instant Transfer & Import Fixes:** Consorsbank archive support, FFB mailbox PDFs (#1105) & FFB depot twin folding (#1103), Ford Money / Opel tax-line matching (#1102), Ford Money approval polling (#1101), Advanzia account re-add fix (#1115), Trade Republic clearing account adoption (#1114), PayPal foreign-currency bookings (#1110) & Enable Banking currency display (#1034), pending reservation retention (#1111), ING Business in bank search (#974), and instant transfer `3045` handover handling (#1121).
+- 🔐 **Security & FinTS Registration:** Official releases always use GiroCrab's built-in FinTS product registration (#1092), harden in-memory connector state (#1094), and fix read-only keychain checks (#1084).
+- 📱 **iOS / TestFlight – Full v0.8.6 under the hood (Build 22 under version 0.7.5):** To deliver updates without Apple review delays, the complete **v0.8.6 feature set** ships on iOS as Build 22 under version `0.7.5`.
 
 ### ✨ What's new in v0.8.5
 

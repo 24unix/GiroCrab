@@ -783,7 +783,7 @@ impl EnableBankingConnector {
             if a.name.is_empty() {
                 a.name = self.aspsp_default.clone();
             }
-            if a.currency.is_empty() {
+            if a.currency.is_empty() || a.currency.eq_ignore_ascii_case("XXX") {
                 a.currency = "EUR".into();
             }
         }
@@ -810,7 +810,7 @@ impl EnableBankingConnector {
                     .to_string(),
             ),
             (&mut acc.iban, s(&a["account_id"]["iban"]).replace(' ', "")),
-            (&mut acc.currency, s(&a["currency"])),
+            (&mut acc.currency, s(&a["currency"]).to_uppercase()),
             (&mut acc.cash_account_type, s(&a["cash_account_type"])),
             (&mut acc.identification_hash, s(&a["identification_hash"])),
             (&mut acc.account_number, other_account_id(a)),
@@ -1483,7 +1483,12 @@ impl EnableBankingConnector {
         let uid = acc.uid.clone();
         let name = acc.name.clone();
         let iban = acc.iban.clone();
-        let currency = acc.currency.clone();
+        let currency = if acc.currency.trim().is_empty() || acc.currency.eq_ignore_ascii_case("XXX")
+        {
+            "EUR".to_string()
+        } else {
+            acc.currency.clone()
+        };
         let external_ref = acc.ext_ref.clone();
         {
             crate::depot_debug::log(&format!(

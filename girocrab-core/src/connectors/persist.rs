@@ -744,11 +744,20 @@ pub(crate) fn store_fetch(
         }
         // Drop optimistic transfer bookings once the bank's real booking arrived
         // (same account, amount and recipient IBAN; a batch: amount only) or after 14 days.
+        // Connectors that report their complete open-hold list (`hold_prefix`) manage
+        // those holds below (#1111) so same-amount payments or >14d holds are not dropped early.
+        let managed_hold_like = data
+            .hold_prefix
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .map(|p| format!("{}%", p.replace('%', "").replace('_', "\\_")))
+            .unwrap_or_default();
         tx.execute(
             "UPDATE transactions SET deleted_ms = ?1
               WHERE external_id LIKE 'pending-%' AND deleted_ms IS NULL
                 -- web-portal holds (#629) are settled or discarded explicitly
-                AND external_id NOT LIKE 'pending-hold-portal-%' AND (
+                AND external_id NOT LIKE 'pending-hold-portal-%'
+                AND (?2 = '' OR external_id NOT LIKE ?2 ESCAPE '\\') AND (
                 imported_unix < strftime('%s','now') - 14*86400 OR EXISTS (
                     SELECT 1 FROM transactions r WHERE r.account_id = transactions.account_id
                       AND r.deleted_ms IS NULL
@@ -763,7 +772,7 @@ pub(crate) fn store_fetch(
                                AND (r.booking_text LIKE '%Sammel%' OR r.purpose LIKE '%Sammel%')
                                AND r.booking_date <= date(transactions.booking_date, '+7 days')))
                       AND r.booking_date >= transactions.booking_date))",
-            [crate::dates::now_ms()],
+            params![crate::dates::now_ms(), managed_hold_like],
         )?;
         // Entries the connector recognised as no real movement (stored by an older version).
         for (account_ref, external_id) in &data.withdrawn {

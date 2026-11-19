@@ -848,7 +848,7 @@ impl BankConnector for FfbConnector {
             let documents = self.documents(only, &today, &mut known).await?;
             return Ok(FetchResult {
                 documents,
-                state: Some(known.to_state()),
+                state: known.to_state(),
                 ..Default::default()
             });
         }
@@ -862,7 +862,7 @@ impl BankConnector for FfbConnector {
             if let Ok(documents) = self.documents(&depot_ref, &today, &mut known).await {
                 out.documents = documents;
                 out.statements_fetched = due.to_vec();
-                out.state = Some(known.to_state());
+                out.state = known.to_state();
             }
         }
         Ok(out)
