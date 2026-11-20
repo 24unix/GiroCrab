@@ -169,7 +169,7 @@ Die 23 Aufgaben stehen mit Belegkriterium in vier übernehmbaren Blöcken, dazu 
 grep -rho '#\[uniffi::export\]' girocrab-core/src | wc -l                                   # 92 Blöcke
 grep -rhoE 'vault\.[a-zA-Z]+\(' --include=*.swift GiroCrabApp/Sources | sort -u | wc -l     # 154
 grep -rhoE '\bcore\.[a-zA-Z]+\(' --include=*.kt GiroCrabAndroid/app/src/main/java | sort -u
-ls GiroCrabAndroid/app/src/main/jniLibs scripts/build-rust-android.sh                       # beide fehlen
+ls GiroCrabAndroid/app/src/main/jniLibs GiroCrabAndroid/scripts/build-rust-android.sh                       # jniLibs fehlt, Skript vorhanden
 grep -cE 'cargo|ndk|rust' .github/workflows/android.yml                                     # 0
 ```
 
