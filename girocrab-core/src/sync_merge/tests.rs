@@ -4702,8 +4702,8 @@ fn twin_positions_do_not_override_a_fetched_empty_depot() {
     exec(
         &v,
         &format!(
-            "INSERT INTO depot_observations(account_id, kind, position, source, observed_ms, value_date, currency, value_cents)
-             VALUES ({bank}, 'total', '', 'fetch', 1, '2026-11-10', 'EUR', 0)"
+            "INSERT INTO depot_observations(account_id, kind, position, source, observed_ms, value_date, currency, value_cents, confirmed)
+             VALUES ({bank}, 'total', '', 'fetch', 1, '2026-11-10', 'EUR', 0, 1)"
         ),
     );
     drop(v);
@@ -4713,6 +4713,26 @@ fn twin_positions_do_not_override_a_fetched_empty_depot() {
     drop(v);
     let v = open(&dir, "a.db");
     assert_eq!(positions_of(&v, bank), 0);
+}
+
+/// A fetch that brought only the balance (no inventory, unconfirmed) is no
+/// inventory of the bank's own: the twin's positions still move over.
+#[test]
+fn twin_positions_move_to_a_depot_that_only_fetched_its_balance() {
+    let dir = temp_dir("twin-depot-balance-only");
+    let v = open(&dir, "a.db");
+    let (bank, twin) = depot_pair(&v, 2);
+    exec(
+        &v,
+        &format!(
+            "INSERT INTO depot_observations(account_id, kind, position, source, observed_ms, value_date, currency, value_cents, confirmed)
+             VALUES ({bank}, 'total', '', 'fetch', 1, '2026-11-10', 'EUR', 200000, 0)"
+        ),
+    );
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(positions_of(&v, bank), 2);
+    assert_eq!(positions_of(&v, twin), 0);
 }
 
 /// The bank depot's own positions (from a fetch) are newer: they stay, the
