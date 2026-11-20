@@ -58,6 +58,7 @@ pub(crate) fn clear_session_inner(db: &Connection, connection_id: i64) -> CoreRe
             "valid_until",
             "saved_unix",
             "source",
+            "refresh_token",
         ] {
             if let Some(mut old) = o.remove(k) {
                 wipe(&mut old);
@@ -848,6 +849,8 @@ mod tests {
             )
             .unwrap();
         assert!(v.connection_status(c).unwrap().has_session);
+        v.clear_connection_session(c).unwrap();
+        assert!(!v.connection_status(c).unwrap().has_session);
     }
 
     /// Direct debit, standing order and planned data hang on the duplicate
