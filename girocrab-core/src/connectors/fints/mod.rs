@@ -899,4 +899,6 @@ impl BankConnector for FinTsConnector {
 }
 
 #[cfg(test)]
+mod invariant_tests;
+#[cfg(test)]
 mod tests;
