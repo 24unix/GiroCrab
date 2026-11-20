@@ -161,7 +161,9 @@ QtObject {
         }
         if (used.length === 1) {
             out.title = used[0].name
-            out.filter_notes = (out.filter_notes || []).filter(n => n.indexOf(used[0].name) < 0)
+            // the tag note stays even when the account name is part of it („Auto“ in „Tags: Auto-Kosten“)
+            const tagNote = TagFilter.note()
+            out.filter_notes = (out.filter_notes || []).filter(n => n === tagNote || n.indexOf(used[0].name) < 0)
         } else {
             out.title = qsTr("Umsätze")
         }

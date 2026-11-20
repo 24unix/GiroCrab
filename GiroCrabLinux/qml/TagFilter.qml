@@ -35,7 +35,11 @@ QtObject {
     function clear() { set([], false) }
     /// The filter as an object, for MerchantFocus to restore (MerchantFocusReturn.tags).
     function snapshot() { return { tagIDs: tagIDs.slice(), untagged: untagged } }
-    function restore(s) { if (s) set(s.tagIDs, s.untagged) }
+    /// Restores a saved choice without tags deleted or merged meanwhile.
+    function restore(s) {
+        if (!s) return
+        set(s.tagIDs.filter(id => TagsModel.tags.some(t => t.id === id)), s.untagged)
+    }
 
     /// AppModel+Loading.swift › currentFilter: the filter's `tag_ids` / `untagged_only`.
     function applyTo(f) {
@@ -94,6 +98,8 @@ QtObject {
         set([tagID], false)
         AppModel.statusFilter = "all"
         AppModel.directionFilter = "All"
+        // tag_account_counts counts every booking of the account, whatever the scope
+        AppModel.scope = "All"
         if (AppModel.searchText !== "") { AppModel.searchText = ""; AppModel.searchTimer.stop() }
         AppModel.sidebarSelection = "account:" + accountID
         if (AppModel.period !== "all") AppModel.choosePeriod("all")
