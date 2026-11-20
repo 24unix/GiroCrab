@@ -219,17 +219,23 @@ fn segment_inserted_before_signature_is_rejected_even_with_mid_text_binary_marke
     let mut forged = signed.to_vec();
     forged.extend_from_slice(format!("HISAL:4:5+X:Y:1,00@{}@'", trailer.len()).as_bytes());
     forged.extend_from_slice(trailer);
-    assert!(syntax::parse(&forged)
-        .unwrap()
-        .iter()
-        .any(|s| s.id() == "HISAL"));
-    assert!(client
-        .unwrap(&reseal(&public, &forged, "dialog", 1), 1, "dialog")
-        .is_err());
+    assert!(
+        syntax::parse(&forged)
+            .unwrap()
+            .iter()
+            .any(|s| s.id() == "HISAL")
+    );
+    assert!(
+        client
+            .unwrap(&reseal(&public, &forged, "dialog", 1), 1, "dialog")
+            .is_err()
+    );
     // Control: the genuine plaintext, sealed again, still verifies.
-    assert!(client
-        .unwrap(&reseal(&public, &plain, "dialog", 1), 1, "dialog")
-        .is_ok());
+    assert!(
+        client
+            .unwrap(&reseal(&public, &plain, "dialog", 1), 1, "dialog")
+            .is_ok()
+    );
 }
 
 #[test]

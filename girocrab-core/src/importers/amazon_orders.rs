@@ -17,7 +17,7 @@ use regex::Regex;
 use serde::Deserialize;
 
 use super::portal_import::parse_amount;
-use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
+use crate::connectors::{FetchResult, RemoteAccount, RemoteTransaction, SyncSummary, store_fetch};
 use crate::dates::{find_de_date, iso, month_from_name};
 use crate::error::CoreError;
 use crate::i18n::tr;
@@ -164,11 +164,7 @@ fn item_refs(o: &Order) -> String {
         .filter(|i| !i.title.trim().is_empty())
         .map(|i| {
             let a = i.asin.trim();
-            if is_asin(a) {
-                a
-            } else {
-                ""
-            }
+            if is_asin(a) { a } else { "" }
         })
         .collect();
     if refs.iter().all(|a| a.is_empty()) {

@@ -22,8 +22,8 @@ use regex::Regex;
 use zeroize::Zeroize;
 
 use super::{
-    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, ContentIds,
-    FetchResult, Phase, RemoteAccount, RemoteTransaction,
+    BankConnector, ChallengeResponse, ConnectContext, ContentIds, FetchResult, Phase,
+    RemoteAccount, RemoteTransaction, http_client_same_host,
 };
 use crate::dates::{find_de_date, iso};
 use crate::error::{CoreError, CoreResult};
@@ -62,7 +62,9 @@ fn page_changed() -> CoreError {
 }
 
 fn invalid() -> CoreError {
-    CoreError::invalid(tr("Uberspace: Unvollständige oder ungültige Dashboard-Antwort. Es wurden keine Daten übernommen."))
+    CoreError::invalid(tr(
+        "Uberspace: Unvollständige oder ungültige Dashboard-Antwort. Es wurden keine Daten übernommen.",
+    ))
 }
 
 fn wrong_credentials() -> CoreError {

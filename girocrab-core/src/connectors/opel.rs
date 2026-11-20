@@ -35,11 +35,11 @@ use async_trait::async_trait;
 use regex::Regex;
 use zeroize::Zeroize;
 
-use super::uberspace::{attr, attrs, parse_date, text, INPUT};
+use super::uberspace::{INPUT, attr, attrs, parse_date, text};
 use super::{
-    http_client_same_host, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
-    ConnectContext, ContentIds, Documents, FetchResult, KnownDocuments, Phase, RemoteAccount,
-    RemoteTransaction,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, ContentIds,
+    Documents, FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
+    http_client_same_host,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};

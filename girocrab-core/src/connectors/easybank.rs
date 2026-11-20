@@ -14,7 +14,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reqwest::cookie::{CookieStore, Jar};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, Documents,

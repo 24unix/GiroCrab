@@ -114,9 +114,10 @@ fn bookings_move_the_balance_and_can_be_edited_and_deleted() {
         })
         .unwrap()
         .transactions;
-    assert!(t
-        .iter()
-        .any(|x| x.id == a && x.counterparty == "Metzger" && x.booking_date == "2026-11-03"));
+    assert!(
+        t.iter()
+            .any(|x| x.id == a && x.counterparty == "Metzger" && x.booking_date == "2026-11-03")
+    );
 
     // soft delete: the row stays for the merge, nothing lists or sums it
     v.delete_manual_booking(b).unwrap();
@@ -455,10 +456,11 @@ fn category_sums_count_only_eur_across_accounts() {
         (other[0].currency.as_str(), other[0].cents),
         ("USD", -35_00)
     );
-    assert!(v
-        .category_other_currencies(cat, vec![usd], None, None)
-        .unwrap()
-        .is_empty());
+    assert!(
+        v.category_other_currencies(cat, vec![usd], None, None)
+            .unwrap()
+            .is_empty()
+    );
 
     let flow = v.selection_flow(vec![], None, None).unwrap();
     assert_eq!(flow.consumption_cents, 10_00);
@@ -513,13 +515,14 @@ fn category_sums_count_only_eur_across_accounts() {
         (kpi[0].currency.as_str(), kpi[0].consumption_cents),
         ("USD", 55_00)
     );
-    assert!(v
-        .flow_other_currencies(BookingFilter {
+    assert!(
+        v.flow_other_currencies(BookingFilter {
             account_ids: vec![usd],
             ..Default::default()
         })
         .unwrap()
-        .is_empty());
+        .is_empty()
+    );
 
     // budgets and the cashflow chart: EUR only as well
     v.set_category_budget(cat, Some(100_00)).unwrap();

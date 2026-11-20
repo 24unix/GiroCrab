@@ -168,11 +168,7 @@ fn year_of(s: &str) -> Option<i32> {
 }
 
 fn bare_year(w: &str) -> Option<i32> {
-    if w.len() == 4 {
-        year_of(w)
-    } else {
-        None
-    }
+    if w.len() == 4 { year_of(w) } else { None }
 }
 
 fn parse_natural(q: &mut SmartSearchQuery, words: &[String]) {

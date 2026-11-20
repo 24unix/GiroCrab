@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use regex::Regex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::portal_import::{parse_date, split_csv};
 use crate::dates::now_ms;
@@ -28,7 +28,7 @@ use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::money::parse_cents;
 use crate::text::parse_bool_loose;
-use crate::vault::{enrich, Vault};
+use crate::vault::{Vault, enrich};
 
 const ARCHIVE_GROUP: &str = "Importierte Konten";
 
@@ -338,11 +338,7 @@ fn build_row(get: impl Fn(Field) -> String) -> Option<MmRow> {
         amount_cents: cents,
         currency: {
             let c = get(Field::Currency).trim().to_uppercase();
-            if c.is_empty() {
-                "EUR".into()
-            } else {
-                c
-            }
+            if c.is_empty() { "EUR".into() } else { c }
         },
         name: clean(get(Field::Name)),
         iban: normalize_iban(&get(Field::Iban)),
@@ -1938,9 +1934,11 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             (preview.new_bookings, preview.duplicates_skipped_or_enriched),
             (1, 1)
         );
-        assert!(preview
-            .detected_categories
-            .contains(&"Essen › Backwaren".into()));
+        assert!(
+            preview
+                .detected_categories
+                .contains(&"Essen › Backwaren".into())
+        );
         assert_eq!(
             preview.sample_bookings[0].category_path,
             "Essen › Backwaren"
@@ -2140,7 +2138,9 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         let (_dir, v) = vault();
         let head = "\"Datum\";\"Wertstellung\";\"Kategorie\";\"Name\";\"Verwendungszweck\";\"Konto\";\"Bank\";\"Betrag\";\"Währung\"\n";
         let row = |purpose: &str| {
-            format!("\"02.01.2026\";\"\";\"\";\"Stadtwerke\";\"{purpose}\";\"DE02120300000000202051\";\"\";\"-50,00\";\"EUR\"\n")
+            format!(
+                "\"02.01.2026\";\"\";\"\";\"Stadtwerke\";\"{purpose}\";\"DE02120300000000202051\";\"\";\"-50,00\";\"EUR\"\n"
+            )
         };
         // as from the database: two payments, references not in the purpose
         let db = format!(
@@ -2166,7 +2166,9 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
 
         // own transfer: the database import filled in the IBAN, the export has none
         let own = |iban: &str| {
-            format!("{head}\"05.01.2026\";\"\";\"\";\"Tagesgeld\";\"Umbuchung\";\"{iban}\";\"\";\"-100,00\";\"EUR\"\n")
+            format!(
+                "{head}\"05.01.2026\";\"\";\"\";\"Tagesgeld\";\"Umbuchung\";\"{iban}\";\"\";\"-100,00\";\"EUR\"\n"
+            )
         };
         v.import_moneymoney_data(
             own("DE89370400440532013000").into_bytes(),
@@ -2185,7 +2187,9 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
     #[test]
     fn reimport_creates_no_duplicates_and_keeps_identical_rows() {
         let (_dir, v) = vault();
-        let twin = format!("{CSV}\"15.03.2012\";\"\";\"Haushalt\\Supermarkt\";\"REWE Markt\";\"Einkauf Kartenzahlung\";\"DE02120300000000202051\";\"\";\"-1.234,56\";\"EUR\";\"\"\n");
+        let twin = format!(
+            "{CSV}\"15.03.2012\";\"\";\"Haushalt\\Supermarkt\";\"REWE Markt\";\"Einkauf Kartenzahlung\";\"DE02120300000000202051\";\"\";\"-1.234,56\";\"EUR\";\"\"\n"
+        );
         let a = v
             .import_moneymoney_data(twin.as_bytes().to_vec(), "x.csv".into(), None, true, true)
             .unwrap();
@@ -2365,31 +2369,35 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         );
         let db = v.db().unwrap();
         // purpose differs (SEPA tags), date off by one day, name matches
-        assert!(adopt_import(
-            &db,
-            acc,
-            "f1",
-            "2026-05-11",
-            -1250,
-            "",
-            "REWE",
-            "EREF+123 Einkauf",
-            ""
-        )
-        .unwrap());
+        assert!(
+            adopt_import(
+                &db,
+                acc,
+                "f1",
+                "2026-05-11",
+                -1250,
+                "",
+                "REWE",
+                "EREF+123 Einkauf",
+                ""
+            )
+            .unwrap()
+        );
         // comdirect: partner field holds booking text, MM name sits in the purpose
-        assert!(adopt_import(
-            &db,
-            acc,
-            "f2",
-            "2026-05-10",
-            -8000,
-            "",
-            "Lastschrift",
-            "Stadtwerke Köln MREF+9 Strom",
-            "LASTSCHRIFT"
-        )
-        .unwrap());
+        assert!(
+            adopt_import(
+                &db,
+                acc,
+                "f2",
+                "2026-05-10",
+                -8000,
+                "",
+                "Lastschrift",
+                "Stadtwerke Köln MREF+9 Strom",
+                "LASTSCHRIFT"
+            )
+            .unwrap()
+        );
         assert_eq!(ext_ids(&db, acc), vec!["f1", "f2"]);
         let cp: String = db
             .query_row(
@@ -2453,18 +2461,20 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         .unwrap());
         assert_eq!(ext_ids(&db, acc), vec!["c1"]);
         // a different short purpose with the same amount is not adopted
-        assert!(!adopt_import(
-            &db,
-            acc,
-            "c2",
-            "2026-11-10",
-            -180,
-            "",
-            "",
-            "Kartenzahlung",
-            "Buchung"
-        )
-        .unwrap());
+        assert!(
+            !adopt_import(
+                &db,
+                acc,
+                "c2",
+                "2026-11-10",
+                -180,
+                "",
+                "",
+                "Kartenzahlung",
+                "Buchung"
+            )
+            .unwrap()
+        );
     }
 
     /// comdirect's interest statement as FinTS delivers it: no counterparty,
@@ -2624,18 +2634,20 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             "23.03.2026;Hannah Muller;Fahrrad X3;1200,00;Einzahlung;\n",
         );
         let db = v.db().unwrap();
-        assert!(adopt_import(
-            &db,
-            acc,
-            "fints-1",
-            "2026-03-23",
-            120000,
-            "",
-            "Hannah Müller",
-            "Fahrrad X3 Hannah Müller Fahrrad X3 End-to-End-Ref.: NOTPROVIDED",
-            "Gutschrift"
-        )
-        .unwrap());
+        assert!(
+            adopt_import(
+                &db,
+                acc,
+                "fints-1",
+                "2026-03-23",
+                120000,
+                "",
+                "Hannah Müller",
+                "Fahrrad X3 Hannah Müller Fahrrad X3 End-to-End-Ref.: NOTPROVIDED",
+                "Gutschrift"
+            )
+            .unwrap()
+        );
         assert_eq!(ext_ids(&db, acc), vec!["fints-1"]);
     }
 
@@ -2647,18 +2659,20 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             "10.05.2026;Bäckerei Müller;Brötchen;-3,00;;\n10.05.2026;Bäckerei Müller;Kuchen;-3,00;;\n",
         );
         let db = v.db().unwrap();
-        assert!(!adopt_import(
-            &db,
-            acc,
-            "f1",
-            "2026-05-10",
-            -300,
-            "",
-            "Bäckerei Müller",
-            "EREF+1",
-            ""
-        )
-        .unwrap());
+        assert!(
+            !adopt_import(
+                &db,
+                acc,
+                "f1",
+                "2026-05-10",
+                -300,
+                "",
+                "Bäckerei Müller",
+                "EREF+1",
+                ""
+            )
+            .unwrap()
+        );
         assert!(ext_ids(&db, acc).iter().all(|e| e.starts_with("mm-")));
     }
 
@@ -2707,18 +2721,20 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         }
         assert_eq!(ext_ids(&db, acc), vec!["f1", "f2"]);
         // a third bank booking finds nothing left: no wrong adoption
-        assert!(!adopt_import(
-            &db,
-            acc,
-            "f3",
-            "2026-09-17",
-            -420,
-            "",
-            "comdirect",
-            "Bäckerei Sonne Berlin Kartenzahlung",
-            ""
-        )
-        .unwrap());
+        assert!(
+            !adopt_import(
+                &db,
+                acc,
+                "f3",
+                "2026-09-17",
+                -420,
+                "",
+                "comdirect",
+                "Bäckerei Sonne Berlin Kartenzahlung",
+                ""
+            )
+            .unwrap()
+        );
     }
 
     #[test]
@@ -2731,18 +2747,20 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         let db = v.db().unwrap();
         // the later one first: it must not take the 7.9. row
         for (ext, date) in [("f9", "2026-09-09"), ("f7", "2026-09-07")] {
-            assert!(adopt_import(
-                &db,
-                acc,
-                ext,
-                date,
-                -420,
-                "",
-                "comdirect",
-                "Bäckerei Sonne Berlin Kartenzahlung",
-                "",
-            )
-            .unwrap());
+            assert!(
+                adopt_import(
+                    &db,
+                    acc,
+                    ext,
+                    date,
+                    -420,
+                    "",
+                    "comdirect",
+                    "Bäckerei Sonne Berlin Kartenzahlung",
+                    "",
+                )
+                .unwrap()
+            );
         }
         assert_eq!(
             date_ids(&db, acc),
@@ -2761,18 +2779,20 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             "17.09.2026;Bäckerei Sonne;Kartenzahlung EREF: 1111;-4,20;Essen;\n17.09.2026;Bäckerei Sonne;Kartenzahlung EREF: 2222;-4,20;Geschenke;\n",
         );
         let db = v.db().unwrap();
-        assert!(!adopt_import(
-            &db,
-            acc,
-            "f1",
-            "2026-09-17",
-            -420,
-            "",
-            "comdirect",
-            "Bäckerei Sonne Berlin Kartenzahlung",
-            ""
-        )
-        .unwrap());
+        assert!(
+            !adopt_import(
+                &db,
+                acc,
+                "f1",
+                "2026-09-17",
+                -420,
+                "",
+                "comdirect",
+                "Bäckerei Sonne Berlin Kartenzahlung",
+                ""
+            )
+            .unwrap()
+        );
         assert!(ext_ids(&db, acc).iter().all(|e| e.starts_with("mm-")));
     }
 
@@ -2796,16 +2816,18 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             bank_ids.push(db.last_insert_rowid());
         }
         for bank_id in bank_ids {
-            assert!(merge_synced_twin(
-                &db,
-                bank_id,
-                "2026-09-17",
-                -420,
-                "",
-                "comdirect",
-                "Bäckerei Sonne Berlin Kartenzahlung"
-            )
-            .unwrap());
+            assert!(
+                merge_synced_twin(
+                    &db,
+                    bank_id,
+                    "2026-09-17",
+                    -420,
+                    "",
+                    "comdirect",
+                    "Bäckerei Sonne Berlin Kartenzahlung"
+                )
+                .unwrap()
+            );
         }
         let active: Vec<String> = date_ids(&db, acc).into_iter().map(|(_, e)| e).collect();
         assert_eq!(

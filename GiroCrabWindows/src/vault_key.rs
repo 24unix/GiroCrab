@@ -2,8 +2,8 @@
 //! Manager (`keyring`, `windows-native`). On other platforms (development, `cargo check`,
 //! tests) a process-local store stands in, so the crate builds everywhere.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(windows)]
 const SERVICE: &str = "de.girocrab.vault";

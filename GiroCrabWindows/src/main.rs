@@ -38,8 +38,8 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
 use girocrab_core::connectors::PayeeCheck;
+use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
 use girocrab_core::sync_log::{SyncLogOutcome, SyncLogSource};
 use girocrab_core::{
     BookingFilter, Category, Challenge, ChallengeKind, ConnectorKind, PeriodGranularity, SyncStep,
@@ -2502,9 +2502,11 @@ mod tests {
         );
         // Privacy hides balances and the IBAN tail.
         let (hidden, total) = account_rows(&vault, true).unwrap();
-        assert!(hidden
-            .iter()
-            .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000"));
+        assert!(
+            hidden
+                .iter()
+                .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000")
+        );
         assert_eq!(total, daily::MASK);
         let _ = std::fs::remove_file(&path);
     }

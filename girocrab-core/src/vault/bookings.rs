@@ -3,14 +3,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rusqlite::{params, params_from_iter, ToSql};
+use rusqlite::{ToSql, params, params_from_iter};
 
-use super::cache::DataStamp;
 use super::Vault;
+use super::cache::DataStamp;
 use crate::error::CoreError;
 use crate::i18n::trf;
 use crate::iban::normalize_iban;
-use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, MerchantResolver};
+use crate::merchants::{FlowKind, MerchantResolver, classify, clean_purpose, payment_method};
 use crate::models::*;
 use crate::money::parse_cents;
 
@@ -1591,10 +1591,11 @@ mod paging_tests {
         let both = v.list_transactions(range(Some(min), Some(max))).unwrap();
         assert!(both.total_count > 0, "the demo vault has bookings in range");
         assert_eq!(both.total_count, expected(&|a| (min..=max).contains(&a)));
-        assert!(both
-            .transactions
-            .iter()
-            .all(|b| (min..=max).contains(&b.amount_cents.abs())));
+        assert!(
+            both.transactions
+                .iter()
+                .all(|b| (min..=max).contains(&b.amount_cents.abs()))
+        );
         // the sign is ignored: income and expenses both count
         assert!(both.transactions.iter().any(|b| b.amount_cents > 0));
         assert!(both.transactions.iter().any(|b| b.amount_cents < 0));
@@ -1688,10 +1689,11 @@ mod paging_tests {
             0
         );
         // a second run changes nothing
-        assert!(v
-            .set_checked_for_filter(unchecked.clone(), true)
-            .unwrap()
-            .is_empty());
+        assert!(
+            v.set_checked_for_filter(unchecked.clone(), true)
+                .unwrap()
+                .is_empty()
+        );
         // undo restores exactly the touched bookings
         v.set_checked_for_ids(ids, false).unwrap();
         assert_eq!(v.list_transactions(unchecked).unwrap().total_count, before);
@@ -1807,10 +1809,11 @@ mod paging_tests {
             ..Default::default()
         };
         let page = v.list_transactions(unc.clone()).unwrap();
-        assert!(page
-            .transactions
-            .iter()
-            .all(|b| b.flow != FlowKind::Transfer));
+        assert!(
+            page.transactions
+                .iter()
+                .all(|b| b.flow != FlowKind::Transfer)
+        );
         assert_eq!(page.total_count as usize, open.len());
         assert_eq!(
             v.count_transactions(unc.clone()).unwrap() as usize,
@@ -1875,10 +1878,12 @@ mod paging_tests {
             })
             .unwrap();
         assert!(by_number.total_count > 0);
-        assert!(by_number
-            .transactions
-            .iter()
-            .all(|b| b.account_id == giro.id));
+        assert!(
+            by_number
+                .transactions
+                .iter()
+                .all(|b| b.account_id == giro.id)
+        );
         let _ = std::fs::remove_file(p);
     }
 

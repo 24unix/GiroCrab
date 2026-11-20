@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
-use super::{response, ApiError, ApiErrorCode};
+use super::{ApiError, ApiErrorCode, response};
 use crate::error::CoreError;
 use crate::i18n::{tr, trf};
 use crate::vault::Vault;
@@ -286,7 +286,7 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
         Ok(_) => {
             return Err(CoreError::invalid(tr(
                 "Am Socket-Pfad liegt bereits eine andere Datei.",
-            )))
+            )));
         }
         Err(e) if e.kind() == ErrorKind::NotFound => {}
         Err(e) => return Err(io_error(e)),
@@ -528,7 +528,7 @@ fn answer(vault: &Weak<Vault>, stopper: &Stopper, line: &[u8]) -> Option<String>
 mod tests {
     use super::*;
     use crate::local_api::ShareScope;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::io::{BufRead, BufReader, Write};
 
     /// Upper bound for "`stop()` returns at once". `stop()` takes no lock a
