@@ -364,6 +364,9 @@ impl Vault {
 
     /// Best-effort repairs after opening (or restoring) a vault.
     fn repair(conn: &Connection) {
+        // triggers/views the app never creates (e.g. restored by older versions
+        // from a crafted backup) could rewrite device settings on later writes
+        let _ = backup::drop_triggers_and_views(conn, "main");
         // stored secrets of logins whose deletion an older version merged in
         // from another device
         let _ = Self::purge_deleted_connection_secrets(conn);
@@ -403,6 +406,8 @@ impl Vault {
         crate::schema::check_not_too_new(conn)?;
         // Connection settings first: neither pragma takes effect inside a transaction.
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+        // Drop untrusted triggers/views before schema steps or marker writes can fire them.
+        let _ = backup::drop_triggers_and_views(conn, "main");
         // All pending steps in one transaction (SQLite DDL is transactional): an
         // aborted run leaves the old schema and `user_version`, never half of it.
         crate::schema::migrate(conn)
