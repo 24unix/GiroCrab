@@ -161,6 +161,9 @@ public final class AppModel {
                 default: sumsMayBeFiltered = cancelsLoad
                 }
                 if sumsMayBeFiltered, !categoryAccountFilter.isEmpty { reloadCategories() }
+                // the recurring data and salary cycle follow the selection (all accounts here)
+                refreshSalaryCycle()
+                refreshRecurring()
                 return
             }
             reloadSelection(periodChanged: false)

@@ -304,4 +304,19 @@ final class SelectionLoadTests: XCTestCase {
         XCTAssertFalse(model.selectionFiguresMissing)
         XCTAssertNotNil(model.errorMessage)
     }
+
+    /// Geplant loads no bookings, but the recurring data and salary cycle are those of all accounts.
+    func testNonBookingColumnRecomputesRecurringForAllAccounts() throws {
+        let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
+        model.sidebarSelection = .allAccounts
+        let allSeries = model.recurring.map(\.lastBookingId)
+        let allCycle = model.salaryCycle?.lastDate
+        let allOpen = model.recurringMonth?.openExpenseCents
+
+        model.sidebarSelection = .account(account.id)
+        model.sidebarSelection = .planned
+        XCTAssertEqual(model.recurring.map(\.lastBookingId), allSeries)
+        XCTAssertEqual(model.salaryCycle?.lastDate, allCycle)
+        XCTAssertEqual(model.recurringMonth?.openExpenseCents, allOpen)
+    }
 }
