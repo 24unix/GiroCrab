@@ -305,8 +305,10 @@ extension AppModel {
 
     /// The list offers the account filter (#357): the category views, „Alle Konten“, account
     /// groups and „Neue Umsätze“. A single account has nothing to choose from.
-    var showsAccountFilter: Bool {
-        switch sidebarSelection {
+    var showsAccountFilter: Bool { Self.offersAccountFilter(shownSelection) }
+
+    static func offersAccountFilter(_ selection: SidebarItem?) -> Bool {
+        switch selection {
         case .category, .uncategorized, .allAccounts, .group, .bank, .userGroup, .newBookings: true
         case .account, .documents, .planned, .directDebits, .wealth, .none: false
         }
@@ -765,7 +767,7 @@ extension AppModel {
     /// The loaded bookings; every filter of the list is applied by the core.
     /// „Neue Umsätze“ shows the bookings per account: ↑/↓ and ranges follow the cards.
     var visibleBookings: [Booking] {
-        sidebarSelection == .newBookings ? newBookingSections.flatMap(\.bookings) : bookings
+        shownSelection == .newBookings ? newBookingSections.flatMap(\.bookings) : bookings
     }
 
     /// „Neue Umsätze“: the loaded bookings as one card per account.
@@ -798,7 +800,7 @@ extension AppModel {
         rebuildDayGroups()
     }
 
-    private func rebuildDayGroups() {
+    func rebuildDayGroups() {
         var out: [DayGroup] = []
         var current: [Booking] = []
         var day = ""
@@ -847,6 +849,9 @@ extension AppModel {
     }
 
     /// Everyday spending this month (never includes ETF plans / perks).
+    /// The tiles have no figures for the shown selection: it is loading, or its load failed
+    /// (`selectionFlow` may still hold the previous selection's).
+    var selectionFiguresMissing: Bool { isLoadingSelection || page == nil }
     /// Selected account/group and period; falls back to the dashboard month.
     var consumptionThisMonth: Int64 { selectionFlow?.consumption ?? dashboard?.monthly.last?.consumptionCents ?? 0 }
     var investedThisMonth: Int64 { selectionFlow?.invested ?? dashboard?.monthly.last?.investmentCents ?? 0 }
@@ -858,7 +863,7 @@ extension AppModel {
     }
 
     var title: String {
-        switch sidebarSelection {
+        switch shownSelection {
         case .allAccounts, .none: return String(localized: "Alle Konten")
         case .group(let id): return groups.first { $0.id == id }?.name ?? String(localized: "Gruppe")
         case .bank(let key): return bankGroup(for: key)?.name ?? String(localized: "Bank")
@@ -876,7 +881,7 @@ extension AppModel {
 
     /// Accounts behind the header total of the current selection (nil: single account / not a total).
     private var headerTotalAccounts: [Account]? {
-        switch sidebarSelection {
+        switch shownSelection {
         case .allAccounts, .none: return liquidAccounts
         case .group(let id): return groups.first { $0.id == id }?.accounts
         case .bank(let key): return bankGroup(for: key)?.accounts
@@ -899,11 +904,11 @@ extension AppModel {
 
     private var headerBalanceUnsplit: (label: String, cents: Int64)? {
         // A group's or all accounts' total covers every account: no figure while accounts are filtered (#357).
-        switch sidebarSelection {
+        switch shownSelection {
         case .group, .bank, .userGroup, .allAccounts: if !categoryAccountIDs.isEmpty { return nil }
         default: break
         }
-        switch sidebarSelection {
+        switch shownSelection {
         case .account(let id): return allAccounts.first { $0.id == id }.map { (isTangible(id) ? String(localized: "Wert heute") : depotKind(of: id) == .securities ? String(localized: "Depotwert") : String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .bank(let key): return bankGroup(for: key).map { (String(localized: "Summe"), $0.balanceCents) }
@@ -968,7 +973,7 @@ extension AppModel {
     }
 
     private var listShowsSeveralAccounts: Bool {
-        switch sidebarSelection {
+        switch shownSelection {
         case .account: false
         case .group(let id): (groups.first { $0.id == id }?.accounts.count ?? 0) > 1
         case .bank(let key): (bankGroup(for: key)?.accounts.count ?? 0) > 1
