@@ -537,7 +537,7 @@ fn group_and_kind_sums_follow_the_effective_exclusion() {
 // ------------------------------------------------------------------ migration
 
 /// Rewinds a vault to schema 24 (drops the new columns) so reopening runs the
-/// migration of step 32 — what a vault written by an older build looks like.
+/// migration of step 33 — what a vault written by an older build looks like.
 fn rewind_to_v24(path: &str) {
     let c = Connection::open(path).unwrap();
     c.execute_batch(&format!("PRAGMA key = \"x'{}'\";", hex::encode(KEY)))
@@ -550,7 +550,7 @@ fn rewind_to_v24(path: &str) {
     .unwrap();
 }
 
-/// Step 32: amazon-orders accounts start excluded; everything else stays; a
+/// Step 33: amazon-orders accounts start excluded; everything else stays; a
 /// user decision made after the migration survives reopening.
 #[test]
 fn migration_excludes_amazon_connector_accounts_only() {

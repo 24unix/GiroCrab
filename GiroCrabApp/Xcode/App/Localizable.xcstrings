@@ -4499,6 +4499,17 @@
         }
       }
     },
+    "Andere …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other …"
+          }
+        }
+      }
+    },
     "Anderen Ordner wählen …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12231,17 +12242,6 @@
         }
       }
     },
-    "Ein Bargeld-Konto ohne Bankanbindung. Die Buchungen tragen Sie selbst ein." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A cash account without a bank connection. You enter the bookings yourself."
-          }
-        }
-      }
-    },
     "Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12282,6 +12282,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "An account belongs to at most one group. Drag accounts onto another group on the left."
+          }
+        }
+      }
+    },
+    "Ein Konto ohne Bankanbindung. Die Buchungen tragen Sie selbst ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An account without a bank connection. You enter the bookings yourself."
           }
         }
       }
@@ -16555,6 +16566,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ISO 20022 · for older software"
+          }
+        }
+      }
+    },
+    "ISO-Code" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ISO Code"
           }
         }
       }
@@ -22710,6 +22732,28 @@
         }
       }
     },
+    "Nicht alles abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not everything was fetched"
+          }
+        }
+      }
+    },
+    "Nicht alles abgerufen, Details im Abruf-Protokoll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not everything was fetched, details in the Fetch Log"
+          }
+        }
+      }
+    },
     "Nicht als Gehalt erkannt. Markieren Sie den Eingang, damit der Zeitraum „Seit letztem Gehalt“ ihn nutzt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27240,6 +27284,17 @@
         }
       }
     },
+    "Sparkonto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Savings Account"
+          }
+        }
+      }
+    },
     "Sparplan" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28105,6 +28160,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Total"
+          }
+        }
+      }
+    },
+    "Summe %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total %@"
           }
         }
       }

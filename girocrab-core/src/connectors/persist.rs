@@ -106,7 +106,7 @@ impl Stored {
 }
 
 /// A booking the bank delivers again: fills bank fields an older version did
-/// not store yet (codes, SEPA references, product ids) and heals corrupted text
+/// not store yet (codes, SEPA references, product ids, an empty counterparty) and heals corrupted text
 /// (U+FFFD / mojibake) with the freshly decoded one. Writes only when a column
 /// changes, since most bookings of every fetch are already stored.
 fn refresh_existing(
@@ -130,8 +130,11 @@ fn refresh_existing(
         [&t.end_to_end_id, &t.mandate_id, &t.creditor_id],
     );
     let [items] = fill([&s.item_refs], [&t.item_refs]);
+    // a counterparty the bank (or a newer version) names now fills an empty one,
+    // e.g. the merchant of a comdirect card payment (#1135)
+    let [named] = fill([&s.counterparty], [&t.counterparty]);
     let set = [
-        heal(&s.counterparty, &t.counterparty),
+        heal(&s.counterparty, &t.counterparty).or(named),
         heal(&s.purpose, &t.purpose),
         code,
         gvc,
@@ -306,6 +309,22 @@ pub(crate) fn store_fetch(
             let existing = match existing {
                 Some(id) => Some(id),
                 None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
+            };
+            // A deleted duplicate of an imported account (created before the
+            // import could be taken over) gives way to the imported account,
+            // also when the connection was added again (which would revive it).
+            let existing = match existing {
+                Some(id)
+                    if tx.query_row(
+                        // includes soft-deleted rows
+                        "SELECT deleted_ms IS NOT NULL FROM accounts WHERE id = ?1",
+                        [id],
+                        |r| r.get::<_, bool>(0),
+                    )? =>
+                {
+                    Some(adopt_past_deleted_twin(&tx, connection_id, id, acc)?.unwrap_or(id))
+                }
+                other => other,
             };
             if let Some(id) = existing {
                 // Deleted accounts stay deleted (like archived ones, nothing is
@@ -970,6 +989,23 @@ pub(crate) fn store_fetch(
                 [connection_id],
             )?;
         }
+        // Accounts by the name they carry here instead of their bank reference (an IBAN).
+        let mut warnings = std::mem::take(&mut data.warnings);
+        if !warnings.is_empty() {
+            for acc in data.accounts.iter().filter(|a| !a.external_ref.is_empty()) {
+                let name: Option<String> = tx
+                    .query_row(
+                        "SELECT name FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND deleted_ms IS NULL",
+                        params![connection_id, acc.external_ref],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let name = name.unwrap_or_else(|| acc.name.clone());
+                for w in &mut warnings {
+                    *w = w.replace(&acc.external_ref, &name);
+                }
+            }
+        }
         tx.commit()?;
         if let Some(data) = deferred {
             vault
@@ -998,6 +1034,7 @@ pub(crate) fn store_fetch(
             new_accounts,
             revoked_accounts,
             postbox_documents,
+            warnings,
         })
     }
 }
@@ -2402,6 +2439,67 @@ fn payment_job(
         execution_date: batch.execution_date.clone(),
         end_to_end_id: p.end_to_end_id.clone(),
     }
+}
+
+/// `deleted` is a deleted account of this connection with `acc`'s external
+/// ref: a duplicate the user removed because the connector had not taken over
+/// the imported account. Only that case is handled: a live imported account
+/// (`moneymoney-db:`) with the same IBAN and currency, parked on a PSD2
+/// connection that never synced. The deleted row moves aside (its key gets a
+/// suffix) and the imported one takes its place; it is stamped as created now,
+/// so on other devices it wins over the deletion of that key. Any other
+/// deleted account keeps its key and its fate (stays deleted or is revived).
+fn adopt_past_deleted_twin(
+    tx: &rusqlite::Connection,
+    connection_id: i64,
+    deleted: i64,
+    acc: &RemoteAccount,
+) -> CoreResult<Option<i64>> {
+    let iban = crate::iban::normalize_iban(&acc.iban);
+    if iban.is_empty() {
+        return Ok(None);
+    }
+    // Only the connection's own row under this key (not an unlinked account
+    // `adopt_unlinked` found, which keeps its key).
+    let own: bool = tx.query_row(
+        // includes soft-deleted rows
+        "SELECT connection_id IS ?1 AND external_ref = ?2 FROM accounts WHERE id = ?3",
+        params![connection_id, acc.external_ref, deleted],
+        |r| r.get(0),
+    )?;
+    if !own {
+        return Ok(None);
+    }
+    let currency = acc.currency.trim().to_uppercase();
+    let twin: Option<i64> = tx
+        .query_row(
+            "SELECT a.id FROM accounts a JOIN bank_connections c ON c.id = a.connection_id
+              WHERE a.deleted_ms IS NULL AND a.external_ref LIKE 'moneymoney-db:%'
+                AND upper(replace(a.iban, ' ', '')) = ?1
+                AND (?2 = '' OR upper(a.currency) IN ('', ?2))
+                AND c.id <> ?3 AND c.connector LIKE 'enablebanking%' AND c.last_sync_unix IS NULL
+              ORDER BY (upper(a.currency) <> ?2), a.id LIMIT 1",
+            params![iban, currency, connection_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(twin) = twin else {
+        return Ok(None);
+    };
+    tx.execute(
+        "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
+        params![format!("{}#deleted-{deleted}", acc.external_ref), deleted],
+    )?;
+    tx.execute(
+        "UPDATE accounts SET connection_id = ?1, external_ref = ?2, created_ms = ?3 WHERE id = ?4",
+        params![
+            connection_id,
+            acc.external_ref,
+            crate::dates::now_ms(),
+            twin
+        ],
+    )?;
+    Ok(Some(twin))
 }
 
 /// Links an unconnected stored account to `connection_id` when it matches the

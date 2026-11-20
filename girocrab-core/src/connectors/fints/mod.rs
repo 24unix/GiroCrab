@@ -69,7 +69,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 
 use self::accounts::{account_label, kind_from_code};
-use self::dialog::{approval_pending, has_so_prefix, is_comdirect};
+use self::dialog::{approval_pending, has_so_prefix, is_comdirect, tan_demanded};
 use self::syntax::{Segment, SegmentBuilder};
 use super::{
     BankConnector, BatchTransferJob, Challenge, ChallengeResponse, ConnectContext, DebitJob,
@@ -710,6 +710,8 @@ impl BankConnector for FinTsConnector {
                         Err(e) => {
                             // the stored holds of this login stay as they are
                             holds_complete = false;
+                            // MT940 would only send another TAN to the app (#1083)
+                            done = tan_demanded(&e);
                             errors.push(trf("{0}: Umsätze (HKCAZ/camt.052) – {1}", &[&label, &e]))
                         }
                     }
@@ -736,6 +738,12 @@ impl BankConnector for FinTsConnector {
                         }
                     }
                 }
+            }
+            // comdirect names no counterparty for Visa debit card payments (#1135);
+            // the ids are set by now, so content ids stay as stored
+            if is_comdirect(&self.blz) {
+                txs.iter_mut()
+                    .for_each(super::comdirect::fill_card_merchant);
             }
             result.transactions.extend(txs);
 
@@ -775,6 +783,11 @@ impl BankConnector for FinTsConnector {
                     }
                 }
             }
+            // Not read this time (#1083): the stored balance stays instead of
+            // becoming 0. Cards without one get theirs derived when storing.
+            if balance.is_none() && kind != AccountKind::CreditCard {
+                result.balances_unknown.push(label.clone());
+            }
             let name = upd
                 .as_ref()
                 .map(|u| u.product.clone())
@@ -804,6 +817,8 @@ impl BankConnector for FinTsConnector {
                 message: errors.join(" / "),
             });
         }
+        // Something worked: the sync is done, and says what did not (#1083).
+        result.warnings = errors;
         // Claim the hold list as complete only when every camt request worked.
         if holds_listed && holds_complete {
             result.hold_prefix = Some(camt::HOLD_PREFIX.into());

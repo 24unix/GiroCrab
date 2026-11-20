@@ -470,6 +470,10 @@ struct SrcBank {
     username: String,
     customer: String,
     name: String,
+    /// MoneyMoney's `banks.server` column: the FinTS/HBCI endpoint URL that
+    /// MoneyMoney itself talks to. Empty for non-FinTS logins (PSD2, Trade
+    /// Republic, PayPal, …) or when the column is missing in older schemas.
+    server: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1330,7 +1334,9 @@ fn read_banks(conn: &Connection) -> CoreResult<Vec<SrcBank>> {
     let sql = select(
         conn,
         "banks",
-        &["rowid", "bankcode", "username", "customer", "name"],
+        &[
+            "rowid", "bankcode", "username", "customer", "name", "server",
+        ],
         "ORDER BY rowid",
     )?;
     let mut st = conn.prepare(&sql)?;
@@ -1341,6 +1347,7 @@ fn read_banks(conn: &Connection) -> CoreResult<Vec<SrcBank>> {
             username: vtext(get(r, 2)?),
             customer: vtext(get(r, 3)?),
             name: vtext(get(r, 4)?),
+            server: vtext(get(r, 5)?),
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -2338,13 +2345,19 @@ pub(crate) fn adopt_account(
     } else {
         // Wallets in several currencies can share one IBAN (Finom EUR/USD):
         // never take over one in another currency, prefer the exact currency.
+        // The import puts a bank without own connector on a PSD2 connection;
+        // as long as that one never synced, a direct connector of the same
+        // bank takes its accounts over instead of adding a second set.
         let currency = currency.trim().to_uppercase();
         conn.query_row(
             // includes soft-deleted rows
-            "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1)
+            "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1
+                    OR connection_id IN (SELECT id FROM bank_connections
+                         WHERE id <> ?1 AND connector LIKE 'enablebanking%' AND last_sync_unix IS NULL))
                AND external_ref LIKE 'moneymoney-db:%' AND upper(replace(iban, ' ', '')) = ?2
                AND (?3 = '' OR upper(IFNULL(currency, '')) IN ('', ?3))
-             ORDER BY (connection_id IS NULL), (upper(IFNULL(currency, '')) <> ?3), id LIMIT 1",
+             ORDER BY CASE WHEN connection_id = ?1 THEN 0 WHEN connection_id IS NULL THEN 1 ELSE 2 END,
+                      (upper(IFNULL(currency, '')) <> ?3), id LIMIT 1",
             params![connection_id, iban, currency],
             |r| r.get(0),
         )
@@ -3164,17 +3177,28 @@ impl ImportCtx<'_> {
         key: &str,
     ) -> CoreResult<i64> {
         let conn = self.conn;
-        // comdirect per FinTS: its address is not in the generated table,
-        // store it so the login's settings show it (an existing one stays)
+        // FinTS login (#1377): take over the FinTS endpoint URL MoneyMoney
+        // stores in `banks.server` so the connection's settings show it
+        // immediately – without this the user would have to copy it from the
+        // bank's DK list by hand. comdirect per FinTS has no entry in the
+        // generated directory, so its fixed address is used as a fallback
+        // when MoneyMoney did not store a URL (e.g. PSD2 import).
+        // `ON CONFLICT DO NOTHING` protects a URL the user already adjusted.
         if let Some(blz) = ConnectorKind::fints_blz(key) {
-            if crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&blz) {
+            let server = b.server.trim();
+            let url: Option<&str> = if crate::connectors::fints_presets::is_valid_fints_url(server)
+            {
+                Some(server)
+            } else if crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&blz) {
+                Some(crate::connectors::fints_directory::COMDIRECT_FINTS_URL)
+            } else {
+                None
+            };
+            if let Some(url) = url {
                 conn.execute(
                     "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
                      ON CONFLICT(key) DO NOTHING",
-                    params![
-                        format!("fints.url.{blz}"),
-                        crate::connectors::fints_directory::COMDIRECT_FINTS_URL
-                    ],
+                    params![format!("fints.url.{blz}"), url],
                 )?;
             }
         }

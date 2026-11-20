@@ -27,6 +27,12 @@ pub(super) fn approval_pending(reply: &BankReply) -> bool {
         && (reply.has("3956") || !reply.codes.iter().any(|c| c.0.starts_with('0')))
 }
 
+/// `request` failed because the bank wanted a TAN (0030) or an app approval
+/// that was not given in time (3956): asking again sends the next one (#1083).
+pub(super) fn tan_demanded(e: &CoreError) -> bool {
+    matches!(e, CoreError::Bank { code, .. } if matches!(code.as_str(), "0030" | "3956"))
+}
+
 /// Whether a TAN medium name already carries the "SO:" (security object) prefix.
 pub(super) fn has_so_prefix(medium: &str) -> bool {
     medium

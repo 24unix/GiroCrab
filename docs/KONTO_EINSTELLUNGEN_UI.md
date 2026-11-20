@@ -27,7 +27,7 @@ Die Felder von oben nach unten:
 | Startsaldo | Betrag mit Währung; nur wenn der Kontostand aus den Buchungen berechnet wird und das Konto nicht aufgelöst ist. Darunter „Stichtag und Kalibrierung …“ |
 | Kontonummer, IBAN, Bank | Je eine Zeile mit Beschriftung links, nur Anzeige, nur wenn vorhanden (kommen von der Bank bzw. vom Import); jeder Wert lässt sich einzeln markieren und kopieren |
 | Advanzia-Benutzername | Nur bei Advanzia-Konten, samt Zugangsfeldern |
-| Konto-Notiz | Beschriftung in der linken Spalte, Editor rechts. Erscheint unter dem Kontonamen in der Kontoansicht |
+| Konto-Notiz | Beschriftung in der linken Spalte, Editor rechts. Erscheint unter dem Kontonamen in der Kontoansicht; wird per iCloud mit den anderen Geräten abgeglichen, die neuere Änderung gilt (#980) |
 | Das Konto wurde aufgelöst | Archiviert bzw. reaktiviert das Konto |
 
 - **Das Konto wurde aufgelöst** (`setAccountArchived`) wird beim Speichern als Letztes ausgeführt, weil es alles neu lädt.

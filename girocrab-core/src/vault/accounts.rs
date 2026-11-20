@@ -173,6 +173,12 @@ impl Vault {
                 format!("fints.rah10.bank_keys.{connection_id}")
             ],
         )?;
+        // portal session cookies the Linux front end keeps per login; dropped here
+        // so cleanup does not depend on which UI path deleted the login
+        db.execute(
+            "DELETE FROM settings WHERE key = ?1",
+            [format!("web.secret_cookies.{connection_id}")],
+        )?;
         // stored secrets of this connection (PIN, portal user name `pin.conn.<id>.login`);
         // the soft delete blanked the session (state_json)
         db.execute(
@@ -445,7 +451,7 @@ impl Vault {
                     a.initial_balance_cents, g.uuid, {in_total},
                     a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
                     a.archived_unix, a.access_revoked,
-                    o.opening_cents, IFNULL(o.opening_date, ''), {derived}, a.include_in_total
+                    o.opening_cents, IFNULL(o.opening_date, ''), {derived}, a.note, a.include_in_total
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              LEFT JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
              LEFT JOIN opening_balances o ON o.account_id = a.id
@@ -482,7 +488,7 @@ impl Vault {
                     .map(i64::abs)
                     .filter(|c| *c > 0),
                 user_group_uuid: r.get(19)?,
-                include_in_total: r.get(31)?,
+                include_in_total: r.get(32)?,
                 in_total: r.get(20)?,
                 // filled in below for accounts without a chosen colour
                 color_hex: match r.get::<_, Option<String>>(21)? {
@@ -505,6 +511,7 @@ impl Vault {
                 opening_balance_cents: r.get(28)?,
                 opening_balance_date: r.get(29)?,
                 balance_derived: r.get(30)?,
+                note: r.get(31)?,
             })
         })?;
         let mut accounts = rows.collect::<Result<Vec<_>, _>>()?;
@@ -799,6 +806,31 @@ impl Vault {
             params![owner.trim(), account_id],
         )?;
         if n == 0 {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        }
+        Ok(())
+    }
+
+    /// Sets the account note (#512); empty clears it. Syncs like the name: the
+    /// newer edit wins (#980), so saving an unchanged note keeps its stamp, and
+    /// an edit is always newer than the note it replaces (a note from a device
+    /// whose clock runs ahead must not win over it).
+    pub fn set_account_note(&self, account_id: i64, note: String) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let n = db.execute(
+            "UPDATE accounts SET note = ?1, note_ms = max(note_ms + 1, ?3)
+             WHERE id = ?2 AND note IS NOT ?1",
+            params![note.trim(), account_id, crate::dates::now_ms()],
+        )?;
+        let exists = n > 0
+            || db.query_row(
+                "SELECT EXISTS (SELECT 1 FROM accounts WHERE id = ?1)",
+                [account_id],
+                |r| r.get(0),
+            )?;
+        if !exists {
             return Err(CoreError::NotFound {
                 what: trf("Konto {0}", &[&account_id]),
             });

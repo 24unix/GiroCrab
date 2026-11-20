@@ -872,6 +872,54 @@ impl Vault {
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         self.list_page(filter, true)
     }
+
+    /// `flow_other_currencies` for the plain selection of `selection_flow`: accounts and period.
+    pub fn selection_flow_other_currencies(
+        &self,
+        account_ids: Vec<i64>,
+        date_from: Option<String>,
+        date_to: Option<String>,
+    ) -> Result<Vec<CurrencyFlow>, CoreError> {
+        self.flow_other_currencies(BookingFilter {
+            account_ids,
+            date_from,
+            date_to,
+            ..Default::default()
+        })
+    }
+
+    /// The KPI tiles of the currencies other than EUR (#1049) for the same filter: what the page
+    /// sums leave out. Empty for a single account; no scan when no booking has another currency.
+    pub fn flow_other_currencies(
+        &self,
+        filter: BookingFilter,
+    ) -> Result<Vec<CurrencyFlow>, CoreError> {
+        if filter.account_ids.len() == 1 {
+            return Ok(Vec::new());
+        }
+        let db = self.db()?;
+        if !crate::planning::has_other_currencies(&db)? {
+            return Ok(Vec::new());
+        }
+        let mut per: std::collections::BTreeMap<String, SelectionFlow> = Default::default();
+        self.visit_bookings(&db, &filter, |share, t| {
+            if !crate::planning::counts_in_sums(filter.account_ids.len(), &t.currency) {
+                per.entry(t.currency.to_uppercase())
+                    .or_default()
+                    .add(t.flow, share);
+            }
+        })?;
+        Ok(per
+            .into_iter()
+            .map(|(currency, f)| CurrencyFlow {
+                currency,
+                consumption_cents: f.consumption_cents,
+                invested_cents: f.invested_cents,
+                income_cents: f.income_cents,
+            })
+            .filter(|f| f.consumption_cents != 0 || f.invested_cents != 0 || f.income_cents != 0)
+            .collect())
+    }
 }
 
 impl Vault {
@@ -1080,7 +1128,7 @@ impl Vault {
             ""
         };
         let sql = format!(
-            "{cte}SELECT t.id, t.booking_date, t.account_id, {share_sql} {BOOKING_FROM_SQL} WHERE {where_sql}{order}"
+            "{cte}SELECT t.id, t.booking_date, t.account_id, {share_sql}, t.currency {BOOKING_FROM_SQL} WHERE {where_sql}{order}"
         );
         let mut stmt = db.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
@@ -1091,6 +1139,7 @@ impl Vault {
                 date,
                 r.get::<_, i64>(2)?,
                 r.get::<_, i64>(3)?,
+                r.get::<_, String>(4)?,
             ))
         })?;
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
@@ -1100,16 +1149,20 @@ impl Vault {
         let mut total = 0u32;
         let totals = totals_set(db, filter)?;
         for row in rows {
-            let (id, date, account_id, share) = row?;
+            let (id, date, account_id, share, currency) = row?;
             let Some(class) = classes.get(&id) else {
                 return Ok(None);
             };
             if !keeps(filter, class.flow, &class.merchant) {
                 continue;
             }
-            // only accounts of the totals set contribute to the sums (#337);
-            // counts and rows stay complete
-            if totals.as_ref().is_none_or(|set| set.contains(&account_id)) {
+            // Sums skip other currencies unless one account is selected (#1049),
+            // and only accounts of the totals set (#337) contribute to the sums;
+            // counts and rows stay complete either way.
+            let counts_for_totals = totals.as_ref().is_none_or(|set| set.contains(&account_id));
+            if counts_for_totals
+                && crate::planning::counts_in_sums(filter.account_ids.len(), &currency)
+            {
                 match kpi_side(class.flow, share) {
                     KpiSide::Income => income += share,
                     KpiSide::Expense => expense += share,
@@ -1205,11 +1258,14 @@ impl Vault {
             // `share` is the full amount, or with a category filter only the split
             // parts of that category. Only accounts of the totals set (#337)
             // contribute to the sums — the booking itself always stays in the
-            // list and in the counts.
+            // list and in the counts — and sums skip other currencies unless
+            // one account is selected (#1049); the rows stay.
             let counts_for_totals = totals
                 .as_ref()
                 .is_none_or(|set| set.contains(&t.account_id));
-            if counts_for_totals {
+            if counts_for_totals
+                && crate::planning::counts_in_sums(filter.account_ids.len(), &t.currency)
+            {
                 match kpi_side(t.flow, share) {
                     KpiSide::Income => income += share,
                     KpiSide::Expense => expense += share,

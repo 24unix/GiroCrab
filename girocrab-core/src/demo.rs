@@ -2800,7 +2800,7 @@ impl Vault {
         )?;
         // Offline account (#679, #81): cash kept by hand, no bank connection. Its balance is the
         // Startsaldo plus the bookings below.
-        let cash = crate::offline::create_in(&tx, "Bargeld", AccountKind::Cash, 120_00)?;
+        let cash = crate::offline::create_in(&tx, "Bargeld", AccountKind::Cash, "EUR", 120_00)?;
         for (days_ago, cents, who, purpose) in [
             (12, 15_00, "Taschengeld", ""),
             (9, -24_50, "Tierfutter Müller", "Katzenfutter"),
