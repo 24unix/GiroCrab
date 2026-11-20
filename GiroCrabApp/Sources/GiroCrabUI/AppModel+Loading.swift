@@ -77,7 +77,7 @@ extension AppModel {
             let sums = categorySumFilter
             categories = try vault.listCategoriesFilteredAmount(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction, amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents)
             categoryTree = Self.buildTree(categories)
-            uncategorizedFilteredCount = try uncategorizedCountFilter(sums).map { Int(try vault.countTransactions(filter: $0)) }
+            uncategorizedFilteredCount = Int(try vault.countTransactions(filter: uncategorizedCountFilter(sums)))
         }
     }
 
@@ -842,20 +842,22 @@ extension AppModel {
     var liquidAccounts: [Account] { allAccounts.filter { $0.inTotal && [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
     var liquidBalance: Int64 { liquidAccounts.reduce(0) { $0 + $1.balanceCents } }
     var newCount: Int { allAccounts.reduce(0) { $0 + Int($1.newCount) } }
-    /// Bookings without a category (badge of „Ohne Kategorie“): all of them, or, while list filters
-    /// narrow the sums, those matching the filters (#357). Not tied to the period.
+    /// Bookings without a category (badge of „Ohne Kategorie“): the number the „Ohne Kategorie“ list shows for the
+    /// selected period and the same status, type, amount and account filters as the category sums (#1439).
+    /// Until the first count has loaded, the accounts' own counts (all time) stand in.
     var uncategorizedCount: Int {
         uncategorizedFilteredCount ?? allAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) }
     }
 
-    /// The query behind the filtered badge; nil while no filter narrows the sums (the accounts' own counts apply).
-    func uncategorizedCountFilter(_ sums: (accounts: [Int64], checked: Bool?, direction: BookingDirection, amount: AmountFilter)) -> BookingFilter? {
-        guard !sums.accounts.isEmpty || sums.checked != nil || sums.direction != .all || sums.amount.isActive else { return nil }
-        let accounts = sums.accounts.isEmpty ? allAccounts.filter { $0.kind != .loan }.map(\.id) : sums.accounts
+    /// The query behind the badge: what the „Ohne Kategorie“ list loads (`currentFilter`, which leaves out detected own
+    /// transfers like the list, #302) for the sidebar's period and `categorySumFilter`, counted in SQL (limit 1).
+    /// No chosen accounts = all of them, as in the list.
+    func uncategorizedCountFilter(_ sums: (accounts: [Int64], checked: Bool?, direction: BookingDirection, amount: AmountFilter)) -> BookingFilter {
+        let (from, to) = periodRange
         return BookingFilter(
-            accountIds: accounts, categoryId: nil, includeSubcategories: true, uncategorizedOnly: true,
-            search: nil, dateFrom: nil, dateTo: nil, limit: 1, offset: 0, scope: .all,
-            merchantKey: nil, direction: sums.direction, checked: sums.checked, wholeDays: false,
+            accountIds: sums.accounts, categoryId: nil, includeSubcategories: true, uncategorizedOnly: true,
+            search: nil, dateFrom: from, dateTo: to, limit: 1, offset: 0, scope: .all,
+            merchantKey: nil, direction: sums.direction, checked: sums.checked, wholeDays: true,
             amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents)
     }
 

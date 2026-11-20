@@ -45,11 +45,9 @@ final class CategoryAssignTests: XCTestCase {
         let (from, to) = model.periodRange
         let filter = model.currentFilter
         let flow = try vault.selectionFlow(accountIds: filter.accountIds, dateFrom: from, dateTo: to)
-        let loans = Set(model.allAccounts.filter { $0.kind == .loan }.map(\.id))
-        let accounts = try vault.listAccounts().filter { !loans.contains($0.id) }
         return Derived(
             totals: try vault.listCategories(dateFrom: from, dateTo: to).map(\.totalCents),
-            uncategorized: accounts.reduce(0) { $0 + Int($1.uncategorizedCount) },
+            uncategorized: Int(try vault.countTransactions(filter: model.uncategorizedCountFilter(model.categorySumFilter))),
             flow: [flow.consumptionCents, flow.investedCents, flow.incomeCents]
         )
     }
