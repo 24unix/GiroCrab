@@ -1250,14 +1250,16 @@ mod tests {
         assert_eq!(dividend.value_cents, 63);
         assert_eq!(by_id("9101").transaction.direction, SecurityDirection::Tax);
         // FX trade, ORDER-level trade, deposits and interest are no securities transactions
-        assert!(r
-            .security_transactions
-            .iter()
-            .all(|t| t.external_id != "ibkr:U1234567:9002"));
-        assert!(r
-            .security_transactions
-            .iter()
-            .all(|t| t.external_id != "ibkr:U1234567:9102"));
+        assert!(
+            r.security_transactions
+                .iter()
+                .all(|t| t.external_id != "ibkr:U1234567:9002")
+        );
+        assert!(
+            r.security_transactions
+                .iter()
+                .all(|t| t.external_id != "ibkr:U1234567:9102")
+        );
         assert_eq!(r.security_transactions.len(), 4); // buy, 2 dividends, withholding tax
     }
 
@@ -1281,10 +1283,11 @@ mod tests {
     #[test]
     fn since_filters_old_bookings() {
         let r = build_fetch(FLEX, "2026-11-01").unwrap();
-        assert!(r
-            .transactions
-            .iter()
-            .all(|t| t.booking_date.as_str() >= "2026-11-01"));
+        assert!(
+            r.transactions
+                .iter()
+                .all(|t| t.booking_date.as_str() >= "2026-11-01")
+        );
         assert_eq!(r.transactions.len(), 4);
     }
 

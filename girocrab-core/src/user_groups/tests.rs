@@ -122,12 +122,14 @@ fn create_rename_delete() {
 
     v.update_user_group(firma.clone(), "Geschäft".into(), "building.2".into(), true)
         .unwrap();
-    assert!(v
-        .update_user_group(firma.clone(), "PRIVAT".into(), "x".into(), true)
-        .is_err());
-    assert!(v
-        .update_user_group("nope".into(), "X".into(), "x".into(), true)
-        .is_err());
+    assert!(
+        v.update_user_group(firma.clone(), "PRIVAT".into(), "x".into(), true)
+            .is_err()
+    );
+    assert!(
+        v.update_user_group("nope".into(), "X".into(), "x".into(), true)
+            .is_err()
+    );
 
     v.reorder_user_groups(vec![firma.clone(), privat.clone()])
         .unwrap();
@@ -358,11 +360,12 @@ fn merge_newest_edit_wins_and_deletions_stick() {
     b.merge_other_vault(a.file_path(), key.clone()).unwrap();
     a.merge_other_vault(b.file_path(), key.clone()).unwrap();
     for v in [&a, &b] {
-        assert!(v
-            .list_accounts()
-            .unwrap()
-            .iter()
-            .any(|x| x.name == "Depot A"));
+        assert!(
+            v.list_accounts()
+                .unwrap()
+                .iter()
+                .any(|x| x.name == "Depot A")
+        );
     }
 
     // A deletes the group; B (which still has it) must not bring it back
@@ -449,9 +452,10 @@ fn account_colors_default_stable_and_sync() {
             .all(|(_, c)| super::ACCOUNT_COLOR_PALETTE[..super::DISTINCT].contains(&c.as_str())),
         "a few accounts only get the clearly distinct hues"
     );
-    assert!(ca
-        .iter()
-        .all(|(_, c)| super::ACCOUNT_COLOR_PALETTE.contains(&c.as_str())));
+    assert!(
+        ca.iter()
+            .all(|(_, c)| super::ACCOUNT_COLOR_PALETTE.contains(&c.as_str()))
+    );
     let stored: i64 = a
         .db()
         .unwrap()
@@ -517,12 +521,14 @@ fn group_color_syncs_newer_wins_and_resets() {
             .color_hex
     };
     assert_eq!(color(&a), "", "no colour until one is chosen");
-    assert!(a
-        .set_user_group_color(g.clone(), Some("blue".into()))
-        .is_err());
-    assert!(a
-        .set_user_group_color("nope".into(), Some("#123456".into()))
-        .is_err());
+    assert!(
+        a.set_user_group_color(g.clone(), Some("blue".into()))
+            .is_err()
+    );
+    assert!(
+        a.set_user_group_color("nope".into(), Some("#123456".into()))
+            .is_err()
+    );
     a.set_user_group_color(g.clone(), Some("#abcdef".into()))
         .unwrap();
     assert_eq!(color(&a), "#ABCDEF");
@@ -1187,15 +1193,18 @@ fn subgroups_nest_sum_up_and_inherit_the_total_switch() {
     assert_eq!(group(&v, "ETW Heilbronn").parent_uuid, Some(immo.clone()));
 
     // not into itself or its own subgroups; unknown groups are rejected
-    assert!(v
-        .set_user_group_parent(immo.clone(), Some(immo.clone()))
-        .is_err());
-    assert!(v
-        .set_user_group_parent(immo.clone(), Some(nsu.clone()))
-        .is_err());
-    assert!(v
-        .set_user_group_parent(immo.clone(), Some("nope".into()))
-        .is_err());
+    assert!(
+        v.set_user_group_parent(immo.clone(), Some(immo.clone()))
+            .is_err()
+    );
+    assert!(
+        v.set_user_group_parent(immo.clone(), Some(nsu.clone()))
+            .is_err()
+    );
+    assert!(
+        v.set_user_group_parent(immo.clone(), Some("nope".into()))
+            .is_err()
+    );
     // deeper nesting, and back to the top level
     v.set_user_group_parent(immo.clone(), Some(privat.clone()))
         .unwrap();
@@ -1407,12 +1416,11 @@ fn archived_account_keeps_group_and_history_but_leaves_total_and_rules() {
         let mut st = db
             .prepare("SELECT external_id, category_id FROM transactions ORDER BY external_id")
             .unwrap();
-        let rows = st
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
             .unwrap()
             .collect::<Result<_, _>>()
-            .unwrap();
-        rows
+            .unwrap()
     };
     assert_eq!(
         cats(&v),

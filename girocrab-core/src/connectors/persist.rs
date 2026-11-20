@@ -1,18 +1,16 @@
 //! Vault side of syncs and transfers: storing fetch results, starting
-//! sessions, statement automation, recipients and pending transfers.
+//! sessions, statement automation and pending transfers.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::iban::{normalize_iban, validate_iban};
 use crate::importers::portal_import::{CARD_BOOKING_TEXT, CARD_SEPARATOR};
-use crate::models::{
-    AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
-};
+use crate::models::{AccountKind, BatchTransferRequest, ConnectorKind, SepaTransferRequest};
 use crate::secret::{SecretJson, SecretString};
 use crate::vault::Vault;
 
@@ -146,7 +144,16 @@ fn refresh_existing(
     if set == [None; 8] {
         return Ok(());
     }
-    let [counterparty, purpose, code, gvc, e2e, mandate, creditor, items] = set;
+    let [
+        counterparty,
+        purpose,
+        code,
+        gvc,
+        e2e,
+        mandate,
+        creditor,
+        items,
+    ] = set;
     tx.prepare_cached(
         "UPDATE transactions SET counterparty = COALESCE(?2, counterparty), purpose = COALESCE(?3, purpose),
                 purpose_code = COALESCE(?4, purpose_code), gvc = COALESCE(?5, gvc),
@@ -630,11 +637,11 @@ pub(crate) fn store_fetch(
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
-                    if let Some(id) = archived_ids.get(&t.account_ref) {
-                        if !deleted_refs.contains(&t.account_ref) {
-                            let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
-                            skipped_archived += u32::from(!known);
-                        }
+                    if let Some(id) = archived_ids.get(&t.account_ref)
+                        && !deleted_refs.contains(&t.account_ref)
+                    {
+                        let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
+                        skipped_archived += u32::from(!known);
                     }
                     continue;
                 };
@@ -1158,7 +1165,12 @@ impl Vault {
 
     /// Like [`begin_sync`](Self::begin_sync) for one account of its login
     /// ("<Konto> abrufen", #1124): only its balance and bookings are fetched
-    /// and stored; the login's other accounts stay as they are. Documents
+    /// and stored; the login's other accounts stay as they are. An account
+    /// still under a MoneyMoney ref (imported and not yet taken over, or
+    /// marked by „Abrufweg umstellen“) is not known to the bank under it, so
+    /// it gets a sync of the whole login, documents included (see
+    /// `single_account_ref`, #1417).
+    /// Documents
     /// wait for the next full sync: connectors remember what they downloaded,
     /// and a document of another account would be remembered but not stored.
     pub fn begin_account_sync(
@@ -1168,7 +1180,10 @@ impl Vault {
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
         let (conn_id, ext) = self.account_login(account_id)?;
-        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, Some(ext))
+        let only = single_account_ref(ext, || {
+            super::account_selection::skipped_refs(&*self.db()?, conn_id)
+        })?;
+        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, only)
     }
 
     /// Turns the PostBox fetch through comdirect's REST API on or off for a
@@ -1557,10 +1572,10 @@ impl Vault {
                 );
             }
             let tm_key = format!("fints.tan_medium.{connection_id}");
-            if let Some(v) = Vault::setting_inner(&db, &tm_key)? {
-                if !v.trim().is_empty() {
-                    settings.insert(tm_key, SecretString::new(v));
-                }
+            if let Some(v) = Vault::setting_inner(&db, &tm_key)?
+                && !v.trim().is_empty()
+            {
+                settings.insert(tm_key, SecretString::new(v));
             }
             // this login's own Enable Banking application, if it has one (#824)
             crate::vault::enable_banking_apps::overlay(&db, connection_id, &mut settings)?;
@@ -1628,15 +1643,16 @@ impl Vault {
                     connector, since,
                 ));
             }
-        } else if !demo && is_consorsbank_fints(&key_str) {
-            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)? {
-                let known = self.consorsbank_known_documents(connection_id)?;
-                connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
-                    connector,
-                    Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
-                    since,
-                ));
-            }
+        } else if !demo
+            && is_consorsbank_fints(&key_str)
+            && let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)?
+        {
+            let known = self.consorsbank_known_documents(connection_id)?;
+            connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
+                connector,
+                Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
+                since,
+            ));
         }
         Ok(Arc::new(SyncSession::new(
             self.clone(),
@@ -1758,6 +1774,11 @@ impl Vault {
         if request.amount_cents <= 0 {
             return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
         }
+        if request.amount_cents > sepa::MAX_AMOUNT_CENTS {
+            return Err(CoreError::invalid(tr(
+                "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+            )));
+        }
         if !validate_iban(&request.recipient_iban) {
             return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
         }
@@ -1765,10 +1786,9 @@ impl Vault {
             .recipient_bic
             .as_deref()
             .filter(|b| !b.trim().is_empty())
+            && !sepa::validate_bic(b)
         {
-            if !sepa::validate_bic(b) {
-                return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
-            }
+            return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
         }
         if request.recipient_name.trim().is_empty() {
             return Err(CoreError::invalid(tr("Der Empfängername fehlt.")));
@@ -1970,6 +1990,11 @@ impl Vault {
                 if request.amount_cents <= 0 {
                     return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
                 }
+                if request.amount_cents > crate::connectors::fints::sepa::MAX_AMOUNT_CENTS {
+                    return Err(CoreError::invalid(tr(
+                        "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+                    )));
+                }
                 let today = crate::dates::today();
                 let date = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d.trim()).ok();
                 let first = date(&request.first_date).ok_or_else(|| {
@@ -2000,7 +2025,7 @@ impl Vault {
                     _ => {
                         return Err(CoreError::invalid(tr(
                             "Der Rhythmus muss Monate oder Wochen sein.",
-                        )))
+                        )));
                     }
                 };
                 if !(1..=99).contains(&request.interval) {
@@ -2101,7 +2126,9 @@ impl Vault {
                 ))
             })?;
         if o.order_id.trim().is_empty() {
-            return Err(CoreError::invalid(tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.")));
+            return Err(CoreError::invalid(tr(
+                "Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.",
+            )));
         }
         if request.action == crate::models::StandingOrderAction::Change && !o.can_change {
             return Err(CoreError::invalid(tr(
@@ -2129,12 +2156,16 @@ impl Vault {
         let group = match (groups.next(), groups.next()) {
             (Some(g), None) if g.sequence.code() == request.sequence => g,
             _ => {
-                return Err(CoreError::invalid(tr("Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.")))
+                return Err(CoreError::invalid(tr(
+                    "Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.",
+                )));
             }
         };
         let scheme = group.scheme.debit();
         if scheme == DebitScheme::B2b && !request.b2b_confirmed {
-            return Err(CoreError::invalid(tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.")));
+            return Err(CoreError::invalid(tr(
+                "Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.",
+            )));
         }
         let (connection_id, iban, _, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
@@ -2171,41 +2202,6 @@ impl Vault {
             }),
             request.account_id,
         )))
-    }
-
-    /// Known recipients (name + IBAN) from past outgoing bookings, most used
-    /// first. `query` filters by name/IBAN substring (empty = all).
-    pub fn suggest_recipients(
-        &self,
-        query: String,
-        limit: u32,
-    ) -> Result<Vec<KnownRecipient>, CoreError> {
-        let db = self.db()?;
-        let q = query.trim().replace(' ', "").to_lowercase();
-        let mut stmt = db.prepare(
-            "SELECT counterparty, counterparty_iban, count(*) AS n FROM transactions
-             WHERE counterparty_iban <> '' AND counterparty <> '' AND amount_cents < 0 AND deleted_ms IS NULL
-             GROUP BY counterparty, counterparty_iban
-             ORDER BY n DESC, MAX(booking_date) DESC",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(KnownRecipient {
-                name: r.get(0)?,
-                iban: r.get(1)?,
-                times_used: r.get(2)?,
-            })
-        })?;
-        Ok(rows
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|r| {
-                q.is_empty()
-                    || r.name.replace(' ', "").to_lowercase().contains(&q)
-                    || r.iban.replace(' ', "").to_lowercase().contains(&q)
-            })
-            .filter(|r| validate_iban(&r.iban))
-            .take(limit as usize)
-            .collect())
     }
 }
 
@@ -2621,4 +2617,26 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
         None => 0,
     };
     Some(rows[start..].iter().map(|r| r.1).sum())
+}
+
+/// The ref a single-account sync filters on (#1417). An account still under
+/// a MoneyMoney ref – imported and not yet taken over, or marked by
+/// "Abrufweg umstellen" (`moneymoney-db:switch:…`) – is not known to the bank
+/// under it: filtering on it would drop everything and report success with 0
+/// bookings. Only a sync of the whole login takes such an account over, so
+/// it gets one (`None`). An archived or excluded account is refused as for a
+/// single-account sync, before it would turn into a full one.
+pub(super) fn single_account_ref(
+    ext: String,
+    skipped: impl FnOnce() -> CoreResult<Vec<String>>,
+) -> CoreResult<Option<String>> {
+    if !ext.starts_with("moneymoney-db:") {
+        return Ok(Some(ext));
+    }
+    if skipped()?.contains(&ext) {
+        return Err(CoreError::invalid(tr(
+            "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
+        )));
+    }
+    Ok(None)
 }

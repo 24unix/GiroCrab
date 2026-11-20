@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::Vault;
 use crate::error::{CoreError, CoreResult};
@@ -109,10 +109,9 @@ impl Vault {
                 "SELECT id, login_name, deleted_ms IS NOT NULL FROM bank_connections
                  WHERE connector = ?1 ORDER BY deleted_ms IS NOT NULL, id",
             )?;
-            let r = st
-                .query_map([key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                .collect::<Result<Vec<_>, _>>()?;
-            r
+
+            st.query_map([key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<Result<Vec<_>, _>>()?
         };
         if let Some((id, _, deleted)) = existing.iter().find(|(_, l, _)| {
             !login_name.is_empty()
@@ -416,7 +415,9 @@ impl Vault {
             });
         };
         if !archived {
-            return Err(CoreError::invalid(tr("Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.")));
+            return Err(CoreError::invalid(tr(
+                "Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.",
+            )));
         }
         Self::delete_account_rows(&tx, account_id)?;
         // linked loan payments of this account are gone with it

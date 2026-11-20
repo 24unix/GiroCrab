@@ -3,7 +3,7 @@
 //! executions for the "Geplant" page. Read-only; nothing is sent from here.
 
 use jiff::civil::Date;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::connectors::{RemoteStandingOrder, StandingOrderJob};
 use crate::dates::parse_iso;

@@ -3,13 +3,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rusqlite::{params, params_from_iter, ToSql};
+use rusqlite::{ToSql, params, params_from_iter};
 
+use super::cache::DataStamp;
 use super::Vault;
 use crate::error::CoreError;
 use crate::i18n::trf;
 use crate::iban::normalize_iban;
-use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, MerchantResolver};
+use crate::merchants::{FlowKind, MerchantResolver, classify, clean_purpose, payment_method};
 use crate::models::*;
 use crate::money::parse_cents;
 
@@ -275,10 +276,9 @@ impl BookingFinisher {
                          OR (c.id IS NULL AND (lower(a.name) LIKE '%paypal%'
                                                OR lower(a.bank_name) LIKE '%paypal%')))",
             )?;
-            let ids = st
-                .query_map([], |r| r.get::<_, i64>(0))?
-                .collect::<Result<_, _>>()?;
-            ids
+
+            st.query_map([], |r| r.get::<_, i64>(0))?
+                .collect::<Result<_, _>>()?
         };
         Ok(Self {
             language: crate::i18n::current(),
@@ -962,40 +962,43 @@ pub(crate) struct BookingClass {
 
 type BookingClasses = Arc<HashMap<i64, BookingClass>>;
 
-/// Per-vault work every booking list repeats, valid while `total_changes` of the vault's
-/// connection still equals the stored count. The vault has one connection that is never
-/// replaced and every write (rules, settings, merges, imports) goes through it, so any
-/// change that can move a flow, a merchant or a category bumps the count; a restored
-/// snapshot is a new `Vault` with an empty cache.
+/// Per-vault work every booking list repeats, valid for one state of the data
+/// ([`DataStamp`](super::cache::DataStamp): any write that can move a flow, a merchant or a
+/// category, and a restore, changes it).
 #[derive(Default)]
 pub(crate) struct ListCache(Mutex<ListCacheState>);
 
 #[derive(Default)]
 struct ListCacheState {
-    changes: u64,
+    stamp: DataStamp,
     finisher: Option<Arc<BookingFinisher>>,
     classes: Option<BookingClasses>,
 }
 
 impl ListCache {
-    /// The entries built at `changes`; emptied first when a write happened since.
-    fn at(&self, changes: u64) -> MutexGuard<'_, ListCacheState> {
+    /// The entries built at `stamp`; emptied first when the data changed since.
+    fn at(&self, stamp: DataStamp) -> MutexGuard<'_, ListCacheState> {
         let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        if state.changes != changes {
+        if state.stamp != stamp {
             *state = ListCacheState {
-                changes,
+                stamp,
                 ..Default::default()
             };
         }
         state
     }
 
-    /// Stores into the entries of `changes`, unless a transaction is open: its
+    /// Stores into the entries of `stamp`, unless a transaction is open: its
     /// rollback would not lower the count, so entries built from its data would
     /// outlive it.
-    fn keep(&self, db: &rusqlite::Connection, changes: u64, put: impl FnOnce(&mut ListCacheState)) {
+    fn keep(
+        &self,
+        db: &rusqlite::Connection,
+        stamp: DataStamp,
+        put: impl FnOnce(&mut ListCacheState),
+    ) {
         if db.is_autocommit() {
-            put(&mut self.at(changes));
+            put(&mut self.at(stamp));
         }
     }
 }
@@ -1007,10 +1010,10 @@ impl Vault {
         &self,
         db: &rusqlite::Connection,
     ) -> Result<Arc<BookingFinisher>, CoreError> {
-        let changes = db.total_changes();
+        let stamp = self.data_stamp(db);
         if let Some(finisher) = self
             .list_cache
-            .at(changes)
+            .at(stamp)
             .finisher
             .clone()
             .filter(|f| f.language == crate::i18n::current())
@@ -1019,7 +1022,7 @@ impl Vault {
         }
         let finisher = Arc::new(BookingFinisher::load(db)?);
         self.list_cache
-            .keep(db, changes, |s| s.finisher = Some(finisher.clone()));
+            .keep(db, stamp, |s| s.finisher = Some(finisher.clone()));
         Ok(finisher)
     }
 
@@ -1034,7 +1037,7 @@ impl Vault {
         if let Some(classes) = self.cached_booking_classes(db) {
             return Ok(classes);
         }
-        let changes = db.total_changes();
+        let stamp = self.data_stamp(db);
         let finisher = self.booking_finisher(db)?;
         let (cte, where_sql, args, share_sql) =
             Self::filter_clauses(db, &BookingFilter::default())?;
@@ -1071,7 +1074,7 @@ impl Vault {
         }
         let classes = Arc::new(classes);
         self.list_cache
-            .keep(db, changes, |s| s.classes = Some(classes.clone()));
+            .keep(db, stamp, |s| s.classes = Some(classes.clone()));
         Ok(classes)
     }
 
@@ -1081,7 +1084,7 @@ impl Vault {
         &self,
         db: &rusqlite::Connection,
     ) -> Option<BookingClasses> {
-        self.list_cache.at(db.total_changes()).classes.clone()
+        self.list_cache.at(self.data_stamp(db)).classes.clone()
     }
 
     /// `list_transactions`; `with_rows: false` returns the sums and counts without rows
@@ -1588,10 +1591,11 @@ mod paging_tests {
         let both = v.list_transactions(range(Some(min), Some(max))).unwrap();
         assert!(both.total_count > 0, "the demo vault has bookings in range");
         assert_eq!(both.total_count, expected(&|a| (min..=max).contains(&a)));
-        assert!(both
-            .transactions
-            .iter()
-            .all(|b| (min..=max).contains(&b.amount_cents.abs())));
+        assert!(
+            both.transactions
+                .iter()
+                .all(|b| (min..=max).contains(&b.amount_cents.abs()))
+        );
         // the sign is ignored: income and expenses both count
         assert!(both.transactions.iter().any(|b| b.amount_cents > 0));
         assert!(both.transactions.iter().any(|b| b.amount_cents < 0));
@@ -1685,10 +1689,11 @@ mod paging_tests {
             0
         );
         // a second run changes nothing
-        assert!(v
-            .set_checked_for_filter(unchecked.clone(), true)
-            .unwrap()
-            .is_empty());
+        assert!(
+            v.set_checked_for_filter(unchecked.clone(), true)
+                .unwrap()
+                .is_empty()
+        );
         // undo restores exactly the touched bookings
         v.set_checked_for_ids(ids, false).unwrap();
         assert_eq!(v.list_transactions(unchecked).unwrap().total_count, before);
@@ -1804,10 +1809,11 @@ mod paging_tests {
             ..Default::default()
         };
         let page = v.list_transactions(unc.clone()).unwrap();
-        assert!(page
-            .transactions
-            .iter()
-            .all(|b| b.flow != FlowKind::Transfer));
+        assert!(
+            page.transactions
+                .iter()
+                .all(|b| b.flow != FlowKind::Transfer)
+        );
         assert_eq!(page.total_count as usize, open.len());
         assert_eq!(
             v.count_transactions(unc.clone()).unwrap() as usize,
@@ -1872,10 +1878,12 @@ mod paging_tests {
             })
             .unwrap();
         assert!(by_number.total_count > 0);
-        assert!(by_number
-            .transactions
-            .iter()
-            .all(|b| b.account_id == giro.id));
+        assert!(
+            by_number
+                .transactions
+                .iter()
+                .all(|b| b.account_id == giro.id)
+        );
         let _ = std::fs::remove_file(p);
     }
 

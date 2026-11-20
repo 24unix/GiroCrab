@@ -1,5 +1,5 @@
 use super::*;
-use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteHolding};
+use crate::connectors::{FetchResult, RemoteAccount, RemoteHolding, store_fetch};
 use crate::models::{AccountKind, ConnectorKind};
 use crate::vault::Vault;
 
@@ -603,7 +603,9 @@ fn perf_of_a_real_sized_imported_history() {
     let t_depot = t.elapsed();
     println!(
         "rows {n}: import {t_import:?}, rebuild {t_rebuild:?}, fetch {t_fetch:?}, positions ({}) {t_list:?}, one position ({}) {t_one:?}, depot history ({}) {t_depot:?}",
-        list.len(), h.len(), all.len()
+        list.len(),
+        h.len(),
+        all.len()
     );
 }
 

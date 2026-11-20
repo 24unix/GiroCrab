@@ -59,7 +59,7 @@ mod transfer_session;
 mod types;
 
 pub use catalog::*;
-pub(crate) use paging::{paginate, Paged};
+pub(crate) use paging::{Paged, paginate};
 pub use persist::*;
 pub use sync_session::*;
 pub use transfer_session::*;

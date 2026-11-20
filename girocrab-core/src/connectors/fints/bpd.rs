@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::syntax::Segment;
-use super::{debit, sepa, standing_order, transfer, BankReply, FinTsConnector, UpdAccount};
+use super::{BankReply, FinTsConnector, UpdAccount, debit, sepa, standing_order, transfer};
 
 /// Versions of each business transaction this client implements.
 const IMPLEMENTED: &[(&str, &[u32])] = &[
@@ -67,10 +67,10 @@ pub(super) fn parse_upd(upd: &Segment) -> UpdAccount {
         a.iban.clear();
     }
     for el in upd.elements.iter().skip(9) {
-        if let Some(first) = el.first() {
-            if is_segment_code(first.text()) {
-                a.allowed.insert(first.text().to_string());
-            }
+        if let Some(first) = el.first()
+            && is_segment_code(first.text())
+        {
+            a.allowed.insert(first.text().to_string());
         }
     }
     a
@@ -391,15 +391,14 @@ impl FinTsConnector {
         if let (Some(hitab), true) = (reply.first("HITAB"), self.tan_medium_override.is_empty()) {
             for el in hitab.elements.iter().skip(2) {
                 let texts: Vec<&str> = el.iter().map(|v| v.text()).collect();
-                if texts.get(1) == Some(&"1") {
-                    if let Some(name) = texts
+                if texts.get(1) == Some(&"1")
+                    && let Some(name) = texts
                         .iter()
                         .skip(2)
                         .find(|t| t.chars().any(|c| c.is_alphabetic()) && t.len() > 2)
-                    {
-                        self.st.tan_medium = name.to_string();
-                        break;
-                    }
+                {
+                    self.st.tan_medium = name.to_string();
+                    break;
                 }
             }
         }

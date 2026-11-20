@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::bpd::is_segment_code;
 use super::syntax::{Segment, SegmentBuilder};
-use super::{sepa, BankReply, FinTsConnector, PreparedOrder, Vop};
+use super::{BankReply, FinTsConnector, PreparedOrder, SepaAccount, Vop, sepa};
 use crate::connectors::{
     BatchTransferJob, ConnectContext, PayeeCheck, PayeeMatch, Phase, TransferJob, TransferResult,
 };
@@ -261,6 +261,89 @@ fn explain_transfer_code(c: &(String, Option<u32>, String, Vec<String>)) -> Stri
     }
 }
 
+/// The single transfer (HKCCS, HKCSE or HKIPZ) as it is sent: the pain.001 from
+/// the job and the source account. Pure, so `invariant_tests` can follow the
+/// values from the job to the segment bytes.
+pub(super) fn transfer_order(
+    job: &TransferJob,
+    acc: &SepaAccount,
+    seg_id: &'static str,
+    version: sepa::PainVersion,
+) -> CoreResult<PreparedOrder> {
+    let header = sepa::PainHeader::new(&job.source_owner);
+    let exec = job
+        .execution_date
+        .as_deref()
+        .unwrap_or(sepa::IMMEDIATE_EXECUTION_DATE);
+    let xml = sepa::build_pain001(&sepa::Pain001 {
+        message_id: &header.message_id,
+        created: &header.created,
+        execution_date: exec,
+        debtor_name: header.owner,
+        debtor_iban: &acc.iban,
+        debtor_bic: &acc.bic,
+        creditor_name: &job.recipient_name,
+        creditor_iban: &job.recipient_iban,
+        creditor_bic: job.recipient_bic.as_deref(),
+        amount_cents: job.amount_cents,
+        purpose: &job.purpose,
+        version,
+        end_to_end_id: &job.end_to_end_id,
+        instant: job.instant,
+    })?;
+    Ok(PreparedOrder {
+        seg_id,
+        kti: FinTsConnector::kti(acc),
+        descriptor: version.descriptor(),
+        xml,
+        instant: job.instant,
+        recipient_name: job.recipient_name.clone(),
+        recipient_iban: job.recipient_iban.clone(),
+        batch: None,
+        debit_layout: None,
+        standing: None,
+    })
+}
+
+/// The batch transfer (HKCCM) as it is sent, see [`transfer_order`].
+pub(super) fn batch_order(
+    job: &BatchTransferJob,
+    acc: &SepaAccount,
+    version: sepa::PainVersion,
+) -> CoreResult<PreparedOrder> {
+    let header = sepa::PainHeader::new(&job.source_owner);
+    let exec = job
+        .execution_date
+        .as_deref()
+        .unwrap_or(sepa::IMMEDIATE_EXECUTION_DATE);
+    let xml = sepa::build_pain001_batch(&sepa::Pain001Batch {
+        message_id: &header.message_id,
+        created: &header.created,
+        execution_date: exec,
+        debtor_name: header.owner,
+        debtor_iban: &acc.iban,
+        debtor_bic: &acc.bic,
+        payments: &job.payments,
+        version,
+        batch_booking: job.batch_booking,
+    })?;
+    let total = sepa::batch_total_cents(&job.payments).ok_or_else(|| CoreError::InvalidInput {
+        message: tr("Die Summe der Sammelüberweisung ist zu groß.").into(),
+    })?;
+    Ok(PreparedOrder {
+        seg_id: "HKCCM",
+        kti: FinTsConnector::kti(acc),
+        descriptor: version.descriptor(),
+        xml,
+        instant: false,
+        recipient_name: String::new(),
+        recipient_iban: String::new(),
+        batch: Some((total, !job.batch_booking)),
+        debit_layout: None,
+        standing: None,
+    })
+}
+
 impl FinTsConnector {
     /// Sends HKCCS (regular), HKCSE (scheduled) or HKIPZ (instant) + HKTAN
     /// process 4. An instant order the bank does not offer ends as
@@ -315,39 +398,7 @@ impl FinTsConnector {
                 )))
             }
         };
-        let header = sepa::PainHeader::new(&job.source_owner);
-        let exec = job
-            .execution_date
-            .as_deref()
-            .unwrap_or(sepa::IMMEDIATE_EXECUTION_DATE);
-        let xml = sepa::build_pain001(&sepa::Pain001 {
-            message_id: &header.message_id,
-            created: &header.created,
-            execution_date: exec,
-            debtor_name: header.owner,
-            debtor_iban: &acc.iban,
-            debtor_bic: &acc.bic,
-            creditor_name: &job.recipient_name,
-            creditor_iban: &job.recipient_iban,
-            creditor_bic: job.recipient_bic.as_deref(),
-            amount_cents: job.amount_cents,
-            purpose: &job.purpose,
-            version,
-            end_to_end_id: &job.end_to_end_id,
-            instant,
-        })?;
-        self.order = Some(PreparedOrder {
-            seg_id,
-            kti: Self::kti(&acc),
-            descriptor: version.descriptor(),
-            xml,
-            instant,
-            recipient_name: job.recipient_name.clone(),
-            recipient_iban: job.recipient_iban.clone(),
-            batch: None,
-            debit_layout: None,
-            standing: None,
-        });
+        self.order = Some(transfer_order(job, &acc, seg_id, version)?);
         let needs_vop =
             !self.st.vop_format.is_empty() && self.st.vop_orders.iter().any(|o| o == seg_id);
         if !needs_vop {
@@ -416,38 +467,7 @@ impl FinTsConnector {
             return Err(not_allowed());
         };
         let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
-        let header = sepa::PainHeader::new(&job.source_owner);
-        let exec = job
-            .execution_date
-            .as_deref()
-            .unwrap_or(sepa::IMMEDIATE_EXECUTION_DATE);
-        let xml = sepa::build_pain001_batch(&sepa::Pain001Batch {
-            message_id: &header.message_id,
-            created: &header.created,
-            execution_date: exec,
-            debtor_name: header.owner,
-            debtor_iban: &acc.iban,
-            debtor_bic: &acc.bic,
-            payments: &job.payments,
-            version,
-            batch_booking: job.batch_booking,
-        })?;
-        let total =
-            sepa::batch_total_cents(&job.payments).ok_or_else(|| CoreError::InvalidInput {
-                message: tr("Die Summe der Sammelüberweisung ist zu groß.").into(),
-            })?;
-        self.order = Some(PreparedOrder {
-            seg_id,
-            kti: Self::kti(&acc),
-            descriptor: version.descriptor(),
-            xml,
-            instant: false,
-            recipient_name: String::new(),
-            recipient_iban: String::new(),
-            batch: Some((total, !job.batch_booking)),
-            debit_layout: None,
-            standing: None,
-        });
+        self.order = Some(batch_order(job, &acc, version)?);
         let reply = self.send_order(ctx, Vop::None).await?;
         self.finish_submit(&reply)
     }

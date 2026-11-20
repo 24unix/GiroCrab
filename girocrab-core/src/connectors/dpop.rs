@@ -4,10 +4,10 @@
 //! whose claims bind method, URL, time, a random id, optionally the server
 //! nonce and the SHA-256 hash of the access token (`ath`).
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use p256::ecdsa::{signature::Signer, Signature, SigningKey};
-use serde_json::{json, Value};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -113,7 +113,7 @@ fn canonical_htu(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p256::ecdsa::{signature::Verifier, VerifyingKey};
+    use p256::ecdsa::{VerifyingKey, signature::Verifier};
 
     fn decode(part: &str) -> Value {
         serde_json::from_slice(&URL_SAFE_NO_PAD.decode(part).unwrap()).unwrap()

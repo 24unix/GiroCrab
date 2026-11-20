@@ -38,8 +38,8 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
 use girocrab_core::connectors::PayeeCheck;
+use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
 use girocrab_core::sync_log::{SyncLogOutcome, SyncLogSource};
 use girocrab_core::{
     BookingFilter, Category, Challenge, ChallengeKind, ConnectorKind, PeriodGranularity, SyncStep,
@@ -1530,7 +1530,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let screenshot = screenshot_path_from_args(std::env::args().skip(1));
     if screenshot.is_some() && std::env::var_os("SLINT_BACKEND").is_none() {
         // Software rendering: the isolated window texture is capturable (Metal is not).
-        std::env::set_var("SLINT_BACKEND", "winit-software");
+        // SAFETY: before the window exists, no other thread has been started yet.
+        unsafe { std::env::set_var("SLINT_BACKEND", "winit-software") };
     }
     let win = MainWindow::new()?;
     let demo_title = std::env::var_os("GIROCRAB_DEMO_SEED").is_some() || screenshot.is_some();
@@ -1631,7 +1632,7 @@ fn main() -> Result<(), slint::PlatformError> {
         // "Demo-Modus" button: same as GIROCRAB_DEMO_SEED=1, but without touching the key store.
         let open = open.clone();
         win.on_demo(move || {
-            std::env::set_var("GIROCRAB_DEMO_SEED", "1");
+            vault_key::set_demo(true);
             open(true)
         });
     }
@@ -1640,11 +1641,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let (open, demo_active) = (open.clone(), demo_active.clone());
         win.on_demo_switch(move || {
             let to_demo = !*demo_active.lock().unwrap();
-            if to_demo {
-                std::env::set_var("GIROCRAB_DEMO_SEED", "1");
-            } else {
-                std::env::remove_var("GIROCRAB_DEMO_SEED");
-            }
+            vault_key::set_demo(to_demo);
             open(to_demo)
         });
     }
@@ -2505,9 +2502,11 @@ mod tests {
         );
         // Privacy hides balances and the IBAN tail.
         let (hidden, total) = account_rows(&vault, true).unwrap();
-        assert!(hidden
-            .iter()
-            .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000"));
+        assert!(
+            hidden
+                .iter()
+                .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000")
+        );
         assert_eq!(total, daily::MASK);
         let _ = std::fs::remove_file(&path);
     }

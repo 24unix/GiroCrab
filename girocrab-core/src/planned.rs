@@ -4,7 +4,7 @@
 //! to [`Vault::list_planned_payments`]. Only real orders appear here, never
 //! guesses from the booking history (`recurring.rs`).
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::connectors::TransferJob;
 use crate::dates::today_iso as today;

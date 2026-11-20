@@ -6,12 +6,12 @@ use std::collections::HashMap;
 
 use base64::Engine;
 
-use super::syntax::{escape, parse_response, SegmentBuilder};
-use super::{rah10, BankReply, FinTsConnector, CONSORSBANK_BLZ, COUNTRY};
+use super::syntax::{SegmentBuilder, escape, parse_response};
+use super::{BankReply, CONSORSBANK_BLZ, COUNTRY, FinTsConnector, rah10};
 use crate::connectors::fints_directory::COMDIRECT_BLZ;
 use crate::connectors::{
-    ensure_secure_fints_url, http_client_no_redirect, read_text_limited, Challenge, ChallengeKind,
-    ConnectContext, Phase,
+    Challenge, ChallengeKind, ConnectContext, Phase, ensure_secure_fints_url,
+    http_client_no_redirect, read_text_limited,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -102,11 +102,7 @@ impl FinTsConnector {
     /// two-step TAN method. Strict banks (Consorsbank) reject a mismatch with
     /// "9010 Ungültiger Signaturaufbau".
     fn security_profile(sec_func: &str) -> &'static str {
-        if sec_func == "999" {
-            "PIN:1"
-        } else {
-            "PIN:2"
-        }
+        if sec_func == "999" { "PIN:1" } else { "PIN:2" }
     }
 
     /// Wraps payload segments (numbered from 3) into a signed, "encrypted"
@@ -484,21 +480,22 @@ impl FinTsConnector {
         self.learn_bpd(&reply);
         // Optional: TAN media list (needed by some banks for HKTAN).
         let tab_v = self.version("HKTAB");
-        if self.bank_supports("HKTAB") {
-            if let Ok(r) = self
+        if self.bank_supports("HKTAB")
+            && let Ok(r) = self
                 .send(
                     ctx,
-                    vec![SegmentBuilder::new("HKTAB", 3, tab_v)
-                        .raw("0")
-                        .raw("A")
-                        .build()],
+                    vec![
+                        SegmentBuilder::new("HKTAB", 3, tab_v)
+                            .raw("0")
+                            .raw("A")
+                            .build(),
+                    ],
                     "999",
                     None,
                 )
                 .await
-            {
-                self.learn_bpd(&r);
-            }
+        {
+            self.learn_bpd(&r);
         }
         self.end_dialog(ctx, "999").await;
         if self.st.system_id.is_empty() {
@@ -577,7 +574,10 @@ impl FinTsConnector {
         } else if reply.has("0030") {
             return Err(CoreError::Bank {
                 code: "0030".into(),
-                message: trf("Die Bank verlangt für {0} eine TAN-Eingabe. Bitte ein Push-/App-Verfahren (z. B. SecureGo plus) verwenden oder „Tage beim ersten Abruf“ auf höchstens 90 setzen.", &[&seg_id]),
+                message: trf(
+                    "Die Bank verlangt für {0} eine TAN-Eingabe. Bitte ein Push-/App-Verfahren (z. B. SecureGo plus) verwenden oder „Tage beim ersten Abruf“ auf höchstens 90 setzen.",
+                    &[&seg_id],
+                ),
             });
         }
         reply.check()?;

@@ -449,9 +449,11 @@ mod tests {
         assert_eq!(search("sparkasse", 7).len(), 7);
         let ing = search("ING", 20);
         assert!(ing.iter().any(|b| b.blz == "50010517"));
-        assert!(search("Sparda Berlin", 5)
-            .iter()
-            .any(|b| b.blz == "12096597"));
+        assert!(
+            search("Sparda Berlin", 5)
+                .iter()
+                .any(|b| b.blz == "12096597")
+        );
         assert!(search("postbank", 5).iter().all(|b| b.name == "Postbank"));
         assert!(search("apobank", 5).iter().any(|b| b.blz == "30060601"));
         assert!(search("ethik", 5).iter().any(|b| b.blz == "83094495"));
@@ -483,9 +485,12 @@ mod tests {
             .collect();
         assert!(sparda.len() >= 10);
         assert!(sparda.iter().all(|b| is_valid_fints_url(&b.url)));
-        assert!(sparda
-            .iter()
-            .all(|b| b.url == ATRUVIA || b.url == "https://fints2.atruvia.de/cgi-bin/hbciservlet"));
+        assert!(
+            sparda
+                .iter()
+                .all(|b| b.url == ATRUVIA
+                    || b.url == "https://fints2.atruvia.de/cgi-bin/hbciservlet")
+        );
         assert!(!banks().iter().any(|e| e.2.contains("bankingonline.de")));
     }
 
@@ -519,8 +524,10 @@ mod tests {
             .collect();
         assert_eq!(all.len(), PSD_BLZ.len());
         assert!(search("psd west", 5).iter().any(|b| b.blz == "37060993"));
-        assert!(search("psd stuttgart", 5)
-            .iter()
-            .any(|b| b.blz == "60090900"));
+        assert!(
+            search("psd stuttgart", 5)
+                .iter()
+                .any(|b| b.blz == "60090900")
+        );
     }
 }

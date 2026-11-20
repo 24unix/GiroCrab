@@ -14,7 +14,7 @@
 //! offline accounts in this sense; accounts of a bank connection are synced and
 //! stay read-only.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::connectors::group_for;
 use crate::dates::{now_ms, today_iso as today};

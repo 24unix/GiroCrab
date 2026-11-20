@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn overlong_pattern_is_rejected_in_the_ui_language() {
-        use crate::i18n::{with_language, Lang};
+        use crate::i18n::{Lang, with_language};
         let long = "a".repeat(MAX_PATTERN_LEN + 1);
         for (kind, expected) in [
             (MatchKind::Keyword, "The pattern is too long."),

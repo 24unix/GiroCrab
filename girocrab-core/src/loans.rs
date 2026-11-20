@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 
 use jiff::civil::Date;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::dates::parse_iso;
 use crate::error::{CoreError, CoreResult};
@@ -22,7 +22,7 @@ use crate::models::*;
 use crate::rules::RuleRow;
 use crate::schema::has_table;
 use crate::search_expr::SearchExpr;
-use crate::vault::{sql_int_list, Vault, LIVE_BOOKINGS_SQL};
+use crate::vault::{LIVE_BOOKINGS_SQL, Vault, sql_int_list};
 
 pub(crate) const LOAN_SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS loan_terms (
@@ -700,12 +700,12 @@ impl Vault {
             None => {
                 return Err(CoreError::NotFound {
                     what: trf("Buchung {0}", &[&transaction_id]),
-                })
+                });
             }
             Some("loan") => {
                 return Err(CoreError::invalid(tr(
                     "Buchungen eines Darlehenskontos lassen sich keinem anderen Darlehen zuordnen.",
-                )))
+                )));
             }
             _ => {}
         }
@@ -738,10 +738,10 @@ impl Vault {
                 }
             }
         }
-        if let Some((prev, _)) = previous {
-            if Some(prev) != loan_account_id {
-                refresh(&tx, prev)?;
-            }
+        if let Some((prev, _)) = previous
+            && Some(prev) != loan_account_id
+        {
+            refresh(&tx, prev)?;
         }
         tx.commit()?;
         Ok(())

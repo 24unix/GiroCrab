@@ -992,14 +992,13 @@ impl MerchantResolver {
                     return Self::resolve_uncached(&shop, purpose);
                 }
             }
-            if let Some((_, subs)) = SUB_BRANDS.iter().find(|(parent, _)| *parent == entry.key) {
-                if let Some(sub) = subs
+            if let Some((_, subs)) = SUB_BRANDS.iter().find(|(parent, _)| *parent == entry.key)
+                && let Some(sub) = subs
                     .iter()
                     .filter_map(|k| entry_by_key(k))
                     .find(|sub| sub.needles.iter().any(|n| needle_in(&ctx, n)))
-                {
-                    return to_info(sub);
-                }
+            {
+                return to_info(sub);
             }
             return group_member(entry, counterparty).unwrap_or_else(|| to_info(entry));
         }
@@ -1558,9 +1557,11 @@ mod tests {
         assert!(!looks_like_person("Hotel Schwarzer Bock"));
         assert!(!looks_like_person("Eigenes Konto"));
         assert!(!looks_like_person("Mustermann Bau GmbH"));
-        assert!(MerchantResolver::resolve("Hotel Schwarzer Bock", "")
-            .domain
-            .is_empty());
+        assert!(
+            MerchantResolver::resolve("Hotel Schwarzer Bock", "")
+                .domain
+                .is_empty()
+        );
         assert_eq!(
             heuristic_domains("Gärtnerei Grünwald"),
             vec![

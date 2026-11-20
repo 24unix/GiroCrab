@@ -24,12 +24,12 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
-    http_client_same_host, BankConnector, CancelOutcome, Challenge, ChallengeKind,
-    ChallengeResponse, ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction,
-    TransferJob, TransferResult,
+    BankConnector, CancelOutcome, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
+    FetchResult, Phase, RemoteAccount, RemoteTransaction, TransferJob, TransferResult,
+    http_client_same_host,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -637,14 +637,14 @@ impl BunqConnector {
                 .unwrap_or_default()
             {
                 let ext = format!("bunq-{pid}");
-                if let Some(t) = payments.iter_mut().find(|t| t.external_id == ext) {
-                    if !t.purpose.contains(&note) {
-                        t.purpose = if t.purpose.is_empty() {
-                            note.clone()
-                        } else {
-                            format!("{} · {note}", t.purpose)
-                        };
-                    }
+                if let Some(t) = payments.iter_mut().find(|t| t.external_id == ext)
+                    && !t.purpose.contains(&note)
+                {
+                    t.purpose = if t.purpose.is_empty() {
+                        note.clone()
+                    } else {
+                        format!("{} · {note}", t.purpose)
+                    };
                 }
             }
         }

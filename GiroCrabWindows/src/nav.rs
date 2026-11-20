@@ -434,11 +434,11 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
                 if a.new_count > 0 {
                     r.badge = a.new_count.to_string();
                 }
-                if a.kind == AccountKind::Loan {
-                    if let Some(p) = loan_progress(a.initial_balance_cents, a.balance_cents) {
-                        r.progress = p;
-                        r.detail = progress_label(p);
-                    }
+                if a.kind == AccountKind::Loan
+                    && let Some(p) = loan_progress(a.initial_balance_cents, a.balance_cents)
+                {
+                    r.progress = p;
+                    r.detail = progress_label(p);
                 }
                 rows.push(r);
             }

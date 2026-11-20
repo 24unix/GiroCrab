@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const SUPPORTED_SCHEMA: i64 = 1;
 /// `AnnouncementCenter.defaultURL`: next to the banking policy, independent of releases.
@@ -54,10 +54,10 @@ struct RawDocument {
 /// test key (`GIROCRAB_ANNOUNCEMENTS_KEY`, Swift: `#if DEBUG`).
 fn keys() -> Vec<VerifyingKey> {
     #[cfg(debug_assertions)]
-    if let Ok(k) = std::env::var("GIROCRAB_ANNOUNCEMENTS_KEY") {
-        if !k.is_empty() {
-            return decode_keys(&[k.as_str()]);
-        }
+    if let Ok(k) = std::env::var("GIROCRAB_ANNOUNCEMENTS_KEY")
+        && !k.is_empty()
+    {
+        return decode_keys(&[k.as_str()]);
     }
     decode_keys(crate::banking_policy::PUBLIC_KEYS)
 }
@@ -72,10 +72,10 @@ fn decode_keys(list: &[&str]) -> Vec<VerifyingKey> {
 
 fn url() -> String {
     #[cfg(debug_assertions)]
-    if let Ok(u) = std::env::var("GIROCRAB_ANNOUNCEMENTS_URL") {
-        if !u.is_empty() {
-            return u;
-        }
+    if let Ok(u) = std::env::var("GIROCRAB_ANNOUNCEMENTS_URL")
+        && !u.is_empty()
+    {
+        return u;
     }
     URL.to_string()
 }
@@ -145,15 +145,17 @@ fn document(json: &[u8], distribution: &str, version: &str, language: &str) -> O
             }
             use std::cmp::Ordering::{Greater, Less};
             let cmp = crate::banking_policy::compare_versions;
-            if let Some(min) = &r.min_version {
-                if !version.is_empty() && cmp(version, min) == Less {
-                    return None;
-                }
+            if let Some(min) = &r.min_version
+                && !version.is_empty()
+                && cmp(version, min) == Less
+            {
+                return None;
             }
-            if let Some(max) = &r.max_version {
-                if !version.is_empty() && cmp(version, max) == Greater {
-                    return None;
-                }
+            if let Some(max) = &r.max_version
+                && !version.is_empty()
+                && cmp(version, max) == Greater
+            {
+                return None;
             }
             let empty = std::collections::BTreeMap::new();
             Some(json!({

@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn duplicate_name_is_reported_in_the_ui_language() {
-        use crate::i18n::{with_language, Lang};
+        use crate::i18n::{Lang, with_language};
         let dir = temp_dir("duplicate-en");
         create_vault(&dir, "Privat").unwrap();
         let result = with_language(Lang::En, || create_vault(&dir, "privat"));

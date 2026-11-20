@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rusqlite::Connection;
 
 use crate::error::CoreError;
-use crate::vault::{Vault, SCHEMA_VERSION};
+use crate::vault::{SCHEMA_VERSION, Vault};
 
 const PASSWORD: &str = "Krabbe am Strand 7";
 
@@ -113,7 +113,7 @@ fn set_user_version(db: &Path, password: &str, version: i64) {
 /// when its version number is above ours.
 #[test]
 fn other_apps_database_is_refused_with_its_own_message() {
-    use crate::importers::moneymoney_db::tests::{fake_db, PW};
+    use crate::importers::moneymoney_db::tests::{PW, fake_db};
     let (dest, _) = filled(2);
     let before = bookings(&dest);
     let db = fake_db();
@@ -172,10 +172,11 @@ fn pre_fints_reg_backup_is_made_once_and_never_overwritten() {
     // new vault: nothing to preserve, only the marker is set
     let v = Vault::open(path(&p), key.clone()).unwrap();
     assert!(!Path::new(&bak).exists());
-    assert!(v
-        .get_setting("pre_0_8_0_fints_backup_done".into())
-        .unwrap()
-        .is_some());
+    assert!(
+        v.get_setting("pre_0_8_0_fints_backup_done".into())
+            .unwrap()
+            .is_some()
+    );
 
     // an existing vault from before the update: has data, no marker
     v.seed_demo_data().unwrap();
@@ -187,10 +188,11 @@ fn pre_fints_reg_backup_is_made_once_and_never_overwritten() {
     let v = Vault::open(path(&p), key.clone()).unwrap();
     assert!(Path::new(&bak).exists(), "backup written on first open");
     assert!(!Path::new(&format!("{bak}.tmp")).exists());
-    assert!(v
-        .get_setting("pre_0_8_0_fints_backup_done".into())
-        .unwrap()
-        .is_some());
+    assert!(
+        v.get_setting("pre_0_8_0_fints_backup_done".into())
+            .unwrap()
+            .is_some()
+    );
     let copy = Vault::open(bak.clone(), key.clone()).unwrap();
     assert_eq!(bookings(&copy), before);
     drop(copy);
@@ -270,4 +272,69 @@ fn backup_file_is_owner_only() {
     src.write_backup(path(&backup), PASSWORD.into()).unwrap();
     let mode = std::fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
+}
+
+fn triggers_and_views(v: &Vault) -> Vec<String> {
+    v.db()
+        .unwrap()
+        .prepare("SELECT name FROM sqlite_master WHERE type IN ('trigger', 'view') ORDER BY name")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+#[test]
+fn restore_drops_triggers_and_views_from_the_backup() {
+    let (src, _) = filled(1);
+    src.db()
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER repoint AFTER INSERT ON settings BEGIN
+                 UPDATE settings SET value = 'https://evil.example/fints'
+                 WHERE key LIKE 'fints.url.%';
+             END;
+             CREATE TRIGGER repoint_on_sync AFTER UPDATE ON bank_connections BEGIN
+                 UPDATE settings SET value = 'https://evil.example/fints'
+                 WHERE key LIKE 'fints.url.%';
+             END;
+             CREATE VIEW extra AS SELECT 1;",
+        )
+        .unwrap();
+    let backup = temp_path("bak");
+    src.write_backup(path(&backup), PASSWORD.into()).unwrap();
+
+    let (dst, dst_path) = filled(2);
+    dst.set_setting(
+        "fints.url.12345678".into(),
+        "https://bank.example/fints".into(),
+    )
+    .unwrap();
+    dst.restore_backup(path(&backup), PASSWORD.into()).unwrap();
+    assert!(triggers_and_views(&dst).is_empty());
+
+    // a later settings write keeps this device's endpoint
+    dst.set_setting("ui.note".into(), "x".into()).unwrap();
+    assert_eq!(
+        dst.get_setting("fints.url.12345678".into())
+            .unwrap()
+            .as_deref(),
+        Some("https://bank.example/fints")
+    );
+    drop(dst);
+    let reopened = Vault::open(path(&dst_path), vec![2; 32]).unwrap();
+    assert!(triggers_and_views(&reopened).is_empty());
+}
+
+#[test]
+fn reopen_drops_triggers_left_in_the_vault() {
+    let (v, p) = filled(3);
+    v.db()
+        .unwrap()
+        .execute_batch("CREATE TRIGGER stray AFTER INSERT ON settings BEGIN SELECT 1; END;")
+        .unwrap();
+    drop(v);
+    let reopened = Vault::open(path(&p), vec![3; 32]).unwrap();
+    assert!(triggers_and_views(&reopened).is_empty());
 }

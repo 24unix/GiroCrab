@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use rusqlite::backup::Backup;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use zeroize::Zeroizing;
 
 use super::Vault;
@@ -35,6 +35,25 @@ fn other_apps_database() -> CoreError {
     CoreError::invalid(tr(
         "Diese Datei ist keine GiroCrab-Sicherung, sondern die Datenbank einer anderen App. Zum Übernehmen bitte als Art des Imports diese App wählen.",
     ))
+}
+
+/// Drops every trigger and view in `schema`. The app defines neither, so any
+/// found came from outside its own code paths (for example a crafted backup) and
+/// could rewrite rows on later writes, such as repointing a FinTS endpoint
+/// after the device-settings carve-out ran.
+pub(crate) fn drop_triggers_and_views(conn: &Connection, schema: &str) -> CoreResult<()> {
+    let objects: Vec<(String, String)> = conn
+        .prepare(&format!(
+            "SELECT type, name FROM {schema}.sqlite_master WHERE type IN ('trigger', 'view')"
+        ))?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    for (kind, name) in objects {
+        let name = name.replace('"', "\"\"");
+        let kind = if kind == "view" { "VIEW" } else { "TRIGGER" };
+        conn.execute_batch(&format!("DROP {kind} IF EXISTS {schema}.\"{name}\""))?;
+    }
+    Ok(())
 }
 
 fn remove_with_sidecars(path: &str) {
@@ -184,6 +203,8 @@ impl Vault {
             });
         }
         tmp.query_row("SELECT sqlcipher_export('main', 'bak')", [], |_| Ok(()))?;
+        // The export copies the backup's whole schema; only data may come along.
+        drop_triggers_and_views(&tmp, "main")?;
         // Device-owned settings stay as they are on this device.
         let device: Vec<(String, String, i64)> = {
             let live = self.db()?;
@@ -209,7 +230,10 @@ impl Vault {
         tmp.execute_batch("DETACH DATABASE bak")?;
 
         let mut main = self.db()?;
-        Backup::new(&tmp, &mut main)?.run_to_completion(256, Duration::ZERO, None)?;
+        let copied = Backup::new(&tmp, &mut main)?.run_to_completion(256, Duration::ZERO, None);
+        // the pages changed without moving the change count, also when the copy broke off
+        self.data_replaced();
+        copied?;
         Self::migrate(&mut main)?;
         Self::repair(&main);
         Ok(())

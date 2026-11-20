@@ -9,7 +9,7 @@ use crate::vault::Vault;
 
 #[test]
 fn errors_after_submit_leave_outcome_unknown() {
-    use super::{error_leaves_outcome_unknown as unknown, CoreError};
+    use super::{CoreError, error_leaves_outcome_unknown as unknown};
     assert!(unknown(&CoreError::Network {
         message: "x".into()
     }));
@@ -790,9 +790,10 @@ fn revoked_accounts_are_marked_and_new_ones_named() {
         ]
     );
     let accs = v.list_accounts().unwrap();
-    assert!(accs
-        .iter()
-        .any(|a| a.name == "Gemeinschaftskonto" && a.access_revoked));
+    assert!(
+        accs.iter()
+            .any(|a| a.name == "Gemeinschaftskonto" && a.access_revoked)
+    );
     std::fs::remove_file(path).ok();
 }
 
@@ -1113,11 +1114,12 @@ async fn magic_demo_login_syncs_without_network_or_product_id() {
         SyncStep::Finished { .. } => {}
         other => panic!("expected finish, got {other:?}"),
     }
-    assert!(v
-        .list_accounts()
-        .unwrap()
-        .iter()
-        .any(|a| a.connection_id == Some(id)));
+    assert!(
+        v.list_accounts()
+            .unwrap()
+            .iter()
+            .any(|a| a.connection_id == Some(id))
+    );
     // Any other login still needs the product ID.
     let other = v
         .add_fints_connection(
@@ -1259,6 +1261,79 @@ async fn account_sync_stores_only_that_account() {
 }
 
 #[test]
+fn single_account_sync_of_a_moneymoney_ref_syncs_the_whole_login() {
+    use super::persist::single_account_ref;
+    let none = || -> CoreResult<Vec<String>> { Ok(vec![]) };
+    assert_eq!(
+        single_account_ref("DE02120300000000202051".into(), none).unwrap(),
+        Some("DE02120300000000202051".into())
+    );
+    // marked by "Abrufweg umstellen", or imported and not yet taken over (#1417)
+    for r in [
+        "moneymoney-db:switch:DE02120300000000202051",
+        "moneymoney-db:A1B2C3",
+    ] {
+        assert_eq!(single_account_ref(r.into(), none).unwrap(), None, "{r}");
+        let skipped = || -> CoreResult<Vec<String>> { Ok(vec![r.to_string()]) };
+        assert!(matches!(
+            single_account_ref(r.into(), skipped),
+            Err(CoreError::InvalidInput { .. })
+        ));
+    }
+}
+
+#[tokio::test]
+async fn account_sync_after_switching_takes_the_account_over() {
+    let (v, path) = demo_vault();
+    let conn = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.connector == ConnectorKind::VolksbankKasselGoettingen)
+        .unwrap();
+    let giro = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.connection_id == Some(conn.id) && a.name == "Musterbank Girokonto")
+        .unwrap();
+    let ext = |v: &Arc<Vault>| -> String {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                [giro.id],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let old = ext(&v);
+    // as "Abrufweg umstellen" leaves it: the account under the marked ref
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
+            params![format!("moneymoney-db:switch:{old}"), giro.id],
+        )
+        .unwrap();
+    let s = v
+        .clone()
+        .begin_account_sync(giro.id, "pin".into(), true)
+        .unwrap();
+    let mut step = s.start().await.unwrap();
+    let summary = loop {
+        match step {
+            SyncStep::Finished { summary } => break summary,
+            _ => step = s.poll().await.unwrap(),
+        }
+    };
+    // the whole login was synced: the account is taken over and gets its booking
+    assert_eq!(ext(&v), old);
+    assert_eq!(summary.transactions_imported, 1);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn only_among_names_the_account_of_a_single_account_sync() {
     let refs = vec!["a".to_string(), "b".to_string()];
     let mut ctx = ConnectContext::default();
@@ -1353,6 +1428,79 @@ async fn demo_code_and_redirect_flows() {
     let _ = std::fs::remove_file(path);
 }
 
+#[test]
+fn amounts_above_the_sepa_limit_are_rejected_before_the_tan() {
+    use crate::connectors::fints::sepa::MAX_AMOUNT_CENTS;
+    use crate::models::{StandingOrderAction, StandingOrderRequest};
+    let (v, path) = demo_vault();
+    let acc = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == "Musterbank Girokonto" && a.connection_id.is_some())
+        .unwrap();
+    let transfer =
+        |amount: i64, instant: bool, execution_date: Option<String>| SepaTransferRequest {
+            account_id: acc.id,
+            recipient_name: "Müller GmbH".into(),
+            recipient_iban: "DE89370400440532013000".into(),
+            recipient_bic: None,
+            amount_cents: amount,
+            purpose: "Rechnung 42".into(),
+            instant,
+            execution_date,
+        };
+    let later = crate::dates::iso(crate::dates::today() + crate::dates::days(10));
+    for (instant, date) in [(false, None), (true, None), (false, Some(later.clone()))] {
+        assert!(
+            v.clone()
+                .begin_transfer(
+                    transfer(MAX_AMOUNT_CENTS, instant, date.clone()),
+                    "pin".into(),
+                    true
+                )
+                .is_ok()
+        );
+        assert!(matches!(
+            v.clone().begin_transfer(
+                transfer(MAX_AMOUNT_CENTS + 1, instant, date),
+                "pin".into(),
+                true
+            ),
+            Err(CoreError::InvalidInput { .. })
+        ));
+    }
+    // A valid monthly schedule (first date on the execution day), so only the
+    // amount decides.
+    let first_of_month = (crate::dates::today() + crate::dates::days(40)).first_of_month();
+    let order = |amount: i64| StandingOrderRequest {
+        account_id: acc.id,
+        action: StandingOrderAction::Create,
+        order_row_id: None,
+        recipient_name: "Vermieter".into(),
+        recipient_iban: "DE89370400440532013000".into(),
+        recipient_bic: None,
+        amount_cents: amount,
+        purpose: "Miete".into(),
+        first_date: crate::dates::iso(first_of_month),
+        last_date: None,
+        time_unit: "M".into(),
+        interval: 1,
+        exec_day: 1,
+    };
+    assert!(
+        v.clone()
+            .begin_standing_order(order(MAX_AMOUNT_CENTS), "pin".into(), true)
+            .is_ok()
+    );
+    assert!(matches!(
+        v.clone()
+            .begin_standing_order(order(MAX_AMOUNT_CENTS + 1), "pin".into(), true),
+        Err(CoreError::InvalidInput { .. })
+    ));
+    let _ = std::fs::remove_file(path);
+}
+
 #[tokio::test(start_paused = true)]
 async fn demo_transfer_flow_adds_pending_booking_and_suggests_recipient() {
     let (v, path) = demo_vault();
@@ -1372,14 +1520,16 @@ async fn demo_transfer_flow_adds_pending_booking_and_suggests_recipient() {
         instant: true,
         execution_date: None,
     };
-    assert!(v
-        .clone()
-        .begin_transfer(req("DE89370400440532013001", 100), "pin".into(), true)
-        .is_err());
-    assert!(v
-        .clone()
-        .begin_transfer(req("DE89370400440532013000", 0), "pin".into(), true)
-        .is_err());
+    assert!(
+        v.clone()
+            .begin_transfer(req("DE89370400440532013001", 100), "pin".into(), true)
+            .is_err()
+    );
+    assert!(
+        v.clone()
+            .begin_transfer(req("DE89370400440532013000", 0), "pin".into(), true)
+            .is_err()
+    );
     let s = v
         .clone()
         .begin_transfer(req("DE89 3704 0044 0532 0130 00", 1250), "pin".into(), true)
@@ -1838,10 +1988,11 @@ fn a_fetch_stores_no_documents_while_retrieval_is_off() {
         fetch_with_document(),
     )
     .unwrap();
-    assert!(v
-        .list_all_documents(crate::documents::DocumentFilter::default())
-        .unwrap()
-        .is_empty());
+    assert!(
+        v.list_all_documents(crate::documents::DocumentFilter::default())
+            .unwrap()
+            .is_empty()
+    );
     // on again: the same delivery is stored
     v.set_documents_fetch(conn, true).unwrap();
     store_fetch(
@@ -1872,11 +2023,12 @@ fn portal_connections_list_nothing_to_download_while_retrieval_is_off() {
         .unwrap();
     v.set_documents_fetch(conn, false).unwrap();
     // not even a list that would be invalid is looked at
-    assert!(v
-        .clone()
-        .pending_fnz_documents(conn, "kein json".into())
-        .unwrap()
-        .is_empty());
+    assert!(
+        v.clone()
+            .pending_fnz_documents(conn, "kein json".into())
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
