@@ -1878,6 +1878,7 @@ QtObject {
             activeSession = null
             syncingConnectionID = null
             if (s !== null) coreAsync("session_cancel", { session: s }, null, () => {})
+            syncNextInQueue()   // never leave a queued login waiting behind a skipped automatic fetch
             return
         }
         if (step.NeedsChallenge) {
@@ -2044,6 +2045,9 @@ QtObject {
             activeSession = null; activeChallenge = null; syncingConnectionID = null
             const name = (connections.find(c => c.id === quietID) || {}).display_name || ""
             toast = qsTr("%1: automatischer Abruf fehlgeschlagen – %2").arg(name).arg(e.message)
+            statementsAccountID = null
+            postboxConnectionID = null
+            syncNextInQueue()   // the queue goes on (or is reset) like after a finished sync
             return
         }
         statementsAccountID = null
