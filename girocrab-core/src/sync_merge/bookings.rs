@@ -161,15 +161,18 @@ fn canonical_external_id<'a>(a: &'a str, b: &'a str) -> &'a str {
     }
 }
 
-/// A hold in any of its forms: open or settled (`pending-…`), dropped by
-/// „Abrufweg umstellen“ (`switch-stale-<id>:pending-…`) or marked by an older
-/// switch (`mm-switch-pending-hold-…`). The fingerprint pairs holds only with
-/// holds: a hold (often deleted) has the date, amount and text of its payment,
-/// and pairing it with the posted booking would delete the booking (#1134).
+/// A card hold of the bank in any of its forms: open or settled
+/// (`pending-hold-…`), dropped by „Abrufweg umstellen“
+/// (`switch-stale-<id>:pending-hold-…`) or marked by an older switch
+/// (`mm-switch-pending-hold-…`). The fingerprint pairs card holds only with
+/// card holds: a hold (often deleted) has the date, amount and text of its
+/// payment, and pairing it with the posted booking would delete the booking
+/// (#1134). Transfer bookings of the app (`pending-<e2e>`, marked
+/// `mm-switch-pending-<e2e>`) pair as before, both forms of one transfer alike.
 fn is_hold_id(ext: &str) -> bool {
-    ext.starts_with("pending-")
+    ext.starts_with("pending-hold-")
         || ext.starts_with("mm-switch-pending-hold-")
-        || (ext.starts_with("switch-stale-") && ext.contains(":pending-"))
+        || (ext.starts_with("switch-stale-") && ext.contains(":pending-hold-"))
 }
 
 /// Merges `other.transactions` and their splits: bookings are matched by

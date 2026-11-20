@@ -2017,6 +2017,44 @@ mod tests {
         );
     }
 
+    /// An older build on device A marked an open transfer of the app on its
+    /// switch (`mm-switch-pending-<e2e>`); device B still has it unmarked.
+    /// The merge pairs both forms of the one transfer: one row on each device.
+    #[test]
+    fn both_forms_of_a_transfer_of_the_app_stay_one_row_on_merge() {
+        let dir = crate::test_support::TempDir::new("girocrab-marked-transfer-sync");
+        let (a, _, giro, _, _) = comdirect_vault(dir.path(), "a.db");
+        let b = second_device(dir.path(), &a);
+        let add = |v: &Vault, ext: &str| {
+            v.db()
+                .unwrap()
+                .execute(
+                    "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, currency,
+                                              counterparty, counterparty_iban, purpose)
+                     VALUES (?1, ?2, '2026-11-19', -5000, 'EUR', 'Vermieter', 'DE02120300000000202051', 'Miete')",
+                    params![giro, ext],
+                )
+                .unwrap();
+        };
+        add(&a, "mm-switch-pending-e2e-1");
+        add(&b, "pending-e2e-1");
+
+        sync_both(dir.path(), &a, &b, "transfer");
+        for (name, v) in [("A", &a), ("B", &b)] {
+            let n: i64 = v
+                .db()
+                .unwrap()
+                .query_row(
+                    "SELECT count(*) FROM transactions
+                      WHERE purpose = 'Miete' AND deleted_ms IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 1, "{name}: one row for the transfer");
+        }
+    }
+
     /// Vaults switched by an older build: their marked holds go on open (and
     /// after a merge), marked bookings and marked transfer bookings of the app
     /// stay; running it again changes nothing.
