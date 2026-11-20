@@ -911,6 +911,17 @@
         }
       }
     },
+    "%lld Kontoauszüge konnten nicht geladen werden – beim nächsten Abruf erneut versuchen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld statements could not be loaded – they are tried again with the next fetch."
+          }
+        }
+      }
+    },
     "%lld Lastschriften · %@" : {
       "extractionState" : "manual",
       "localizations" : {
