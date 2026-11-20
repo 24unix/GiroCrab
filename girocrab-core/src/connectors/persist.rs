@@ -2606,7 +2606,7 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
                 .iter()
                 .any(|k| t.contains(k))
                 // „ZAHLUNG ERHALTEN“, „ZAHLUNG/ÜBERWEISUNG ERHALTEN BESTEN DANK“
-                || t.contains("ZAHLUNG") && t.contains("ERHALTEN"))
+                || t.contains("ZAHLUNG/ÜBERWEISUNG ERHALTEN") || t.contains("ZAHLUNG/UEBERWEISUNG ERHALTEN"))
     };
     let start = match rows.iter().rposition(is_settlement) {
         Some(i) => i + 1,
