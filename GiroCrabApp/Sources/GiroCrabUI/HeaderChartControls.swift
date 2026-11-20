@@ -231,7 +231,8 @@ struct AccountExpensePie: View {
     }
 
     var body: some View {
-        let (from, to) = model.periodRange
+        // the period the header names (#1413), not one still loading
+        let (from, to) = model.shownPeriod.range(salaryCycle: model.shownSalaryCycle)
         let key = Key(ids: model.headerChartAccountIDs, from: from, to: to, version: model.categories.map(\.totalCents))
         Group {
             if let parts {
