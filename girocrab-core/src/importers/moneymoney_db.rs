@@ -2434,9 +2434,21 @@ pub(crate) fn adopt_account(
             ([id], _) | ([], [id]) => Some(*id),
             _ => None,
         };
-        // a number that fits several imported cards: no guess at all, the
-        // fallback below would hand over an unrelated card
-        if by_number.is_none() && !any.is_empty() {
+        // an imported card that several fetched cards fit (`**** 1234` for two
+        // cards ending in 1234) is not handed to whichever comes first
+        let contested = by_number.is_some_and(|id| {
+            rows.iter().any(|(row, number, _, _)| {
+                *row == id
+                    && fetched_cards
+                        .iter()
+                        .filter(|fetched| same_card_number(number, fetched))
+                        .count()
+                        > 1
+            })
+        });
+        // a number that fits several imported cards, or a contested one: no
+        // guess at all, the fallback below would hand over an unrelated card
+        if contested || (by_number.is_none() && !any.is_empty()) {
             return Ok(None);
         }
         // else the only one of its kind (also a replacement card with a new

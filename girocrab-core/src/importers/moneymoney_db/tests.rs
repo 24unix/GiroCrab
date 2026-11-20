@@ -1607,6 +1607,58 @@ fn card_numbers_prefer_complete_matches_and_never_guess_on_a_tie() {
 }
 
 #[test]
+fn a_masked_card_two_fetched_cards_fit_goes_to_neither() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    let conn_id = v.list_bank_connections().unwrap()[0].id;
+    let visa = account_by_name(&v, "Visa-Karte").id;
+    let db = v.db().unwrap();
+    db.execute(
+        "UPDATE accounts SET account_number = '**** 1234' WHERE name = 'Visa-Karte'",
+        [],
+    )
+    .unwrap();
+    let fetched = ["4000000000001234", "5232000000001234"];
+    for number in fetched {
+        assert_eq!(
+            adopt_account(
+                &db,
+                conn_id,
+                number,
+                "",
+                number,
+                "EUR",
+                AccountKind::CreditCard,
+                &fetched,
+            )
+            .unwrap(),
+            None,
+            "{number}"
+        );
+    }
+    // with only one of them fetched, the card is taken over
+    assert_eq!(
+        adopt_account(
+            &db,
+            conn_id,
+            "card-1",
+            "",
+            fetched[0],
+            "EUR",
+            AccountKind::CreditCard,
+            &fetched[..1],
+        )
+        .unwrap(),
+        Some(visa)
+    );
+}
+
+#[test]
 fn amazon_visa_filed_as_openbank_gets_its_connector_and_is_adopted() {
     // MoneyMoney files the Amazon Visa as "Openbank" (bank code 50034200) and
     // stores an IBAN for the card; an Open Bank current account stays unsupported.
