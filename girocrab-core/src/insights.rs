@@ -12,12 +12,16 @@ use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::vault::{sql_int_list, Vault, LIVE_BOOKINGS_SQL};
 
-fn all_bookings(v: &Vault, scope: BookingScope) -> Result<Vec<Booking>, CoreError> {
+fn all_bookings(
+    v: &Vault,
+    db: &rusqlite::Connection,
+    scope: BookingScope,
+) -> Result<Vec<Booking>, CoreError> {
     let filter = BookingFilter {
         scope,
         ..Default::default()
     };
-    v.collect_bookings(&*v.db()?, &filter)
+    v.collect_bookings(db, &filter)
 }
 
 fn month_key(date: &str) -> String {
@@ -133,18 +137,19 @@ impl Vault {
         let months_list = last_months(months);
         let first_month = months_list.first().cloned().unwrap_or_default();
         let this_month = months_list.last().cloned().unwrap_or_default();
-        let all = all_bookings(self, BookingScope::All)?;
         // Overall money figure (#337): only accounts of the effective total set
         // contribute — own switch, group and archiving, like the KPI tiles and
         // the cashflow card. The booking list itself is never narrowed by this.
-        let allowed: std::collections::HashSet<i64> = {
+        // One guard for both reads, so a merge committing in between cannot mix
+        // old amounts with new eligibility.
+        let all: Vec<Booking> = {
             let db = self.db()?;
-            crate::user_groups::total_account_ids(&db)?
+            let allowed = crate::user_groups::total_account_ids(&db)?;
+            all_bookings(self, &db, BookingScope::All)?
+                .into_iter()
+                .filter(|b| allowed.contains(&b.account_id))
+                .collect()
         };
-        let all: Vec<Booking> = all
-            .into_iter()
-            .filter(|b| allowed.contains(&b.account_id))
-            .collect();
 
         // Monthly flows
         let mut monthly: BTreeMap<String, MonthFlow> = months_list

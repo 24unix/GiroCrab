@@ -908,15 +908,13 @@ impl Vault {
         if !crate::planning::has_other_currencies(&db)? {
             return Ok(Vec::new());
         }
-        let allowed = if filter.respect_in_total {
-            Some(crate::user_groups::total_account_ids(&db)?)
-        } else {
-            None
-        };
+        // the same effective set as the EUR page sums (#337): the totals set
+        // intersected with the selection
+        let totals = totals_set(&db, &filter)?;
         let mut per: std::collections::BTreeMap<String, SelectionFlow> = Default::default();
         self.visit_bookings(&db, &filter, |share, t| {
             if !crate::planning::counts_in_sums(filter.account_ids.len(), &t.currency)
-                && allowed
+                && totals
                     .as_ref()
                     .is_none_or(|set| set.contains(&t.account_id))
             {
