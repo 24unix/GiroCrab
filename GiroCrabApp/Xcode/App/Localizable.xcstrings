@@ -922,6 +922,17 @@
         }
       }
     },
+    "%lld Kontoauszüge konnten nicht geladen werden – beim nächsten Abruf erneut versuchen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld statements could not be loaded – they are tried again with the next fetch."
+          }
+        }
+      }
+    },
     "%lld Lastschriften · %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1443,6 +1454,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld new documents from the online archive"
+          }
+        }
+      }
+    },
+    "%lld neue Kontoauszüge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld new statements"
           }
         }
       }
@@ -3840,6 +3862,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All accounts are in groups."
+          }
+        }
+      }
+    },
+    "Alle Kontoauszüge laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load all statements"
           }
         }
       }
@@ -18842,6 +18875,17 @@
         }
       }
     },
+    "Keine neuen Kontoauszüge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No new statements"
+          }
+        }
+      }
+    },
     "Keine neuen Umsätze" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19783,6 +19827,17 @@
         }
       }
     },
+    "Kontoauszüge werden geladen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading statements …"
+          }
+        }
+      }
+    },
     "Kontoauszüge, Abrechnungen, Depotauszüge und Steuerdokumente aus dem Online-Archiv der Consorsbank, höchstens einmal pro Woche beim Abruf. GiroCrab meldet sich dafür mit Kontonummer und PIN dieses Zugangs im Online-Banking an, die Anmeldung geben Sie in der Consorsbank App frei. Die Schnittstelle ist inoffiziell. Gespeicherte Dokumente werden nicht erneut geladen, denn jeder Abruf markiert ein Dokument bei der Bank als gelesen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20714,6 +20769,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete local session?"
+          }
+        }
+      }
+    },
+    "Lädt alle Kontoauszüge, die das Portal anbietet und die noch nicht im Tresor sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loads every statement the portal offers that is not in the vault yet."
           }
         }
       }
