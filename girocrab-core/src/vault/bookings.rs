@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rusqlite::{ToSql, params, params_from_iter};
 
-use super::cache::DataStamp;
 use super::Vault;
+use super::cache::DataStamp;
 use crate::error::CoreError;
 use crate::i18n::trf;
 use crate::iban::normalize_iban;
