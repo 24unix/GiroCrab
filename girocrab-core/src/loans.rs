@@ -738,10 +738,10 @@ impl Vault {
                 }
             }
         }
-        if let Some((prev, _)) = previous {
-            if Some(prev) != loan_account_id {
-                refresh(&tx, prev)?;
-            }
+        if let Some((prev, _)) = previous
+            && Some(prev) != loan_account_id
+        {
+            refresh(&tx, prev)?;
         }
         tx.commit()?;
         Ok(())

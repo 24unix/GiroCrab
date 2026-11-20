@@ -1038,12 +1038,11 @@ fn wire_news(win: &MainWindow) {
         let link = usize::try_from(sel)
             .ok()
             .and_then(|i| with_ui(|u| u.news.get(i).map(|a| a.link.clone())));
-        if let Some(link) = link {
-            if let Err(e) =
+        if let Some(link) = link
+            && let Err(e) =
                 crate::sync_flow::safe_https_url(&link).and_then(crate::sync_flow::open_in_browser)
-            {
-                set_status(&win, e);
-            }
+        {
+            set_status(&win, e);
         }
     });
 

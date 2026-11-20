@@ -374,10 +374,11 @@ pub fn search(
     );
     for (blz, extra) in FINTS_ALIASES {
         let hit = words.iter().all(|w| extra.split(' ').any(|x| x == *w));
-        if hit && !out.iter().any(|r| r.blz == *blz) {
-            if let Some(b) = fints_directory::lookup(blz) {
-                out.push(fints_result(b));
-            }
+        if hit
+            && !out.iter().any(|r| r.blz == *blz)
+            && let Some(b) = fints_directory::lookup(blz)
+        {
+            out.push(fints_result(b));
         }
     }
     // comdirect by name: FinTS next to its own API (the FinTS directory

@@ -119,21 +119,21 @@ impl FinTsConnector {
             return Err(not_allowed());
         };
         let params = self.st.debit_params.get(batch_id).cloned();
-        if seg_id == batch_id {
-            if let Some(p) = &params {
-                if p.max_count > 0 && job.collections.len() > p.max_count as usize {
-                    return Err(CoreError::InvalidInput {
-                        message: trf(
-                            "Die Bank erlaubt höchstens {0} Lastschriften pro Einreichung.",
-                            &[&p.max_count],
-                        ),
-                    });
-                }
-                if !job.batch_booking && !p.single_booking_allowed {
-                    return Err(CoreError::InvalidInput {
-                        message: tr("Die Bank bucht Lastschriften nur als Sammelbuchung.").into(),
-                    });
-                }
+        if seg_id == batch_id
+            && let Some(p) = &params
+        {
+            if p.max_count > 0 && job.collections.len() > p.max_count as usize {
+                return Err(CoreError::InvalidInput {
+                    message: trf(
+                        "Die Bank erlaubt höchstens {0} Lastschriften pro Einreichung.",
+                        &[&p.max_count],
+                    ),
+                });
+            }
+            if !job.batch_booking && !p.single_booking_allowed {
+                return Err(CoreError::InvalidInput {
+                    message: tr("Die Bank bucht Lastschriften nur als Sammelbuchung.").into(),
+                });
             }
         }
         if let (Some(p), Ok(due)) = (

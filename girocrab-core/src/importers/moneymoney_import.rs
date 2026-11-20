@@ -306,10 +306,10 @@ fn field_for(header: &str) -> Option<Field> {
 
 fn detect_delimiter(text: &str) -> char {
     let first = text.lines().next().unwrap_or("");
-    if let Some(rest) = first.strip_prefix("sep=") {
-        if let Some(c) = rest.chars().next() {
-            return c;
-        }
+    if let Some(rest) = first.strip_prefix("sep=")
+        && let Some(c) = rest.chars().next()
+    {
+        return c;
     }
     let header = text
         .lines()
@@ -808,11 +808,11 @@ pub(crate) fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Optio
         by_name.entry(e.named.as_str()).or_default().push_back(j);
     }
     for (r, m) in rows.iter().zip(out.iter_mut()).filter(|(_, m)| m.is_none()) {
-        if let Some(key) = r.named_fp() {
-            if let Some(j) = by_name.get_mut(key.as_str()).and_then(|q| q.pop_front()) {
-                used[j] = true;
-                *m = Some(j);
-            }
+        if let Some(key) = r.named_fp()
+            && let Some(j) = by_name.get_mut(key.as_str()).and_then(|q| q.pop_front())
+        {
+            used[j] = true;
+            *m = Some(j);
         }
     }
     match_folded_name(rows, existing, &mut out, &mut used);

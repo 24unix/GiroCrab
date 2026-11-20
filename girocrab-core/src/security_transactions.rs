@@ -178,17 +178,16 @@ pub(crate) fn link_cash_bookings(conn: &Connection) -> CoreResult<u32> {
             let (id, account_id, booking, settle, currency, dir, val, fee, tax, acc) = x?;
             if let Some(expected) =
                 expected_cash(SecurityDirection::from_db(&dir), val, fee, tax, acc)
+                && expected != 0
             {
-                if expected != 0 {
-                    v.push(Row {
-                        id,
-                        account_id,
-                        booking,
-                        settle,
-                        currency,
-                        expected,
-                    });
-                }
+                v.push(Row {
+                    id,
+                    account_id,
+                    booking,
+                    settle,
+                    currency,
+                    expected,
+                });
             }
         }
         v

@@ -183,14 +183,14 @@ fn day_parts(v: &Value) -> (Option<u32>, Option<u32>, Option<i32>) {
         Value::String(s) => s.trim().to_string(),
         _ => return (None, None, None),
     };
-    if let Some(iso) = s.get(..10).filter(|p| p.as_bytes().get(4) == Some(&b'-')) {
-        if let Ok(d) = jiff::civil::Date::strptime("%Y-%m-%d", iso) {
-            return (
-                Some(d.day() as u32),
-                Some(d.month() as u32),
-                Some(d.year().into()),
-            );
-        }
+    if let Some(iso) = s.get(..10).filter(|p| p.as_bytes().get(4) == Some(&b'-'))
+        && let Ok(d) = jiff::civil::Date::strptime("%Y-%m-%d", iso)
+    {
+        return (
+            Some(d.day() as u32),
+            Some(d.month() as u32),
+            Some(d.year().into()),
+        );
     }
     let parts: Vec<&str> = s.split('.').map(str::trim).collect();
     let num = |p: Option<&&str>| {

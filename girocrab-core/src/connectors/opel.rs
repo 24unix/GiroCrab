@@ -706,10 +706,10 @@ impl OpelDirektbankConnector {
             .send()
             .await?;
         let xml = self.read(resp).await?.html();
-        if let Some(url) = REDIRECT.captures(&xml).map(|c| c[1].to_string()) {
-            if url.contains("login") || url.contains("logout") {
-                return Err(session_ended());
-            }
+        if let Some(url) = REDIRECT.captures(&xml).map(|c| c[1].to_string())
+            && (url.contains("login") || url.contains("logout"))
+        {
+            return Err(session_ended());
         }
         Ok(xml)
     }
@@ -1046,12 +1046,12 @@ impl BankConnector for OpelDirektbankConnector {
     }
 
     async fn finish(&mut self, _ctx: &ConnectContext) {
-        if let (Some(client), Some((form, button))) = (self.client.take(), self.logout.take()) {
-            if let Ok(url) = Self::target(&form.action) {
-                let mut fields = form.fields.clone();
-                fields.push((button, String::new()));
-                let _ = client.post(url).form(&fields).send().await;
-            }
+        if let (Some(client), Some((form, button))) = (self.client.take(), self.logout.take())
+            && let Ok(url) = Self::target(&form.action)
+        {
+            let mut fields = form.fields.clone();
+            fields.push((button, String::new()));
+            let _ = client.post(url).form(&fields).send().await;
         }
         self.approval = None;
     }

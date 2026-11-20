@@ -369,16 +369,15 @@ fn read_moved_parts(conn: &Connection, schema: &str, id: i64, fallback: &str) ->
     if let Ok(Some(raw)) = conn
         .query_row(&sql, [moved_notes_key(id)], |r| r.get::<_, String>(0))
         .optional()
+        && let Ok(parts) = serde_json::from_str::<Vec<String>>(&raw)
     {
-        if let Ok(parts) = serde_json::from_str::<Vec<String>>(&raw) {
-            let clean: Vec<String> = parts
-                .into_iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            if !clean.is_empty() {
-                return clean;
-            }
+        let clean: Vec<String> = parts
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !clean.is_empty() {
+            return clean;
         }
     }
     let trimmed = fallback.trim();
@@ -437,12 +436,12 @@ pub(crate) fn merge_note_from(
     let (mine, mine_ms) = account_note(conn, id)?;
     let mut combined_parts: Option<Vec<String>> = None;
     let (note, note_ms) = if fresh {
-        if ms == MOVED_NOTE_MS {
-            if let NoteOrigin::Schema(schema, src_id) = origin {
-                let parts = read_moved_parts(conn, schema, src_id, &text);
-                if parts.len() > 1 {
-                    combined_parts = Some(parts);
-                }
+        if ms == MOVED_NOTE_MS
+            && let NoteOrigin::Schema(schema, src_id) = origin
+        {
+            let parts = read_moved_parts(conn, schema, src_id, &text);
+            if parts.len() > 1 {
+                combined_parts = Some(parts);
             }
         }
         (text, ms)
@@ -471,12 +470,13 @@ pub(crate) fn merge_note_from(
     } else {
         let (mut note, mut note_ms) = (mine.clone(), mine_ms);
         crate::sync_merge::take_newer(&mut note, &mut note_ms, text.clone(), ms);
-        if ms == MOVED_NOTE_MS && note_ms == MOVED_NOTE_MS {
-            if let NoteOrigin::Schema(schema, src_id) = origin {
-                let parts = read_moved_parts(conn, schema, src_id, &text);
-                if parts.len() > 1 {
-                    combined_parts = Some(parts);
-                }
+        if ms == MOVED_NOTE_MS
+            && note_ms == MOVED_NOTE_MS
+            && let NoteOrigin::Schema(schema, src_id) = origin
+        {
+            let parts = read_moved_parts(conn, schema, src_id, &text);
+            if parts.len() > 1 {
+                combined_parts = Some(parts);
             }
         }
         (note, note_ms)
@@ -610,10 +610,10 @@ pub(crate) fn merge_attached(
         )?;
         // a MoneyMoney twin folded here and edited on a device that hadn't
         // folded it yet: the note goes on to the bank account, like the fold
-        if note_rows > 0 {
-            if let Some(bank) = crate::sync_merge::twins::folded_into(tx, id)? {
-                pass_note_on(tx, id, bank)?;
-            }
+        if note_rows > 0
+            && let Some(bank) = crate::sync_merge::twins::folded_into(tx, id)?
+        {
+            pass_note_on(tx, id, bank)?;
         }
         changed += note_rows;
     }
@@ -1082,10 +1082,10 @@ impl Vault {
                 return Err(not_found(u));
             }
         }
-        if let Some(p) = &parent_uuid {
-            if subtree(&effective_parents(&db)?, &uuid).contains(p) {
-                return Err(CoreError::invalid(tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden")));
-            }
+        if let Some(p) = &parent_uuid
+            && subtree(&effective_parents(&db)?, &uuid).contains(p)
+        {
+            return Err(CoreError::invalid(tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden")));
         }
         set_parent(&db, &uuid, parent_uuid.as_deref(), now_ms())
     }
@@ -1167,10 +1167,10 @@ impl Vault {
         index: Option<u32>,
     ) -> Result<(), CoreError> {
         let db = self.db()?;
-        if let Some(u) = &group_uuid {
-            if !group_exists(&db, u)? {
-                return Err(not_found(u));
-            }
+        if let Some(u) = &group_uuid
+            && !group_exists(&db, u)?
+        {
+            return Err(not_found(u));
         }
         let mut ids: Vec<i64> = db
             .prepare(
