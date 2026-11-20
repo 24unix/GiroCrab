@@ -411,6 +411,7 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertEqual(try group(alt).balanceCents, old.balanceCents, "an excluded subgroup keeps showing its own sum (review point 1 on #1100)")
         XCTAssertEqual(Set(try group(alle).accounts.map(\.id)), [kept.id, archived.id], "archived account stays listed")
         XCTAssertEqual(model.userGroupBalanceAccountIDs(alle), [kept.id], "chart follows the sum")
+        XCTAssertEqual(model.userGroupBalanceAccountIDs(alt), [old.id], "the excluded group's chart follows its own sum (review point 1 on #1100)")
         XCTAssertEqual(Set(model.userGroupAccountIDs(alle)), [kept.id, archived.id, old.id], "bookings still cover everything")
 
         model.updateUserGroup(try group(alt), includeInTotal: true)

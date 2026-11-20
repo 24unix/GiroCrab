@@ -358,13 +358,19 @@ extension AppModel {
     func userGroupBalanceAccountIDs(_ uuid: String) -> [Int64] {
         var skipBelow: UInt32?
         var ids: [Int64] = []
+        // an excluded selection sums its own accounts (review point 1 on
+        // #1100): the chart follows the header's own-sum rule, not the
+        // effective flag that the group's exclusion has switched off
+        let ownSum = userGroups.first(where: { $0.uuid == uuid })?.inTotal == false
         for (n, g) in userGroupSubtree(uuid).enumerated() {
             if let d = skipBelow {
                 if g.depth > d { continue }
                 skipBelow = nil
             }
             if n > 0 && !g.includeInTotal { skipBelow = g.depth; continue }
-            ids += g.accounts.filter(\.inTotal).map(\.id)
+            ids += ownSum
+                ? g.accounts.filter { $0.includeInTotal && !$0.isArchived }.map(\.id)
+                : g.accounts.filter(\.inTotal).map(\.id)
         }
         return ids
     }
