@@ -163,6 +163,16 @@ impl Vault {
 
     fn purge_connection(db: &Connection, connection_id: i64) -> Result<(), CoreError> {
         crate::sync_merge::soft_delete_connection(db, connection_id)?;
+        Self::purge_connection_secrets(db, connection_id)
+    }
+
+    /// Removes the device-local settings of deleted login `connection_id`: stored
+    /// PIN, RAH-10 keys, portal cookies, its Enable Banking application, document
+    /// settings and the account choice. Runs for local deletes and for deletions a merge brings in.
+    pub(crate) fn purge_connection_secrets(
+        db: &Connection,
+        connection_id: i64,
+    ) -> Result<(), CoreError> {
         db.execute(
             "DELETE FROM settings WHERE key IN (?1, ?2, ?3)",
             params![
@@ -187,14 +197,25 @@ impl Vault {
         crate::connectors::clear_documents_settings(db, connection_id)?;
         // its own Enable Banking application (#824)
         super::enable_banking_apps::forget(db, connection_id)?;
-        // the account choice of this login (#346): a re-added login starts fresh
-        db.execute(
-            "DELETE FROM settings WHERE key = ?1",
-            [crate::connectors::account_selection::key(
-                db,
-                connection_id,
-            )?],
-        )?;
+        // the account choice of this login (#346): a re-added login starts fresh,
+        // while a live twin with the same login keeps its choice
+        let sel = crate::connectors::account_selection::key(db, connection_id)?;
+        let others: Vec<i64> = {
+            let mut stmt = db
+                .prepare("SELECT id FROM bank_connections WHERE deleted_ms IS NULL AND id <> ?1")?;
+            let rows = stmt.query_map([connection_id], |r| r.get(0))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        let mut shared = false;
+        for other in others {
+            if crate::connectors::account_selection::key(db, other)? == sel {
+                shared = true;
+                break;
+            }
+        }
+        if !shared {
+            db.execute("DELETE FROM settings WHERE key = ?1", [sel])?;
+        }
         Ok(())
     }
 }

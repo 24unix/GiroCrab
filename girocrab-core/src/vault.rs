@@ -364,6 +364,9 @@ impl Vault {
 
     /// Best-effort repairs after opening (or restoring) a vault.
     fn repair(conn: &Connection) {
+        // stored secrets of logins whose deletion an older version merged in
+        // from another device
+        let _ = Self::purge_deleted_connection_secrets(conn);
         // categories/rules without a sync key (rows written outside the app's own
         // paths); used to happen as part of the per-open schema probes
         let _ = crate::sync_merge::fill_missing_uuids(conn);
@@ -378,6 +381,17 @@ impl Vault {
         let _ = crate::text::repair_stored_text(conn);
         // one-time purge of favicons that don't belong to a known brand
         let _ = crate::insights::purge_untrusted_logos(conn);
+    }
+
+    fn purge_deleted_connection_secrets(conn: &Connection) -> CoreResult<()> {
+        let ids: Vec<i64> = conn
+            .prepare("SELECT id FROM bank_connections WHERE deleted_ms IS NOT NULL")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for id in ids {
+            Self::purge_connection_secrets(conn, id)?;
+        }
+        Ok(())
     }
 
     fn migrate(conn: &mut Connection) -> CoreResult<()> {
