@@ -84,6 +84,41 @@ fn norm(s: &str) -> String {
         .collect()
 }
 
+/// [`norm`] without accents, for comparing names and purposes of one booking
+/// from two sources: MoneyMoney writes "Muller" where the bank sends "Müller".
+/// Only for comparisons – fingerprints keep [`norm`], so stored import keys
+/// stay valid.
+fn fold(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in norm(s).chars() {
+        match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ą' | 'ă' => out.push('a'),
+            'ç' | 'č' | 'ć' => out.push('c'),
+            'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' | 'ě' | 'ė' => out.push('e'),
+            'ì' | 'í' | 'î' | 'ï' | 'ī' | 'į' | 'ı' => out.push('i'),
+            'ñ' | 'ń' | 'ň' => out.push('n'),
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ő' => out.push('o'),
+            'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ů' | 'ű' | 'ų' => out.push('u'),
+            'ý' | 'ÿ' => out.push('y'),
+            'š' | 'ś' => out.push('s'),
+            'ž' | 'ź' | 'ż' => out.push('z'),
+            'ł' => out.push('l'),
+            'ß' => out.push_str("ss"),
+            'đ' => out.push('d'),
+            'æ' => out.push_str("ae"),
+            'œ' => out.push_str("oe"),
+            'ř' | 'ŕ' => out.push('r'),
+            'ť' | 'ț' => out.push('t'),
+            'ď' => out.push('d'),
+            'ğ' => out.push('g'),
+            'ş' | 'ș' => out.push('s'),
+            'ľ' | 'ĺ' => out.push('l'),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Deterministic de-duplication key (stable across Rust versions: FNV-1a 64).
 pub fn fingerprint(date: &str, cents: i64, iban: &str, name: &str, purpose: &str) -> String {
     let who = if iban.trim().is_empty() {
@@ -571,6 +606,9 @@ pub(crate) struct Existing {
     booking_date: String,
     amount_cents: i64,
     bare_bank_purpose: Option<String>,
+    /// Counterparty IBAN and accent-free name, for [`match_folded_name`].
+    iban_norm: String,
+    name_fold: String,
     split_set: bool,
     imported: Option<(String, i64)>,
     from_import: bool,
@@ -613,7 +651,9 @@ pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Ve
             category_source: r.get(7)?,
             note: r.get(8)?,
             deleted: r.get(9)?,
-            bare_bank_purpose: bare.then(|| norm(&purpose)),
+            bare_bank_purpose: bare.then(|| fold(&purpose)),
+            iban_norm: norm(&iban),
+            name_fold: fold(&name),
             booking_date: date.clone(),
             amount_cents: cents,
             split_set: r.get(11)?,
@@ -746,7 +786,8 @@ fn join_notes(notes: impl IntoIterator<Item = String>) -> String {
 /// 2. rows still unmatched: same date, amount and counterparty (purpose
 ///    ignored), in order,
 /// 3. rows without counterparty IBAN: same date, amount and name,
-/// 4. [`match_bank_without_counterparty`].
+/// 4. [`match_folded_name`],
+/// 5. [`match_bank_without_counterparty`].
 pub(crate) fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Option<usize>> {
     let (mut out, mut used) = match_by_fingerprint(rows, existing);
     let mut by_weak: HashMap<&str, std::collections::VecDeque<usize>> = HashMap::new();
@@ -774,8 +815,42 @@ pub(crate) fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Optio
             }
         }
     }
+    match_folded_name(rows, existing, &mut out, &mut used);
     match_bank_without_counterparty(rows, existing, &mut out, &mut used);
     out
+}
+
+/// Same date, amount and name apart from accents ("Müller" from the bank,
+/// "Muller" from MoneyMoney), the IBANs not contradicting each other (one side
+/// without, or both the same). Pass 3 compares names exactly and only for
+/// rows without IBAN, so an accent or an IBAN on one side only kept them
+/// apart. In order, like the other passes.
+pub(crate) fn match_folded_name(
+    rows: &[MmRow],
+    existing: &[Existing],
+    out: &mut [Option<usize>],
+    used: &mut [bool],
+) {
+    for (r, m) in rows.iter().zip(out.iter_mut()) {
+        if m.is_some() {
+            continue;
+        }
+        let (name, iban) = (fold(&r.name), norm(&r.iban));
+        if name.len() < 3 {
+            continue;
+        }
+        let hit = existing.iter().enumerate().position(|(j, e)| {
+            !used[j]
+                && e.booking_date == r.booking_date
+                && e.amount_cents == r.amount_cents
+                && e.name_fold == name
+                && (iban.is_empty() || e.iban_norm.is_empty() || e.iban_norm == iban)
+        });
+        if let Some(j) = hit {
+            used[j] = true;
+            *m = Some(j);
+        }
+    }
 }
 
 /// Pass 1 of [`match_existing`]: exact fingerprint, as a multiset. Returns
@@ -821,7 +896,7 @@ pub(crate) fn match_bank_without_counterparty(
         if m.is_some() {
             continue;
         }
-        let (name, purpose) = (norm(&r.name), norm(&purpose_without_refs(&r.purpose)));
+        let (name, purpose) = (fold(&r.name), fold(&purpose_without_refs(&r.purpose)));
         let mut hits = existing.iter().enumerate().filter(|(j, e)| {
             !used[*j]
                 && e.amount_cents == r.amount_cents
@@ -1284,11 +1359,14 @@ fn find_twin(
             })
         },
     )?;
-    let (n_iban, n_name, n_purpose) = (norm(iban), norm(name), norm(purpose));
+    // names and purposes without accents: MoneyMoney writes "Muller" where the
+    // bank sends "Müller"; the tax lines keep their own normalisation
+    let (n_iban, n_name, n_purpose) = (norm(iban), fold(name), fold(purpose));
+    let (tax_name, tax_purpose) = (norm(name), norm(purpose));
     let mut hits = Vec::new();
     for row in rows {
         let t = row?;
-        let (m_iban, m_name) = (norm(&t.iban), norm(&t.name));
+        let (m_iban, m_name) = (norm(&t.iban), fold(&t.name));
         let ok = if !n_iban.is_empty() && !m_iban.is_empty() {
             n_iban == m_iban
         } else {
@@ -1297,8 +1375,9 @@ fn find_twin(
                 || (m_name.len() >= 3 && (n_purpose.contains(&m_name) || n_name.contains(&m_name)))
                 // the bank sends no counterparty (comdirect REST, some debits): the
                 // purposes still start the same (reference numbers, invoice text)
-                || purposes_alike(&n_purpose, &norm(&t.purpose))
-                || (n_name.is_empty() && same_tax_line(&n_purpose, &m_name, &norm(&t.purpose)))
+                || purposes_alike(&n_purpose, &fold(&t.purpose))
+                || (tax_name.is_empty()
+                    && same_tax_line(&tax_purpose, &norm(&t.name), &norm(&t.purpose)))
         };
         if ok {
             hits.push(t);
@@ -2467,6 +2546,97 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         v.import_moneymoney_data(csv.into_bytes(), "t.csv".into(), Some(acc), true, true)
             .unwrap();
         assert_eq!(live(&v.db().unwrap(), acc).len(), 3);
+    }
+
+    #[test]
+    fn fold_drops_accents_only() {
+        assert_eq!(fold("Hannah Müller"), fold("Hannah Muller"));
+        assert_eq!(fold("Weiß-Straße"), "weissstrasse");
+        assert_eq!(fold("Café Noël"), "cafenoel");
+        assert_eq!(fold("Dvořák"), fold("Dvorak"));
+        assert_ne!(fold("Müller"), fold("Maier"));
+        // fingerprints keep the accents: stored import keys stay valid
+        assert_ne!(
+            fingerprint("2026-03-23", 100, "", "Müller", ""),
+            fingerprint("2026-03-23", 100, "", "Muller", "")
+        );
+    }
+
+    /// The bank's credit as FinTS delivers it: accented name, long purpose.
+    fn bank_credit(db: &Connection, acc: i64, iban: &str, name: &str) {
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, counterparty_iban, purpose)
+             VALUES (?1, 'fints-1', '2026-03-23', 120000, ?2, ?3,
+                     'Fahrrad X3 Hannah Müller Fahrrad X3 End-to-End-Ref.: NOTPROVIDED Kundenreferenz: TEST0001')",
+            params![acc, name, iban],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn import_matches_a_fetched_booking_whose_name_differs_by_accents() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(&v, "01.03.2026;Arbeitgeber;Gehalt;100,00;;\n");
+        bank_credit(
+            &v.db().unwrap(),
+            acc,
+            "DE02120300000000202051",
+            "Hannah Müller",
+        );
+        // MoneyMoney's export: name without accents, no IBAN column
+        let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n23.03.2026;Hannah Muller;Fahrrad X3;1200,00;Einzahlung;\n";
+        v.import_moneymoney_data(
+            csv.as_bytes().to_vec(),
+            "t.csv".into(),
+            Some(acc),
+            true,
+            true,
+        )
+        .unwrap();
+        let rows = live(&v.db().unwrap(), acc);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows[1].0, "fints-1");
+        assert!(rows[1].1.is_some(), "category carried over: {rows:?}");
+    }
+
+    #[test]
+    fn import_keeps_a_different_name_apart() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(&v, "01.03.2026;Arbeitgeber;Gehalt;100,00;;\n");
+        bank_credit(&v.db().unwrap(), acc, "", "Hannah Maier");
+        let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n23.03.2026;Hannah Muller;Fahrrad X3;1200,00;Einzahlung;\n";
+        v.import_moneymoney_data(
+            csv.as_bytes().to_vec(),
+            "t.csv".into(),
+            Some(acc),
+            true,
+            true,
+        )
+        .unwrap();
+        assert_eq!(live(&v.db().unwrap(), acc).len(), 3);
+    }
+
+    #[test]
+    fn fetch_adopts_an_imported_row_whose_name_differs_by_accents() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(
+            &v,
+            "23.03.2026;Hannah Muller;Fahrrad X3;1200,00;Einzahlung;\n",
+        );
+        let db = v.db().unwrap();
+        assert!(adopt_import(
+            &db,
+            acc,
+            "fints-1",
+            "2026-03-23",
+            120000,
+            "",
+            "Hannah Müller",
+            "Fahrrad X3 Hannah Müller Fahrrad X3 End-to-End-Ref.: NOTPROVIDED",
+            "Gutschrift"
+        )
+        .unwrap());
+        assert_eq!(ext_ids(&db, acc), vec!["fints-1"]);
     }
 
     #[test]

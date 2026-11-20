@@ -2687,11 +2687,12 @@ fn check_account(
     // every MoneyMoney row matched once (multiset): exact fingerprint, plus a
     // bank booking without counterparty the import took as the same booking
     use super::moneymoney_import::{
-        load_existing, match_bank_without_counterparty, match_by_fingerprint,
+        load_existing, match_bank_without_counterparty, match_by_fingerprint, match_folded_name,
     };
     let existing = load_existing(conn, account_id)?;
     let rows = with_known_parts(&r.rows, || KnownKeys::from_existing(&existing));
     let (mut matched, mut used) = match_by_fingerprint(&rows, &existing);
+    match_folded_name(&rows, &existing, &mut matched, &mut used);
     match_bank_without_counterparty(&rows, &existing, &mut matched, &mut used);
     let live_total = existing.iter().filter(|e| !e.deleted).count() as u32;
     let (mut found, mut deleted) = (0u32, 0u32);
