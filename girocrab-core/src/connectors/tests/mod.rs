@@ -1394,23 +1394,31 @@ fn amounts_above_the_sepa_limit_are_rejected_before_the_tan() {
             Err(CoreError::InvalidInput { .. })
         ));
     }
-    let order = StandingOrderRequest {
+    // A valid monthly schedule (first date on the execution day), so only the
+    // amount decides.
+    let first_of_month = (crate::dates::today() + crate::dates::days(40)).first_of_month();
+    let order = |amount: i64| StandingOrderRequest {
         account_id: acc.id,
         action: StandingOrderAction::Create,
         order_row_id: None,
         recipient_name: "Vermieter".into(),
         recipient_iban: "DE89370400440532013000".into(),
         recipient_bic: None,
-        amount_cents: MAX_AMOUNT_CENTS + 1,
+        amount_cents: amount,
         purpose: "Miete".into(),
-        first_date: later,
+        first_date: crate::dates::iso(first_of_month),
         last_date: None,
         time_unit: "M".into(),
         interval: 1,
         exec_day: 1,
     };
+    assert!(v
+        .clone()
+        .begin_standing_order(order(MAX_AMOUNT_CENTS), "pin".into(), true)
+        .is_ok());
     assert!(matches!(
-        v.clone().begin_standing_order(order, "pin".into(), true),
+        v.clone()
+            .begin_standing_order(order(MAX_AMOUNT_CENTS + 1), "pin".into(), true),
         Err(CoreError::InvalidInput { .. })
     ));
     let _ = std::fs::remove_file(path);
