@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 type R = Result<Value, String>;
 
-extern "C" {
+unsafe extern "C" {
     fn girocrab_grab_window(path: *const std::os::raw::c_char) -> bool;
     fn girocrab_print_pdf(
         path: *const std::os::raw::c_char,
@@ -1081,11 +1081,11 @@ fn save_export_file(a: &Value) -> R {
         path
     } else {
         let mut dir = std::path::PathBuf::from(arg::<String>(a, "dir")?);
-        if !dir.is_dir() {
-            if let Some(fallback) = arg::<Option<String>>(a, "fallback_dir")? {
-                dir = fallback.into();
-                std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-            }
+        if !dir.is_dir()
+            && let Some(fallback) = arg::<Option<String>>(a, "fallback_dir")?
+        {
+            dir = fallback.into();
+            std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         let filename: String = arg(a, "filename")?;
         let (stem, ext) = match filename.rsplit_once('.') {
@@ -1280,7 +1280,7 @@ const fn libc_o_nofollow() -> i32 {
     0o400000 // O_NOFOLLOW on Linux
 }
 
-extern "C" {
+unsafe extern "C" {
     fn getuid() -> u32;
 }
 
@@ -1328,10 +1328,11 @@ fn prepared_quicklook_dir() -> Option<std::path::PathBuf> {
 pub fn remove_quicklook_files() {
     use std::os::unix::fs::MetadataExt;
     let dir = quicklook_dir();
-    if let Ok(m) = std::fs::symlink_metadata(&dir) {
-        if m.file_type().is_dir() && m.uid() == current_uid() {
-            let _ = std::fs::remove_dir_all(&dir);
-        }
+    if let Ok(m) = std::fs::symlink_metadata(&dir)
+        && m.file_type().is_dir()
+        && m.uid() == current_uid()
+    {
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
@@ -1610,6 +1611,18 @@ mod tests {
     /// The tests share the process-wide vault slots.
     static SERIAL: Mutex<()> = Mutex::new(());
 
+    /// Sets (`Some`) or removes (`None`) an environment variable for a test that holds
+    /// `SERIAL`.
+    fn set_env(key: &str, value: Option<impl AsRef<std::ffi::OsStr>>) {
+        // SAFETY: test-only; every test that changes the environment holds `SERIAL`.
+        unsafe {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+
     fn call_ok(method: &str, args: Value) -> Value {
         let r: Value = serde_json::from_str(&call_json(method, &args.to_string())).unwrap();
         assert!(r.get("err").is_none(), "{method}: {r}");
@@ -1625,7 +1638,7 @@ mod tests {
         let run = std::env::temp_dir().join(format!("girocrab-ql-{}", std::process::id()));
         std::fs::create_dir_all(&run).unwrap();
         let saved = std::env::var_os("XDG_RUNTIME_DIR");
-        std::env::set_var("XDG_RUNTIME_DIR", &run);
+        set_env("XDG_RUNTIME_DIR", Some(&run));
         call_ok("open_demo", json!({}));
         let docs = call_ok(
             "list_all_documents",
@@ -1656,10 +1669,7 @@ mod tests {
             !shown.exists() && !fourth.exists(),
             "a vault switch removes every copy"
         );
-        match saved {
-            Some(v) => std::env::set_var("XDG_RUNTIME_DIR", v),
-            None => std::env::remove_var("XDG_RUNTIME_DIR"),
-        }
+        set_env("XDG_RUNTIME_DIR", saved);
         let _ = std::fs::remove_dir_all(run);
     }
 
@@ -1669,8 +1679,8 @@ mod tests {
     fn own_vault_lifecycle() {
         let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("girocrab-test-{}", std::process::id()));
-        std::env::set_var("XDG_DATA_HOME", &dir);
-        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        set_env("XDG_DATA_HOME", Some(&dir));
+        set_env("GIROCRAB_NO_KEYCHAIN", Some("1"));
         assert_eq!(call_ok("vault_info", json!({}))["size"], json!(-1));
         let r = call_ok("unlock_own", json!({ "allow_create": true }));
         assert_eq!(r["account_count"], json!(0));
@@ -1882,9 +1892,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("girocrab-reset-{}", std::process::id()));
         let (data, config) = (dir.join("data"), dir.join("config"));
         std::fs::create_dir_all(config.join("GiroCrab")).unwrap();
-        std::env::set_var("XDG_DATA_HOME", &data);
-        std::env::set_var("XDG_CONFIG_HOME", &config);
-        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        set_env("XDG_DATA_HOME", Some(&data));
+        set_env("XDG_CONFIG_HOME", Some(&config));
+        set_env("GIROCRAB_NO_KEYCHAIN", Some("1"));
         assert!(vault_path().starts_with(&data) && settings_file().starts_with(&config));
         call_ok("unlock_own", json!({ "allow_create": true }));
         call_ok("use_own", json!({}));
@@ -1926,8 +1936,8 @@ mod tests {
             .iter()
             .map(|k| (*k, std::env::var_os(k)))
             .collect();
-        std::env::set_var("XDG_DATA_HOME", dir.join("data"));
-        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        set_env("XDG_DATA_HOME", Some(dir.join("data")));
+        set_env("GIROCRAB_NO_KEYCHAIN", Some("1"));
         let p = call_ok("suggested_backup_password", json!({}));
         let p = p.as_str().unwrap();
         assert_eq!(p.len(), 20);
@@ -1969,10 +1979,7 @@ mod tests {
         call_ok("lock", json!({}));
         let _ = std::fs::remove_dir_all(dir);
         for (k, v) in saved {
-            match v {
-                Some(v) => std::env::set_var(k, v),
-                None => std::env::remove_var(k),
-            }
+            set_env(k, v);
         }
     }
 
