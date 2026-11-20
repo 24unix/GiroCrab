@@ -9147,13 +9147,13 @@
         }
       }
     },
-    "Das Konto wurde aufgelöst" : {
+    "Das Konto wurde aufgelöst (archivieren)" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The account has been closed"
+            "value" : "The account has been closed (archive)"
           }
         }
       }
