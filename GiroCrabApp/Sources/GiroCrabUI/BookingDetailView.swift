@@ -327,7 +327,11 @@ struct NoteCard: View {
         // the editable card. Give a newly revealed inspector one layout pass before scrolling.
         guard let scrollToNote, model.pendingNoteFocus == booking.id else { return }
         DispatchQueue.main.async {
-            guard model.pendingNoteFocus == booking.id, model.selectedBookingID == booking.id else { return }
+            guard model.pendingNoteFocus == booking.id else { return }
+            guard model.selectedBookingID == booking.id else {
+                model.pendingNoteFocus = nil
+                return
+            }
             scrollToNote()
             model.pendingNoteFocus = nil
             focused = true
