@@ -266,7 +266,8 @@ extension AppModel {
                 guard !Task.isCancelled, let self else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
-                self.showSelectionWithoutData()
+                // a failed refresh keeps what the column shows; a new selection must not show the old data
+                if self.shownSelection != self.sidebarSelection { self.showSelectionWithoutData() }
                 self.errorMessage = describe(error)
             }
         }
