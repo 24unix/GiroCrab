@@ -2117,11 +2117,15 @@ QtObject {
         // an empty field must not leave the user in a mode without a registration.
         const own = settingEntry("fints.product_id")
         if (own && own.has_value) setFintsProductIDMode("own")
+        showOwnProductID = true
         focusOwnProductID = true
         openSettings("banks")
     }
     /// OwnProductIDField takes the focus once (and clears this) when it appears.
     property bool focusOwnProductID: false
+    /// The bank rejected the registration in use: the own-ID field shows up even in builds
+    /// with a built-in one, so that one can be replaced.
+    property bool showOwnProductID: false
 
     /// Enable Banking redirect (ConsentRedirect.defaultURL unless configured).
     function consentRedirectURL() {

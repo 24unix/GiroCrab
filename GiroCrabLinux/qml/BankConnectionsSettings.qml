@@ -108,7 +108,7 @@ Item {
                     text: qsTr("Offizielle FinTS-Produktregistrierung von GiroCrab aktiv.")
                 }
                 // Own product ID is only needed in self-built / developer binaries without embedded ID (#1092).
-                OwnProductIDField { visible: !AppModel.fintsBuiltinAvailable }
+                OwnProductIDField { visible: !AppModel.fintsBuiltinAvailable || AppModel.showOwnProductID }
             }
             Item { implicitHeight: 8 }
         }

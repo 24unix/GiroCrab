@@ -101,6 +101,9 @@ QtObject {
             const attempt = Number(store.value(attemptKey(c.id), 0)) || 0
             return decide(hours, AppModel.isUnlocked, c.last_sync_unix, attempt > 0 ? attempt : null, nowUnix) === "run"
         })
+        // the login that has waited longest first (never attempted: 0), so every login gets a turn
+        const waited = c => Math.max(c.last_sync_unix || 0, Number(store.value(attemptKey(c.id), 0)) || 0)
+        candidates.sort((a, b) => waited(a) - waited(b))
         pick(candidates, 0, AppModel.vaultGeneration, nowUnix)
     }
     /// The first candidate that needs no prompt, checked one after the other.
@@ -123,7 +126,8 @@ QtObject {
     function run(due, generation, nowUnix) {
         // Quiet as well: a blocked login is simply not synced (the banner explains why).
         AppModel.withFreshBankingPolicy(() => {
-            if (generation !== AppModel.vaultGeneration || !idle()) return
+            // switched off while a status check was pending: no fetch any more
+            if (generation !== AppModel.vaultGeneration || !idle() || effectiveHours <= 0) return
             const c = AppModel.connections.find(x => x.id === due.id)
             if (!c || AppModel.bankingGate(c) !== null) return
             AppModel.quietSyncConnectionID = c.id
