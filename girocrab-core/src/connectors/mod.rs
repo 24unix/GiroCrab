@@ -52,6 +52,7 @@ pub mod volkswagen_bank;
 pub(crate) mod account_selection;
 pub use account_selection::ConnectionAccountChoice;
 mod catalog;
+mod html;
 mod paging;
 mod persist;
 mod sync_session;
@@ -59,7 +60,7 @@ mod transfer_session;
 mod types;
 
 pub use catalog::*;
-pub(crate) use paging::{paginate, Paged};
+pub(crate) use paging::{Paged, paginate};
 pub use persist::*;
 pub use sync_session::*;
 pub use transfer_session::*;

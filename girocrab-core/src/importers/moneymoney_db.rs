@@ -43,14 +43,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rusqlite::types::Value;
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 use zeroize::Zeroizing;
 
 use super::moneymoney_import::{
-    find_or_create_category, merge_rows, with_known_parts, KnownKeys, MmRow, MmSplit, Stats,
+    KnownKeys, MmRow, MmSplit, Stats, find_or_create_category, merge_rows, with_known_parts,
 };
 use crate::asset_classification::{AssetClass, ClassificationValues, InstrumentKind};
-use crate::connectors::bank_directory::{match_psd2_bank, psd2_catalog, Psd2Bank};
+use crate::connectors::bank_directory::{Psd2Bank, match_psd2_bank, psd2_catalog};
 use crate::connectors::group_for;
 use crate::dates::now_ms;
 use crate::depot_values::observations::{self, ObservedValue};
@@ -832,12 +832,12 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
         "52090000" => return Some(ConnectorKind::VolksbankKasselGoettingen),
         "50050201" => return Some(ConnectorKind::Direkt1822),
         c if crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&c) => {
-            return Some(ConnectorKind::Comdirect)
+            return Some(ConnectorKind::Comdirect);
         }
         // bunq's German branch code; GiroCrab talks to the bunq Public API.
         BUNQ_DE_BLZ => return Some(ConnectorKind::Bunq),
         c if c.len() == 8 && crate::connectors::fints_presets::known_fints_blz(c) => {
-            return Some(ConnectorKind::FinTsGeneric)
+            return Some(ConnectorKind::FinTsGeneric);
         }
         _ => {}
     }
@@ -1025,7 +1025,7 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
                     Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
                 ) =>
             {
-                return Err(locked_by_moneymoney())
+                return Err(locked_by_moneymoney());
             }
             Err(e) => failure = open_failure(e),
         }
@@ -1247,11 +1247,7 @@ fn read_accounts(conn: &Connection) -> CoreResult<Vec<SrcAccount>> {
             iban: normalize_iban(&vtext(get(r, 5)?)),
             currency: {
                 let c = vtext(get(r, 6)?).to_uppercase();
-                if c.is_empty() {
-                    "EUR".into()
-                } else {
-                    c
-                }
+                if c.is_empty() { "EUR".into() } else { c }
             },
             name: vtext(get(r, 7)?),
             owner: vtext(get(r, 8)?),
@@ -3404,7 +3400,7 @@ pub(crate) mod tests;
 
 #[cfg(test)]
 mod inactive_account_tests {
-    use super::tests::{fake_db, options_from, PW};
+    use super::tests::{PW, fake_db, options_from};
     use super::*;
 
     #[test]

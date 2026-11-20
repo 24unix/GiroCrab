@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const SUPPORTED_SCHEMA: i64 = 1;
 /// `AnnouncementCenter.defaultURL`: next to the banking policy, independent of releases.

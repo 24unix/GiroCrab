@@ -71,10 +71,11 @@ fn postbox_needs_comdirect_fints_and_api_credentials() {
     assert!(!v.comdirect_postbox_enabled(c).unwrap());
     assert_eq!(v.get_setting(postbox_last_key(c)).unwrap(), None);
     // "PostBox jetzt abrufen" only when it is on
-    assert!(v
-        .clone()
-        .fetch_comdirect_postbox(c, String::new(), false)
-        .is_err());
+    assert!(
+        v.clone()
+            .fetch_comdirect_postbox(c, String::new(), false)
+            .is_err()
+    );
 }
 
 #[test]
@@ -133,14 +134,16 @@ fn postbox_and_statements_are_refused_while_document_retrieval_is_off() {
     let ctx_free = v.clone().begin_sync(c, "pin".into(), true);
     assert!(ctx_free.is_ok());
     v.set_documents_fetch(c, true).unwrap();
-    assert!(v
-        .clone()
-        .fetch_comdirect_postbox(c, "pin".into(), true)
-        .is_ok());
-    assert!(v
-        .clone()
-        .fetch_account_statements(account, "pin".into(), true)
-        .is_ok());
+    assert!(
+        v.clone()
+            .fetch_comdirect_postbox(c, "pin".into(), true)
+            .is_ok()
+    );
+    assert!(
+        v.clone()
+            .fetch_account_statements(account, "pin".into(), true)
+            .is_ok()
+    );
 }
 
 #[test]
@@ -306,10 +309,11 @@ fn consorsbank_archive_switch_and_known_documents() {
     v.set_comdirect_postbox(c, false).unwrap();
     assert!(!v.comdirect_postbox_enabled(c).unwrap());
     assert_eq!(v.get_setting(postbox_last_key(c)).unwrap(), None);
-    assert!(v
-        .clone()
-        .fetch_comdirect_postbox(c, String::new(), false)
-        .is_err());
+    assert!(
+        v.clone()
+            .fetch_comdirect_postbox(c, String::new(), false)
+            .is_err()
+    );
     v.set_comdirect_postbox(c, true).unwrap();
     let account = |iban: &str| RemoteAccount {
         external_ref: iban.into(),

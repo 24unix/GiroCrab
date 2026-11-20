@@ -19,8 +19,8 @@ use serde_json::Value;
 
 use super::paypal_nvp::{NvpClient, NvpCredentials};
 use super::{
-    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteTransaction,
+    BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase, RemoteAccount,
+    RemoteTransaction, http_client_same_host,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::models::AccountKind;

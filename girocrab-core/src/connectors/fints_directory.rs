@@ -105,9 +105,12 @@ pub fn url_for_blz(blz: &str) -> Option<&'static str> {
 }
 
 /// Endpoints earlier directory versions handed out that the bank no longer serves
-/// (apoBank left Atruvia in 2020, #1385).
-const RETIRED_URLS: &[(&str, &str)] =
-    &[("30060601", "https://fints1.atruvia.de/cgi-bin/hbciservlet")];
+/// (apoBank left Atruvia in 2020, #1385; the Sparkassen host hs5 of 1822direkt
+/// no longer resolves).
+const RETIRED_URLS: &[(&str, &str)] = &[
+    ("30060601", "https://fints1.atruvia.de/cgi-bin/hbciservlet"),
+    ("50050201", "https://banking-hs5.s-fints-pt-hs.de/fints30"),
+];
 
 /// Current directory URL when a connection stored a retired endpoint for `blz`.
 pub fn replacement_for_retired_url(blz: &str, url: &str) -> Option<&'static str> {
@@ -314,6 +317,7 @@ mod tests {
             ("10070000", "https://fints.deutsche-bank.de/"),
             ("70020270", "https://hbci.hypovereinsbank.de/hbci/hbci.do"),
             ("12096597", ATRUVIA),
+            ("50050201", "https://banking-hs6.s-fints-pt-hs.de/fints30"),
             ("10010010", "https://hbci.postbank.de/banking/hbci.do"),
             ("10050000", "https://banking-be3.s-fints-pt-be.de/fints30"),
         ];
@@ -324,6 +328,15 @@ mod tests {
         }
         assert_eq!(lookup("50010517").unwrap().name, "ING");
         assert_eq!(url_for_blz("43060967"), Some(ATRUVIA));
+    }
+
+    #[test]
+    fn server_setting_defaults_match_the_directory() {
+        for (key, .., default) in crate::vault::KNOWN_SETTINGS {
+            if let Some(blz) = key.strip_prefix("fints.url.") {
+                assert_eq!(url_for_blz(blz), Some(*default), "{key}");
+            }
+        }
     }
 
     #[test]
@@ -436,9 +449,11 @@ mod tests {
         assert_eq!(search("sparkasse", 7).len(), 7);
         let ing = search("ING", 20);
         assert!(ing.iter().any(|b| b.blz == "50010517"));
-        assert!(search("Sparda Berlin", 5)
-            .iter()
-            .any(|b| b.blz == "12096597"));
+        assert!(
+            search("Sparda Berlin", 5)
+                .iter()
+                .any(|b| b.blz == "12096597")
+        );
         assert!(search("postbank", 5).iter().all(|b| b.name == "Postbank"));
         assert!(search("apobank", 5).iter().any(|b| b.blz == "30060601"));
         assert!(search("ethik", 5).iter().any(|b| b.blz == "83094495"));
@@ -470,9 +485,12 @@ mod tests {
             .collect();
         assert!(sparda.len() >= 10);
         assert!(sparda.iter().all(|b| is_valid_fints_url(&b.url)));
-        assert!(sparda
-            .iter()
-            .all(|b| b.url == ATRUVIA || b.url == "https://fints2.atruvia.de/cgi-bin/hbciservlet"));
+        assert!(
+            sparda
+                .iter()
+                .all(|b| b.url == ATRUVIA
+                    || b.url == "https://fints2.atruvia.de/cgi-bin/hbciservlet")
+        );
         assert!(!banks().iter().any(|e| e.2.contains("bankingonline.de")));
     }
 
@@ -506,8 +524,10 @@ mod tests {
             .collect();
         assert_eq!(all.len(), PSD_BLZ.len());
         assert!(search("psd west", 5).iter().any(|b| b.blz == "37060993"));
-        assert!(search("psd stuttgart", 5)
-            .iter()
-            .any(|b| b.blz == "60090900"));
+        assert!(
+            search("psd stuttgart", 5)
+                .iter()
+                .any(|b| b.blz == "60090900")
+        );
     }
 }

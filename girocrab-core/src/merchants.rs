@@ -865,6 +865,10 @@ pub fn monogram(name: &str) -> String {
     m
 }
 
+/// Acronyms that stay upper-case when `clean_name` title-cases a shouting name
+/// ("VR BANK NORD" -> "VR Bank Nord", #1410).
+const KEEP_UPPER: &[&str] = &["VR"];
+
 /// Removes legal forms and trailing noise for display ("Muster GmbH & Co. KG" -> "Muster").
 pub fn clean_name(s: &str) -> String {
     let mut t = s.trim().to_string();
@@ -883,7 +887,16 @@ pub fn clean_name(s: &str) -> String {
         " sagt Danke",
         " SAGT DANKE",
     ] {
-        if let Some(p) = t.find(suffix) {
+        // Whole words only: " SE" must not cut "SPARKASSE SEELAND" (#1410). A suffix
+        // ending in a dot is its own boundary (" S.A." also cuts "S.A.R.L.").
+        let ends_word = suffix.ends_with(char::is_alphanumeric);
+        if let Some((p, _)) = t.match_indices(suffix).find(|(p, _)| {
+            !ends_word
+                || t[p + suffix.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !c.is_alphanumeric())
+        }) {
             t.truncate(p);
         }
     }
@@ -898,11 +911,21 @@ pub fn clean_name(s: &str) -> String {
     {
         t.split(' ')
             .map(|w| {
-                let mut cs = w.chars();
-                match cs.next() {
-                    Some(f) => f.to_uppercase().collect::<String>() + &cs.as_str().to_lowercase(),
-                    None => String::new(),
-                }
+                w.split('-')
+                    .map(|part| {
+                        if KEEP_UPPER.contains(&part) {
+                            return part.to_string();
+                        }
+                        let mut cs = part.chars();
+                        match cs.next() {
+                            Some(f) => {
+                                f.to_uppercase().collect::<String>() + &cs.as_str().to_lowercase()
+                            }
+                            None => String::new(),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("-")
             })
             .collect::<Vec<_>>()
             .join(" ")
@@ -1557,9 +1580,11 @@ mod tests {
         assert!(!looks_like_person("Hotel Schwarzer Bock"));
         assert!(!looks_like_person("Eigenes Konto"));
         assert!(!looks_like_person("Mustermann Bau GmbH"));
-        assert!(MerchantResolver::resolve("Hotel Schwarzer Bock", "")
-            .domain
-            .is_empty());
+        assert!(
+            MerchantResolver::resolve("Hotel Schwarzer Bock", "")
+                .domain
+                .is_empty()
+        );
         assert_eq!(
             heuristic_domains("Gärtnerei Grünwald"),
             vec![
@@ -1599,6 +1624,25 @@ mod tests {
     }
 
     #[test]
+    fn clean_name_cuts_legal_forms_as_whole_words() {
+        // #1410: " SE" / " AG" / " eG" inside a word cut the name short.
+        assert_eq!(clean_name("HOTEL SEEBLICK"), "Hotel Seeblick");
+        assert_eq!(clean_name("MUELLER AGRARHANDEL"), "Mueller Agrarhandel");
+        assert_eq!(
+            clean_name("Foo eGovernment Service"),
+            "Foo eGovernment Service"
+        );
+        assert_eq!(clean_name("Muster AG, Berlin"), "Muster");
+        assert_eq!(clean_name("Muster AG"), "Muster");
+        assert_eq!(clean_name("MUSTER S.A.R.L."), "Muster");
+        assert_eq!(clean_name("MUSTER S.A.S."), "Muster");
+        assert_eq!(clean_name("Muster SE & Co. KGaA"), "Muster");
+        assert_eq!(clean_name("VR-BANK NORD"), "VR-Bank Nord");
+        let key = |cp: &str| resolve_merchant(cp.into(), String::new()).key;
+        assert_ne!(key("HOTEL SEEBLICK"), key("HOTEL SEEROSE"));
+    }
+
+    #[test]
     fn group_banks_keep_their_own_name() {
         // #1365: every Volksbank showed up as "Volksbank Kassel Göttingen".
         let m = |cp: &str, pu: &str| resolve_merchant(cp.into(), pu.into());
@@ -1606,6 +1650,10 @@ mod tests {
             ("Volksbank Mittelhessen eG", "Volksbank Mittelhessen"),
             ("VOLKSBANK MITTELHESSEN EG", "Volksbank Mittelhessen"),
             ("VR Bank Nord eG", "VR Bank Nord"),
+            ("VR BANK NORD EG", "VR Bank Nord"),
+            ("VEREINIGTE VR BANK EG", "Vereinigte VR Bank"),
+            ("SPARKASSE SEELAND", "Sparkasse Seeland"),
+            ("STADTSPARKASSE AGGERTAL", "Stadtsparkasse Aggertal"),
             ("Raiffeisenbank Musterdorf eG", "Raiffeisenbank Musterdorf"),
             ("Stadtsparkasse München", "Stadtsparkasse München"),
         ] {

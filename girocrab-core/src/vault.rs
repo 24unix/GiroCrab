@@ -13,11 +13,11 @@
 
 use std::ops::{Deref, DerefMut};
 use std::panic::Location;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use zeroize::Zeroizing;
 
 use crate::error::{CoreError, CoreResult};
@@ -26,6 +26,7 @@ pub(crate) mod accounts;
 mod backup;
 mod balances;
 pub(crate) mod bookings;
+pub(crate) mod cache;
 mod categories;
 pub(crate) mod connections;
 pub(crate) mod enable_banking_apps;
@@ -35,7 +36,7 @@ mod rules;
 mod settings;
 mod transfer_pairs;
 
-pub(crate) use bookings::{enrich, sql_int_list, LIVE_BOOKINGS_SQL, PENDING_SQL};
+pub(crate) use bookings::{LIVE_BOOKINGS_SQL, PENDING_SQL, enrich, sql_int_list};
 pub use connections::ConnectionStatus;
 pub use enable_banking_apps::ConnectionEnableBankingApp;
 pub use merge::MergeStats;
@@ -209,7 +210,11 @@ pub struct Vault {
     /// doesn't ask the keychain again. Wiped on drop.
     key: Mutex<Zeroizing<Vec<u8>>>,
     /// Booking history behind category suggestions, kept until the data changes (#664).
-    pub(crate) suggestions: crate::suggestions::HistoryCache,
+    pub(crate) suggestions: cache::ChangeCache<crate::suggestions::History>,
+    /// Known recipients of the transfer form, kept until the data changes (#978).
+    pub(crate) recipients: cache::ChangeCache<crate::recipients::Recipients>,
+    /// Bumped when the data is replaced without moving the change count (`cache::DataStamp`).
+    data_generation: AtomicU64,
     _open: OpenVault,
 }
 
@@ -529,6 +534,8 @@ impl Vault {
             list_cache: bookings::ListCache::default(),
             key: Mutex::new(key),
             suggestions: Default::default(),
+            recipients: Default::default(),
+            data_generation: AtomicU64::new(0),
             _open: OpenVault::new(),
         }))
     }
@@ -741,7 +748,7 @@ mod index_tests {
 #[cfg(test)]
 mod poison_tests {
     use super::*;
-    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
 
     /// A panic inside an open transaction with a database attached neither
     /// locks the vault for good nor leaves the transaction or the attachment

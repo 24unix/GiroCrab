@@ -25,13 +25,13 @@
 //! browser consent is only needed every ~90-180 days.
 
 use async_trait::async_trait;
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
-    http_client_same_host, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
-    ConnectContext, FetchResult, Paged, Phase, RemoteAccount, RemoteTransaction,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Paged,
+    Phase, RemoteAccount, RemoteTransaction, http_client_same_host, paginate,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -1124,7 +1124,10 @@ fn consent_error(code: &str, description: &str) -> CoreError {
         format!("{code}: {}", description.trim())
     };
     let message = match code {
-        "access_denied" => trf("Die Freigabe wurde bei der Bank abgelehnt ({0}).", &[&detail]),
+        "access_denied" => trf(
+            "Die Freigabe wurde bei der Bank abgelehnt ({0}).",
+            &[&detail],
+        ),
         "server_error" | "temporarily_unavailable" => trf(
             "Die Bank hat die Freigabe mit einem Fehler auf ihrer Seite beendet ({0}). Das liegt nicht an Ihren Angaben – bitte später erneut versuchen, gegebenenfalls mit weniger ausgewählten Konten.",
             &[&detail],
@@ -1192,7 +1195,7 @@ impl BankConnector for EnableBankingConnector {
             let path = format!("/sessions/{}", self.st.session_id.expose());
             match self.call(reqwest::Method::GET, &path, None).await {
                 Ok(s) if s["status"].as_str().is_none_or(|st| st == "AUTHORIZED") => {
-                    return Ok(Phase::Ready)
+                    return Ok(Phase::Ready);
                 }
                 Ok(s) => crate::depot_debug::log(&format!(
                     "enable_banking begin: session status {} -> new consent",
@@ -1882,14 +1885,16 @@ mod tests {
         );
         assert_eq!(bad.problems.len(), 3);
         assert!(bad.problems.iter().any(|p| p.contains("Sandbox")));
-        assert!(bad
-            .problems
-            .iter()
-            .any(|p| p.contains("Activate by linking accounts")));
-        assert!(bad
-            .problems
-            .iter()
-            .any(|p| p.contains("localhost/girocrab/callback")));
+        assert!(
+            bad.problems
+                .iter()
+                .any(|p| p.contains("Activate by linking accounts"))
+        );
+        assert!(
+            bad.problems
+                .iter()
+                .any(|p| p.contains("localhost/girocrab/callback"))
+        );
         // empty answer: not active, not production
         assert_eq!(
             evaluate_application(&Value::Null, redirect).problems.len(),

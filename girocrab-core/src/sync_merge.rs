@@ -21,7 +21,7 @@
 //! `rules`, `bookings`. Each step translates the other vault's ids with the
 //! maps the earlier steps returned.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 

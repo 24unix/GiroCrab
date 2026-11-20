@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::syntax::{Segment, SegmentBuilder};
-use super::{sepa, FinTsConnector, PreparedOrder, SepaAccount, Vop};
+use super::{FinTsConnector, PreparedOrder, SepaAccount, Vop, sepa};
 use crate::connectors::{ConnectContext, Phase, StandingOrderJob};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -218,14 +218,12 @@ impl FinTsConnector {
             StandingOrderAction::Change => "HKCDN",
             StandingOrderAction::Delete => "HKCDL",
         };
-        let not_allowed = || {
-            CoreError::Bank {
+        let not_allowed = || CoreError::Bank {
             code: seg_id.into(),
             message: trf(
                 "Dieses Konto oder diese Bank erlaubt diese Änderung am Dauerauftrag per FinTS ({0}) nicht. Bitte in der Banking-App ändern.",
                 &[&seg_id],
             ),
-        }
         };
         if !self.bank_supports(seg_id) {
             return Err(not_allowed());

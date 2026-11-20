@@ -1,18 +1,16 @@
 //! Vault side of syncs and transfers: storing fetch results, starting
-//! sessions, statement automation, recipients and pending transfers.
+//! sessions, statement automation and pending transfers.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::iban::{normalize_iban, validate_iban};
 use crate::importers::portal_import::{CARD_BOOKING_TEXT, CARD_SEPARATOR};
-use crate::models::{
-    AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
-};
+use crate::models::{AccountKind, BatchTransferRequest, ConnectorKind, SepaTransferRequest};
 use crate::secret::{SecretJson, SecretString};
 use crate::vault::Vault;
 
@@ -146,7 +144,16 @@ fn refresh_existing(
     if set == [None; 8] {
         return Ok(());
     }
-    let [counterparty, purpose, code, gvc, e2e, mandate, creditor, items] = set;
+    let [
+        counterparty,
+        purpose,
+        code,
+        gvc,
+        e2e,
+        mandate,
+        creditor,
+        items,
+    ] = set;
     tx.prepare_cached(
         "UPDATE transactions SET counterparty = COALESCE(?2, counterparty), purpose = COALESCE(?3, purpose),
                 purpose_code = COALESCE(?4, purpose_code), gvc = COALESCE(?5, gvc),
@@ -2018,7 +2025,7 @@ impl Vault {
                     _ => {
                         return Err(CoreError::invalid(tr(
                             "Der Rhythmus muss Monate oder Wochen sein.",
-                        )))
+                        )));
                     }
                 };
                 if !(1..=99).contains(&request.interval) {
@@ -2119,7 +2126,9 @@ impl Vault {
                 ))
             })?;
         if o.order_id.trim().is_empty() {
-            return Err(CoreError::invalid(tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.")));
+            return Err(CoreError::invalid(tr(
+                "Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.",
+            )));
         }
         if request.action == crate::models::StandingOrderAction::Change && !o.can_change {
             return Err(CoreError::invalid(tr(
@@ -2147,12 +2156,16 @@ impl Vault {
         let group = match (groups.next(), groups.next()) {
             (Some(g), None) if g.sequence.code() == request.sequence => g,
             _ => {
-                return Err(CoreError::invalid(tr("Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.")))
+                return Err(CoreError::invalid(tr(
+                    "Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.",
+                )));
             }
         };
         let scheme = group.scheme.debit();
         if scheme == DebitScheme::B2b && !request.b2b_confirmed {
-            return Err(CoreError::invalid(tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.")));
+            return Err(CoreError::invalid(tr(
+                "Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.",
+            )));
         }
         let (connection_id, iban, _, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
@@ -2189,41 +2202,6 @@ impl Vault {
             }),
             request.account_id,
         )))
-    }
-
-    /// Known recipients (name + IBAN) from past outgoing bookings, most used
-    /// first. `query` filters by name/IBAN substring (empty = all).
-    pub fn suggest_recipients(
-        &self,
-        query: String,
-        limit: u32,
-    ) -> Result<Vec<KnownRecipient>, CoreError> {
-        let db = self.db()?;
-        let q = query.trim().replace(' ', "").to_lowercase();
-        let mut stmt = db.prepare(
-            "SELECT counterparty, counterparty_iban, count(*) AS n FROM transactions
-             WHERE counterparty_iban <> '' AND counterparty <> '' AND amount_cents < 0 AND deleted_ms IS NULL
-             GROUP BY counterparty, counterparty_iban
-             ORDER BY n DESC, MAX(booking_date) DESC",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(KnownRecipient {
-                name: r.get(0)?,
-                iban: r.get(1)?,
-                times_used: r.get(2)?,
-            })
-        })?;
-        Ok(rows
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|r| {
-                q.is_empty()
-                    || r.name.replace(' ', "").to_lowercase().contains(&q)
-                    || r.iban.replace(' ', "").to_lowercase().contains(&q)
-            })
-            .filter(|r| validate_iban(&r.iban))
-            .take(limit as usize)
-            .collect())
     }
 }
 

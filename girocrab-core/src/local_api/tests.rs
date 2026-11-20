@@ -435,10 +435,11 @@ fn summary_counts_deleted_categories_as_none_and_is_bounded() {
         .iter()
         .map(|c| c["id"].as_i64().unwrap())
         .collect();
-    assert!(cats
-        .iter()
-        .filter_map(|c| c["category_id"].as_i64())
-        .all(|id| listed.contains(&id)));
+    assert!(
+        cats.iter()
+            .filter_map(|c| c["category_id"].as_i64())
+            .all(|id| listed.contains(&id))
+    );
     assert_eq!(
         err_code(
             &v,

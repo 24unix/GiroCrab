@@ -41,7 +41,9 @@ use regex::Regex;
 use tokio::task::JoinHandle;
 use zeroize::Zeroize;
 
-use super::uberspace::{attr, attrs, parse_date, text, INPUT};
+use super::html::{
+    Form, INPUT, attr, attrs, de_date, form_by_id, parse_amount, parse_date, partial_updates, text,
+};
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, ContentIds,
     Documents, FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
@@ -65,10 +67,6 @@ const LIST_LIMIT: u32 = 1000;
 /// Start of the date range for the read Postbox documents.
 const ARCHIVE_START: &str = "01.01.2010";
 
-static FORM_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<form\b([^>]*)>").unwrap());
-static SELECT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<select\b([^>]*)>(.*?)</select\s*>").unwrap());
-static OPTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<option\b([^>]*)>").unwrap());
 static A_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<a\b([^>]*)>").unwrap());
 static SPAN_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<span\b([^>]*)>").unwrap());
 /// First parameter of `mojarra.jsfcljs(form, {'<name>':'<name>'}, …)` (quotes
@@ -101,9 +99,6 @@ static PRODUCT_COL: LazyLock<Regex> =
 static ROW_LINK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(contentForm:[A-Za-z0-9_]+:\d+:[A-Za-z0-9_]+)").unwrap());
 static DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(\d{6,})\b").unwrap());
-static CDATA_UPDATE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?s)<update id="([^"]+)"><!\[CDATA\[(.*?)\]\]></update>"#).unwrap()
-});
 
 fn page_changed() -> CoreError {
     CoreError::protocol(tr(
@@ -162,101 +157,7 @@ fn push_challenge() -> Challenge {
     }
 }
 
-// ------------------------------------------------------------------ JSF forms
-
-/// A page form as the browser would submit it.
-#[derive(Debug, Clone, PartialEq)]
-struct Form {
-    /// Absolute path the form posts to.
-    action: String,
-    /// Hidden fields, text fields and selects with their current values.
-    fields: Vec<(String, String)>,
-}
-
-impl Form {
-    fn set(&mut self, name: &str, value: &str) {
-        match self.fields.iter_mut().find(|(n, _)| n == name) {
-            Some((_, v)) => *v = value.to_string(),
-            None => self.fields.push((name.to_string(), value.to_string())),
-        }
-    }
-
-    fn get(&self, name: &str) -> Option<&str> {
-        self.fields
-            .iter()
-            .find(|(n, _)| n == name)
-            .map(|(_, v)| v.as_str())
-    }
-
-    /// The fields plus the "clicked" link (`name=name`).
-    fn clicked(&self, name: &str) -> Vec<(String, String)> {
-        let mut out = self.fields.clone();
-        out.push((name.to_string(), name.to_string()));
-        out
-    }
-
-    /// Name of the field ending in `suffix` (generated ids).
-    fn field_ending(&self, suffix: &str) -> Option<&str> {
-        self.fields
-            .iter()
-            .map(|(n, _)| n.as_str())
-            .find(|n| n.ends_with(suffix))
-    }
-}
-
-/// The form with `id` (up to its first `</form>`: these forms nest none).
-fn form_by_id(html: &str, id: &str) -> Option<Form> {
-    let open = FORM_TAG
-        .captures_iter(html)
-        .find(|c| attr(&attrs(&c[1]), "id") == Some(id))?;
-    let a = attrs(&open[1]);
-    let action = attr(&a, "action")?.trim().to_string();
-    if !action.starts_with('/') {
-        return None;
-    }
-    let start = open.get(0)?.end();
-    let rest = &html[start..];
-    let end = rest
-        .to_ascii_lowercase()
-        .find("</form")
-        .unwrap_or(rest.len());
-    let body = &rest[..end];
-    let mut fields = Vec::new();
-    for input in INPUT.captures_iter(body) {
-        let a = attrs(&input[1]);
-        let Some(name) = attr(&a, "name").filter(|n| !n.is_empty()) else {
-            continue;
-        };
-        if attr(&a, "disabled").is_some() {
-            continue;
-        }
-        let kind = attr(&a, "type").unwrap_or("text").to_ascii_lowercase();
-        if matches!(kind.as_str(), "hidden" | "text") {
-            fields.push((
-                name.to_string(),
-                attr(&a, "value").unwrap_or("").to_string(),
-            ));
-        }
-    }
-    for select in SELECT.captures_iter(body) {
-        let a = attrs(&select[1]);
-        let Some(name) = attr(&a, "name") else {
-            continue;
-        };
-        let options: Vec<Vec<(String, String)>> = OPTION
-            .captures_iter(&select[2])
-            .map(|o| attrs(&o[1]))
-            .collect();
-        let chosen = options
-            .iter()
-            .find(|o| attr(o, "selected").is_some())
-            .or(options.first())
-            .and_then(|o| attr(o, "value"))
-            .unwrap_or("");
-        fields.push((name.to_string(), chosen.to_string()));
-    }
-    Some(Form { action, fields })
-}
+// ------------------------------------------------------------------ page helpers
 
 /// Link parameter of the first `<a>` whose `data-wt` matches.
 fn link_param(html: &str, data_wt: &str) -> Option<String> {
@@ -292,14 +193,6 @@ fn approval_of(partial: &str) -> Approval {
     } else {
         Approval::Pending
     }
-}
-
-/// `(update id, content)` of a JSF partial response.
-fn partial_updates(xml: &str) -> Vec<(String, String)> {
-    CDATA_UPDATE
-        .captures_iter(xml)
-        .map(|c| (c[1].to_string(), c[2].to_string()))
-        .collect()
 }
 
 /// Fields of a JSF ajax request.
@@ -428,19 +321,6 @@ struct Account {
     balance_cents: i64,
     /// Link parameter of "Umsätze anzeigen".
     bookings_link: Option<String>,
-}
-
-/// "- 1,17 €", "+ 5,55 €", "12.345,67 €" → cents.
-fn parse_amount(s: &str) -> Option<i64> {
-    let cleaned: String = text(s)
-        .replace(['\u{2212}', '\u{2013}'], "-")
-        .chars()
-        .filter(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | ',' | '.'))
-        .collect();
-    if !cleaned.chars().any(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    crate::money::parse_cents(&cleaned).ok()
 }
 
 fn parse_accounts(html: &str) -> CoreResult<Vec<Account>> {
@@ -617,12 +497,6 @@ fn document_file_name(row: &PostboxRow) -> String {
     format!("{}_{}.pdf", row.date, subject.trim().replace(' ', "_"))
 }
 
-/// `YYYY-MM-DD` → `DD.MM.YYYY`.
-fn site_date(iso: &str) -> Option<String> {
-    let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).ok()?;
-    Some(d.strftime("%d.%m.%Y").to_string())
-}
-
 // ------------------------------------------------------------------ connector
 
 /// One response: final URL, content type and body.
@@ -787,23 +661,18 @@ impl FordMoneyConnector {
         let mut form = form_by_id(&page, "contentForm").ok_or_else(page_changed)?;
         let start = form
             .field_ending(":inbox-datetimepicker-start")
-            .ok_or_else(page_changed)?
-            .to_string();
+            .ok_or_else(page_changed)?;
         let end = form
             .field_ending(":inbox-datetimepicker-end")
-            .ok_or_else(page_changed)?
-            .to_string();
-        form.set(&start, &site_date(since).ok_or_else(invalid)?);
-        form.set(&end, &site_date(today).ok_or_else(invalid)?);
+            .ok_or_else(page_changed)?;
+        form.set(&start, &de_date(since).ok_or_else(invalid)?);
+        form.set(&end, &de_date(today).ok_or_else(invalid)?);
         let page = self
             .post_page(&form.action, &form.clicked("contentForm:btnLoad"))
             .await?;
 
         let mut form = form_by_id(&page, "contentForm").ok_or_else(page_changed)?;
-        let limit = form
-            .field_ending(":limit")
-            .ok_or_else(page_changed)?
-            .to_string();
+        let limit = form.field_ending(":limit").ok_or_else(page_changed)?;
         let mut wanted = LIST_LIMIT;
         let mut list = String::new();
         for _ in 0..4 {
@@ -913,13 +782,11 @@ impl FordMoneyConnector {
             form_by_id(&archive, "contentForm"),
             link_param(&archive, ".button-anzeigen"),
         ) && let (Some(start), Some(end)) = (
-            form.field_ending(":inbox-datetimepicker-start")
-                .map(str::to_string),
-            form.field_ending(":inbox-datetimepicker-end")
-                .map(str::to_string),
+            form.field_ending(":inbox-datetimepicker-start"),
+            form.field_ending(":inbox-datetimepicker-end"),
         ) {
             form.set(&start, ARCHIVE_START);
-            form.set(&end, &site_date(&super::today()).unwrap_or_default());
+            form.set(&end, &de_date(&super::today()).unwrap_or_default());
             if let Ok(wide) = self.post_page(&form.action, &form.clicked(&refresh)).await {
                 let wide_rows = parse_postbox(&wide);
                 if wide_rows.len() >= rows.len() {
@@ -969,8 +836,7 @@ impl BankConnector for FordMoneyConnector {
         let form = form_by_id(&page.html(), "contentForm").ok_or_else(page_changed)?;
         let user = form
             .field_ending(":Benutzerkennung")
-            .ok_or_else(page_changed)?
-            .to_string();
+            .ok_or_else(page_changed)?;
         let mut fields = form.clicked("contentForm:submitLogin");
         fields.retain(|(n, _)| n != &user);
         fields.push((user, login.to_string()));
@@ -1002,7 +868,7 @@ impl BankConnector for FordMoneyConnector {
             PollStep::Waiting => return Ok(Phase::Pending(push_challenge())),
             PollStep::Answer(Ok(xml)) => xml,
             PollStep::Answer(Err(CoreError::Network { .. })) => {
-                return Ok(Phase::Pending(push_challenge()))
+                return Ok(Phase::Pending(push_challenge()));
             }
             PollStep::Answer(Err(e)) => return Err(e),
         };
@@ -1399,9 +1265,11 @@ mod tests {
         let tx2 = parse_bookings(&list, "fordmoney:DE00", "2000-01-01", &mut again).unwrap();
         assert_eq!(tx2[3].external_id, tx[3].external_id);
         let mut recent = ContentIds::default();
-        assert!(parse_bookings(&list, "a", "2026-11-01", &mut recent)
-            .unwrap()
-            .is_empty());
+        assert!(
+            parse_bookings(&list, "a", "2026-11-01", &mut recent)
+                .unwrap()
+                .is_empty()
+        );
         let broken = list.replace("- 21,37 €", "n/a");
         assert!(parse_bookings(&broken, "a", "2000-01-01", &mut ContentIds::default()).is_err());
     }
@@ -1475,10 +1343,7 @@ mod tests {
             Some("0"),
             "first option without selection"
         );
-        let start = form
-            .field_ending(":inbox-datetimepicker-start")
-            .unwrap()
-            .to_string();
+        let start = form.field_ending(":inbox-datetimepicker-start").unwrap();
         form.set(&start, ARCHIVE_START);
         assert_eq!(form.get(&start), Some(ARCHIVE_START));
         assert_eq!(
@@ -1505,6 +1370,5 @@ mod tests {
         assert_eq!(parse_amount("+            88,88 €"), Some(8_888));
         assert_eq!(parse_amount("12.345,67 €"), Some(1_234_567));
         assert_eq!(parse_amount("—"), None);
-        assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
     }
 }

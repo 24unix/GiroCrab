@@ -4,11 +4,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use jiff::civil::Date;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use super::observations::{
-    self, day_key, day_text, day_values, position_key, source_of, source_rank, Observed,
-    KIND_POSITION,
+    self, KIND_POSITION, Observed, day_key, day_text, day_values, position_key, source_of,
+    source_rank,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::models::DepotValuePoint;

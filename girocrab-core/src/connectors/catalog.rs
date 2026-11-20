@@ -34,7 +34,7 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             login_label: tr("Anmeldename / Kontonummer").into(),
             secret_label: tr("Online-Banking-PIN").into(),
             required_settings: s(&["fints.product_id", "fints.url.50050201"]),
-            note: tr("Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de").into(),
+            note: tr("Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs6.s-fints-pt-hs.de").into(),
         },
         ConnectorKind::FinTsGeneric => BankDescriptor {
             kind,
@@ -860,9 +860,11 @@ mod matrix_tests {
             .unwrap();
         assert!(!e.capabilities.contains(&Capability::Transfers));
         assert!(e.capabilities.contains(&Capability::Transactions));
-        assert!(descriptor(ConnectorKind::Direkt1822)
-            .note
-            .contains("09/2025"));
+        assert!(
+            descriptor(ConnectorKind::Direkt1822)
+                .note
+                .contains("09/2025")
+        );
     }
 
     #[test]

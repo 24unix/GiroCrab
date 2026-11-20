@@ -130,9 +130,11 @@ fn stored_orders_are_replaced_per_account_and_listed() {
     assert!(rows.iter().all(|p| p.amount_cents == -90_000));
     assert_eq!(rows[0].date, "2026-12-01");
     assert_eq!(rows[0].rhythm_unit, "M");
-    assert!(planned_executions(&db, d("2026-11-15"), None, &[999])
-        .unwrap()
-        .is_empty());
+    assert!(
+        planned_executions(&db, d("2026-11-15"), None, &[999])
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

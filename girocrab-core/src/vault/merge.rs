@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use zeroize::Zeroizing;
 
 use super::Vault;
@@ -66,6 +66,7 @@ impl Vault {
         crate::asset_classification::store::merge_attached(&tx)?;
         crate::mandates::merge_attached(&tx, &acc_map)?;
         crate::mandates::merge_ack(&tx, &acc_map)?;
+        crate::recipients::merge_attached(&tx)?;
         tx.commit()?;
         Ok(st)
     }
