@@ -1158,7 +1158,12 @@ impl Vault {
 
     /// Like [`begin_sync`](Self::begin_sync) for one account of its login
     /// ("<Konto> abrufen", #1124): only its balance and bookings are fetched
-    /// and stored; the login's other accounts stay as they are. Documents
+    /// and stored; the login's other accounts stay as they are. An account
+    /// still under a MoneyMoney ref (imported and not yet taken over, or
+    /// marked by „Abrufweg umstellen“) is not known to the bank under it, so
+    /// it gets a sync of the whole login, documents included (see
+    /// `single_account_ref`, #1417).
+    /// Documents
     /// wait for the next full sync: connectors remember what they downloaded,
     /// and a document of another account would be remembered but not stored.
     pub fn begin_account_sync(
