@@ -1852,6 +1852,41 @@ mod tests {
         assert_eq!(tombstones, 4);
     }
 
+    /// Device B: a copy of A's vault.
+    fn second_device(dir: &std::path::Path, a: &Vault) -> std::sync::Arc<Vault> {
+        let b_path = dir.join("b.db").to_string_lossy().to_string();
+        a.write_snapshot(b_path.clone()).unwrap();
+        Vault::open(b_path, vec![9u8; 32]).unwrap()
+    }
+
+    /// One iCloud round: A's snapshot into B, then B's into A.
+    fn sync_both(dir: &std::path::Path, a: &Vault, b: &Vault, step: &str) {
+        let a_snap = dir
+            .join(format!("a-{step}.db"))
+            .to_string_lossy()
+            .to_string();
+        a.write_snapshot(a_snap.clone()).unwrap();
+        b.merge_other_vault(a_snap, vec![9u8; 32]).unwrap();
+        let b_snap = dir
+            .join(format!("b-{step}.db"))
+            .to_string_lossy()
+            .to_string();
+        b.write_snapshot(b_snap.clone()).unwrap();
+        a.merge_other_vault(b_snap, vec![9u8; 32]).unwrap();
+    }
+
+    /// Rows with external id `ext`, live or deleted.
+    fn rows_with_id(v: &Vault, ext: &str, live: bool) -> i64 {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM transactions WHERE external_id = ?1 AND (deleted_ms IS NULL) = ?2",
+                params![ext, live],
+                |r| r.get(0),
+            )
+            .unwrap()
+    }
+
     /// Two devices know the same open hold, device A switches. The merge
     /// pairs A's dropped hold with B's by fingerprint; the pair keeps the
     /// freed id, so the hold the bank reports again after switching back is
@@ -1862,47 +1897,92 @@ mod tests {
         let (a, c, _, _, _) = comdirect_vault(dir.path(), "a.db");
         let hold = card("pending-hold-comdirect-h1", "2026-11-19", HOLD_TEXT);
         fetch_giro(&a, ConnectorKind::Comdirect, c, vec![hold.clone()]);
-        let b_path = dir.join("b.db").to_string_lossy().to_string();
-        a.write_snapshot(b_path.clone()).unwrap();
-        let b = Vault::open(b_path, vec![9u8; 32]).unwrap();
-        let sync = |step: &str| {
-            let a_snap = dir
-                .join(&format!("a-{step}.db"))
-                .to_string_lossy()
-                .to_string();
-            a.write_snapshot(a_snap.clone()).unwrap();
-            b.merge_other_vault(a_snap, vec![9u8; 32]).unwrap();
-            let b_snap = dir
-                .join(&format!("b-{step}.db"))
-                .to_string_lossy()
-                .to_string();
-            b.write_snapshot(b_snap.clone()).unwrap();
-            a.merge_other_vault(b_snap, vec![9u8; 32]).unwrap();
-        };
-        let rows = |v: &Vault, live: bool| -> i64 {
-            v.db()
-                .unwrap()
-                .query_row(
-                    "SELECT count(*) FROM transactions
-                      WHERE external_id = 'pending-hold-comdirect-h1' AND (deleted_ms IS NULL) = ?1",
-                    [live],
-                    |r| r.get(0),
-                )
-                .unwrap()
-        };
+        let b = second_device(dir.path(), &a);
+        let id = "pending-hold-comdirect-h1";
 
         a.switch_comdirect_access(c).unwrap();
-        sync("switch");
+        sync_both(dir.path(), &a, &b, "switch");
         for (name, v) in [("A", &a), ("B", &b)] {
-            assert_eq!(rows(v, true), 0, "{name}: hold dropped");
-            assert_eq!(rows(v, false), 0, "{name}: the hold's own id is free");
+            assert_eq!(rows_with_id(v, id, true), 0, "{name}: hold dropped");
+            assert_eq!(
+                rows_with_id(v, id, false),
+                0,
+                "{name}: the hold's own id is free"
+            );
         }
 
         assert_eq!(a.switch_comdirect_access(c).unwrap(), "comdirect");
         fetch_giro(&a, ConnectorKind::Comdirect, c, vec![hold]);
-        sync("back");
+        sync_both(dir.path(), &a, &b, "back");
         for (name, v) in [("A", &a), ("B", &b)] {
-            assert_eq!(rows(v, true), 1, "{name}: the hold is back");
+            assert_eq!(rows_with_id(v, id, true), 1, "{name}: the hold is back");
+        }
+    }
+
+    /// The posted payment can carry the date, amount and text of the hold a
+    /// switch dropped on the other device. The merge pairs the dropped hold
+    /// with the hold, never with the booking: the booking stays, the hold is
+    /// gone on both devices.
+    #[test]
+    fn a_dropped_hold_never_deletes_a_posted_booking_on_merge() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-hold-posted-sync");
+        let (a, c, _, _, _) = comdirect_vault(dir.path(), "a.db");
+        let hold = card("pending-hold-comdirect-h1", "2026-11-19", HOLD_TEXT);
+        fetch_giro(&a, ConnectorKind::Comdirect, c, vec![hold]);
+        let b = second_device(dir.path(), &a);
+
+        a.switch_comdirect_access(c).unwrap();
+        // B, not switched yet, fetches the posted payment
+        fetch_giro(
+            &b,
+            ConnectorKind::Comdirect,
+            c,
+            vec![card("REF1", "2026-11-19", HOLD_TEXT)],
+        );
+        sync_both(dir.path(), &a, &b, "posted");
+        for (name, v) in [("A", &a), ("B", &b)] {
+            assert_eq!(rows_with_id(v, "REF1", true), 1, "{name}: booking stays");
+            assert_eq!(
+                rows_with_id(v, "pending-hold-comdirect-h1", true),
+                0,
+                "{name}: hold gone"
+            );
+        }
+    }
+
+    /// The same for a hold an older switch had marked and the repair dropped:
+    /// its tombstone must not take the posted booking of another device along.
+    #[test]
+    fn a_dropped_marked_hold_never_deletes_a_posted_booking_on_merge() {
+        let dir = crate::test_support::TempDir::new("girocrab-marked-hold-posted-sync");
+        let (a, _, giro, _, _) = comdirect_vault(dir.path(), "a.db");
+        let b = second_device(dir.path(), &a);
+        let add = |v: &Vault, ext: &str| {
+            v.db()
+                .unwrap()
+                .execute(
+                    "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, currency, purpose)
+                     VALUES (?1, ?2, '2026-11-19', -2500, 'EUR', ?3)",
+                    params![giro, ext, HOLD_TEXT],
+                )
+                .unwrap();
+        };
+        add(&a, "mm-switch-pending-hold-fints-h3");
+        assert_eq!(drop_switched_holds(&a.db().unwrap()).unwrap(), 1);
+        add(&b, "camt:REF3");
+
+        sync_both(dir.path(), &a, &b, "posted");
+        for (name, v) in [("A", &a), ("B", &b)] {
+            assert_eq!(
+                rows_with_id(v, "camt:REF3", true),
+                1,
+                "{name}: booking stays"
+            );
+            assert_eq!(
+                rows_with_id(v, "mm-switch-pending-hold-fints-h3", true),
+                0,
+                "{name}: marked hold gone"
+            );
         }
     }
 

@@ -161,6 +161,17 @@ fn canonical_external_id<'a>(a: &'a str, b: &'a str) -> &'a str {
     }
 }
 
+/// A hold in any of its forms: open or settled (`pending-…`), dropped by
+/// „Abrufweg umstellen“ (`switch-stale-<id>:pending-…`) or marked by an older
+/// switch (`mm-switch-pending-…`). The fingerprint pairs holds only with
+/// holds: a hold (often deleted) has the date, amount and text of its payment,
+/// and pairing it with the posted booking would delete the booking (#1134).
+fn is_hold_id(ext: &str) -> bool {
+    ext.starts_with("pending-")
+        || ext.starts_with("mm-switch-pending-")
+        || (ext.starts_with("switch-stale-") && ext.contains(":pending-"))
+}
+
 /// Merges `other.transactions` and their splits: bookings are matched by
 /// account + external id (else import fingerprint), new ones are inserted
 /// with their stamps and deletion, existing ones take the newest edit per
@@ -213,7 +224,7 @@ pub(crate) fn merge_bookings(
     let mut local_splits = load_splits(conn, "main", local_uuid)?;
     let mut by_key: HashMap<(i64, String), i64> = HashMap::new();
     // (account, import_fp) -> (external_id, id) of local fingerprinted rows
-    let mut fp_rows: Vec<((i64, String), (String, i64))> = Vec::new();
+    let mut fp_rows: Vec<((i64, String, bool), (String, i64))> = Vec::new();
     let mut local: HashMap<i64, BookingFields> = HashMap::new();
     {
         let mut st = conn.prepare(
@@ -238,7 +249,7 @@ pub(crate) fn merge_bookings(
                 &r.get::<_, String>(11)?,
                 &r.get::<_, String>(12)?,
             );
-            fp_rows.push(((acc, fp), (ext, id)));
+            fp_rows.push(((acc, fp, is_hold_id(&ext)), (ext, id)));
             let source: String = r.get(5)?;
             let manual = if source == "manual" { r.get(4)? } else { None };
             local.insert(
@@ -320,12 +331,12 @@ pub(crate) fn merge_bookings(
     // pairing by status first would let the merge order decide which rows
     // pair, because a merged pair's status changes between the two merges.
     // Both sides then keep one id for the pair (`canonical_external_id`), so
-    // the next merge matches it by key.
+    // the next merge matches it by key. Holds pair only with holds (`is_hold_id`).
     let other_keys: HashSet<(i64, &str)> = others
         .iter()
         .filter_map(|o| Some((*acc_map.get(&o.account_id)?, o.external_id.as_str())))
         .collect();
-    let mut by_fp: HashMap<(i64, String), Vec<(String, i64)>> = HashMap::new();
+    let mut by_fp: HashMap<(i64, String, bool), Vec<(String, i64)>> = HashMap::new();
     for (k, (ext, id)) in fp_rows {
         if !other_keys.contains(&(k.0, ext.as_str())) {
             by_fp.entry(k).or_default().push((ext, id));
@@ -366,7 +377,7 @@ pub(crate) fn merge_bookings(
         o.fields.tags = other_tags.remove(&o.id).unwrap_or_default();
         let existing = match by_key.get(&(acc, o.external_id.clone())) {
             Some(&id) => Some((id, false)),
-            None => match by_fp.get_mut(&(acc, o.match_fp.clone())) {
+            None => match by_fp.get_mut(&(acc, o.match_fp.clone(), is_hold_id(&o.external_id))) {
                 Some(bucket) if !bucket.is_empty() => {
                     let (ext, id) = bucket.remove(0);
                     let key = canonical_external_id(&ext, &o.external_id).to_string();
