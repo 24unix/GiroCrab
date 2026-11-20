@@ -1259,6 +1259,79 @@ async fn account_sync_stores_only_that_account() {
 }
 
 #[test]
+fn single_account_sync_of_a_moneymoney_ref_syncs_the_whole_login() {
+    use super::persist::single_account_ref;
+    let none = || -> CoreResult<Vec<String>> { Ok(vec![]) };
+    assert_eq!(
+        single_account_ref("DE02120300000000202051".into(), none).unwrap(),
+        Some("DE02120300000000202051".into())
+    );
+    // marked by "Abrufweg umstellen", or imported and not yet taken over (#1417)
+    for r in [
+        "moneymoney-db:switch:DE02120300000000202051",
+        "moneymoney-db:A1B2C3",
+    ] {
+        assert_eq!(single_account_ref(r.into(), none).unwrap(), None, "{r}");
+        let skipped = || -> CoreResult<Vec<String>> { Ok(vec![r.to_string()]) };
+        assert!(matches!(
+            single_account_ref(r.into(), skipped),
+            Err(CoreError::InvalidInput { .. })
+        ));
+    }
+}
+
+#[tokio::test]
+async fn account_sync_after_switching_takes_the_account_over() {
+    let (v, path) = demo_vault();
+    let conn = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.connector == ConnectorKind::VolksbankKasselGoettingen)
+        .unwrap();
+    let giro = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.connection_id == Some(conn.id) && a.name == "Musterbank Girokonto")
+        .unwrap();
+    let ext = |v: &Arc<Vault>| -> String {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                [giro.id],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let old = ext(&v);
+    // as "Abrufweg umstellen" leaves it: the account under the marked ref
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
+            params![format!("moneymoney-db:switch:{old}"), giro.id],
+        )
+        .unwrap();
+    let s = v
+        .clone()
+        .begin_account_sync(giro.id, "pin".into(), true)
+        .unwrap();
+    let mut step = s.start().await.unwrap();
+    let summary = loop {
+        match step {
+            SyncStep::Finished { summary } => break summary,
+            _ => step = s.poll().await.unwrap(),
+        }
+    };
+    // the whole login was synced: the account is taken over and gets its booking
+    assert_eq!(ext(&v), old);
+    assert_eq!(summary.transactions_imported, 1);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn only_among_names_the_account_of_a_single_account_sync() {
     let refs = vec!["a".to_string(), "b".to_string()];
     let mut ctx = ConnectContext::default();

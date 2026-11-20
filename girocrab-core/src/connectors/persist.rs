@@ -1158,7 +1158,12 @@ impl Vault {
 
     /// Like [`begin_sync`](Self::begin_sync) for one account of its login
     /// ("<Konto> abrufen", #1124): only its balance and bookings are fetched
-    /// and stored; the login's other accounts stay as they are. Documents
+    /// and stored; the login's other accounts stay as they are. An account
+    /// still under a MoneyMoney ref (imported and not yet taken over, or
+    /// marked by „Abrufweg umstellen“) is not known to the bank under it, so
+    /// it gets a sync of the whole login, documents included (see
+    /// `single_account_ref`, #1417).
+    /// Documents
     /// wait for the next full sync: connectors remember what they downloaded,
     /// and a document of another account would be remembered but not stored.
     pub fn begin_account_sync(
@@ -1168,7 +1173,10 @@ impl Vault {
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
         let (conn_id, ext) = self.account_login(account_id)?;
-        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, Some(ext))
+        let only = single_account_ref(ext, || {
+            super::account_selection::skipped_refs(&*self.db()?, conn_id)
+        })?;
+        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, only)
     }
 
     /// Turns the PostBox fetch through comdirect's REST API on or off for a
@@ -2631,4 +2639,26 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
         None => 0,
     };
     Some(rows[start..].iter().map(|r| r.1).sum())
+}
+
+/// The ref a single-account sync filters on (#1417). An account still under
+/// a MoneyMoney ref – imported and not yet taken over, or marked by
+/// "Abrufweg umstellen" (`moneymoney-db:switch:…`) – is not known to the bank
+/// under it: filtering on it would drop everything and report success with 0
+/// bookings. Only a sync of the whole login takes such an account over, so
+/// it gets one (`None`). An archived or excluded account is refused as for a
+/// single-account sync, before it would turn into a full one.
+pub(super) fn single_account_ref(
+    ext: String,
+    skipped: impl FnOnce() -> CoreResult<Vec<String>>,
+) -> CoreResult<Option<String>> {
+    if !ext.starts_with("moneymoney-db:") {
+        return Ok(Some(ext));
+    }
+    if skipped()?.contains(&ext) {
+        return Err(CoreError::invalid(tr(
+            "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
+        )));
+    }
+    Ok(None)
 }
