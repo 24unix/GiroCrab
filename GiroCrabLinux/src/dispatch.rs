@@ -643,6 +643,15 @@ fn call(method: &str, a: &Value) -> R {
                 .map_err(|e| core_error_json(&e))?;
             ok(crate::sessions::register(crate::sessions::Session::Sync(s)))
         }
+        // Automatischer Abruf (AutoSync.qml, PSD2Consent.swift › autoSyncTick, #546): the same
+        // SyncSession without anything that needs a new approval (no comdirect PostBox, #838).
+        "begin_quiet_sync" => {
+            let v = vault()?;
+            let s = v
+                .begin_quiet_sync(arg(a, "connection_id")?, arg(a, "secret")?, arg(a, "demo")?)
+                .map_err(|e| core_error_json(&e))?;
+            ok(crate::sessions::register(crate::sessions::Session::Sync(s)))
+        }
         "fetch_account_statements" => {
             let v = vault()?;
             let s = v
@@ -1672,6 +1681,52 @@ mod tests {
         );
         set_env("XDG_RUNTIME_DIR", saved);
         let _ = std::fs::remove_dir_all(run);
+    }
+
+    /// Automatischer Abruf (#546, AutoSync.qml): `begin_quiet_sync` registers a SyncSession in
+    /// the registry that `session_start` drives like a manual one (demo bank, no network).
+    #[test]
+    fn quiet_sync_session_round_trip() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        call_ok("open_demo", json!({}));
+        let conns = call_ok("list_bank_connections", json!({}));
+        let conn = conns
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["connector"] == "FinTsGeneric")
+            .or_else(|| conns.as_array().unwrap().first())
+            .expect("the demo has bank connections")
+            .clone();
+        let id = call_ok(
+            "begin_quiet_sync",
+            json!({ "connection_id": conn["id"], "secret": "", "demo": true }),
+        );
+        let id = id.as_u64().expect("a session handle");
+        assert!(crate::sessions::get(id).is_ok());
+        let step = call_ok("session_start", json!({ "session": id }));
+        assert!(
+            ["NeedsChallenge", "StillWaiting", "Finished"]
+                .iter()
+                .any(|k| step.get(k).is_some()),
+            "{step}"
+        );
+        if step.get("Finished").is_none() {
+            call_ok("session_cancel", json!({ "session": id }));
+        }
+        assert!(
+            crate::sessions::get(id).is_err(),
+            "the session left the registry"
+        );
+        let missing: Value = serde_json::from_str(&call_json(
+            "begin_quiet_sync",
+            &json!({ "connection_id": -1, "secret": "", "demo": true }).to_string(),
+        ))
+        .unwrap();
+        assert!(
+            missing.get("err").is_some(),
+            "unknown connection is refused"
+        );
     }
 
     /// Own vault lifecycle with the keychain bypass: create, use, lock, reopen,

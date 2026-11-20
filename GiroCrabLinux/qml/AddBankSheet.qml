@@ -71,7 +71,8 @@ Sheet {
         const kind = selected.connector || (selected.mode === "FinTs" ? "FinTsGeneric" : "EnableBanking")
         const d = AppModel.descriptor(kind)
         if (!d) return []
-        return d.required_settings.filter(k => { const e = AppModel.settingEntry(k); return !(e && e.has_value) && !(k === "fints.product_id" && AppModel.fintsProductIDSource !== "") })
+        // AddBankAssistant.swift › missingSettings: the FinTS product ID is never asked for (#842/#865)
+        return AppModel.userRequiredKeys(d.required_settings).filter(k => { const e = AppModel.settingEntry(k); return !(e && e.has_value) })
     }
     // RAH-10: the settings (FinTS product registration) come first, then the key file
     readonly property bool isLastStep: (step === "setup" && !isRah10) || (step === "access" && missingSettings.length === 0)
