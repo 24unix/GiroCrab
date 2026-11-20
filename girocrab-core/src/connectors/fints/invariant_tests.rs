@@ -158,7 +158,47 @@ fn opt_text(node: roxmltree::Node, path: &[&'static str]) -> Option<String> {
     opt(n, last).map(|n| n.text().unwrap_or("").to_string())
 }
 
-fn parse_pain001(xml: &str) -> Parsed {
+/// The layout each pain.001 version prescribes, written out here rather than
+/// taken from the builder: namespace, the tag of a bank's BIC, and whether the
+/// execution date is wrapped in `<Dt>`.
+struct Layout {
+    namespace: &'static str,
+    bic: &'static str,
+    other_bic: &'static str,
+    date_in_dt: bool,
+}
+
+fn layout(version: PainVersion) -> Layout {
+    match version {
+        PainVersion::V03 => Layout {
+            namespace: "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03",
+            bic: "BIC",
+            other_bic: "BICFI",
+            date_in_dt: false,
+        },
+        PainVersion::V09 => Layout {
+            namespace: "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09",
+            bic: "BICFI",
+            other_bic: "BIC",
+            date_in_dt: true,
+        },
+    }
+}
+
+/// The BIC under `<FinInstnId>`, in the tag of this version only.
+fn bic(fin: roxmltree::Node, l: &Layout) -> Option<String> {
+    assert!(
+        opt(fin, l.other_bic).is_none(),
+        "<{}> in a {} document",
+        l.other_bic,
+        l.namespace
+    );
+    opt_text(fin, &[l.bic])
+}
+
+/// Parses a pain.001 and checks it has the layout of `version`.
+fn parse_pain001(xml: &str, version: PainVersion) -> Parsed {
+    let l = layout(version);
     let doc = roxmltree::Document::parse(xml).expect("well-formed pain.001");
     let root = doc.root_element();
     assert_eq!(root.tag_name().name(), "Document");
@@ -167,6 +207,20 @@ fn parse_pain001(xml: &str) -> Parsed {
     let pmt = at(init, &["PmtInf"]);
     let agent = at(pmt, &["DbtrAgt", "FinInstnId"]);
     let exec = at(pmt, &["ReqdExctnDt"]);
+    let execution_date = if l.date_in_dt {
+        assert!(
+            exec.children()
+                .all(|c| c.is_element() || c.text().unwrap_or("").trim().is_empty()),
+            "pain.001.001.09: the execution date belongs in <Dt>"
+        );
+        text(exec, &["Dt"])
+    } else {
+        assert!(
+            exec.children().all(|c| !c.is_element()),
+            "pain.001.001.03: <ReqdExctnDt> holds the date itself"
+        );
+        exec.text().unwrap_or("").to_string()
+    };
     let txs = elements(pmt, "CdtTrfTxInf")
         .map(|tx| {
             let amount = at(tx, &["Amt", "InstdAmt"]);
@@ -176,14 +230,15 @@ fn parse_pain001(xml: &str) -> Parsed {
                 amount_cents: cents(amount.text().unwrap_or("")),
                 creditor_name: text(tx, &["Cdtr", "Nm"]),
                 creditor_iban: text(tx, &["CdtrAcct", "Id", "IBAN"]),
-                creditor_bic: opt_text(tx, &["CdtrAgt", "FinInstnId", "BIC"])
-                    .or_else(|| opt_text(tx, &["CdtrAgt", "FinInstnId", "BICFI"])),
+                creditor_bic: opt(tx, "CdtrAgt").and_then(|a| bic(at(a, &["FinInstnId"]), &l)),
                 purpose: opt_text(tx, &["RmtInf", "Ustrd"]),
             }
         })
         .collect();
+    let namespace = root.tag_name().namespace().unwrap_or("").to_string();
+    assert_eq!(namespace, l.namespace);
     Parsed {
-        namespace: root.tag_name().namespace().unwrap_or("").to_string(),
+        namespace,
         nb_of_txs: vec![text(hdr, &["NbOfTxs"]), text(pmt, &["NbOfTxs"])],
         ctrl_sums: vec![
             cents(&text(hdr, &["CtrlSum"])),
@@ -192,8 +247,8 @@ fn parse_pain001(xml: &str) -> Parsed {
         initiator: text(hdr, &["InitgPty", "Nm"]),
         debtor_name: text(pmt, &["Dbtr", "Nm"]),
         debtor_iban: text(pmt, &["DbtrAcct", "Id", "IBAN"]),
-        debtor_bic: opt_text(agent, &["BIC"]).or_else(|| opt_text(agent, &["BICFI"])),
-        execution_date: opt_text(exec, &["Dt"]).unwrap_or_else(|| exec.text().unwrap_or("").into()),
+        debtor_bic: bic(agent, &l),
+        execution_date,
         instant: opt_text(pmt, &["PmtTpInf", "LclInstrm", "Cd"]).as_deref() == Some("INST"),
         batch_booking: text(pmt, &["BtchBookg"]),
         txs,
@@ -210,8 +265,8 @@ struct Sent {
 
 /// Puts `order` into a connector, builds the order message and reads it back
 /// with the segment parser: the pain.001 is taken from the binary element,
-/// not from `order.xml`.
-fn send(order: PreparedOrder, batch_params: Option<BatchParams>) -> Sent {
+/// not from `order.xml`, and must have the layout of `version`.
+fn send(order: PreparedOrder, version: PainVersion, batch_params: Option<BatchParams>) -> Sent {
     let mut c = FinTsConnector::new("12030000");
     c.st.batch_params = batch_params;
     let seg_id = order.seg_id;
@@ -236,7 +291,7 @@ fn send(order: PreparedOrder, batch_params: Option<BatchParams>) -> Sent {
         xml.as_bytes(),
         "the binary element carries the pain.001 unchanged"
     );
-    let pain = parse_pain001(std::str::from_utf8(wire).unwrap());
+    let pain = parse_pain001(std::str::from_utf8(wire).unwrap(), version);
     assert_eq!(pain.namespace, descriptor);
     Sent {
         segment,
@@ -311,7 +366,7 @@ fn single_transfers_carry_exactly_what_was_entered() {
                         end_to_end_id: e2e.clone(),
                     };
                     let order = transfer_order(&job, &source(), v.seg_id, v.version).unwrap();
-                    let sent = send(order, None);
+                    let sent = send(order, v.version, None);
                     let p = &sent.pain;
                     let case = format!("{} {name:?} {iban:?} {amount}", v.seg_id);
                     assert_eq!(
@@ -359,7 +414,7 @@ fn an_empty_owner_and_end_to_end_id_get_the_placeholders() {
         end_to_end_id: String::new(),
     };
     let order = transfer_order(&job, &source(), "HKCCS", PainVersion::V03).unwrap();
-    let p = send(order, None).pain;
+    let p = send(order, PainVersion::V03, None).pain;
     assert_debtor(&p, "Kontoinhaber");
     assert_eq!(p.txs[0].end_to_end_id, "NOTPROVIDED");
 }
@@ -471,6 +526,7 @@ fn batch_transfers_keep_every_payment_in_order_and_the_sum_in_the_segment() {
                 let order = batch_order(&job, &source(), version).unwrap();
                 let sent = send(
                     order,
+                    version,
                     Some(BatchParams {
                         max_count: 500,
                         sum_required: true,
@@ -542,7 +598,7 @@ fn standing_orders_carry_the_recipient_and_the_schedule_after_the_pain001() {
             exec_day: 1,
         };
         let order = standing_order(&job, &source(), "HKCDE", PainVersion::V03, false).unwrap();
-        let sent = send(order, None);
+        let sent = send(order, PainVersion::V03, None);
         let p = &sent.pain;
         assert_eq!(
             p.txs,
