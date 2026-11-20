@@ -264,14 +264,19 @@ extension AppModel {
                 Perf.signposter.endInterval("publishSelection", publish)
             } catch {
                 guard !Task.isCancelled, let self else { return }
-                self.selectionLoadTask = nil
-                self.endSelectionLoad()
-                // a failed refresh keeps what the column shows; a new selection must not show the old data
-                if self.shownSelection != self.sidebarSelection { self.showSelectionWithoutData() }
-                self.errorMessage = describe(error)
+                self.failSelectionLoad(error)
             }
         }
         selectionLoadTask = task
+    }
+
+    /// The selection load threw. A failed refresh keeps what the column shows; a new
+    /// selection must not show the previous one's data under its title.
+    func failSelectionLoad(_ error: Error) {
+        selectionLoadTask = nil
+        endSelectionLoad()
+        if shownSelection != sidebarSelection { showSelectionWithoutData() }
+        errorMessage = describe(error)
     }
 
     // MARK: - Merchant list (GitHub #495)

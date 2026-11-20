@@ -255,4 +255,53 @@ final class SelectionLoadTests: XCTestCase {
         XCTAssertEqual(model.dayGroups.flatMap(\.bookings).map(\.id), model.bookings.map(\.id))
         XCTAssertEqual(Set(model.dayGroups.map(\.date)).count, model.dayGroups.count, "one header per day")
     }
+
+    private struct LoadFailure: Error {}
+
+    /// A switch that fails before the placeholder: the new title over an empty list and
+    /// „–“ tiles, never the previous selection's figures.
+    func testFailedSwitchBeforePlaceholderShowsNoPreviousData() throws {
+        model.selectionPlaceholderDelay = .seconds(30)
+        let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
+        model.interactiveSidebarSelection = .account(account.id)
+        XCTAssertEqual(model.shownSelection, .allAccounts)
+        XCTAssertFalse(model.selectionFiguresMissing)
+
+        model.failSelectionLoad(LoadFailure())
+        XCTAssertEqual(model.shownSelection, .account(account.id))
+        XCTAssertTrue(model.bookings.isEmpty)
+        XCTAssertTrue(model.history.isEmpty)
+        XCTAssertTrue(model.selectionFiguresMissing, "the tiles show „–“")
+        XCTAssertFalse(model.isLoadingSelection)
+        XCTAssertNotNil(model.errorMessage)
+    }
+
+    /// The same after the placeholder took over: it stays empty, without the loading state.
+    func testFailedSwitchBehindPlaceholderShowsNoPreviousData() throws {
+        let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
+        model.interactiveSidebarSelection = .account(account.id)
+        XCTAssertTrue(model.isLoadingSelection)
+
+        model.failSelectionLoad(LoadFailure())
+        XCTAssertEqual(model.shownSelection, .account(account.id))
+        XCTAssertTrue(model.bookings.isEmpty)
+        XCTAssertTrue(model.selectionFiguresMissing)
+        XCTAssertFalse(model.isLoadingSelection)
+        XCTAssertNotNil(model.errorMessage)
+    }
+
+    /// A failed refresh of the selection shown (sync, merge) keeps list, chart and tiles.
+    func testFailedRefreshKeepsShownData() throws {
+        let bookings = model.bookings.map(\.id), history = model.history.map(\.balanceCents)
+        XCTAssertFalse(bookings.isEmpty)
+        model.startSelectionLoad(keepingShown: true)
+        XCTAssertNotNil(model.selectionLoadTask)
+
+        model.failSelectionLoad(LoadFailure())
+        XCTAssertEqual(model.shownSelection, .allAccounts)
+        XCTAssertEqual(model.bookings.map(\.id), bookings)
+        XCTAssertEqual(model.history.map(\.balanceCents), history)
+        XCTAssertFalse(model.selectionFiguresMissing)
+        XCTAssertNotNil(model.errorMessage)
+    }
 }

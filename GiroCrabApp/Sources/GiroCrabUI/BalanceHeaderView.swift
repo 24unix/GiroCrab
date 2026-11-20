@@ -281,9 +281,11 @@ struct StreamHeaderCard: View {
     @ViewBuilder
     private var fixedCostsKPI: some View {
         let open = model.recurringMonth?.items.filter { !$0.booked && $0.amountCents < 0 }.count ?? 0
+        // like the other tiles: none of the previous selection's figures while loading or after a failed load
+        let missing = model.selectionFiguresMissing
         Button { model.showRecurringSheet = true } label: {
-            KPI(title: "Fixkosten offen", subtitle: "Diesen Monat · \(open) offen",
-                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0), currency: model.balanceCurrency), tint: Theme.outflow,
+            KPI(title: "Fixkosten offen", subtitle: missing ? "Diesen Monat" : "Diesen Monat · \(open) offen",
+                value: missing ? "–" : Money.format(-(model.recurringMonth?.openExpenseCents ?? 0), currency: model.balanceCurrency), tint: Theme.outflow,
                 disclosure: true)
         }
         .buttonStyle(.plain)
