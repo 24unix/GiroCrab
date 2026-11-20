@@ -227,6 +227,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verifiziert |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verifiziert |
+| Bank Norwegian | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verifiziert |
 | C24 | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verifiziert |
 | ING Business | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | 🧪 Test gesucht [#721](https://github.com/GiroCrab/GiroCrab/issues/721) |
 | N26 | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verifiziert |
@@ -460,6 +461,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verified |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verified |
+| Bank Norwegian | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verified |
 | C24 | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ✅ Verified |
 | ING Business | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | 🧪 Testing wanted [#721](https://github.com/GiroCrab/GiroCrab/issues/721) |
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | – | ⚠️ Limited |
