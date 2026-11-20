@@ -1,5 +1,5 @@
 //! Vault side of syncs and transfers: storing fetch results, starting
-//! sessions, statement automation, recipients and pending transfers.
+//! sessions, statement automation and pending transfers.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -10,9 +10,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::iban::{normalize_iban, validate_iban};
 use crate::importers::portal_import::{CARD_BOOKING_TEXT, CARD_SEPARATOR};
-use crate::models::{
-    AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
-};
+use crate::models::{AccountKind, BatchTransferRequest, ConnectorKind, SepaTransferRequest};
 use crate::secret::{SecretJson, SecretString};
 use crate::vault::Vault;
 
@@ -2189,41 +2187,6 @@ impl Vault {
             }),
             request.account_id,
         )))
-    }
-
-    /// Known recipients (name + IBAN) from past outgoing bookings, most used
-    /// first. `query` filters by name/IBAN substring (empty = all).
-    pub fn suggest_recipients(
-        &self,
-        query: String,
-        limit: u32,
-    ) -> Result<Vec<KnownRecipient>, CoreError> {
-        let db = self.db()?;
-        let q = query.trim().replace(' ', "").to_lowercase();
-        let mut stmt = db.prepare(
-            "SELECT counterparty, counterparty_iban, count(*) AS n FROM transactions
-             WHERE counterparty_iban <> '' AND counterparty <> '' AND amount_cents < 0 AND deleted_ms IS NULL
-             GROUP BY counterparty, counterparty_iban
-             ORDER BY n DESC, MAX(booking_date) DESC",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(KnownRecipient {
-                name: r.get(0)?,
-                iban: r.get(1)?,
-                times_used: r.get(2)?,
-            })
-        })?;
-        Ok(rows
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|r| {
-                q.is_empty()
-                    || r.name.replace(' ', "").to_lowercase().contains(&q)
-                    || r.iban.replace(' ', "").to_lowercase().contains(&q)
-            })
-            .filter(|r| validate_iban(&r.iban))
-            .take(limit as usize)
-            .collect())
     }
 }
 

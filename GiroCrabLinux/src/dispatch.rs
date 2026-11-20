@@ -1561,7 +1561,7 @@ vault_methods! {
     // --- import / export ---
     export_bookings_csv(filter)
     // --- transfer ---
-    suggest_recipients(query, limit)
+    suggest_recipients(query, limit) list_known_recipients(query) set_recipient_hidden(iban, hidden)
     list_transfer_templates() save_transfer_template(template) delete_transfer_template(id)
     // --- settings / recurring ---
     list_ignored_recurring(account_ids)
@@ -1713,6 +1713,7 @@ mod tests {
         call_ok("open_demo", json!({}));
         assert!(call_ok("fints_product_id_mode", json!({})).is_string());
         assert!(call_ok("list_ignored_recurring", json!({ "account_ids": [] })).is_array());
+        assert!(call_ok("list_known_recipients", json!({ "query": "" })).is_array());
         let filter =
             json!({ "connection_id": null, "only_errors": false, "search": null, "limit": 0 });
         let before = call_ok("list_sync_log", json!({ "filter": filter }))

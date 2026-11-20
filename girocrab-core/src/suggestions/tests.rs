@@ -484,7 +484,7 @@ fn the_history_is_read_again_only_after_a_change() {
     let f = vault();
     f.add_n(2, b("Kino Lichtspiele", -12_00).manual("Freizeit"));
     let id = f.add(b("Kino Lichtspiele", -12_00));
-    let cached = || f.v.suggestions.0.lock().unwrap().clone().unwrap();
+    let cached = || f.v.suggestions.current().unwrap();
     assert!(f.suggest(id).is_some());
     let first = cached();
     assert!(f.suggest(id).is_some());

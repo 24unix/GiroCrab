@@ -230,7 +230,10 @@ impl Vault {
         tmp.execute_batch("DETACH DATABASE bak")?;
 
         let mut main = self.db()?;
-        Backup::new(&tmp, &mut main)?.run_to_completion(256, Duration::ZERO, None)?;
+        let copied = Backup::new(&tmp, &mut main)?.run_to_completion(256, Duration::ZERO, None);
+        // the pages changed without moving the change count, also when the copy broke off
+        self.data_replaced();
+        copied?;
         Self::migrate(&mut main)?;
         Self::repair(&main);
         Ok(())
