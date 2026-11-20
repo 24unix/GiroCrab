@@ -4691,30 +4691,37 @@ fn folded_depot_twin_hands_over_positions() {
     );
 }
 
-/// A twin folded by an older version still holds the positions: the next
-/// open moves them to the bank depot.
+/// The bank depot already fetched its inventory, empty (all sold): the
+/// twin's older positions are dropped, not handed over, and do not come
+/// back on a later open.
 #[test]
-fn positions_left_on_an_already_folded_twin_move_on_open() {
-    let dir = temp_dir("twin-depot-repair");
+fn twin_positions_do_not_override_a_fetched_empty_depot() {
+    let dir = temp_dir("twin-depot-fetched-empty");
     let v = open(&dir, "a.db");
     let (bank, twin) = depot_pair(&v, 2);
     exec(
         &v,
-        &format!("UPDATE accounts SET deleted_ms = 1 WHERE id = {twin}"),
+        &format!(
+            "INSERT INTO depot_observations(account_id, kind, position, source, observed_ms, value_date, currency, value_cents)
+             VALUES ({bank}, 'total', '', 'fetch', 1, '2026-11-10', 'EUR', 0)"
+        ),
     );
     drop(v);
     let v = open(&dir, "a.db");
-    assert_eq!(positions_of(&v, bank), 2);
+    assert_eq!(positions_of(&v, bank), 0);
     assert_eq!(positions_of(&v, twin), 0);
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(positions_of(&v, bank), 0);
 }
 
 /// The bank depot's own positions (from a fetch) are newer: they stay, the
-/// twin's are not added on top.
+/// twin's are dropped.
 #[test]
 fn bank_depot_with_positions_keeps_its_own() {
     let dir = temp_dir("twin-depot-own");
     let v = open(&dir, "a.db");
-    let (bank, _) = depot_pair(&v, 2);
+    let (bank, twin) = depot_pair(&v, 2);
     exec(
         &v,
         &format!(
@@ -4724,4 +4731,5 @@ fn bank_depot_with_positions_keeps_its_own() {
     drop(v);
     let v = open(&dir, "a.db");
     assert_eq!(positions_of(&v, bank), 1);
+    assert_eq!(positions_of(&v, twin), 0);
 }

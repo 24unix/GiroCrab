@@ -417,26 +417,31 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         ),
         params![twin, bank],
     )?;
+    // asked before the history moves: the twin's may hold fetches too
+    move_depot_data(conn, twin, bank)?;
     // the imported depot history belongs to the bank's account from now on (#578)
     crate::depot_values::move_account(conn, twin, bank)?;
     // so does the user's note (newer edit wins, like a merge, #980)
     crate::user_groups::pass_note_on(conn, twin, bank)?;
-    move_depot_data(conn, twin, bank)?;
     super::soft_delete_account(conn, twin)?;
     Ok(())
 }
 
 /// A depot's positions and securities transactions go with it to the bank
-/// account, like `connections::deduplicate` moves them: positions only when
-/// the bank account has none (its own come from a fetch and are newer),
-/// securities transactions once per external id.
+/// account, like `connections::deduplicate` moves them: positions only while
+/// the bank account has none and never fetched an inventory of its own,
+/// else they are outdated and dropped (an empty inventory is one too: all
+/// sold); securities transactions once per external id.
 fn move_depot_data(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
-    let bank_has_positions: bool = conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM holdings WHERE account_id = ?1)",
-        [bank],
+    let bank_has_inventory: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM holdings WHERE account_id = ?1)
+             OR EXISTS (SELECT 1 FROM depot_observations WHERE account_id = ?1 AND source = ?2)",
+        params![bank, crate::depot_values::observations::SOURCE_FETCH],
         |r| r.get(0),
     )?;
-    if !bank_has_positions {
+    if bank_has_inventory {
+        conn.execute("DELETE FROM holdings WHERE account_id = ?1", [twin])?;
+    } else {
         conn.execute(
             "UPDATE holdings SET account_id = ?2 WHERE account_id = ?1",
             params![twin, bank],
@@ -447,28 +452,4 @@ fn move_depot_data(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         params![twin, bank],
     )?;
     Ok(())
-}
-
-/// Twins folded before `fold_inner` moved depot data kept their positions,
-/// so the bank depot showed 0 until its next fetch: moves them over, once
-/// per open while any are left. Returns how many twins it touched.
-pub(crate) fn rehome_folded_depot_data(conn: &Connection) -> CoreResult<u32> {
-    let twins: Vec<i64> = conn
-        .prepare(
-            "SELECT id FROM accounts a
-              WHERE deleted_ms IS NOT NULL AND external_ref LIKE 'moneymoney-db:%'
-                AND (EXISTS (SELECT 1 FROM holdings h WHERE h.account_id = a.id)
-                     OR EXISTS (SELECT 1 FROM security_transactions s WHERE s.account_id = a.id))
-              ORDER BY id",
-        )?
-        .query_map([], |r| r.get(0))?
-        .collect::<Result<_, _>>()?;
-    let mut moved = 0;
-    for twin in twins {
-        if let Some(bank) = folded_into(conn, twin)? {
-            move_depot_data(conn, twin, bank)?;
-            moved += 1;
-        }
-    }
-    Ok(moved)
 }
