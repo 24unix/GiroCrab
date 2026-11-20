@@ -479,7 +479,8 @@ impl Vault {
         )? > 0;
         let (has_session, session_saved_unix, consent_valid_until) = state.with_value(|v| {
             let filled = |key: &str| v[key].as_str().is_some_and(|s| !s.is_empty());
-            let has_session = filled("cookies") || filled("session_id");
+            // A stored refresh token (Kontist) also lets a sync run without the password.
+            let has_session = filled("cookies") || filled("session_id") || filled("refresh_token");
             let valid_until = v["valid_until"]
                 .as_str()
                 .filter(|s| !s.is_empty() && has_session)
@@ -828,6 +829,25 @@ mod tests {
         v.clear_connection_session(c).unwrap();
         assert!(!v.connection_status(c).unwrap().has_session);
         assert_eq!(stored(&v), serde_json::json!({"doc_items": ["a"]}));
+    }
+
+    #[test]
+    fn a_stored_refresh_token_counts_as_session() {
+        let dir = crate::test_support::TempDir::new("girocrab-refresh-session");
+        let path = dir.join("v.db");
+        let v = Vault::open(path.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
+        let c = v
+            .add_bank_connection(ConnectorKind::Kontist, String::new(), "a@b.de".into())
+            .unwrap();
+        assert!(!v.connection_status(c).unwrap().has_session);
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE bank_connections SET state_json = '{\"refresh_token\":\"r\"}' WHERE id = ?1",
+                [c],
+            )
+            .unwrap();
+        assert!(v.connection_status(c).unwrap().has_session);
     }
 
     /// Direct debit, standing order and planned data hang on the duplicate
