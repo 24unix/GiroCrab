@@ -548,6 +548,26 @@ fn comdirect_blz(
 /// taken over again (`<prefix><old reference>`); the sync ignores it (#537).
 pub(crate) const SWITCH_MARK: &str = "moneymoney-db:switch:";
 
+/// Repair for vaults switched before #1134 was fixed: the switch marked open
+/// card holds like bookings (`mm-switch-pending-…`). They count as posted, no
+/// hold cleanup reaches them and the bank's real booking comes next to them.
+/// Drops them like a settled hold (category and note go with it); the
+/// tombstones keep their ids, so other devices drop them on merge. Returns
+/// how many were dropped.
+pub(crate) fn drop_switched_holds(conn: &Connection) -> CoreResult<usize> {
+    let ids: Vec<i64> = conn
+        .prepare(
+            "SELECT id FROM transactions
+              WHERE external_id LIKE 'mm-switch-pending-%' AND deleted_ms IS NULL",
+        )?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    for &id in &ids {
+        crate::sync_merge::soft_delete_booking(conn, id)?;
+    }
+    Ok(ids.len())
+}
+
 #[uniffi::export]
 impl Vault {
     /// Switches a comdirect login between comdirect's own API and FinTS
@@ -556,6 +576,7 @@ impl Vault {
     /// and live bookings are marked so the next fetch takes them over by
     /// IBAN and by booking (amount, date ±2 days, counterparty) instead of
     /// adding them a second time – the same path as after a database import.
+    /// Open card holds are dropped: the new way reports them again (#1134).
     /// Returns the new connector key.
     pub fn switch_comdirect_access(&self, connection_id: i64) -> Result<String, CoreError> {
         let db = self.db()?;
@@ -707,14 +728,36 @@ impl Vault {
                 crate::sync_merge::soft_delete_booking(&tx, stale)?;
             }
         }
+        // Open card holds (#1134): the new way reports the ones still open on
+        // its first fetch. Marked like bookings they would count as posted and
+        // stay for good, as no hold cleanup looks at `mm-*`. Their id is freed
+        // first: switching back brings the same hold id again, and a deleted id
+        // stays deleted in `store_fetch`.
+        let holds: Vec<i64> = tx
+            .prepare(
+                "SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id
+                  WHERE a.connection_id = ?1 AND t.deleted_ms IS NULL AND t.external_id LIKE 'pending-hold-%'",
+            )?
+            .query_map([connection_id], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for id in holds {
+            tx.execute(
+                "UPDATE transactions SET external_id = 'switch-stale-' || id || ':' || external_id
+                  WHERE id = ?1",
+                [id],
+            )?;
+            crate::sync_merge::soft_delete_booking(&tx, id)?;
+        }
         // Live bookings: re-adoptable like imported ones (`mm-*`, with a
         // fingerprint). Tombstones keep their ids for multi-device merges.
+        // Optimistic transfer bookings (`pending-<e2e>`) stay as they are:
+        // they go when the bank's booking arrives, whichever way fetches it.
         let rows: Vec<(i64, String, i64, String, String, String)> = {
             let mut st = tx.prepare(
                 "SELECT t.id, t.booking_date, t.amount_cents, t.counterparty_iban, t.counterparty, t.purpose
                    FROM transactions t JOIN accounts a ON a.id = t.account_id
                   WHERE a.connection_id = ?1 AND t.deleted_ms IS NULL AND t.external_id NOT LIKE 'mm-%'
-                    AND t.external_id NOT LIKE 'switch-stale-%'",
+                    AND t.external_id NOT LIKE 'switch-stale-%' AND t.external_id NOT LIKE 'pending-%'",
             )?;
             let r = st
                 .query_map([connection_id], |r| {
@@ -1666,5 +1709,251 @@ mod tests {
             !stale_id.starts_with("mm-"),
             "no takeover candidate any more: {stale_id}"
         );
+    }
+
+    // ---------------------------------------------------------------- card holds (#1134)
+
+    /// A card payment of 25,00 € the bank reports as hold `id` (no counterparty,
+    /// short text) or, with a `camt:` id, as the posted booking.
+    fn card(id: &str, date: &str, purpose: &str) -> crate::connectors::RemoteTransaction {
+        crate::connectors::RemoteTransaction {
+            account_ref: "A1B2C3".into(),
+            external_id: id.into(),
+            booking_date: date.into(),
+            amount_cents: -2500,
+            currency: "EUR".into(),
+            purpose: purpose.into(),
+            ..Default::default()
+        }
+    }
+
+    /// One fetch of the giro account over `kind`, with the complete hold list
+    /// of that way (`hold_prefix`).
+    fn fetch_giro(
+        v: &Vault,
+        kind: ConnectorKind,
+        c: i64,
+        transactions: Vec<crate::connectors::RemoteTransaction>,
+    ) {
+        let hold_prefix = if kind == ConnectorKind::Comdirect {
+            "pending-hold-comdirect-"
+        } else {
+            "pending-hold-fints-"
+        };
+        crate::connectors::store_fetch(
+            v,
+            kind,
+            c,
+            crate::connectors::FetchResult {
+                accounts: vec![crate::connectors::RemoteAccount {
+                    external_ref: "A1B2C3".into(),
+                    name: "Girokonto".into(),
+                    owner: String::new(),
+                    iban: "DE10200411550123456789".into(),
+                    account_number: String::new(),
+                    currency: "EUR".into(),
+                    kind: crate::models::AccountKind::Checking,
+                    balance_cents: 0,
+                    balance_date: "2026-11-20".into(),
+                }],
+                transactions,
+                hold_prefix: Some(hold_prefix.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+
+    /// Live bookings of the account: (external id, booking date, purpose).
+    fn live_rows(v: &Vault, account: i64) -> Vec<(String, String, String)> {
+        let db = v.db().unwrap();
+        let mut st = db
+            .prepare(
+                "SELECT external_id, booking_date, purpose FROM transactions
+                  WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY id",
+            )
+            .unwrap();
+        st.query_map([account], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+    }
+
+    const HOLD_TEXT: &str = "SHOP, Berlin";
+
+    /// The reported case: switching while a card payment is a hold left it as
+    /// a posted booking (`mm-switch-pending-…`) next to the hold the new way
+    /// reports, one more per switch. Now the hold is dropped on the switch,
+    /// and switching back and forth with the same hold open keeps exactly one.
+    #[test]
+    fn switching_with_an_open_hold_keeps_exactly_one_hold() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-hold");
+        let (v, c, giro, _, _) = comdirect_vault(dir.path(), "v.db");
+        let rest_hold = card("pending-hold-comdirect-h1", "2026-11-19", HOLD_TEXT);
+        let fints_hold = card("pending-hold-fints-h1", "2026-11-18", HOLD_TEXT);
+        // an optimistic transfer booking of the app itself
+        {
+            let db = v.db().unwrap();
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose)
+                 VALUES (?1, 'pending-e2e-1', '2026-11-19', -5000, 'Miete')",
+                [giro],
+            )
+            .unwrap();
+        }
+        fetch_giro(&v, ConnectorKind::Comdirect, c, vec![rest_hold.clone()]);
+        let holds = |v: &Vault| -> Vec<String> {
+            live_rows(v, giro)
+                .into_iter()
+                .map(|r| r.0)
+                .filter(|e| e.contains("pending-hold-"))
+                .collect()
+        };
+        assert_eq!(holds(&v), vec!["pending-hold-comdirect-h1"]);
+
+        for round in 0..2 {
+            assert_eq!(v.switch_comdirect_access(c).unwrap(), "fints:20041155");
+            assert!(
+                holds(&v).is_empty(),
+                "round {round}: hold dropped on the switch"
+            );
+            fetch_giro(&v, ConnectorKind::FinTsGeneric, c, vec![fints_hold.clone()]);
+            assert_eq!(
+                holds(&v),
+                vec!["pending-hold-fints-h1"],
+                "round {round}: FinTS"
+            );
+
+            assert_eq!(v.switch_comdirect_access(c).unwrap(), "comdirect");
+            assert!(
+                holds(&v).is_empty(),
+                "round {round}: hold dropped on the way back"
+            );
+            // the same hold id as before the first switch is stored again
+            fetch_giro(&v, ConnectorKind::Comdirect, c, vec![rest_hold.clone()]);
+            assert_eq!(
+                holds(&v),
+                vec!["pending-hold-comdirect-h1"],
+                "round {round}: API"
+            );
+        }
+        // the app's own transfer booking was neither marked nor dropped
+        assert!(live_rows(&v, giro).iter().any(|r| r.0 == "pending-e2e-1"));
+        // the dropped holds went as tombstones (other devices drop them too)
+        let db = v.db().unwrap();
+        let tombstones: i64 = db
+            .query_row(
+                "SELECT count(*) FROM transactions
+                  WHERE external_id LIKE 'switch-stale-%pending-hold-%' AND deleted_ms IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tombstones, 4);
+    }
+
+    /// After the switch the bank posts the payment: one row with the
+    /// booking's own date and text, no hold left behind.
+    #[test]
+    fn a_hold_posted_after_the_switch_leaves_one_booking() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-hold-posted");
+        let (v, c, giro, _, _) = comdirect_vault(dir.path(), "v.db");
+        fetch_giro(
+            &v,
+            ConnectorKind::Comdirect,
+            c,
+            vec![card("pending-hold-comdirect-h1", "2026-11-19", HOLD_TEXT)],
+        );
+        v.switch_comdirect_access(c).unwrap();
+        let posted = card(
+            "camt:REF1",
+            "2026-11-20",
+            "SHOP, Berlin 19.11. 18:05 comdirect Visa-Debitkarte 1234",
+        );
+        fetch_giro(&v, ConnectorKind::FinTsGeneric, c, vec![posted.clone()]);
+        let cards: Vec<_> = live_rows(&v, giro)
+            .into_iter()
+            .filter(|r| r.0 != "mm-switch-rest-1")
+            .collect();
+        assert_eq!(
+            cards,
+            vec![(posted.external_id, posted.booking_date, posted.purpose)]
+        );
+    }
+
+    /// Vaults switched by an older build: their marked holds go on open (and
+    /// after a merge), marked bookings stay; running it again changes nothing.
+    #[test]
+    fn marked_holds_of_an_older_switch_are_dropped_on_open() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-hold-repair");
+        let path = dir.join("v.db").to_string_lossy().to_string();
+        let giro = {
+            let (v, _, giro, _, booking) = comdirect_vault(dir.path(), "v.db");
+            let db = v.db().unwrap();
+            db.execute(
+                "UPDATE transactions SET external_id = 'mm-switch-rest-1' WHERE id = ?1",
+                [booking],
+            )
+            .unwrap();
+            for ext in [
+                "mm-switch-pending-hold-fints-h1",
+                "mm-switch-pending-hold-comdirect-h1",
+            ] {
+                db.execute(
+                    "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose,
+                                              category_source, note)
+                     VALUES (?1, ?2, '2026-11-18', -2500, 'SHOP, Berlin', 'manual', 'Einkauf')",
+                    params![giro, ext],
+                )
+                .unwrap();
+            }
+            giro
+        };
+        let v = Vault::open(path, vec![9u8; 32]).unwrap();
+        assert_eq!(
+            live_rows(&v, giro)
+                .into_iter()
+                .map(|r| r.0)
+                .collect::<Vec<_>>(),
+            vec!["mm-switch-rest-1"]
+        );
+        let db = v.db().unwrap();
+        assert_eq!(drop_switched_holds(&db).unwrap(), 0);
+    }
+
+    /// A vault the repair has not reached yet (another device, before the
+    /// merge): a booking must not take over a marked hold and keep its date
+    /// and text. A marked booking is still taken over.
+    #[test]
+    fn a_booking_never_takes_over_a_marked_hold() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-hold-twin");
+        let (v, _, giro, _, _) = comdirect_vault(dir.path(), "v.db");
+        let db = v.db().unwrap();
+        let add = |ext: &str| {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose)
+                 VALUES (?1, ?2, '2026-11-19', -2500, 'SHOP, Berlin 19.11. comdirect Visa-Debitkarte')",
+                params![giro, ext],
+            )
+            .unwrap();
+        };
+        let take = |ext: &str| {
+            crate::importers::moneymoney_import::adopt_import(
+                &db,
+                giro,
+                ext,
+                "2026-11-20",
+                -2500,
+                "",
+                "SHOP",
+                "SHOP, Berlin 19.11. comdirect Visa-Debitkarte 1234",
+                "",
+            )
+            .unwrap()
+        };
+        add("mm-switch-pending-hold-comdirect-h1");
+        assert!(!take("camt:REF1"), "a marked hold is no twin");
+        add("mm-switch-rest-9");
+        assert!(take("camt:REF2"), "a marked booking still is");
     }
 }
