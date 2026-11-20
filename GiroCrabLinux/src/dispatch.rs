@@ -1390,14 +1390,13 @@ fn embedded_invoice_xml(pdf: &[u8]) -> Option<String> {
         if find_bytes(body, MARKER, 0).is_some() {
             return Some(xml_text(body));
         }
-        if body.len() > 8 && body[0] == 0x78 {
-            if let Ok(inflated) =
+        if body.len() > 8
+            && body[0] == 0x78
+            && let Ok(inflated) =
                 miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(body, MAX_INFLATED_STREAM)
-            {
-                if find_bytes(&inflated, MARKER, 0).is_some() {
-                    return Some(xml_text(&inflated));
-                }
-            }
+            && find_bytes(&inflated, MARKER, 0).is_some()
+        {
+            return Some(xml_text(&inflated));
         }
     }
     None
