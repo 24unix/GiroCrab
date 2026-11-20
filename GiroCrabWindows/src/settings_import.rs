@@ -176,7 +176,7 @@ pub fn import_result_text(r: &MoneyMoneyImportResult) -> String {
 
 pub fn db_result_text(r: &MoneyMoneyDbImportResult) -> String {
     format!(
-        "MoneyMoney-Import: {} neue Umsätze, {} Duplikate, {} ergänzt, {} Konten neu, {} zusammengeführt, {} Kategorien angelegt.",
+        "Datenimport: {} neue Umsätze, {} Duplikate, {} ergänzt, {} Konten neu, {} zusammengeführt, {} Kategorien angelegt.",
         r.bookings_new,
         r.bookings_duplicates,
         r.bookings_enriched,
