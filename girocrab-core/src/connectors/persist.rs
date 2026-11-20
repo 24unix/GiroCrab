@@ -1758,6 +1758,11 @@ impl Vault {
         if request.amount_cents <= 0 {
             return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
         }
+        if request.amount_cents > sepa::MAX_AMOUNT_CENTS {
+            return Err(CoreError::invalid(tr(
+                "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+            )));
+        }
         if !validate_iban(&request.recipient_iban) {
             return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
         }
@@ -1969,6 +1974,11 @@ impl Vault {
                 }
                 if request.amount_cents <= 0 {
                     return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
+                }
+                if request.amount_cents > crate::connectors::fints::sepa::MAX_AMOUNT_CENTS {
+                    return Err(CoreError::invalid(tr(
+                        "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+                    )));
                 }
                 let today = crate::dates::today();
                 let date = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d.trim()).ok();

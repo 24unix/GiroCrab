@@ -1353,6 +1353,77 @@ async fn demo_code_and_redirect_flows() {
     let _ = std::fs::remove_file(path);
 }
 
+#[test]
+fn amounts_above_the_sepa_limit_are_rejected_before_the_tan() {
+    use crate::connectors::fints::sepa::MAX_AMOUNT_CENTS;
+    use crate::models::{StandingOrderAction, StandingOrderRequest};
+    let (v, path) = demo_vault();
+    let acc = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == "Musterbank Girokonto" && a.connection_id.is_some())
+        .unwrap();
+    let transfer =
+        |amount: i64, instant: bool, execution_date: Option<String>| SepaTransferRequest {
+            account_id: acc.id,
+            recipient_name: "Müller GmbH".into(),
+            recipient_iban: "DE89370400440532013000".into(),
+            recipient_bic: None,
+            amount_cents: amount,
+            purpose: "Rechnung 42".into(),
+            instant,
+            execution_date,
+        };
+    let later = crate::dates::iso(crate::dates::today() + crate::dates::days(10));
+    for (instant, date) in [(false, None), (true, None), (false, Some(later.clone()))] {
+        assert!(v
+            .clone()
+            .begin_transfer(
+                transfer(MAX_AMOUNT_CENTS, instant, date.clone()),
+                "pin".into(),
+                true
+            )
+            .is_ok());
+        assert!(matches!(
+            v.clone().begin_transfer(
+                transfer(MAX_AMOUNT_CENTS + 1, instant, date),
+                "pin".into(),
+                true
+            ),
+            Err(CoreError::InvalidInput { .. })
+        ));
+    }
+    // A valid monthly schedule (first date on the execution day), so only the
+    // amount decides.
+    let first_of_month = (crate::dates::today() + crate::dates::days(40)).first_of_month();
+    let order = |amount: i64| StandingOrderRequest {
+        account_id: acc.id,
+        action: StandingOrderAction::Create,
+        order_row_id: None,
+        recipient_name: "Vermieter".into(),
+        recipient_iban: "DE89370400440532013000".into(),
+        recipient_bic: None,
+        amount_cents: amount,
+        purpose: "Miete".into(),
+        first_date: crate::dates::iso(first_of_month),
+        last_date: None,
+        time_unit: "M".into(),
+        interval: 1,
+        exec_day: 1,
+    };
+    assert!(v
+        .clone()
+        .begin_standing_order(order(MAX_AMOUNT_CENTS), "pin".into(), true)
+        .is_ok());
+    assert!(matches!(
+        v.clone()
+            .begin_standing_order(order(MAX_AMOUNT_CENTS + 1), "pin".into(), true),
+        Err(CoreError::InvalidInput { .. })
+    ));
+    let _ = std::fs::remove_file(path);
+}
+
 #[tokio::test(start_paused = true)]
 async fn demo_transfer_flow_adds_pending_booking_and_suggests_recipient() {
     let (v, path) = demo_vault();
