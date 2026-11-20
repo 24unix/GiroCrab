@@ -1509,6 +1509,17 @@ impl Vault {
                 let k = format!("fints.url.{blz}");
                 match Vault::setting_inner(&db, &k)? {
                     Some(v) if !v.is_empty() => {
+                        // stored before the directory fix: move to the bank's current endpoint
+                        let v = match fints_directory::replacement_for_retired_url(blz, &v) {
+                            Some(url) => {
+                                db.execute(
+                                    "UPDATE settings SET value = ?1 WHERE key = ?2",
+                                    params![url, k],
+                                )?;
+                                url.to_string()
+                            }
+                            None => v,
+                        };
                         settings.insert(k, SecretString::new(v));
                     }
                     // e.g. a MoneyMoney import created the login without a URL

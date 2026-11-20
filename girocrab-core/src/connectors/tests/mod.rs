@@ -1951,3 +1951,22 @@ fn managed_hold_prefix_survives_same_amount_payment_until_removed_from_list() {
     store_fetch(&v, ConnectorKind::PayPal, conn, f2).unwrap();
     assert!(active_holds().is_empty());
 }
+
+#[test]
+fn sync_moves_a_retired_fints_url_to_the_current_endpoint() {
+    let (v, _path) = demo_vault();
+    let id = v
+        .add_fints_connection(
+            "30060601".into(),
+            "https://fints1.atruvia.de/cgi-bin/hbciservlet".into(),
+            "apoBank".into(),
+            "nutzer".into(),
+            String::new(),
+        )
+        .unwrap();
+    let _ = v.clone().begin_sync(id, "12345".into(), true);
+    assert_eq!(
+        v.get_setting("fints.url.30060601".into()).unwrap(),
+        Some("https://fints.apobank.de/FinTs30PinTanHttpGate".into())
+    );
+}
