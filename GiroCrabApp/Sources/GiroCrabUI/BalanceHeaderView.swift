@@ -256,14 +256,14 @@ struct StreamHeaderCard: View {
         }
     }
 
-    /// The tiles belong to the selection: no stale sums while it loads.
+    /// The tiles belong to the selection: no stale sums while it loads or after its load failed.
     private func kpiValue(_ cents: Int64) -> String {
-        model.isLoadingSelection ? "–" : Money.format(cents, currency: model.balanceCurrency)
+        model.selectionFiguresMissing ? "–" : Money.format(cents, currency: model.balanceCurrency)
     }
 
     /// "Zusätzlich" line of a tile: its value in the currencies other than EUR (#1049); none while loading.
     private func kpiExtra(_ pick: (CurrencyFlow) -> Int64) -> String? {
-        model.isLoadingSelection ? nil : model.otherCurrencyText(pick)
+        model.selectionFiguresMissing ? nil : model.otherCurrencyText(pick)
     }
 
     @ViewBuilder

@@ -849,6 +849,9 @@ extension AppModel {
     }
 
     /// Everyday spending this month (never includes ETF plans / perks).
+    /// The tiles have no figures for the shown selection: it is loading, or its load failed
+    /// (`selectionFlow` may still hold the previous selection's).
+    var selectionFiguresMissing: Bool { isLoadingSelection || page == nil }
     /// Selected account/group and period; falls back to the dashboard month.
     var consumptionThisMonth: Int64 { selectionFlow?.consumption ?? dashboard?.monthly.last?.consumptionCents ?? 0 }
     var investedThisMonth: Int64 { selectionFlow?.invested ?? dashboard?.monthly.last?.investmentCents ?? 0 }
