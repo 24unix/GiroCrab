@@ -2413,16 +2413,32 @@ pub(crate) fn adopt_account(
         let currency = currency.trim().to_uppercase();
         let card = kind == AccountKind::CreditCard;
         // several cards on one login (main and partner card): the number
-        // decides; other kinds have no card number to compare
-        let by_number = if card {
-            unique(
-                rows.iter()
-                    .filter(|(_, number, _, _)| same_card_number(number, account_number))
-                    .map(|(id, _, _, _)| *id),
-            )
-        } else {
-            None
+        // decides – two complete numbers first, a masked one by its last four
+        // second; other kinds have no card number to compare
+        let matching = |exact: bool| -> Vec<i64> {
+            rows.iter()
+                .filter(|(_, number, _, _)| {
+                    same_card_number(number, account_number)
+                        && (!exact
+                            || (full_card_number(number) && full_card_number(account_number)))
+                })
+                .map(|(id, _, _, _)| *id)
+                .collect()
         };
+        let (exact, any) = if card {
+            (matching(true), matching(false))
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let by_number = match (exact.as_slice(), any.as_slice()) {
+            ([id], _) | ([], [id]) => Some(*id),
+            _ => None,
+        };
+        // a number that fits several imported cards: no guess at all, the
+        // fallback below would hand over an unrelated card
+        if by_number.is_none() && !any.is_empty() {
+            return Ok(None);
+        }
         // else the only one of its kind (also a replacement card with a new
         // number), preferring those without an IBAN; widened: the only one in
         // that currency, with or without an IBAN. A card that another card of

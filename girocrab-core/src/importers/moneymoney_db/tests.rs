@@ -1555,6 +1555,58 @@ fn only_cards_are_adopted_by_number() {
 }
 
 #[test]
+fn card_numbers_prefer_complete_matches_and_never_guess_on_a_tie() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    let conn_id = v.list_bank_connections().unwrap()[0].id;
+    let db = v.db().unwrap();
+    // more imported cards next to "Visa-Karte" (4711) on the same login
+    let card = |name: &str, number: &str| -> i64 {
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, currency, kind)
+             SELECT connection_id, group_id, 'moneymoney-db:' || ?1, ?1, ?2, 'EUR', 'credit_card'
+             FROM accounts WHERE name = 'Visa-Karte'",
+            params![name, number],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    };
+    let full = card("Voll", "4000000000001234");
+    card("Maskiert", "**** **** **** 1234");
+    card("A", "XXXX XXXX XXXX 1234");
+    card("C", "XXXX XXXX XXXX 9999");
+    // the Visa card (4711) is fetched too, so C is the only card left to guess
+    let fetched = [
+        "4000000000001234",
+        "5232000000001234",
+        "5232000000008888",
+        "5232000000004711",
+    ];
+    let take = |ext: &str, number: &str| {
+        adopt_account(
+            &db,
+            conn_id,
+            ext,
+            "",
+            number,
+            "EUR",
+            AccountKind::CreditCard,
+            &fetched,
+        )
+        .unwrap()
+    };
+    // the complete number wins over the masked ones ending alike
+    assert_eq!(take("card-full", fetched[0]), Some(full));
+    // two masked cards fit: nothing is taken, not even the only other card
+    assert_eq!(take("card-a", fetched[1]), None);
+}
+
+#[test]
 fn amazon_visa_filed_as_openbank_gets_its_connector_and_is_adopted() {
     // MoneyMoney files the Amazon Visa as "Openbank" (bank code 50034200) and
     // stores an IBAN for the card; an Open Bank current account stays unsupported.
