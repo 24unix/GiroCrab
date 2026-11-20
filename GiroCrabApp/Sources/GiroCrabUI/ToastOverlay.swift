@@ -4,8 +4,9 @@ import SwiftUI
 ///
 /// Every window that shares `model` carries it: on macOS the Settings window and
 /// the sync log lie in front of the main window, so a notice raised there would
-/// otherwise appear behind them. Only one window draws a notice: the one that
-/// was key last (kept while the app is in the background).
+/// otherwise appear behind them. Only one window draws a notice on macOS: the one
+/// that was key last (kept while the app is in the background). On iOS/iPadOS
+/// scenes do not stack as modal utility windows, so every visible scene draws it.
 extension View {
     func toastOverlay() -> some View { modifier(ToastOverlay()) }
 }
@@ -28,15 +29,18 @@ final class ToastHosts {
 
 private struct ToastOverlay: ViewModifier {
     @Environment(AppModel.self) private var model
-    @State private var id = UUID()
     #if os(macOS)
+    @State private var id = UUID()
     @Environment(\.controlActiveState) private var activeState
+    private var isHost: Bool { ToastHosts.shared.order.last == id }
+    #else
+    private var isHost: Bool { true }
     #endif
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .bottom) {
-                if ToastHosts.shared.order.last == id, let toast = model.toast {
+                if isHost, let toast = model.toast {
                     Label(toast, systemImage: "checkmark.circle.fill")
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         .background(.regularMaterial, in: Capsule())
@@ -53,9 +57,9 @@ private struct ToastOverlay: ViewModifier {
                 }
             }
             .animation(Motion.animation(.spring(duration: 0.3)), value: model.toast)
+            #if os(macOS)
             .onAppear { ToastHosts.shared.add(id) }
             .onDisappear { ToastHosts.shared.remove(id) }
-            #if os(macOS)
             .onChange(of: activeState, initial: true) { _, state in
                 if state == .key { ToastHosts.shared.bringToFront(id) }
             }
