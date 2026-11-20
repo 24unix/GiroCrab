@@ -766,7 +766,7 @@
 50020200	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
 50030100	HKB-Bank GmbH	https://fints1.atruvia.de/cgi-bin/hbciservlet
 50031000	Triodos Bank Deutschland	https://fints1.atruvia.de/cgi-bin/hbciservlet
-50050201	1822direkt	https://banking-hs5.s-fints-pt-hs.de/fints30
+50050201	1822direkt	https://banking-hs6.s-fints-pt-hs.de/fints30
 50050222	1822direkt (PIN/TAN)	https://fints.1822direkt.com/fints/hbci
 50060474	GENO Broker GmbH	https://fints1.atruvia.de/cgi-bin/hbciservlet
 50061741	Raiffeisenbank Oberursel	https://fints1.atruvia.de/cgi-bin/hbciservlet

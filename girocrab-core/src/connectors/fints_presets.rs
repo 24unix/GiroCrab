@@ -35,7 +35,7 @@ pub fn fints_presets() -> Vec<FinTsPreset> {
         p("volksbank", "Volks- und Raiffeisenbanken (Atruvia)", "", ATRUVIA,
           "BLZ Ihrer Volksbank/Raiffeisenbank eintragen."),
         p("vb-kassel", "Volksbank Kassel Göttingen", "52090000", ATRUVIA, ""),
-        p("1822direkt", "1822direkt", "50050201", "https://banking-hs5.s-fints-pt-hs.de/fints30", ""),
+        p("1822direkt", "1822direkt", "50050201", "https://banking-hs6.s-fints-pt-hs.de/fints30", ""),
         p("dkb", "DKB", "12030000", "https://fints.dkb.de/fints",
           "URL ggf. laut DK-Institutsliste prüfen."),
         p("ing", "ING", "50010517", "https://fints.ing.de/fints/", ""),
@@ -167,6 +167,7 @@ mod tests {
             "apobank",
             "ethikbank",
             "dkb",
+            "1822direkt",
         ] {
             let pr = fints_presets().into_iter().find(|p| p.id == id).unwrap();
             let d = crate::connectors::fints_directory::lookup(&pr.blz).unwrap();
