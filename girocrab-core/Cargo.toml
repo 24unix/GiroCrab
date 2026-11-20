@@ -60,4 +60,6 @@ libc = "0.2"
 jiff = { version = "1.0.1", features = ["tzdb-bundle-always"] }
 
 [dev-dependencies]
+# Independent XML parser for the payment invariant tests (#947); tests only.
+roxmltree = "0.20"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
