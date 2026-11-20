@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::syntax::Segment;
-use super::{debit, sepa, standing_order, transfer, BankReply, FinTsConnector, UpdAccount};
+use super::{BankReply, FinTsConnector, UpdAccount, debit, sepa, standing_order, transfer};
 
 /// Versions of each business transaction this client implements.
 const IMPLEMENTED: &[(&str, &[u32])] = &[

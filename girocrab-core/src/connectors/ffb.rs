@@ -35,11 +35,11 @@ use regex::Regex;
 use zeroize::Zeroize;
 
 use super::uberspace::{
-    attr, attrs, element_by_id, parse_date, table_cells, text, FORM, INPUT, LINK,
+    FORM, INPUT, LINK, attr, attrs, element_by_id, parse_date, table_cells, text,
 };
 use super::{
-    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, Documents,
-    FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
+    BankConnector, ChallengeResponse, ConnectContext, Documents, FetchResult, KnownDocuments,
+    Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction, http_client_same_host,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
@@ -1260,9 +1260,11 @@ mod tests {
         let h = parse_holdings(&page, true).unwrap();
         assert_eq!(h[0].0, "VL-4-A0TES1");
         assert_eq!(h[0].1.name, "Beispiel Deutschland Aktien (VL)");
-        assert!(parse_holdings("<div>Keine Bestände</div>", false)
-            .unwrap()
-            .is_empty());
+        assert!(
+            parse_holdings("<div>Keine Bestände</div>", false)
+                .unwrap()
+                .is_empty()
+        );
         let broken = page.replace("3,333", "n/a");
         assert!(parse_holdings(&broken, true).is_err());
     }
@@ -1441,17 +1443,21 @@ mod tests {
         .unwrap();
         assert_eq!(
             next.as_deref(),
-            Some("/api/kundenansicht/transaktion/query/;jsessionid=X?transactionType=&d-49751-p=2&datumVon=01.01.2026")
+            Some(
+                "/api/kundenansicht/transaktion/query/;jsessionid=X?transactionType=&d-49751-p=2&datumVon=01.01.2026"
+            )
         );
-        assert!(parse_transactions(
-            "<p>Es wurden keine Transaktionen gefunden</p>",
-            "d",
-            "2000-01-01",
-            &HashMap::new()
-        )
-        .unwrap()
-        .0
-        .is_empty());
+        assert!(
+            parse_transactions(
+                "<p>Es wurden keine Transaktionen gefunden</p>",
+                "d",
+                "2000-01-01",
+                &HashMap::new()
+            )
+            .unwrap()
+            .0
+            .is_empty()
+        );
     }
 
     const POSTFACH: &str = r#"<div class='tabellenkopf'>Ergebnis Ihrer Suche: 3 Dokumente<br/>
@@ -1508,7 +1514,10 @@ mod tests {
             session: "S1".into(),
         };
         assert_eq!(
-            c.url("/api/kundenansicht/transaktion/query/", &[("datumVon", "01.01.2026"), ("product", "")]),
+            c.url(
+                "/api/kundenansicht/transaktion/query/",
+                &[("datumVon", "01.01.2026"), ("product", "")]
+            ),
             "https://www.ffb.de/api/kundenansicht/transaktion/query/;jsessionid=S1?datumVon=01.01.2026&product="
         );
     }

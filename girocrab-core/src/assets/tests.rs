@@ -339,9 +339,10 @@ fn validation_and_editing() {
     let it = &v.list_asset_items(acc).unwrap()[0];
     assert_eq!(it.setup.name, "Barren 100 g");
     // moving the purchase past a later change would drop it: refused
-    assert!(v
-        .save_asset_item(acc, Some(id), gold("Barren 100 g", &days_ago(7), 4.0, None))
-        .is_err());
+    assert!(
+        v.save_asset_item(acc, Some(id), gold("Barren 100 g", &days_ago(7), 4.0, None))
+            .is_err()
+    );
     assert_eq!(
         it.quantities,
         vec![
@@ -645,9 +646,10 @@ fn selling_is_one_step_and_never_on_the_purchase_date() {
         )
         .unwrap();
     // on the purchase date: refused, and nothing changed
-    assert!(v
-        .sell_asset(car, days_ago(100), 1.0, Some(5_000_00))
-        .is_err());
+    assert!(
+        v.sell_asset(car, days_ago(100), 1.0, Some(5_000_00))
+            .is_err()
+    );
     let item = &v.list_asset_items(acc).unwrap()[0];
     assert_eq!(item.values.len(), 1);
     assert_eq!(item.values[0].value_cents, 20_000_00);
@@ -666,9 +668,10 @@ fn selling_is_one_step_and_never_on_the_purchase_date() {
     let coins = v
         .save_asset_item(acc, None, gold("Münzen", &days_ago(50), 5.0, None))
         .unwrap();
-    assert!(v
-        .sell_asset(coins, days_ago(5), 2.0, Some(1_000_00))
-        .is_err());
+    assert!(
+        v.sell_asset(coins, days_ago(5), 2.0, Some(1_000_00))
+            .is_err()
+    );
     v.sell_asset(coins, days_ago(5), 2.0, None).unwrap();
     let coins = v
         .list_asset_items(acc)
@@ -727,10 +730,11 @@ fn lookups_of_one_price_and_one_item() {
         v.latest_asset_price("XAU".into()).unwrap().unwrap().date,
         days_ago(3)
     );
-    assert!(v
-        .asset_price_on("XAU".into(), days_ago(20))
-        .unwrap()
-        .is_none());
+    assert!(
+        v.asset_price_on("XAU".into(), days_ago(20))
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         v.asset_unit_value_on(bar, days_ago(1)).unwrap(),
         Some(2_500_00)

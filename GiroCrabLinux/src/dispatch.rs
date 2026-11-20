@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use girocrab_core::Vault;
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 type R = Result<Value, String>;
 
@@ -402,7 +402,7 @@ pub fn call_json(method: &str, args: &str) -> String {
         match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => {
-                return json!({ "err": format!("bad arguments for {method}: {e}") }).to_string()
+                return json!({ "err": format!("bad arguments for {method}: {e}") }).to_string();
             }
         }
     };
@@ -1144,7 +1144,7 @@ fn print_pdf(a: &Value) -> R {
 
 /// One step of a bank dialog; a finished or failed dialog leaves the registry.
 fn session_step(method: &str, a: &Value) -> R {
-    use crate::sessions::{Session, RUNTIME};
+    use crate::sessions::{RUNTIME, Session};
     let id: u64 = arg(a, "session")?;
     let s = crate::sessions::get(id)?;
     let code: Option<String> = arg(a, "code")?;
@@ -1812,10 +1812,12 @@ mod tests {
         };
         let p = logo_payload(&png(64));
         assert_eq!(p["pixels"], json!(64));
-        assert!(p["url"]
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/png;base64,"));
+        assert!(
+            p["url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
         // ICO: a 16 px bitmap and an embedded 48 px PNG → the PNG alone
         let bmp = vec![0u8; 40];
         let big = png(48);
@@ -1943,9 +1945,11 @@ mod tests {
         let p = call_ok("suggested_backup_password", json!({}));
         let p = p.as_str().unwrap();
         assert_eq!(p.len(), 20);
-        assert!(p.split('-').all(|g| g.len() == 6
-            && g.bytes()
-                .all(|b| b"abcdefghijkmnpqrstuvwxyz23456789".contains(&b))));
+        assert!(p.split('-').all(|g| {
+            g.len() == 6
+                && g.bytes()
+                    .all(|b| b"abcdefghijkmnpqrstuvwxyz23456789".contains(&b))
+        }));
         assert_ne!(
             p,
             call_ok("suggested_backup_password", json!({}))
@@ -2154,11 +2158,13 @@ mod tests {
         assert_eq!(preview["status"]["remaining_cents"], json!(500000));
         let id = call("create_manual_loan", json!({ "setup": setup }));
         let loans = call("list_manual_loans", json!({}));
-        assert!(loans
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|l| l["account_id"] == id));
+        assert!(
+            loans
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l["account_id"] == id)
+        );
         call(
             "update_manual_loan",
             json!({ "account_id": id, "setup": setup }),
@@ -2326,12 +2332,14 @@ mod tests {
             json!({ "connection_id": second }),
         );
         let rows = choices.as_array().unwrap();
-        assert!(rows
-            .iter()
-            .any(|c| c["pending"] == true && c["enabled"] == false));
-        assert!(rows
-            .iter()
-            .all(|c| c["account_ref"].is_string() && c["existing_connection"].is_string()));
+        assert!(
+            rows.iter()
+                .any(|c| c["pending"] == true && c["enabled"] == false)
+        );
+        assert!(
+            rows.iter()
+                .all(|c| c["account_ref"].is_string() && c["existing_connection"].is_string())
+        );
         let keep: Vec<Value> = rows
             .iter()
             .filter(|c| c["enabled"] == true)
@@ -2350,16 +2358,20 @@ mod tests {
             "connection_account_choices",
             json!({ "connection_id": second }),
         );
-        assert!(after
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|c| c["pending"] == false));
-        assert!(set_connection_account_choices(
-            &v,
-            &json!({ "connection_id": second, "enabled_refs": ["unknown"] }),
-        )
-        .is_err());
+        assert!(
+            after
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|c| c["pending"] == false)
+        );
+        assert!(
+            set_connection_account_choices(
+                &v,
+                &json!({ "connection_id": second, "enabled_refs": ["unknown"] }),
+            )
+            .is_err()
+        );
         let _ = std::fs::remove_file(path);
     }
 
@@ -2419,10 +2431,12 @@ mod tests {
         let presets = call_ok("asset_weight_presets", json!({}));
         assert!(presets[0]["label"].is_string() && presets[0]["grams"].is_f64());
         let account = call("create_tangible_account", json!({ "name": "" }));
-        assert!(call("list_tangible_account_ids", json!({}))
-            .as_array()
-            .unwrap()
-            .contains(&account));
+        assert!(
+            call("list_tangible_account_ids", json!({}))
+                .as_array()
+                .unwrap()
+                .contains(&account)
+        );
         let setup = json!({ "name": "Bild", "price_source": "manual", "weight_grams": 0.0,
             "purity_permille": 1000.0, "interpolation": "Linear", "purchase_date": "2024-01-10",
             "quantity": 2.0, "purchase_price_cents": 200000, "start_value_cents": 100000,
@@ -2473,10 +2487,12 @@ mod tests {
             json!({ "item_id": item, "date": "2025-07-01" }),
         );
         call("delete_asset_item", json!({ "item_id": item }));
-        assert!(call("list_asset_items", json!({ "account_id": account }))
-            .as_array()
-            .unwrap()
-            .is_empty());
+        assert!(
+            call("list_asset_items", json!({ "account_id": account }))
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
         let _ = std::fs::remove_file(path);
     }
 
@@ -2753,12 +2769,14 @@ mod tests {
                     "direction": "All" }),
         );
         let cat = cats.as_array().unwrap()[0]["id"].clone();
-        assert!(call(
-            "category_history_by_unit",
-            json!({ "category_id": cat, "account_ids": [], "date_from": null, "date_to": null,
+        assert!(
+            call(
+                "category_history_by_unit",
+                json!({ "category_id": cat, "account_ids": [], "date_from": null, "date_to": null,
                     "key_length": 7 }),
-        )
-        .is_array());
+            )
+            .is_array()
+        );
         // Geplant
         let range = json!({ "from": null, "to": null, "account_ids": [] });
         assert!(call("list_planned_payments", range.clone()).is_array());

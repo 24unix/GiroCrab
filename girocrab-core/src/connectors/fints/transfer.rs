@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::bpd::is_segment_code;
 use super::syntax::{Segment, SegmentBuilder};
-use super::{sepa, BankReply, FinTsConnector, PreparedOrder, SepaAccount, Vop};
+use super::{BankReply, FinTsConnector, PreparedOrder, SepaAccount, Vop, sepa};
 use crate::connectors::{
     BatchTransferJob, ConnectContext, PayeeCheck, PayeeMatch, Phase, TransferJob, TransferResult,
 };

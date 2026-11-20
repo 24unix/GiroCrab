@@ -5,7 +5,7 @@ use crate::{
     models::ConnectorKind,
     vault::Vault,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
 

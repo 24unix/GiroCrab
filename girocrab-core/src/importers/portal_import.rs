@@ -15,10 +15,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde_json::Value;
 
-use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
+use crate::connectors::{FetchResult, RemoteAccount, RemoteTransaction, SyncSummary, store_fetch};
 use crate::dates::{day_month_on_or_before, de_dates, iso, month_from_name};
 use crate::error::CoreError;
 use crate::i18n::{tr, trf};
@@ -2991,10 +2991,11 @@ mod card_tests {
             .unwrap();
         assert_eq!(rows(&v, &new_ref), vec!["id:B1", "id:B2"]);
         assert_eq!(rows(&v, &base), vec!["id:A1", "id:A2", "id:A3"]);
-        assert!(v
-            .pending_account_selection_connections()
-            .unwrap()
-            .is_empty());
+        assert!(
+            v.pending_account_selection_connections()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -3082,10 +3083,11 @@ mod card_tests {
         v.clone()
             .import_portal_capture_cards(conn, bodies, keys, cards, "[]".into())
             .unwrap();
-        assert!(v
-            .pending_account_selection_connections()
-            .unwrap()
-            .is_empty());
+        assert!(
+            v.pending_account_selection_connections()
+                .unwrap()
+                .is_empty()
+        );
         let choices = v.connection_account_choices(conn).unwrap();
         assert_eq!(
             choices

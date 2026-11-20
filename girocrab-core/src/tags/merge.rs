@@ -11,7 +11,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use super::{fold, normalize_links};
 use crate::error::CoreResult;

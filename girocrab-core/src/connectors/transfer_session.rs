@@ -142,11 +142,11 @@ impl TransferSession {
                     return Err(e);
                 }
                 Ok(Phase::Challenge(c)) => {
-                    return Ok(TransferStep::NeedsChallenge { challenge: c })
+                    return Ok(TransferStep::NeedsChallenge { challenge: c });
                 }
                 Ok(Phase::Pending(c)) => return Ok(TransferStep::StillWaiting { challenge: c }),
                 Ok(Phase::ConfirmPayee(check)) => {
-                    return Ok(TransferStep::NeedsPayeeConfirmation { check })
+                    return Ok(TransferStep::NeedsPayeeConfirmation { check });
                 }
                 Ok(Phase::Ready) if st.stage == Stage::LoggingIn => {
                     st.stage = Stage::Submitted;
@@ -299,12 +299,12 @@ impl TransferSession {
             Stage::Executed => {
                 return CancelOutcome::CancellationFailed {
                     reason: tr("Die Überweisung wurde bereits ausgeführt.").into(),
-                }
+                };
             }
             Stage::OutcomeUnknown if !st.connector.has_open_order() => {
                 return CancelOutcome::CancellationUnknown {
                     reason: tr("Ob die Überweisung ausgeführt wurde, ist unklar.").into(),
-                }
+                };
             }
             // A closed session only needs another round if the bank may still
             // hold an open order from an earlier, unconfirmed cancellation.

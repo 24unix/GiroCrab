@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use zeroize::Zeroizing;
 
 use super::Vault;

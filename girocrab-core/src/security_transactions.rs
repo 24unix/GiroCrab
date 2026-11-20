@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::dates::now_ms;
 use crate::error::CoreResult;
@@ -351,8 +351,8 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
 mod tests {
     use super::*;
     use crate::connectors::{
-        store_fetch, FetchResult, RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
-        RemoteTransaction,
+        FetchResult, RemoteAccount, RemoteHolding, RemoteSecurityTransaction, RemoteTransaction,
+        store_fetch,
     };
     use crate::models::{AccountKind, BookingFilter, BookingScope, ConnectorKind, Holding};
     use crate::vault::Vault;

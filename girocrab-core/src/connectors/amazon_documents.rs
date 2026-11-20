@@ -292,9 +292,11 @@ mod tests {
     #[test]
     fn foreign_hosts_http_and_unrelated_links_are_dropped() {
         let links = extract_links(&page(), BASE, CODE);
-        assert!(links
-            .iter()
-            .all(|l| l.url.starts_with("https://www.amazon.de/")));
+        assert!(
+            links
+                .iter()
+                .all(|l| l.url.starts_with("https://www.amazon.de/"))
+        );
         assert!(
             extract_links("<a href='https://notamazon.de/x'>Rechnung</a>", BASE, CODE).is_empty()
         );

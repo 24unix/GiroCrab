@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use girocrab_core::export::{
-    export_csv, Camt053Request, CamtVersion, ExportCsvBalanceLine, ExportCsvColumns,
+    Camt053Request, CamtVersion, ExportCsvBalanceLine, ExportCsvColumns, export_csv,
 };
 use girocrab_core::importers::moneymoney_db::{
     MoneyMoneyDbAccountChoice, MoneyMoneyDbImportOptions, MoneyMoneyDbImportProgress,
@@ -22,7 +22,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::announcements::{self, Announcement};
 use crate::settings_import::{self as view, Line};
-use crate::{german_date, money, privacy_on, MainWindow, SettingsImportState, SiRow};
+use crate::{MainWindow, SettingsImportState, SiRow, german_date, money, privacy_on};
 
 type VaultSlot = Arc<Mutex<Option<Arc<Vault>>>>;
 

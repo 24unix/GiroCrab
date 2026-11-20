@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::error::CoreResult;
 

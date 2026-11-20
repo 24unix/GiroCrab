@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rusqlite::Connection;
 
 use crate::error::CoreError;
-use crate::vault::{Vault, SCHEMA_VERSION};
+use crate::vault::{SCHEMA_VERSION, Vault};
 
 const PASSWORD: &str = "Krabbe am Strand 7";
 
@@ -113,7 +113,7 @@ fn set_user_version(db: &Path, password: &str, version: i64) {
 /// when its version number is above ours.
 #[test]
 fn other_apps_database_is_refused_with_its_own_message() {
-    use crate::importers::moneymoney_db::tests::{fake_db, PW};
+    use crate::importers::moneymoney_db::tests::{PW, fake_db};
     let (dest, _) = filled(2);
     let before = bookings(&dest);
     let db = fake_db();
@@ -172,10 +172,11 @@ fn pre_fints_reg_backup_is_made_once_and_never_overwritten() {
     // new vault: nothing to preserve, only the marker is set
     let v = Vault::open(path(&p), key.clone()).unwrap();
     assert!(!Path::new(&bak).exists());
-    assert!(v
-        .get_setting("pre_0_8_0_fints_backup_done".into())
-        .unwrap()
-        .is_some());
+    assert!(
+        v.get_setting("pre_0_8_0_fints_backup_done".into())
+            .unwrap()
+            .is_some()
+    );
 
     // an existing vault from before the update: has data, no marker
     v.seed_demo_data().unwrap();
@@ -187,10 +188,11 @@ fn pre_fints_reg_backup_is_made_once_and_never_overwritten() {
     let v = Vault::open(path(&p), key.clone()).unwrap();
     assert!(Path::new(&bak).exists(), "backup written on first open");
     assert!(!Path::new(&format!("{bak}.tmp")).exists());
-    assert!(v
-        .get_setting("pre_0_8_0_fints_backup_done".into())
-        .unwrap()
-        .is_some());
+    assert!(
+        v.get_setting("pre_0_8_0_fints_backup_done".into())
+            .unwrap()
+            .is_some()
+    );
     let copy = Vault::open(bak.clone(), key.clone()).unwrap();
     assert_eq!(bookings(&copy), before);
     drop(copy);
