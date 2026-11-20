@@ -1699,3 +1699,175 @@ fn moved_notes_combine_whole_and_trimmed() {
     assert_eq!(combine(&both, "A"), both);
     assert_eq!(combine("", "X"), "X");
 }
+
+#[test]
+fn stamp_zero_notes_fill_only_missing_notes() {
+    let dir = temp_dir("notes-stamp0-fill");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    let ib = seed(&b);
+    // Existing stamp-0 note "A" must not be replaced by lexicographically larger stamp-0 note "Z".
+    a.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET note = 'A', note_ms = 0 WHERE id = ?1",
+            [ia[0]],
+        )
+        .unwrap();
+    // Timestamped clear on Depot must not be refilled by a stamp-0 note.
+    a.set_account_note(ia[1], "Temp".into()).unwrap();
+    a.set_account_note(ia[1], String::new()).unwrap();
+    {
+        let db = b.db().unwrap();
+        db.execute_batch(
+            "ALTER TABLE accounts DROP COLUMN note;
+             ALTER TABLE accounts DROP COLUMN note_ms;
+             PRAGMA user_version = 31;",
+        )
+        .unwrap();
+        for (id, text) in [(ib[0], "Z"), (ib[1], "Alt"), (ib[2], "Gefuellt")] {
+            db.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, ?2)",
+                params![format!("account.note.{id}"), text],
+            )
+            .unwrap();
+        }
+    }
+    b.checkpoint().unwrap();
+    let peer = dir.join("peer.db");
+    std::fs::copy(b.file_path(), &peer).unwrap();
+    a.merge_other_vault(peer.to_string_lossy().into(), key)
+        .unwrap();
+    assert_eq!(note(&a, "Giro"), "A");
+    assert_eq!(note(&a, "Depot"), "");
+    assert_eq!(note(&a, "Visa"), "Gefuellt");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn moved_notes_across_three_devices_are_order_independent_without_duplicates() {
+    let dir = temp_dir("notes-three-devices");
+    let key = vec![7u8; 32];
+    // Order 1: A merges C, then B
+    let a1 = open(&dir, "a1.db");
+    let b1 = open(&dir, "b1.db");
+    let c1 = open(&dir, "c1.db");
+    seed(&a1);
+    seed(&b1);
+    seed(&c1);
+    // Order 2: A merges B, then C
+    let a2 = open(&dir, "a2.db");
+    let b2 = open(&dir, "b2.db");
+    let c2 = open(&dir, "c2.db");
+    seed(&a2);
+    seed(&b2);
+    seed(&c2);
+    for (v, giro_note, visa_note) in [
+        (&a1, "A", "Zeile 2\n\nZeile 1"),
+        (&b1, "B", "Notiz B"),
+        (&c1, "C", "Zeile 1"),
+        (&a2, "A", "Zeile 2\n\nZeile 1"),
+        (&b2, "B", "Notiz B"),
+        (&c2, "C", "Zeile 1"),
+    ] {
+        let db = v.db().unwrap();
+        db.execute(
+            "UPDATE accounts SET note = ?1, note_ms = ?2 WHERE name = 'Giro'",
+            params![giro_note, super::MOVED_NOTE_MS],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE accounts SET note = ?1, note_ms = ?2 WHERE name = 'Visa'",
+            params![visa_note, super::MOVED_NOTE_MS],
+        )
+        .unwrap();
+    }
+    a1.merge_other_vault(c1.file_path(), key.clone()).unwrap();
+    a1.merge_other_vault(b1.file_path(), key.clone()).unwrap();
+
+    a2.merge_other_vault(b2.file_path(), key.clone()).unwrap();
+    a2.merge_other_vault(c2.file_path(), key.clone()).unwrap();
+
+    assert_eq!(note(&a1, "Giro"), "A\nB\nC");
+    assert_eq!(note(&a2, "Giro"), "A\nB\nC");
+    assert_eq!(note(&a1, "Visa"), "Notiz B\nZeile 2\n\nZeile 1");
+    assert_eq!(note(&a2, "Visa"), "Notiz B\nZeile 2\n\nZeile 1");
+
+    // Merging the two results changes nothing and repeats no text.
+    let st = a1.merge_other_vault(a2.file_path(), key).unwrap();
+    assert_eq!(st.groups_updated, 0);
+    assert_eq!(note(&a1, "Giro"), "A\nB\nC");
+    assert_eq!(note(&a1, "Visa"), "Notiz B\nZeile 2\n\nZeile 1");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn moved_note_over_stamp_zero_preserves_constituents_in_three_way_merge() {
+    let dir = temp_dir("notes-stamp0-moved-constituents");
+    let key = vec![7u8; 32];
+
+    // Order 1: A (stamp-0 empty) merges B (moved with 2 constituents), then C (moved with 1 constituent)
+    let a1 = open(&dir, "a1.db");
+    let b1 = open(&dir, "b1.db");
+    let c1 = open(&dir, "c1.db");
+    seed(&a1);
+    seed(&b1);
+    seed(&c1);
+
+    // Order 2: A (stamp-0 empty) merges C first, then B
+    let a2 = open(&dir, "a2.db");
+    let b2 = open(&dir, "b2.db");
+    let c2 = open(&dir, "c2.db");
+    seed(&a2);
+    seed(&b2);
+    seed(&c2);
+
+    for a in [&a1, &a2] {
+        let db = a.db().unwrap();
+        db.execute(
+            "UPDATE accounts SET note = '', note_ms = 0 WHERE name = 'Giro'",
+            [],
+        )
+        .unwrap();
+    }
+    for b in [&b1, &b2] {
+        let db = b.db().unwrap();
+        let id: i64 = db
+            .query_row("SELECT id FROM accounts WHERE name = 'Giro'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        db.execute(
+            "UPDATE accounts SET note = ?1, note_ms = ?2 WHERE id = ?3",
+            params!["Alpha\nBeta — Details", super::MOVED_NOTE_MS, id],
+        )
+        .unwrap();
+        super::write_moved_parts(
+            &db,
+            id,
+            &["Alpha".to_string(), "Beta — Details".to_string()],
+        )
+        .unwrap();
+    }
+    for c in [&c1, &c2] {
+        let db = c.db().unwrap();
+        db.execute(
+            "UPDATE accounts SET note = ?1, note_ms = ?2 WHERE name = 'Giro'",
+            params!["Beta", super::MOVED_NOTE_MS],
+        )
+        .unwrap();
+    }
+
+    a1.merge_other_vault(b1.file_path(), key.clone()).unwrap();
+    a1.merge_other_vault(c1.file_path(), key.clone()).unwrap();
+
+    a2.merge_other_vault(c2.file_path(), key.clone()).unwrap();
+    a2.merge_other_vault(b2.file_path(), key).unwrap();
+
+    // Because "Beta" is contained in constituent "Beta — Details", both orders must yield the exact same combined note.
+    assert_eq!(note(&a1, "Giro"), "Alpha\nBeta — Details");
+    assert_eq!(note(&a2, "Giro"), "Alpha\nBeta — Details");
+    let _ = std::fs::remove_dir_all(dir);
+}

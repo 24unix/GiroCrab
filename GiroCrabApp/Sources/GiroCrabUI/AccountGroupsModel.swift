@@ -489,10 +489,10 @@ extension AppModel {
         let id = original.id
         let kindChanged = kind != original.kind && !isOffline(id)
         do {
-            if name != original.name { try vault.renameAccount(accountId: id, name: name) }
-            if owner != original.owner { try vault.setAccountOwner(accountId: id, owner: owner) }
+            if name != original.name.trimmingCharacters(in: .whitespaces) { try vault.renameAccount(accountId: id, name: name) }
+            if owner != original.owner.trimmingCharacters(in: .whitespaces) { try vault.setAccountOwner(accountId: id, owner: owner) }
             if kindChanged { try vault.setAccountKind(accountId: id, kind: kind) }
-            if note != original.note { try vault.setAccountNote(accountId: id, note: note) }
+            if note != original.note.trimmingCharacters(in: .whitespacesAndNewlines) { try vault.setAccountNote(accountId: id, note: note) }
         } catch {
             errorMessage = describe(error)
         }

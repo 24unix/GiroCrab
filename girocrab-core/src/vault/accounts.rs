@@ -819,6 +819,12 @@ impl Vault {
              WHERE id = ?2 AND note IS NOT ?1",
             params![note.trim(), account_id, crate::dates::now_ms()],
         )?;
+        if n > 0 {
+            db.execute(
+                "DELETE FROM settings WHERE key = ?1",
+                [crate::user_groups::moved_notes_key(account_id)],
+            )?;
+        }
         let exists = n > 0
             || db.query_row(
                 "SELECT EXISTS (SELECT 1 FROM accounts WHERE id = ?1)",

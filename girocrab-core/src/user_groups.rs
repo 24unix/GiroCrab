@@ -341,11 +341,66 @@ pub(crate) const MOVED_NOTE_MS: i64 = 1;
 /// merge: that device keeps editing its notes without a stamp, so they get
 /// stamp 0 (never edited) and only fill notes this device lacks. Once it
 /// updates, step 32 moves them there and they count like moved notes.
+pub(crate) fn moved_notes_key(account_id: i64) -> String {
+    format!("account.moved_notes.{account_id}")
+}
+
 pub(crate) fn mark_old_build_notes(conn: &Connection) -> CoreResult<()> {
     conn.execute(
         "UPDATE accounts SET note_ms = 0 WHERE note_ms = ?1",
         [MOVED_NOTE_MS],
     )?;
+    conn.execute(
+        "DELETE FROM settings WHERE key LIKE 'account.moved_notes.%'",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Where an incoming note in `merge_note_from` came from, so constituent moved
+/// notes can be read from the matching vault's `settings`.
+pub(crate) enum NoteOrigin<'a> {
+    None,
+    Schema(&'a str, i64),
+}
+
+fn read_moved_parts(conn: &Connection, schema: &str, id: i64, fallback: &str) -> Vec<String> {
+    let sql = format!("SELECT value FROM {schema}.settings WHERE key = ?1");
+    if let Ok(Some(raw)) = conn
+        .query_row(&sql, [moved_notes_key(id)], |r| r.get::<_, String>(0))
+        .optional()
+    {
+        if let Ok(parts) = serde_json::from_str::<Vec<String>>(&raw) {
+            let clean: Vec<String> = parts
+                .into_iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !clean.is_empty() {
+                return clean;
+            }
+        }
+    }
+    let trimmed = fallback.trim();
+    if trimmed.is_empty() {
+        Vec::new()
+    } else {
+        vec![trimmed.to_string()]
+    }
+}
+
+fn write_moved_parts(conn: &Connection, id: i64, parts: &[String]) -> CoreResult<()> {
+    let key = moved_notes_key(id);
+    if parts.len() > 1 {
+        let json = serde_json::to_string(parts).unwrap_or_default();
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, json],
+        )?;
+    } else {
+        conn.execute("DELETE FROM settings WHERE key = ?1", [key])?;
+    }
     Ok(())
 }
 
@@ -359,24 +414,78 @@ fn account_note(conn: &Connection, id: i64) -> CoreResult<(String, i64)> {
 }
 
 /// Merges `(text, ms)` into the note of account `id` like the other account
-/// fields (`take_newer`); two moved notes keep both texts. `fresh` takes it
-/// unconditionally. Returns the rows changed.
+/// fields (`take_newer`); moved notes keep every constituent text in a
+/// merge-order-independent order, and stamp-0 notes from old builds only fill
+/// genuinely missing notes. `fresh` takes it unconditionally.
+#[allow(dead_code)]
 pub(crate) fn merge_note(
     conn: &Connection,
     id: i64,
     (text, ms): (String, i64),
     fresh: bool,
 ) -> CoreResult<u32> {
+    merge_note_from(conn, id, (text, ms), fresh, NoteOrigin::None)
+}
+
+pub(crate) fn merge_note_from(
+    conn: &Connection,
+    id: i64,
+    (text, ms): (String, i64),
+    fresh: bool,
+    origin: NoteOrigin<'_>,
+) -> CoreResult<u32> {
     let (mine, mine_ms) = account_note(conn, id)?;
+    let mut combined_parts: Option<Vec<String>> = None;
     let (note, note_ms) = if fresh {
+        if ms == MOVED_NOTE_MS {
+            if let NoteOrigin::Schema(schema, src_id) = origin {
+                let parts = read_moved_parts(conn, schema, src_id, &text);
+                if parts.len() > 1 {
+                    combined_parts = Some(parts);
+                }
+            }
+        }
         (text, ms)
+    } else if ms == 0 {
+        if mine.is_empty() && mine_ms == 0 {
+            (text, 0)
+        } else {
+            (mine.clone(), mine_ms)
+        }
     } else if ms == MOVED_NOTE_MS && mine_ms == MOVED_NOTE_MS {
-        (combine_moved_notes(&mine, &text), mine_ms)
+        let mut parts = read_moved_parts(conn, "main", id, &mine);
+        match origin {
+            NoteOrigin::Schema(schema, src_id) => {
+                parts.extend(read_moved_parts(conn, schema, src_id, &text));
+            }
+            NoteOrigin::None => {
+                let t = text.trim();
+                if !t.is_empty() {
+                    parts.push(t.to_string());
+                }
+            }
+        }
+        let (joined, norm) = combine_moved_parts(parts.iter().map(String::as_str));
+        combined_parts = Some(norm);
+        (joined, MOVED_NOTE_MS)
     } else {
         let (mut note, mut note_ms) = (mine.clone(), mine_ms);
-        crate::sync_merge::take_newer(&mut note, &mut note_ms, text, ms);
+        crate::sync_merge::take_newer(&mut note, &mut note_ms, text.clone(), ms);
+        if ms == MOVED_NOTE_MS && note_ms == MOVED_NOTE_MS {
+            if let NoteOrigin::Schema(schema, src_id) = origin {
+                let parts = read_moved_parts(conn, schema, src_id, &text);
+                if parts.len() > 1 {
+                    combined_parts = Some(parts);
+                }
+            }
+        }
         (note, note_ms)
     };
+    if note_ms != MOVED_NOTE_MS {
+        conn.execute("DELETE FROM settings WHERE key = ?1", [moved_notes_key(id)])?;
+    } else if let Some(ref parts) = combined_parts {
+        write_moved_parts(conn, id, parts)?;
+    }
     if note == mine && note_ms == mine_ms {
         return Ok(0);
     }
@@ -389,22 +498,43 @@ pub(crate) fn merge_note(
 /// The note of account `from` merged into account `to` (a folded twin's note
 /// goes to its bank account).
 pub(crate) fn pass_note_on(conn: &Connection, from: i64, to: i64) -> CoreResult<()> {
-    merge_note(conn, to, account_note(conn, from)?, false)?;
+    merge_note_from(
+        conn,
+        to,
+        account_note(conn, from)?,
+        false,
+        NoteOrigin::Schema("main", from),
+    )?;
     Ok(())
 }
 
-/// Both texts, whole and trimmed like a saved note: the one that holds the
-/// other, else the smaller, a line break and the larger. The same on both
-/// devices, and merging the result again changes nothing.
+/// Combines constituent moved notes whole and trimmed: drops any note already
+/// contained in another constituent, sorts the remaining whole notes, and joins
+/// them with a line break. Associative, commutative, and idempotent.
+fn combine_moved_parts<'a>(raw: impl IntoIterator<Item = &'a str>) -> (String, Vec<String>) {
+    let mut unique: Vec<String> = raw
+        .into_iter()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    unique.sort();
+    unique.dedup();
+    let kept: Vec<String> = unique
+        .iter()
+        .filter(|p| {
+            !unique
+                .iter()
+                .any(|q| q.as_str() != p.as_str() && q.contains(p.as_str()))
+        })
+        .cloned()
+        .collect();
+    (kept.join("\n"), kept)
+}
+
+#[cfg(test)]
 fn combine_moved_notes(a: &str, b: &str) -> String {
-    let (a, b) = (a.trim(), b.trim());
-    if a.contains(b) {
-        a.to_string()
-    } else if b.contains(a) {
-        b.to_string()
-    } else {
-        format!("{}\n{}", a.min(b), a.max(b))
-    }
+    combine_moved_parts([a, b]).0
 }
 
 /// Merges user groups, account placements and account fields (name, colour,
@@ -471,7 +601,13 @@ pub(crate) fn merge_attached(
             "UPDATE accounts SET sf_symbol = ?2, symbol_ms = ?3 WHERE id = ?1 AND symbol_ms < ?3",
             params![id, symbol, symbol_ms],
         )? as u32;
-        let note_rows = merge_note(tx, id, (note, noted), fresh)?;
+        let note_rows = merge_note_from(
+            tx,
+            id,
+            (note, noted),
+            fresh,
+            NoteOrigin::Schema("other", oid),
+        )?;
         // a MoneyMoney twin folded here and edited on a device that hadn't
         // folded it yet: the note goes on to the bank account, like the fold
         if note_rows > 0 {
