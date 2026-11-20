@@ -1027,7 +1027,10 @@ impl MerchantResolver {
         }
         if let Some(entry) = find_checked(&pu, &ctx).filter(|e| {
             matches!(e.kind, K::Etf | K::Crypto | K::Stock | K::PaymentService)
-                || counterparty.trim().is_empty()
+                || (counterparty.trim().is_empty()
+                    && e.needles
+                        .iter()
+                        .any(|n| n.trim().len() >= 4 && needle_in(&pu, n)))
         }) {
             return to_info(entry);
         }
@@ -1607,6 +1610,16 @@ mod tests {
             "private persons get no domain"
         );
         assert!(heuristic_domains("Eigenes Konto").is_empty());
+        // #1133: bookings without counterparty must not match 2-letter acronyms like " TK " in purpose.
+        assert_eq!(
+            MerchantResolver::resolve("", "WP-ABRECHNUNG VERKAUF TK 45,20 EUR").domain,
+            ""
+        );
+        assert_eq!(MerchantResolver::resolve("TK", "Beitrag").domain, "tk.de");
+        assert_eq!(
+            MerchantResolver::resolve("", "Beitrag Techniker Krankenkasse").domain,
+            "tk.de"
+        );
     }
 
     #[test]

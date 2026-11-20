@@ -2123,3 +2123,18 @@ fn sync_moves_a_retired_fints_url_to_the_current_endpoint() {
         Some("https://fints.apobank.de/FinTs30PinTanHttpGate".into())
     );
 }
+
+#[test]
+fn single_account_ref_refuses_switched_account_excluded_in_selection() {
+    let res = crate::connectors::persist::single_account_ref(
+        "moneymoney-db:switch:DE89370400440532013000".into(),
+        || Ok(vec!["DE89370400440532013000".into()]),
+    );
+    assert!(res.is_err());
+    let ok = crate::connectors::persist::single_account_ref(
+        "moneymoney-db:switch:DE89370400440532013000".into(),
+        || Ok(vec!["OTHER".into()]),
+    )
+    .unwrap();
+    assert_eq!(ok, None);
+}

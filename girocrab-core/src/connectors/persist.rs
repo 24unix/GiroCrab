@@ -2633,7 +2633,9 @@ pub(super) fn single_account_ref(
     if !ext.starts_with("moneymoney-db:") {
         return Ok(Some(ext));
     }
-    if skipped()?.contains(&ext) {
+    let unmarked = ext.strip_prefix(crate::vault::connections::SWITCH_MARK);
+    let skipped = skipped()?;
+    if skipped.contains(&ext) || unmarked.is_some_and(|u| skipped.iter().any(|s| s == u)) {
         return Err(CoreError::invalid(tr(
             "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
         )));
