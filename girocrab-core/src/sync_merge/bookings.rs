@@ -143,8 +143,17 @@ const OTHER_BOOKINGS: &str = "SELECT id, account_id, external_id, import_fp,
      FROM other.transactions ORDER BY account_id, external_id";
 
 /// The id both sides keep for one booking known under two ids: the bank's
-/// (not a MoneyMoney `mm-` id), else the smaller.
+/// (not a MoneyMoney `mm-` id), else the smaller. A card hold „Abrufweg
+/// umstellen“ dropped keeps its freed id (`switch-stale-<id>:pending-hold-…`):
+/// taking the hold's own id back would leave it deleted, and the bank's open
+/// hold, reported again after switching back, would stay deleted (#1134).
 fn canonical_external_id<'a>(a: &'a str, b: &'a str) -> &'a str {
+    let freed_hold = |s: &str| s.starts_with("switch-stale-") && s.contains(":pending-hold-");
+    match (freed_hold(a), freed_hold(b)) {
+        (true, false) => return a,
+        (false, true) => return b,
+        _ => {}
+    }
     match (a.starts_with("mm-"), b.starts_with("mm-")) {
         (true, false) => b,
         (false, true) => a,

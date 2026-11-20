@@ -1852,6 +1852,60 @@ mod tests {
         assert_eq!(tombstones, 4);
     }
 
+    /// Two devices know the same open hold, device A switches. The merge
+    /// pairs A's dropped hold with B's by fingerprint; the pair keeps the
+    /// freed id, so the hold the bank reports again after switching back is
+    /// live on both devices, not held deleted under its own id.
+    #[test]
+    fn a_hold_dropped_on_one_device_comes_back_on_both_after_switching_back() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-hold-sync");
+        let (a, c, _, _, _) = comdirect_vault(dir.path(), "a.db");
+        let hold = card("pending-hold-comdirect-h1", "2026-11-19", HOLD_TEXT);
+        fetch_giro(&a, ConnectorKind::Comdirect, c, vec![hold.clone()]);
+        let b_path = dir.join("b.db").to_string_lossy().to_string();
+        a.write_snapshot(b_path.clone()).unwrap();
+        let b = Vault::open(b_path, vec![9u8; 32]).unwrap();
+        let sync = |step: &str| {
+            let a_snap = dir
+                .join(&format!("a-{step}.db"))
+                .to_string_lossy()
+                .to_string();
+            a.write_snapshot(a_snap.clone()).unwrap();
+            b.merge_other_vault(a_snap, vec![9u8; 32]).unwrap();
+            let b_snap = dir
+                .join(&format!("b-{step}.db"))
+                .to_string_lossy()
+                .to_string();
+            b.write_snapshot(b_snap.clone()).unwrap();
+            a.merge_other_vault(b_snap, vec![9u8; 32]).unwrap();
+        };
+        let rows = |v: &Vault, live: bool| -> i64 {
+            v.db()
+                .unwrap()
+                .query_row(
+                    "SELECT count(*) FROM transactions
+                      WHERE external_id = 'pending-hold-comdirect-h1' AND (deleted_ms IS NULL) = ?1",
+                    [live],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+
+        a.switch_comdirect_access(c).unwrap();
+        sync("switch");
+        for (name, v) in [("A", &a), ("B", &b)] {
+            assert_eq!(rows(v, true), 0, "{name}: hold dropped");
+            assert_eq!(rows(v, false), 0, "{name}: the hold's own id is free");
+        }
+
+        assert_eq!(a.switch_comdirect_access(c).unwrap(), "comdirect");
+        fetch_giro(&a, ConnectorKind::Comdirect, c, vec![hold]);
+        sync("back");
+        for (name, v) in [("A", &a), ("B", &b)] {
+            assert_eq!(rows(v, true), 1, "{name}: the hold is back");
+        }
+    }
+
     /// After the switch the bank posts the payment: one row with the
     /// booking's own date and text, no hold left behind.
     #[test]
