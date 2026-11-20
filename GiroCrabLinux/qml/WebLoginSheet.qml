@@ -208,7 +208,8 @@ Item {
                     spacing: 1
                     Text { text: sheet.flow ? sheet.flow.title : ""; font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text
                            elide: Text.ElideRight; Layout.fillWidth: true }
-                    Text { text: sheet.flow ? sheet.flow.info : ""; font.pixelSize: Theme.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                    // plain text: it can carry portal-supplied values (EquatePlus document types)
+                    Text { text: sheet.flow ? sheet.flow.info : ""; textFormat: Text.PlainText; font.pixelSize: Theme.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true
                            color: sheet.flow && sheet.flow.infoWarning ? Theme.warning : Theme.secondary }
                 }
                 SyncBatchProgressLabel { visible: !!sheet.flow && sheet.flow.showBatchProgress }
@@ -241,6 +242,8 @@ Item {
                         onUrlChanged: sheet.currentURL = url.toString()
                         onLoadingChanged: info => {
                             sheet.loading = webView.loading
+                            // a job's result counts only from the document that started it
+                            if (info.status === WebEngineView.LoadStartedStatus) sheet.rejectJobs()
                             if (info.status === WebEngineView.LoadSucceededStatus && sheet.flow) sheet.flow.pageLoaded(info.url.toString())
                         }
                         // PortalNavigationGuard: any https page in the main frame (bank SSO may

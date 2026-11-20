@@ -8,7 +8,8 @@ const {readFileSync} = require('node:fs');
 const vm = require('node:vm');
 const {webcrypto} = require('node:crypto');
 
-const read = p => readFileSync(new URL(p, `file://${__filename}`), 'utf8');
+const {pathToFileURL} = require('node:url');
+const read = p => readFileSync(new URL(p, pathToFileURL(__filename)), 'utf8');
 const swift = read('../GiroCrabApp/Sources/GiroCrabUI/EquatePlusUI.swift');
 const qml = read('../GiroCrabLinux/qml/EquatePlusWebLoginFlow.qml');
 const linux = Object.fromEntries([...qml.matchAll(/readonly property string (\w+): `((?:\\[\s\S]|[^`\\])*)`/g)]

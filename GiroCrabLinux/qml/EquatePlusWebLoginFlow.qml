@@ -314,6 +314,10 @@ WebLoginFlow {
         progress = ""
         const gen = ++generation
         const id = connection.id
+        // the app-side steps after an import hold AppModel directly: the sheet may release this
+        // flow while the import runs, the stored data must still reach the views
+        const app = AppModel
+        const refresh = () => { try { app.core("checkpoint") } catch (e) {} app.reloadAll(); app.checkPendingAccountSelection() }
         let stage = "portal"
         run(collect, {}, gen)
             .then(snapshot => {
@@ -322,11 +326,15 @@ WebLoginFlow {
             })
             .then(s => {
                 // the import is stored even when the window was closed meanwhile: reload anyway
-                finish(true)
+                refresh()
                 if (gen !== generation) return
-                AppModel.toast = qsTr("EquatePlus: %1 Programme aktualisiert.").arg(s.accounts_updated)
+                endRun()
+                app.toast = qsTr("EquatePlus: %1 Programme aktualisiert.").arg(s.accounts_updated)
                 close(true)
             }, e => {
+                if (stage === "import") refresh()
+                if (gen !== generation) return
+                endRun()
                 if (e !== cancelled) {
                     // never the raw error: it can include token-bearing URLs
                     const status = stage === "portal" ? httpStatus(e && e.message) : ""
@@ -335,7 +343,6 @@ WebLoginFlow {
                         : qsTr("EquatePlus: Der Datenabruf ist fehlgeschlagen. Bitte erneut versuchen."))
                         + (status ? " (" + status + ")" : "")
                 }
-                finish(true)
             })
     }
 
@@ -397,10 +404,14 @@ WebLoginFlow {
             })
     }
 
-    function finish(holdings) {
-        try { AppModel.core("checkpoint") } catch (e) {}
+    /// The flow's own state after a run (the app-side refresh is separate, see `start`).
+    function endRun() {
         progress = ""
         running = false
+    }
+    function finish(holdings) {
+        try { AppModel.core("checkpoint") } catch (e) {}
+        endRun()
         if (!holdings) AppModel.documentsVersion++
         AppModel.reloadAll()
         if (holdings) AppModel.checkPendingAccountSelection()
