@@ -2950,16 +2950,21 @@ mod card_tests {
                 r#"{{"cash_advance_balance_amount":0,"debits_balance_amount":0,"last_statement_balance_amount":{last},"remaining_statement_balance_amount":{statement},"statement_balance_amount":{statement},"total_payments_credits_amount":{payments}}}"#
             )
         };
-        let tx = r#"{"transactions":[{"charge_date":"2026-11-03","amount":10,"description":"REWE","identifier":"A1"}]}"#;
-        let balance = |v: &Vault| -> i64 {
-            v.db()
+        let tx = r#"{"transactions":[{"charge_date":"2026-10-03","amount":10,"description":"REWE","identifier":"A1"}]}"#;
+        let paid = r#"{"transactions":[{"charge_date":"2026-11-12","amount":-123.45,"description":"ZAHLUNG/ÜBERWEISUNG ERHALTEN BESTEN DANK","identifier":"A2"}]}"#;
+        // stored and shown: a card stored with 0 shows its open amount, here
+        // nothing after the payment (the older charge is outside the fetch)
+        let balance = |v: &Vault| -> (i64, i64) {
+            let stored = v
+                .db()
                 .unwrap()
                 .query_row(
                     "SELECT balance_cents FROM accounts WHERE deleted_ms IS NULL",
                     [],
                     |r| r.get(0),
                 )
-                .unwrap()
+                .unwrap();
+            (stored, v.list_accounts().unwrap()[0].balance_cents)
         };
         // a statement of 123.45 is open
         v.clone()
@@ -2969,16 +2974,16 @@ mod card_tests {
                 "[]".into(),
             )
             .unwrap();
-        assert_eq!(balance(&v), -12345);
+        assert_eq!(balance(&v), (-12345, -12345));
         // paid by direct debit: nothing is owed any more
         v.clone()
             .import_portal_capture(
                 conn,
-                vec![tx.into(), summary(0.0, 123.45, -123.45)],
+                vec![paid.into(), summary(0.0, 123.45, -123.45)],
                 "[]".into(),
             )
             .unwrap();
-        assert_eq!(balance(&v), 0);
+        assert_eq!(balance(&v), (0, 0));
     }
 
     #[test]
