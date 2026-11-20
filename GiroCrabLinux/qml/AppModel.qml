@@ -1846,7 +1846,7 @@ QtObject {
         const quiet = quietSyncConnectionID === connection.id
         // Kept for the "GiroCrab-Registrierung" retry of a rejected product ID, so the
         // login is not asked again; finishSync takes it and clears it.
-        const keepSecret = () => { if (statementsFor === null) failedSyncSecret = secret }
+        const keepSecret = () => { failedSyncSecret = secret }
         const startSession = id => {
             activeSession = id
             coreAsync("session_start", { session: id }, step => {
@@ -2046,6 +2046,8 @@ QtObject {
         logSync(connection.id, "Error", e.message, 0, syncLogSource(connection.id))   // source before statementsAccountID is cleared
         const retrySecret = failedSyncSecret
         failedSyncSecret = ""
+        // a „Kontoauszüge abrufen“ that failed stays one in the registration retry below
+        const retryStatements = statementsAccountID
         if (quietSyncConnectionID === connection.id) {
             // scheduled sync: a notice instead of dialogs / login prompts
             quietSyncConnectionID = null
@@ -2066,7 +2068,7 @@ QtObject {
         // Fall back to GiroCrab's registration (once) and retry with the same login; the batch stays
         if (missingID && recoverFromMissingProductID()) {
             const c = connections.find(x => x.id === connection.id)
-            if (c) startSync(c, retrySecret)
+            if (c) { statementsAccountID = retryStatements; startSync(c, retrySecret) }
             else syncNextInQueue()
             return
         }
