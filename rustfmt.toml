@@ -1,0 +1,4 @@
+# Rust 2024 edition, 2021 formatting style: the 2024 style (import order, wrapped
+# string literals, assert! layout) reformats most files and lands on its own (#1401).
+# Also applies to GiroCrabLinux/ and GiroCrabWindows/ (rustfmt searches parent dirs).
+style_edition = "2021"

@@ -74,7 +74,7 @@ private struct SelectedLoanCard: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
+        if case .account(let id) = model.shownSelection, let a = model.account(for: id), a.kind == .loan {
             LoanProgressCard(account: a)
         }
     }

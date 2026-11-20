@@ -123,6 +123,7 @@ extension AppModel {
     func settlePendingSelectionLoad() {
         guard selectionLoadTask != nil else { return }
         endSelectionLoad()
+        showSelection()
         if streamTopPending { scrollStreamTop() }
         refreshSalaryCycle()
         refreshRecurring()
@@ -157,10 +158,16 @@ extension AppModel {
         streamTopRequest &+= 1
     }
 
-    /// The load is slow: empty list and chart, so nothing of the previous
-    /// selection stays under the new title.
+    /// The load is slow: the column switches to the new selection with an empty
+    /// list and chart, so nothing of the previous selection stays under its title.
     private func showSelectionPlaceholder() {
         isLoadingSelection = true
+        showSelectionWithoutData()
+    }
+
+    /// The column switches to the new selection with nothing of the previous one in it.
+    private func showSelectionWithoutData() {
+        showSelection()
         page = nil
         bookings = []
         listBalances = ListBalances()
@@ -240,6 +247,7 @@ extension AppModel {
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
+                self.showSelection()
                 if self.streamTopPending { self.scrollStreamTop() }
                 let publish = Perf.signposter.beginInterval("publishSelection")
                 self.publish(loaded.page)
@@ -256,12 +264,19 @@ extension AppModel {
                 Perf.signposter.endInterval("publishSelection", publish)
             } catch {
                 guard !Task.isCancelled, let self else { return }
-                self.selectionLoadTask = nil
-                self.endSelectionLoad()
-                self.errorMessage = describe(error)
+                self.failSelectionLoad(error)
             }
         }
         selectionLoadTask = task
+    }
+
+    /// The selection load threw. A failed refresh keeps what the column shows; a new
+    /// selection must not show the previous one's data under its title.
+    func failSelectionLoad(_ error: Error) {
+        selectionLoadTask = nil
+        endSelectionLoad()
+        if shownSelection != sidebarSelection { showSelectionWithoutData() }
+        errorMessage = describe(error)
     }
 
     // MARK: - Merchant list (GitHub #495)

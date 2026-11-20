@@ -77,13 +77,12 @@ fn main() {
             Ok(msg) => adapter.handle(msg),
             Err(e) => Some(rpc_error(Value::Null, -32700, &format!("parse error: {e}"))),
         };
-        if let Some(answer) = answer {
-            if writeln!(stdout, "{answer}")
+        if let Some(answer) = answer
+            && writeln!(stdout, "{answer}")
                 .and_then(|_| stdout.flush())
                 .is_err()
-            {
-                break; // the client went away
-            }
+        {
+            break; // the client went away
         }
     }
 }

@@ -1407,12 +1407,11 @@ fn archived_account_keeps_group_and_history_but_leaves_total_and_rules() {
         let mut st = db
             .prepare("SELECT external_id, category_id FROM transactions ORDER BY external_id")
             .unwrap();
-        let rows = st
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
             .unwrap()
             .collect::<Result<_, _>>()
-            .unwrap();
-        rows
+            .unwrap()
     };
     assert_eq!(
         cats(&v),

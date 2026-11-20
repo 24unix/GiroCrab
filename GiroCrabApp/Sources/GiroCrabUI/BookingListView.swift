@@ -19,11 +19,9 @@ struct BookingStreamView: View {
 
     var body: some View {
         @Bindable var model = model
-        // Per-item flags instead of `sidebarSelection`: they change only when „Alle Konten“ /
-        // „Neue Umsätze“ is entered or left, so a switch between categories leaves this view alone.
-        let isOverview = model.sidebarRowSelection(for: .allAccounts).isSelected
+        let isOverview = model.showsOverview
         // „Neue Umsätze“: account cards instead of day cards, no charts
-        let isNewBookings = model.sidebarRowSelection(for: .newBookings).isSelected
+        let isNewBookings = model.showsNewBookings
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {

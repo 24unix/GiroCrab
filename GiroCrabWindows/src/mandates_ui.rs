@@ -931,10 +931,10 @@ fn wire_returns(win: &MainWindow) {
 
     let weak = win.as_weak();
     gs.on_returns_refresh(move || {
-        if let (Some(win), Some(v)) = (weak.upgrade(), vault_now()) {
-            if !blocked(&win) {
-                load(&win, &v, String::new());
-            }
+        if let (Some(win), Some(v)) = (weak.upgrade(), vault_now())
+            && !blocked(&win)
+        {
+            load(&win, &v, String::new());
         }
     });
 }

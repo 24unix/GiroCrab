@@ -242,10 +242,10 @@ const INDICATOR_KEYS: &[&str] = &[
 
 fn get_ci<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Option<&'a Value> {
     for k in keys {
-        if let Some((_, v)) = obj.iter().find(|(name, _)| name.to_lowercase() == *k) {
-            if !v.is_null() {
-                return Some(v);
-            }
+        if let Some((_, v)) = obj.iter().find(|(name, _)| name.to_lowercase() == *k)
+            && !v.is_null()
+        {
+            return Some(v);
         }
     }
     None
@@ -570,10 +570,9 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
                         ]
                         .iter()
                         .any(|x| kl.contains(x))
+                        && let Some(c) = value_cents(val).filter(|c| *c != 0)
                     {
-                        if let Some(c) = value_cents(val).filter(|c| *c != 0) {
-                            return Some((k.clone(), c));
-                        }
+                        return Some((k.clone(), c));
                     }
                 }
                 o.values().find_map(generic)
@@ -1182,10 +1181,8 @@ fn cards_fetch(
         && (cards.len() == 1
             || stored.is_empty()
             || stored.iter().any(|s| s.account_ref == base_ref));
-    if base_free {
-        if let Some(t) = target.iter_mut().find(|t| t.is_none()) {
-            *t = Some(base_ref.to_string());
-        }
+    if base_free && let Some(t) = target.iter_mut().find(|t| t.is_none()) {
+        *t = Some(base_ref.to_string());
     }
     let adjust_balances = cards.iter().all(|c| c.balance.is_none());
     let mut out = FetchResult {

@@ -878,30 +878,33 @@ pub fn detect_price_increases(series: &[(String, String, i64)]) -> Vec<PriceIncr
         list.sort();
         let mut unique: Vec<(Date, i64)> = Vec::new();
         for (d, amount) in list {
-            if let Some(&(pd, pa)) = unique.last() {
-                if pa == amount && crate::dates::days_between(pd, d) <= DUPLICATE_WINDOW_DAYS {
-                    alerts.push(PriceIncreaseAlert {
-                        counterparty: name.clone(),
-                        previous_cents: amount,
-                        new_cents: amount * 2,
-                        increase_cents: amount,
-                        booking_date: iso(d),
-                    });
-                    continue;
-                }
+            if let Some(&(pd, pa)) = unique.last()
+                && pa == amount
+                && crate::dates::days_between(pd, d) <= DUPLICATE_WINDOW_DAYS
+            {
+                alerts.push(PriceIncreaseAlert {
+                    counterparty: name.clone(),
+                    previous_cents: amount,
+                    new_cents: amount * 2,
+                    increase_cents: amount,
+                    booking_date: iso(d),
+                });
+                continue;
             }
             unique.push((d, amount));
         }
-        if let [.., a, b, c] = unique.as_slice() {
-            if a.1 == b.1 && c.1 > b.1 && c.1 <= b.1 * 2 {
-                alerts.push(PriceIncreaseAlert {
-                    counterparty: name.clone(),
-                    previous_cents: b.1,
-                    new_cents: c.1,
-                    increase_cents: c.1 - b.1,
-                    booking_date: iso(c.0),
-                });
-            }
+        if let [.., a, b, c] = unique.as_slice()
+            && a.1 == b.1
+            && c.1 > b.1
+            && c.1 <= b.1 * 2
+        {
+            alerts.push(PriceIncreaseAlert {
+                counterparty: name.clone(),
+                previous_cents: b.1,
+                new_cents: c.1,
+                increase_cents: c.1 - b.1,
+                booking_date: iso(c.0),
+            });
         }
     }
     alerts.sort_by(|a, b| {

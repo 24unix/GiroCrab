@@ -564,11 +564,11 @@ impl BankConnector for ComdirectConnector {
             }
         }
         // PostBox documents (optional, errors are ignored; not when document retrieval is off)
-        if ctx.documents.enabled() {
-            if let Some(first) = out.accounts.first().map(|a| a.external_ref.clone()) {
-                let docs = self.postbox(&first, &ctx.since).await;
-                out.documents.extend(docs);
-            }
+        if ctx.documents.enabled()
+            && let Some(first) = out.accounts.first().map(|a| a.external_ref.clone())
+        {
+            let docs = self.postbox(&first, &ctx.since).await;
+            out.documents.extend(docs);
         }
         // Securities accounts (value only)
         crate::depot_debug::log("comdirect REST: fetching depots");
@@ -664,14 +664,14 @@ impl BankConnector for ComdirectConnector {
     }
 
     async fn finish(&mut self, _ctx: &ConnectContext) {
-        if !self.token.is_empty() {
-            if let Ok(c) = self.client() {
-                let _ = c
-                    .delete(format!("{BASE}/oauth/revoke"))
-                    .bearer_auth(self.token.expose())
-                    .send()
-                    .await;
-            }
+        if !self.token.is_empty()
+            && let Ok(c) = self.client()
+        {
+            let _ = c
+                .delete(format!("{BASE}/oauth/revoke"))
+                .bearer_auth(self.token.expose())
+                .send()
+                .await;
         }
         self.token = SecretString::default();
     }
@@ -806,10 +806,10 @@ pub(crate) fn visa_debit_merchant(purpose: &str) -> Option<String> {
 /// (see [`visa_debit_merchant`]); a counterparty from the bank stays. Call it
 /// after the id is set: content ids include the counterparty.
 pub(crate) fn fill_card_merchant(t: &mut RemoteTransaction) {
-    if t.counterparty.trim().is_empty() {
-        if let Some(merchant) = visa_debit_merchant(&t.purpose) {
-            t.counterparty = merchant;
-        }
+    if t.counterparty.trim().is_empty()
+        && let Some(merchant) = visa_debit_merchant(&t.purpose)
+    {
+        t.counterparty = merchant;
     }
 }
 

@@ -68,10 +68,10 @@ impl CoreError {
 
 impl From<rusqlite::Error> for CoreError {
     fn from(e: rusqlite::Error) -> Self {
-        if let rusqlite::Error::SqliteFailure(err, _) = &e {
-            if err.code == rusqlite::ErrorCode::NotADatabase {
-                return CoreError::WrongKey;
-            }
+        if let rusqlite::Error::SqliteFailure(err, _) = &e
+            && err.code == rusqlite::ErrorCode::NotADatabase
+        {
+            return CoreError::WrongKey;
         }
         CoreError::Database {
             message: e.to_string(),

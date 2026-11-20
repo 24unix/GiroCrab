@@ -136,10 +136,10 @@ fn best<'a>(
 ) -> CoreResult<Option<i64>> {
     let mut best: Option<(i64, i64)> = None;
     for c in candidates {
-        if let Some(s) = score(c)? {
-            if best.is_none_or(|(top, _)| s > top) {
-                best = Some((s, c.id));
-            }
+        if let Some(s) = score(c)?
+            && best.is_none_or(|(top, _)| s > top)
+        {
+            best = Some((s, c.id));
         }
     }
     Ok(best.map(|(_, id)| id))

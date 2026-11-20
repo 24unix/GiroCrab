@@ -912,21 +912,19 @@ impl FordMoneyConnector {
         if let (Some(mut form), Some(refresh)) = (
             form_by_id(&archive, "contentForm"),
             link_param(&archive, ".button-anzeigen"),
+        ) && let (Some(start), Some(end)) = (
+            form.field_ending(":inbox-datetimepicker-start")
+                .map(str::to_string),
+            form.field_ending(":inbox-datetimepicker-end")
+                .map(str::to_string),
         ) {
-            if let (Some(start), Some(end)) = (
-                form.field_ending(":inbox-datetimepicker-start")
-                    .map(str::to_string),
-                form.field_ending(":inbox-datetimepicker-end")
-                    .map(str::to_string),
-            ) {
-                form.set(&start, ARCHIVE_START);
-                form.set(&end, &site_date(&super::today()).unwrap_or_default());
-                if let Ok(wide) = self.post_page(&form.action, &form.clicked(&refresh)).await {
-                    let wide_rows = parse_postbox(&wide);
-                    if wide_rows.len() >= rows.len() {
-                        rows = wide_rows;
-                        list_page = wide;
-                    }
+            form.set(&start, ARCHIVE_START);
+            form.set(&end, &site_date(&super::today()).unwrap_or_default());
+            if let Ok(wide) = self.post_page(&form.action, &form.clicked(&refresh)).await {
+                let wide_rows = parse_postbox(&wide);
+                if wide_rows.len() >= rows.len() {
+                    rows = wide_rows;
+                    list_page = wide;
                 }
             }
         }
