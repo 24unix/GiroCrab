@@ -428,6 +428,7 @@ fn a_letter_names_its_contract_in_its_text() {
         find("Jahreskontoauszug\nVertrags-Nr.: 10 0000 0001\nVerrechnet mit 2000000002"),
         (Some("bhw-1000000001".into()), TextMatch::Label)
     );
+    assert_eq!(find("Kundennummer: 9100000001"), (None, TextMatch::None));
     assert_eq!(
         find("Ihre Vertragsnummer 2000000002 / Kundennr. 555"),
         (Some("bhw-2000000002".into()), TextMatch::Label)
