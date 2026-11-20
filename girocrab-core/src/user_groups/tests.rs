@@ -1312,13 +1312,16 @@ fn nesting_syncs_and_survives_conflicts() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-fn archived(v: &Vault, name: &str) -> Option<i64> {
+fn account(v: &Vault, name: &str) -> crate::models::Account {
     v.list_accounts()
         .unwrap()
         .into_iter()
         .find(|a| a.name == name)
         .unwrap()
-        .archived_unix
+}
+
+fn archived(v: &Vault, name: &str) -> Option<i64> {
+    account(v, name).archived_unix
 }
 
 #[test]
@@ -1469,4 +1472,230 @@ fn account_color_hash_never_changes() {
         crate::user_groups::account_color_hash("fints", "12345678", "user", "ACC-1"),
         0x0f11_c659_fa84_e823
     );
+}
+
+fn note(v: &Vault, name: &str) -> String {
+    account(v, name).note
+}
+
+/// #980: the account note syncs like the name (it used to be a vault setting
+/// keyed by the local account id, which no merge read).
+#[test]
+fn account_notes_sync_both_ways() {
+    let dir = temp_dir("notes");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    // the same accounts under different local ids
+    let ia = seed(&a);
+    {
+        let db = b.db().unwrap();
+        db.execute("INSERT INTO account_groups(name) VALUES ('H')", [])
+            .unwrap();
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name) \
+             VALUES ((SELECT id FROM account_groups WHERE name = 'H'), 'bar', 'Bar')",
+            [],
+        )
+        .unwrap();
+    }
+    let ib = seed(&b);
+    assert_ne!(ia, ib);
+
+    assert!(a.set_account_note(999, "x".into()).is_err());
+    a.set_account_note(ia[0], "  Reisekasse \n".into()).unwrap();
+    assert_eq!(note(&a, "Giro"), "Reisekasse");
+    tick();
+    let st = b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert!(
+        st.groups_updated > 0,
+        "a merge that only brings a note reloads the app"
+    );
+    assert_eq!(note(&b, "Giro"), "Reisekasse");
+    assert_eq!(note(&b, "Depot"), "");
+
+    // the newer edit wins; saving an unchanged note is no edit (nothing to sync)
+    b.set_account_note(ib[0], "Urlaub".into()).unwrap();
+    tick();
+    let before = a.change_count();
+    a.set_account_note(ia[0], "Reisekasse".into()).unwrap();
+    assert_eq!(a.change_count(), before);
+    a.set_account_note(ia[1], "Sparplan".into()).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(note(v, "Giro"), "Urlaub");
+        assert_eq!(note(v, "Depot"), "Sparplan");
+    }
+
+    // a cleared note syncs too
+    b.set_account_note(ib[1], String::new()).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    assert_eq!(note(&a, "Depot"), "");
+
+    // an account new to the other device arrives with its note
+    let c = open(&dir, "c.db");
+    c.merge_other_vault(a.file_path(), key).unwrap();
+    assert_eq!(note(&c, "Giro"), "Urlaub");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// #980: notes moved out of the settings on two devices have no edit time:
+/// neither text is lost, every device ends up with the same one, further
+/// merges change nothing, and the first edit after that wins as usual.
+#[test]
+fn moved_notes_that_differ_are_combined_on_every_device() {
+    let dir = temp_dir("notes-moved");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    seed(&b);
+    for (v, name, text) in [
+        (&a, "Visa", "Gemeinschaftskonto"),
+        (&b, "Visa", "Anna\nGemeinschaftskonto"),
+        (&a, "Giro", "Urlaub"),
+        (&b, "Giro", "Reisekasse"),
+    ] {
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE accounts SET note = ?1, note_ms = ?2 WHERE name = ?3",
+                params![text, super::MOVED_NOTE_MS, name],
+            )
+            .unwrap();
+    }
+    sync_both_ways(&a, &b);
+    sync_both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(note(v, "Visa"), "Anna\nGemeinschaftskonto");
+        assert_eq!(note(v, "Giro"), "Reisekasse\nUrlaub");
+    }
+    let st = a.merge_other_vault(b.file_path(), key).unwrap();
+    assert_eq!(st.groups_updated, 0, "nothing left to merge");
+    a.set_account_note(ia[0], "Urlaub".into()).unwrap();
+    sync_both_ways(&a, &b);
+    assert_eq!(note(&b, "Giro"), "Urlaub");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// #980: a peer still on schema 31 keeps editing its notes in the settings,
+/// without a stamp. Its snapshot is migrated before every merge: its notes fill
+/// empty ones here, but never replace or pile up on a note this device has.
+#[test]
+fn notes_of_an_older_peer_arrive_without_replacing_edits() {
+    let dir = temp_dir("notes-old");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    let ib = seed(&b);
+    a.set_account_note(ia[0], "Neu".into()).unwrap();
+    a.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET note = 'Verschoben', note_ms = ?2 WHERE id = ?1",
+            params![ia[2], super::MOVED_NOTE_MS],
+        )
+        .unwrap();
+    {
+        let db = b.db().unwrap();
+        db.execute_batch(
+            "ALTER TABLE accounts DROP COLUMN note;
+             ALTER TABLE accounts DROP COLUMN note_ms;
+             PRAGMA user_version = 31;",
+        )
+        .unwrap();
+        for (id, text) in [(ib[0], "Alt"), (ib[1], "Depotnotiz"), (ib[2], "Alt")] {
+            db.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, ?2)",
+                params![format!("account.note.{id}"), text],
+            )
+            .unwrap();
+        }
+    }
+    // each merge migrates a fresh copy, as the sync folder does
+    let merge_peer = |a: &Vault| {
+        b.checkpoint().unwrap();
+        let peer = dir.join("peer.db");
+        std::fs::copy(b.file_path(), &peer).unwrap();
+        a.merge_other_vault(peer.to_string_lossy().into(), key.clone())
+            .unwrap();
+    };
+    merge_peer(&a);
+    assert_eq!(note(&a, "Giro"), "Neu");
+    assert_eq!(note(&a, "Depot"), "Depotnotiz");
+    assert_eq!(note(&a, "Visa"), "Verschoben");
+    // the old build edits again: nothing piles up on the moved note
+    b.db()
+        .unwrap()
+        .execute(
+            "UPDATE settings SET value = 'Neuer' WHERE key = ?1",
+            [format!("account.note.{}", ib[2])],
+        )
+        .unwrap();
+    merge_peer(&a);
+    assert_eq!(note(&a, "Visa"), "Verschoben");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// #980 review: a note from a device whose clock runs ahead must not undo a
+/// later edit here.
+#[test]
+fn an_edit_wins_over_a_note_stamped_by_a_clock_ahead() {
+    let dir = temp_dir("notes-clock");
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    let ib = seed(&b);
+    let ahead = crate::dates::now_ms() + 5 * 60_000;
+    a.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET note = 'A', note_ms = ?2 WHERE id = ?1",
+            params![ia[0], ahead],
+        )
+        .unwrap();
+    sync_both_ways(&a, &b);
+    assert_eq!(note(&b, "Giro"), "A");
+    b.set_account_note(ib[0], "B".into()).unwrap();
+    sync_both_ways(&a, &b);
+    assert_eq!(
+        (note(&a, "Giro"), note(&b, "Giro")),
+        ("B".into(), "B".into())
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A merge that only renames an account counts, so the app reloads.
+#[test]
+fn a_rename_alone_counts_as_a_merged_change() {
+    let dir = temp_dir("rename-count");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    seed(&b);
+    sync_both_ways(&a, &b);
+    tick();
+    a.rename_account(ia[0], "Haushalt".into()).unwrap();
+    let st = b.merge_other_vault(a.file_path(), key).unwrap();
+    assert!(st.groups_updated > 0);
+    account(&b, "Haushalt");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// #980 review: two moved notes are combined whole (blank lines kept) and
+/// trimmed like a saved note, so an unchanged form does not differ from it.
+#[test]
+fn moved_notes_combine_whole_and_trimmed() {
+    use super::combine_moved_notes as combine;
+    assert_eq!(combine("A", "B\n\nA"), "B\n\nA");
+    assert_eq!(combine("Urlaub ", "Reise"), "Reise\nUrlaub");
+    assert_eq!(combine("Urlaub", "Reise"), combine("Reise", "Urlaub"));
+    let both = combine("A\n", "B");
+    assert_eq!(both, "A\nB");
+    assert_eq!(combine(&both, "A"), both);
+    assert_eq!(combine("", "X"), "X");
 }

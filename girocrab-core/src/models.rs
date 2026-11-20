@@ -379,6 +379,9 @@ pub struct Account {
     /// The balance is computed from the bookings (imports, connectors without
     /// a reported balance), not delivered by the bank; depots and loans never.
     pub balance_derived: bool,
+    /// The user's note on the account (#512), `""` = none. Syncs like the
+    /// name: the newer edit wins (#980).
+    pub note: String,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
