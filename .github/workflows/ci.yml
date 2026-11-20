@@ -186,10 +186,13 @@ jobs:
       - name: girocrab-core builds with the optional serde feature
         if: needs.changes.outputs.rust == 'true'
         run: cargo check -p girocrab-core --features serde
-      # Same features as the step above, so cargo finds the build up to date.
+      # Both builds that ship: default features (the Swift app) and serde (Linux); the
+      # serde one is up to date after the step above.
       - name: The core library contains only its sources and data tables (no test files, no unlisted env)
         if: needs.changes.outputs.rust == 'true'
-        run: scripts/lint-no-obfuscation.sh --compiled --features serde
+        run: |
+          scripts/lint-no-obfuscation.sh --compiled
+          scripts/lint-no-obfuscation.sh --compiled --features serde
       - name: Install cargo-nextest
         if: needs.changes.outputs.rust == 'true'
         uses: taiki-e/install-action@v2

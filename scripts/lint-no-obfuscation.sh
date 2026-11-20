@@ -25,7 +25,7 @@ if [ "${1:-}" = --compiled ]; then
 import json, os, re, subprocess, sys
 
 check = subprocess.run(
-    ["cargo", "check", "-q", "-p", "girocrab-core", "--lib", "--message-format=json", *sys.argv[1:]],
+    ["cargo", "check", "-q", "-p", "girocrab-core", "--lib", "--message-format=json-render-diagnostics", *sys.argv[1:]],
     stdout=subprocess.PIPE, text=True)
 if check.returncode:
     sys.exit(check.returncode)
@@ -180,7 +180,7 @@ PY
 # Tracked and new (not ignored) files that exist; paths contain no spaces, so
 # the lists below are split on whitespace.
 src=$(git ls-files --cached --others --exclude-standard 'girocrab-core/src/*.rs' girocrab-core/build.rs 'girocrab-mcp/src/*.rs' |
-    sort -u | while read -r f; do [ -f "$f" ] && echo "$f"; done)
+    sort -u | while read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done)
 prod=$(grep -Ev "$test_re" <<<"$src")
 word='(^|[^A-Za-z0-9_])'
 
