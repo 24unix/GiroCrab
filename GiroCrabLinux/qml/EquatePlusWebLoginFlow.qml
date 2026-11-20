@@ -319,7 +319,7 @@ WebLoginFlow {
         const app = AppModel
         const refresh = () => { try { app.core("checkpoint") } catch (e) {} app.reloadAll(); app.checkPendingAccountSelection() }
         let stage = "portal"
-        run(collect, {}, gen)
+        run(guard + collect, {}, gen)
             .then(snapshot => {
                 stage = "import"
                 return AppModel.corePromise("import_equateplus_snapshot", { connection_id: id, snapshot_json: snapshot })
