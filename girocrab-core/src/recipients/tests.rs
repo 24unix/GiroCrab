@@ -4,7 +4,7 @@ use rusqlite::params;
 
 use super::READ;
 use crate::models::KnownRecipient;
-use crate::test_support::{query_plan, TempDir};
+use crate::test_support::{TempDir, query_plan};
 use crate::vault::Vault;
 
 const KEY: [u8; 32] = [7u8; 32];

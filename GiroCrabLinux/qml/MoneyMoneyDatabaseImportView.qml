@@ -506,6 +506,7 @@ ColumnLayout {
                             Text {
                                 Layout.preferredWidth: 110; horizontalAlignment: Text.AlignRight
                                 text: Fmt.money(rowItem.modelData.computed_balance_cents, rowItem.modelData.currency); color: Theme.text; font.pixelSize: Theme.body; font.features: { "tnum": 1 }
+                                Sensitive { amounts: true }
                                 HoverHandler { id: balanceHover }
                                 ToolTip.visible: balanceHover.hovered; ToolTip.text: rowItem.modelData.balance_source; ToolTip.delay: 600
                             }
@@ -834,10 +835,10 @@ ColumnLayout {
                     Text { text: checkRow.found + " / " + modelData.mm_bookings; Layout.preferredWidth: 90; horizontalAlignment: Text.AlignRight
                            color: checkRow.found === modelData.mm_bookings ? Theme.text : Theme.warning; font.pixelSize: Theme.body; font.features: { "tnum": 1 } }
                     Text { text: Fmt.money(modelData.mm_balance_cents, modelData.currency); Layout.preferredWidth: 120; horizontalAlignment: Text.AlignRight
-                           color: Theme.text; font.pixelSize: Theme.body; font.features: { "tnum": 1 } }
+                           color: Theme.text; font.pixelSize: Theme.body; font.features: { "tnum": 1 }; Sensitive { amounts: true } }
                     Text { text: Fmt.money(modelData.girocrab_balance_cents, modelData.currency); Layout.preferredWidth: 120; horizontalAlignment: Text.AlignRight
                            color: modelData.balance_from_bank || modelData.girocrab_balance_cents === modelData.mm_balance_cents ? Theme.text : Theme.warning
-                           font.pixelSize: Theme.body; font.features: { "tnum": 1 } }
+                           font.pixelSize: Theme.body; font.features: { "tnum": 1 }; Sensitive { amounts: true } }
                 }
             }
         }

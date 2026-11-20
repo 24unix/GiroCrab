@@ -488,8 +488,8 @@ fn english(de: &str) -> Option<&'static str> {
             "Approve in the SecureGo plus app (decoupled, TAN process 4, HKTAN v7). Server: fints1.atruvia.de"
         }
         "Anmeldename / Kontonummer" => "Login name / account number",
-        "Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de" => {
-            "Read-only via FinTS (transactions, balances, securities, documents): 1822direkt disabled SEPA transfers over FinTS in 09/2025. pushTAN app (decoupled) or chipTAN. Server: banking-hs5.s-fints-pt-hs.de"
+        "Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs6.s-fints-pt-hs.de" => {
+            "Read-only via FinTS (transactions, balances, securities, documents): 1822direkt disabled SEPA transfers over FinTS in 09/2025. pushTAN app (decoupled) or chipTAN. Server: banking-hs6.s-fints-pt-hs.de"
         }
         "comdirect REST-API (OAuth2 + Session-TAN)" => "comdirect REST API (OAuth2 + session TAN)",
         "Zugangsnummer" => "Access number",
