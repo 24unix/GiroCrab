@@ -18,6 +18,7 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
   `amazon_orders.rs`
 - `girocrab-core/src/tags.rs` – booking tags (#228): schema step, `impl Vault` API, booking tag loading; `tags/merge.rs` (iCloud merge of tags and tag sets), `tags/tests.rs`
 - `girocrab-core/src/merchants.rs` – merchant matching
+- `girocrab-core/src/recipients.rs` – known recipients of the transfer form (one per IBAN, cached), hidden IBANs + merge (#978)
 - `girocrab-core/src/documents.rs` – booking documents / PDF text extraction
 - `girocrab-core/src/text.rs` – text helpers (mojibake repair etc.)
 - `girocrab-core/src/local_api.rs` + `local_api/server.rs` – read-only local interface for external analysis (#136): queries, scope/token, Unix socket server (`docs/local-api.md`)

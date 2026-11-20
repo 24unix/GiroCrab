@@ -13,7 +13,7 @@
 
 use girocrab_core::models::{BookingFilter, PeriodGranularity};
 use girocrab_core::vault::Vault;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 const KEY: [u8; 32] = [0x47; 32];
 
@@ -541,7 +541,7 @@ fn group_and_kind_sums_follow_the_effective_exclusion() {
 // ------------------------------------------------------------------ migration
 
 /// Rewinds a vault to schema 24 (drops the new columns) so reopening runs the
-/// migration of step 33 — what a vault written by an older build looks like.
+/// migration of step 34 — what a vault written by an older build looks like.
 fn rewind_to_v24(path: &str) {
     let c = Connection::open(path).unwrap();
     c.execute_batch(&format!("PRAGMA key = \"x'{}'\";", hex::encode(KEY)))
@@ -554,7 +554,7 @@ fn rewind_to_v24(path: &str) {
     .unwrap();
 }
 
-/// Step 33: amazon-orders accounts start excluded; everything else stays; a
+/// Step 34: amazon-orders accounts start excluded; everything else stays; a
 /// user decision made after the migration survives reopening.
 #[test]
 fn migration_excludes_amazon_connector_accounts_only() {
@@ -879,15 +879,15 @@ fn amazon_default_and_opt_in_match_the_bank_double_counting_contract() {
     );
 }
 
-/// Review point 2 on #1100: an older partner snapshot (schema 24 — the step-33
-/// columns are missing) is migrated by step 33 inside merge_other_vault BEFORE
+/// Review point 2 on #1100: an older partner snapshot (schema 24 — the step-34
+/// columns are missing) is migrated by step 34 inside merge_other_vault BEFORE
 /// the merge SQL touches include_in_total/total_ms. The merge succeeds and the
 /// migrated defaults arrive with the inserted accounts.
 #[test]
 fn merge_migrates_older_snapshot_before_the_column_merge() {
     let (a, _ta, b, _tb, _x_a, _x_b) = sync_pair("totals-migrate-older");
     // rewind B's snapshot file to schema 24: a snapshot written by an older
-    // build, without the step-33 columns and with user_version still 24.
+    // build, without the step-34 columns and with user_version still 24.
     // closing B's vault releases its connection; the rewind then edits the
     // snapshot file itself (Tmp stays alive for the path).
     let other_path = b.file_path();
@@ -897,7 +897,7 @@ fn merge_migrates_older_snapshot_before_the_column_merge() {
     a.merge_other_vault(other_path.clone(), KEY.to_vec())
         .unwrap();
 
-    // B's accounts arrived with the step-33 defaults (checking accounts start
+    // B's accounts arrived with the step-34 defaults (checking accounts start
     // included, stamp 0) — the merge SQL found the migrated columns.
     let arrived = a
         .list_accounts()
@@ -906,7 +906,7 @@ fn merge_migrates_older_snapshot_before_the_column_merge() {
         .filter(|x| x.name == "Nur B")
         .collect::<Vec<_>>();
     assert_eq!(arrived.len(), 1, "B's extra account arrived");
-    assert!(arrived[0].include_in_total, "step-33 default on migration");
+    assert!(arrived[0].include_in_total, "step-34 default on migration");
 
     // the other snapshot file itself sits on the current schema afterwards
     let c_other = Connection::open(&other_path).unwrap();
@@ -921,9 +921,9 @@ fn merge_migrates_older_snapshot_before_the_column_merge() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(has_cols, 2, "both step-33 columns exist on the snapshot");
+    assert_eq!(has_cols, 2, "both step-34 columns exist on the snapshot");
     let version: i64 = c_other
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert!(version >= 33, "snapshot migrated to at least schema 33");
+    assert!(version >= 34, "snapshot migrated to at least schema 34");
 }

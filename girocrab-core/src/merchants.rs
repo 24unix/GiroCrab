@@ -1557,9 +1557,11 @@ mod tests {
         assert!(!looks_like_person("Hotel Schwarzer Bock"));
         assert!(!looks_like_person("Eigenes Konto"));
         assert!(!looks_like_person("Mustermann Bau GmbH"));
-        assert!(MerchantResolver::resolve("Hotel Schwarzer Bock", "")
-            .domain
-            .is_empty());
+        assert!(
+            MerchantResolver::resolve("Hotel Schwarzer Bock", "")
+                .domain
+                .is_empty()
+        );
         assert_eq!(
             heuristic_domains("Gärtnerei Grünwald"),
             vec![

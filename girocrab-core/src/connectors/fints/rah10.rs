@@ -1,7 +1,7 @@
 //! RAH-10 message protection. No payment jobs are enabled by this module.
 //! Protocol reference: HBCI4Java HBCIPassportRAH10, Sig and Crypt.
-use aes::cipher::{block_padding::NoPadding, BlockModeDecrypt, BlockModeEncrypt, KeyIvInit};
-use rsa::{hazmat, traits::PublicKeyParts, BoxedUint, PrivateKey, PublicKey};
+use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit, block_padding::NoPadding};
+use rsa::{BoxedUint, PrivateKey, PublicKey, hazmat, traits::PublicKeyParts};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -117,7 +117,9 @@ impl Rah10 {
                 .map(|(i, _)| i)
                 .collect();
             if matches.is_empty() {
-                return Err(CoreError::invalid(tr("Öffentliche Bankschlüssel fehlen. Bitte im Einrichtungsdialog die Bankschlüssel abrufen und ihre Prüfwerte unabhängig mit der Commerzbank-Quelle vergleichen.")));
+                return Err(CoreError::invalid(tr(
+                    "Öffentliche Bankschlüssel fehlen. Bitte im Einrichtungsdialog die Bankschlüssel abrufen und ihre Prüfwerte unabhängig mit der Commerzbank-Quelle vergleichen.",
+                )));
             }
             if matches.len() != 1 {
                 return Err(error());

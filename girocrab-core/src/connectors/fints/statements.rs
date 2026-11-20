@@ -3,8 +3,8 @@
 //! receipts (HKQTG).
 
 use super::syntax::{self, SegmentBuilder};
-use super::{camt, fints_date, kku, mt940, FinTsConnector, SepaAccount, UpdAccount};
-use crate::connectors::{today, ConnectContext, RemoteTransaction};
+use super::{FinTsConnector, SepaAccount, UpdAccount, camt, fints_date, kku, mt940};
+use crate::connectors::{ConnectContext, RemoteTransaction, today};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::trf;
 

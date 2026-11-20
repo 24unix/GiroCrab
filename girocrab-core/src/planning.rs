@@ -622,10 +622,11 @@ mod tests {
             .category_history(ins, vec![], Some("2025-02-01".into()), None)
             .unwrap();
         assert_eq!(h.len(), 1);
-        assert!(v
-            .category_history(ins, vec![-1], None, None)
-            .unwrap()
-            .is_empty());
+        assert!(
+            v.category_history(ins, vec![-1], None, None)
+                .unwrap()
+                .is_empty()
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -642,9 +643,10 @@ mod tests {
             note: String::new(),
         };
         // wrong sum / single part rejected
-        assert!(v
-            .set_transaction_splits(id, vec![inp(a, -1_000), inp(b, -1_000)])
-            .is_err());
+        assert!(
+            v.set_transaction_splits(id, vec![inp(a, -1_000), inp(b, -1_000)])
+                .is_err()
+        );
         assert!(v.set_transaction_splits(id, vec![inp(a, -3_000)]).is_err());
         v.set_transaction_splits(id, vec![inp(a, -1_000), inp(b, -2_000)])
             .unwrap();
@@ -683,12 +685,14 @@ mod tests {
         assert_eq!(parts.iter().map(|p| p.amount_cents).sum::<i64>(), 5_900);
         assert!(parts.iter().any(|p| p.amount_cents == -14_100));
         // signed sum off, or a zero part: still rejected
-        assert!(v
-            .set_transaction_splits(id, vec![inp(a, 20_000), inp(b, -14_000)])
-            .is_err());
-        assert!(v
-            .set_transaction_splits(id, vec![inp(a, 5_900), inp(b, 0)])
-            .is_err());
+        assert!(
+            v.set_transaction_splits(id, vec![inp(a, 20_000), inp(b, -14_000)])
+                .is_err()
+        );
+        assert!(
+            v.set_transaction_splits(id, vec![inp(a, 5_900), inp(b, 0)])
+                .is_err()
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -797,8 +801,8 @@ mod tests {
             .unwrap();
         assert!(unc.transactions.iter().all(|t| t.id != id));
         // overflowing parts are rejected instead of wrapping to the booking amount
-        assert!(v
-            .set_transaction_splits(
+        assert!(
+            v.set_transaction_splits(
                 id,
                 vec![
                     TransactionSplitInput {
@@ -813,7 +817,8 @@ mod tests {
                     },
                 ],
             )
-            .is_err());
+            .is_err()
+        );
         let csv = v.export_bookings_csv(f).unwrap();
         assert!(csv.starts_with(
             "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung;Tags\r\n"

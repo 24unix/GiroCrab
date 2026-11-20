@@ -245,7 +245,7 @@ Sheet {
                         text: sheet.clipboardOffer ? sheet.clipboardOffer.summary : ""
                         elide: Text.ElideRight; font.pixelSize: Theme.caption; color: Theme.secondary
                         font.features: { "tnum": 1 }
-                        Sensitive {} // masked IBAN, recipient and amount
+                        Sensitive { amounts: true } // masked IBAN, recipient and amount
                     }
                 }
                 Button { text: qsTr("Ignorieren"); onClicked: sheet.clipboardOffer = null }
@@ -427,7 +427,7 @@ Sheet {
                                 font.features: { "tnum": 1 }
                                 text: sheet.draft.amountText
                                 onTextEdited: AppModel.setDraft({ amountText: text })
-                                Sensitive {}
+                                Sensitive { amounts: true }
                             }
                             Text { text: "€"; color: Theme.secondary; font.pixelSize: Theme.body }
                         }
@@ -601,7 +601,7 @@ Sheet {
                         GiroCodeImage {
                             Layout.preferredWidth: 200; Layout.preferredHeight: 200; Layout.alignment: Qt.AlignTop
                             payload: sheet.showsGiroCode ? sheet.giroCodePayload : ""
-                            Sensitive {} // the code carries name, IBAN, amount and purpose
+                            Sensitive { amounts: true } // the code carries name, IBAN, amount and purpose
                         }
                         ColumnLayout {
                             Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
@@ -884,7 +884,7 @@ Sheet {
         text: Fmt.money(sheet.cents === null ? 0 : sheet.cents).replace("−", "")
         font.pixelSize: Theme.largeTitle; font.weight: Font.DemiBold; color: Theme.text
         font.features: { "tnum": 1 }
-        Sensitive {}
+        Sensitive { amounts: true }
     }
     component ValidMark: SFIcon {
         property bool ok

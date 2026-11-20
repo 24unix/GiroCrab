@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::Vault;
 use crate::error::{CoreError, CoreResult};
@@ -417,7 +417,9 @@ impl Vault {
             });
         };
         if !archived {
-            return Err(CoreError::invalid(tr("Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.")));
+            return Err(CoreError::invalid(tr(
+                "Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.",
+            )));
         }
         Self::delete_account_rows(&tx, account_id)?;
         // linked loan payments of this account are gone with it

@@ -1103,13 +1103,19 @@ pub struct StandingOrderLimits {
     pub weekdays: Vec<u32>,
 }
 
-/// Recipient suggested from past bookings (auto-completion).
-#[derive(Debug, Clone, uniffi::Record)]
+/// Recipient suggested from past bookings (auto-completion, `recipients.rs`): one per IBAN.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KnownRecipient {
+    /// The most used name the IBAN was paid under.
     pub name: String,
     pub iban: String,
+    /// Outgoing bookings to this IBAN.
     pub times_used: u32,
+    /// Date of the latest of them (`YYYY-MM-DD`).
+    pub last_used: String,
+    /// "Nicht mehr vorschlagen": only `list_known_recipients` returns these.
+    pub hidden: bool,
 }
 
 /// Budget progress of one category for one month.

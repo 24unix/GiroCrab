@@ -4,13 +4,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use jiff::civil::Date;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::connectors::read_body_limited;
 use crate::error::CoreError;
 use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
-use crate::vault::{sql_int_list, Vault, LIVE_BOOKINGS_SQL};
+use crate::vault::{LIVE_BOOKINGS_SQL, Vault, sql_int_list};
 
 fn all_bookings(
     v: &Vault,
@@ -849,13 +849,14 @@ mod logo_tests {
                 ..Default::default()
             })
             .unwrap();
-        assert!(page
-            .transactions
-            .iter()
-            .all(
-                |t| t.merchant_domain.as_deref() == Some("baeckerei-koenig.de")
-                    && t.merchant.domain_source == "override"
-            ));
+        assert!(
+            page.transactions
+                .iter()
+                .all(
+                    |t| t.merchant_domain.as_deref() == Some("baeckerei-koenig.de")
+                        && t.merchant.domain_source == "override"
+                )
+        );
         let enbw = v
             .list_transactions(BookingFilter {
                 search: Some("EnBW".into()),

@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// German → English, Qt placeholders (`%1`, `%2` …).
 const EN_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/en.json"));

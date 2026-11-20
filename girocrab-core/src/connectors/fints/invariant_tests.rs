@@ -9,8 +9,8 @@
 //! clipping, IBAN form, amounts), never computed with the builder's helpers.
 
 use super::standing_order::standing_order;
-use super::transfer::{batch_order, transfer_order, BatchParams};
-use super::{sepa, syntax, FinTsConnector, PreparedOrder, SepaAccount, Vop};
+use super::transfer::{BatchParams, batch_order, transfer_order};
+use super::{FinTsConnector, PreparedOrder, SepaAccount, Vop, sepa, syntax};
 use crate::connectors::{BatchTransferJob, StandingOrderJob, TransferJob};
 use crate::models::StandingOrderAction;
 use sepa::{BatchPayment, PainVersion};

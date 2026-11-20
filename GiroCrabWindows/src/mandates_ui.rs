@@ -8,15 +8,15 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use girocrab_core::Vault;
 use girocrab_core::batch_csv::parse_batch_csv;
 use girocrab_core::mandates::{
-    parse_mandate_csv, DebitFile, Mandate, MandateBooking, MandateCsvRow,
+    DebitFile, Mandate, MandateBooking, MandateCsvRow, parse_mandate_csv,
 };
-use girocrab_core::Vault;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::mandates_view::{self as view, Form, Line, Pick};
-use crate::{german_date, money, privacy_on, MainWindow, MandatesState, MdRow};
+use crate::{MainWindow, MandatesState, MdRow, german_date, money, privacy_on};
 
 type VaultSlot = Arc<Mutex<Option<Arc<Vault>>>>;
 

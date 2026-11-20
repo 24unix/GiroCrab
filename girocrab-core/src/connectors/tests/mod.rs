@@ -9,7 +9,7 @@ use crate::vault::Vault;
 
 #[test]
 fn errors_after_submit_leave_outcome_unknown() {
-    use super::{error_leaves_outcome_unknown as unknown, CoreError};
+    use super::{CoreError, error_leaves_outcome_unknown as unknown};
     assert!(unknown(&CoreError::Network {
         message: "x".into()
     }));
@@ -790,9 +790,10 @@ fn revoked_accounts_are_marked_and_new_ones_named() {
         ]
     );
     let accs = v.list_accounts().unwrap();
-    assert!(accs
-        .iter()
-        .any(|a| a.name == "Gemeinschaftskonto" && a.access_revoked));
+    assert!(
+        accs.iter()
+            .any(|a| a.name == "Gemeinschaftskonto" && a.access_revoked)
+    );
     std::fs::remove_file(path).ok();
 }
 
@@ -1113,11 +1114,12 @@ async fn magic_demo_login_syncs_without_network_or_product_id() {
         SyncStep::Finished { .. } => {}
         other => panic!("expected finish, got {other:?}"),
     }
-    assert!(v
-        .list_accounts()
-        .unwrap()
-        .iter()
-        .any(|a| a.connection_id == Some(id)));
+    assert!(
+        v.list_accounts()
+            .unwrap()
+            .iter()
+            .any(|a| a.connection_id == Some(id))
+    );
     // Any other login still needs the product ID.
     let other = v
         .add_fints_connection(
@@ -1450,14 +1452,15 @@ fn amounts_above_the_sepa_limit_are_rejected_before_the_tan() {
         };
     let later = crate::dates::iso(crate::dates::today() + crate::dates::days(10));
     for (instant, date) in [(false, None), (true, None), (false, Some(later.clone()))] {
-        assert!(v
-            .clone()
-            .begin_transfer(
-                transfer(MAX_AMOUNT_CENTS, instant, date.clone()),
-                "pin".into(),
-                true
-            )
-            .is_ok());
+        assert!(
+            v.clone()
+                .begin_transfer(
+                    transfer(MAX_AMOUNT_CENTS, instant, date.clone()),
+                    "pin".into(),
+                    true
+                )
+                .is_ok()
+        );
         assert!(matches!(
             v.clone().begin_transfer(
                 transfer(MAX_AMOUNT_CENTS + 1, instant, date),
@@ -1485,10 +1488,11 @@ fn amounts_above_the_sepa_limit_are_rejected_before_the_tan() {
         interval: 1,
         exec_day: 1,
     };
-    assert!(v
-        .clone()
-        .begin_standing_order(order(MAX_AMOUNT_CENTS), "pin".into(), true)
-        .is_ok());
+    assert!(
+        v.clone()
+            .begin_standing_order(order(MAX_AMOUNT_CENTS), "pin".into(), true)
+            .is_ok()
+    );
     assert!(matches!(
         v.clone()
             .begin_standing_order(order(MAX_AMOUNT_CENTS + 1), "pin".into(), true),
@@ -1516,14 +1520,16 @@ async fn demo_transfer_flow_adds_pending_booking_and_suggests_recipient() {
         instant: true,
         execution_date: None,
     };
-    assert!(v
-        .clone()
-        .begin_transfer(req("DE89370400440532013001", 100), "pin".into(), true)
-        .is_err());
-    assert!(v
-        .clone()
-        .begin_transfer(req("DE89370400440532013000", 0), "pin".into(), true)
-        .is_err());
+    assert!(
+        v.clone()
+            .begin_transfer(req("DE89370400440532013001", 100), "pin".into(), true)
+            .is_err()
+    );
+    assert!(
+        v.clone()
+            .begin_transfer(req("DE89370400440532013000", 0), "pin".into(), true)
+            .is_err()
+    );
     let s = v
         .clone()
         .begin_transfer(req("DE89 3704 0044 0532 0130 00", 1250), "pin".into(), true)
@@ -2018,10 +2024,11 @@ fn a_fetch_stores_no_documents_while_retrieval_is_off() {
         fetch_with_document(),
     )
     .unwrap();
-    assert!(v
-        .list_all_documents(crate::documents::DocumentFilter::default())
-        .unwrap()
-        .is_empty());
+    assert!(
+        v.list_all_documents(crate::documents::DocumentFilter::default())
+            .unwrap()
+            .is_empty()
+    );
     // on again: the same delivery is stored
     v.set_documents_fetch(conn, true).unwrap();
     store_fetch(
@@ -2052,11 +2059,12 @@ fn portal_connections_list_nothing_to_download_while_retrieval_is_off() {
         .unwrap();
     v.set_documents_fetch(conn, false).unwrap();
     // not even a list that would be invalid is looked at
-    assert!(v
-        .clone()
-        .pending_fnz_documents(conn, "kein json".into())
-        .unwrap()
-        .is_empty());
+    assert!(
+        v.clone()
+            .pending_fnz_documents(conn, "kein json".into())
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

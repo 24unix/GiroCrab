@@ -9,7 +9,7 @@
 //!   GIROCRAB_DEMO_SEED=1 cargo run
 
 use std::path::PathBuf;
-use std::process::{exit, Command};
+use std::process::{Command, exit};
 
 fn main() {
     let app = std::env::var("GIROCRAB_APP_BIN")

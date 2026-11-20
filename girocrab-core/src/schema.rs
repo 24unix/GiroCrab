@@ -45,7 +45,9 @@
 //!   count as read; the list index carries the column, a partial index finds the unread ones.
 //! - 32: account notes sync (#980): `accounts.note` / `note_ms` replace the vault setting
 //!   `account.note.<id>` ([`account_notes`]).
-//! - 33: per-account total switch (#337): `accounts.include_in_total` and its
+//! - 33: `hidden_recipients` (#978): IBANs left out of the transfer suggestions; index
+//!   `tx_recipients` over the outgoing bookings with an IBAN.
+//! - 34: per-account total switch (#337): `accounts.include_in_total` and its
 //!   sync stamp `accounts.total_ms`; existing amazon-orders accounts start
 //!   excluded (stamp 0, so any explicit user choice wins on sync).
 //!
@@ -96,7 +98,8 @@ const STEPS: &[Step] = &[
     Step::Sql(TX_DATE_ID_COVERING),                            // 30
     Step::Hook(document_seen),                                 // 31: read status of documents
     Step::Hook(account_notes),                                 // 32: account notes sync (#980)
-    Step::Hook(account_total_flag),                            // 33 (#337)
+    Step::Sql(crate::recipients::SCHEMA),                      // 33: hidden recipients (#978)
+    Step::Hook(account_total_flag),                            // 34 (#337)
 ];
 
 /// Step 32 (#980): the account note moves from the vault setting `account.note.<id>` (keyed by
@@ -870,7 +873,7 @@ CREATE TABLE loan_links (
 CREATE INDEX loan_links_loan ON loan_links(loan_account_id);
 "#;
 
-/// Step 33 (#337): per-account switch for the overall money totals, with its
+/// Step 34 (#337): per-account switch for the overall money totals, with its
 /// sync stamp. The one-time refill puts the order connector's existing
 /// accounts out of the totals (a Bestellkonto is a proof account, not a money
 /// account); it runs only when this step introduces the column, so a vault a
@@ -983,9 +986,10 @@ mod tests {
                 .unwrap(),
             25
         );
-        assert!(conn
-            .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
-            .unwrap());
+        assert!(
+            conn.query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -1036,9 +1040,10 @@ mod tests {
         };
         assert_eq!(role(&conn, builtin).as_deref(), Some("Freizeit"));
         assert_eq!(role(&conn, custom), None);
-        assert!(conn
-            .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
-            .unwrap());
+        assert!(
+            conn.query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
+                .unwrap()
+        );
         assert_eq!(
             conn.query_row("SELECT count(*) FROM accounts", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
@@ -1057,7 +1062,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 33);
+        assert_eq!(SCHEMA_VERSION, 34);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers
