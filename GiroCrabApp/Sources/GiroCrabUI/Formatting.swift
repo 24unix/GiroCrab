@@ -190,9 +190,11 @@ enum Money {
     /// "280,000.50" in English) as well as plain "280000.5" (Decimal, never Double).
     /// Both separators present: the last one is the decimal separator. Only one
     /// kind present: it is a grouping separator if it is the locale's grouping
-    /// separator and every group after it has exactly three digits.
+    /// separator and every group after it has exactly three digits. The minus sign `plain`
+    /// writes ("−", U+2212) and an en dash count as "-": a field filled with `plain` parses back.
     static func parseCents(_ input: String) -> Int64? {
-        let t = input.filter { !($0.isCurrencySymbol || $0.isWhitespace || $0 == "'") }
+        let t = input.replacingOccurrences(of: "−", with: "-").replacingOccurrences(of: "–", with: "-")
+            .filter { !($0.isCurrencySymbol || $0.isWhitespace || $0 == "'") }
         guard !t.isEmpty else { return nil }
         let seps: Set<Character> = [".", ","]
         let used = Set(t.filter { seps.contains($0) })
