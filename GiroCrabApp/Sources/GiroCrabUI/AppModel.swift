@@ -58,11 +58,26 @@ public final class AppModel {
     /// Lookups for booking rows (see `rebuildAccountIndex`).
     var accountsByID: [Int64: Account] = [:]
     var accountMarkers: [Int64: AccountMarker] = [:] { didSet { refreshAccountMarkerVisibility() } }
-    /// Account notes (vault setting `account.note.<id>`), loaded with the account index.
-    var accountNotes: [Int64: String] = [:]
     /// Custom label for „Ohne Kategorie“ (vault setting `ui.uncategorized_name`, #597); empty = default.
     var uncategorizedName = ""
-    var categories: [GiroCrabCore.Category] = []
+    var categories: [GiroCrabCore.Category] = [] {
+        didSet {
+            categoriesRequest = categorySumsRequest
+            categoriesAwaitRefresh = false
+            refreshOtherCurrencies()
+        }
+    }
+    /// What `categories` were loaded for: a column without a booking list reloads them only
+    /// when it needs other sums (#1413).
+    @ObservationIgnored var categoriesRequest: CategorySumsRequest?
+    /// A background refresh (sync, merge, filter change) is to bring new sums.
+    @ObservationIgnored var categoriesAwaitRefresh = false
+    /// "Zusätzlich" next to the sidebar totals (#1049): per category (with subcategories) what it holds in
+    /// currencies other than EUR, which its total leaves out. Empty when no booking has another currency.
+    var categoryOtherTotals: [Int64: [CurrencyAmount]] = [:]
+    /// "Zusätzlich" in the KPI tiles (#1049): the same tiles for each currency other than EUR.
+    var otherCurrencyFlows: [CurrencyFlow] = []
+    @ObservationIgnored var otherCurrenciesTask: Task<Void, Never>?
     /// Live tags in list order with their booking counts (#228).
     var tags: [GiroCrabCore.Tag] = []
     var categoryTree: [CategoryNode] = []
@@ -87,7 +102,7 @@ public final class AppModel {
     /// Watches Ansicht › Saldo anzeigen, which the settings window can change too.
     @ObservationIgnored private var runningBalanceObserver: NSKeyValueObservation?
     /// Flows of the selected account/group in the selected period; nil = not loaded yet.
-    var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)?
+    var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)? { didSet { refreshOtherCurrencies() } }
     /// „Ohne Kategorie“ badge while list filters narrow the sums; nil = the accounts' own counts (#357).
     var uncategorizedFilteredCount: Int?
     var dashboard: InvestmentDashboard?
@@ -102,6 +117,8 @@ public final class AppModel {
     var history: [DailyBalance] = []
     /// Monthly sums of the selected category incl. subcategories (chart above its bookings, #502).
     var categoryHistory: [CategoryPeriodSum] = []
+    /// What the selected category holds in currencies other than EUR (#1049): "Zusätzlich: …" in the header.
+    var categoryOtherCurrencies: [CurrencyAmount] = []
     /// Bar width of the category chart (#557); `.automatic` follows the global setting (months if that is automatic too).
     var categoryBarUnit: BalanceBarUnit = .automatic
     var advanziaWorkflow: AdvanziaWorkflow?
@@ -125,7 +142,8 @@ public final class AppModel {
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts {
         didSet {
-            mainColumn = MainColumn(sidebarSelection)
+            // Without a background load the column follows at once; otherwise when the load publishes.
+            defer { if selectionLoadTask == nil { showSelection() } }
             if oldValue != sidebarSelection {
                 oldValue.flatMap { sidebarRowSelections[$0] }?.isSelected = false
                 sidebarSelection.flatMap { sidebarRowSelections[$0] }?.isSelected = true
@@ -141,14 +159,55 @@ public final class AppModel {
                 return
             }
             guard !resetsSelectionBeforeReloadAll else { return }
+            // Geplant, Lastschriften, Belege and Vermögen show no booking list: loading it for
+            // all accounts only replaced the list the column shows next (#1396).
+            guard MainColumn(sidebarSelection) == .bookings else {
+                if selectionLoadTask != nil { endSelectionLoad() }
+                // the recurring data and salary cycle follow the selection (all accounts here)
+                refreshSalaryCycle()
+                refreshRecurring()
+                // The sidebar sums drop the account filter of a category view (#406) and take the period,
+                // pay cycle or refresh a cancelled load would have brought (#1413).
+                if categoriesAwaitRefresh || categoriesRequest != categorySumsRequest { reloadCategories() }
+                return
+            }
             reloadSelection(periodChanged: false)
         }
     }
-    /// The kind of view the booking column shows; follows `sidebarSelection`. The split view
+    /// The selection the booking column shows: `sidebarSelection` once its data is in, so a new
+    /// title never stands over the old figures (#1396). Views read this; loads `sidebarSelection`.
+    private(set) var shownSelection: SidebarItem? = .allAccounts {
+        didSet {
+            mainColumn = MainColumn(shownSelection)
+            showsOverview = shownSelection == .allAccounts
+            showsNewBookings = shownSelection == .newBookings
+            // „Neue Umsätze“ orders the stream by account card (`visibleBookings`)
+            if (oldValue == .newBookings) != showsNewBookings { rebuildDayGroups() }
+            refreshAccountMarkerVisibility()
+        }
+    }
+    /// The kind of view the booking column shows; follows `shownSelection`. The split view
     /// and other window-level views read this instead of the selection: assigning an equal
     /// value does not notify, so a switch between accounts or categories leaves them alone
     /// (re-running them re-created and re-laid out every column of the window).
     private(set) var mainColumn: MainColumn = .bookings
+    /// The column shows „Alle Konten“ / „Neue Umsätze“: flags instead of `shownSelection`, so a
+    /// switch between categories leaves the views reading them alone.
+    private(set) var showsOverview = true
+    private(set) var showsNewBookings = false
+    /// The period of the data the column shows: `period` once that data is in, so the header and the
+    /// tile subtitles never name a period the list, chart and tiles do not show yet (#1413).
+    private(set) var shownPeriod = PeriodSetting(.all)
+    /// `period` with its custom dates, as the loads read it.
+    var requestedPeriod: PeriodSetting { PeriodSetting(period, customFrom: customPeriodFrom, customTo: customPeriodTo) }
+    /// The pay cycle behind the shown data (`salaryCycle` belongs to `sidebarSelection`, #1413).
+    private(set) var shownSalaryCycle: SalaryCycle?
+    /// The column now shows `sidebarSelection` in `period` (its data is in, or the placeholder stands in).
+    func showSelection() {
+        shownSelection = sidebarSelection
+        shownPeriod = requestedPeriod
+        shownSalaryCycle = salaryCycle
+    }
     /// Per sidebar row: is it the selected one (`sidebarRowSelection(for:)`), kept in step by
     /// `sidebarSelection`.
     @ObservationIgnored var sidebarRowSelections: [SidebarItem: SidebarRowSelection] = [:]
@@ -243,7 +302,10 @@ public final class AppModel {
         }
     }
     /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
-    var salaryCycle: SalaryCycle?
+    var salaryCycle: SalaryCycle? {
+        // The column already shows the selection unless a load still holds its old data (#1413).
+        didSet { if selectionLoadTask == nil || isLoadingSelection { shownSalaryCycle = salaryCycle } }
+    }
     /// Recurring series of the selected accounts (GitHub #35).
     var recurring: [RecurringSeries] = [] {
         didSet { recurringByKey = Dictionary(grouping: recurring, by: \.baseKey) }
@@ -337,7 +399,7 @@ public final class AppModel {
     /// empty = all accounts. Kept while the app runs.
     var categoryAccountFilter: Set<Int64> = [] {
         didSet {
-            guard categoryAccountFilter != oldValue, showsAccountFilter, !suspendsFilterReloads else { return }
+            guard categoryAccountFilter != oldValue, Self.offersAccountFilter(sidebarSelection), !suspendsFilterReloads else { return }
             listLimit = Self.defaultListLimit
             reloadSelection(periodChanged: true) // also the sidebar sums (#621)
         }
@@ -778,6 +840,10 @@ public final class AppModel {
     var statementsCountBefore = 0
     /// comdirect FinTS login whose PostBox is fetched now ("PostBox jetzt abrufen", #838).
     var postboxConnectionID: Int64?
+    /// Account whose login syncs only it ("<Konto> abrufen", #1124). Set by
+    /// `requestSyncAccount`, kept through prompts and retries, cleared by a
+    /// finished or cancelled sync and by `requestFullSync`.
+    var syncAccountID: Int64?
     /// Decrypted copy shown in QuickLook; removed again as soon as the
     /// preview closes or shows another document (and on lock / quit).
     var quickLookURL: URL? {
@@ -976,7 +1042,8 @@ public final class AppModel {
             standingDraft.purpose = "Abschlag Strom Kd-Nr 482910"
             standingDraft.execDay = 3
             standingDraft.syncDate(to: nil)
-        case "transfer", "transfer-confirm", "transfer-girocode", "transfer-clipboard":
+        case "transfer", "transfer-confirm", "transfer-girocode", "transfer-clipboard", "transfer-recipients",
+             "transfer-suggestions":
             if let a = transferAccounts.first { sidebarSelection = .account(a.id) }
             openTransfer()
             // transfer-clipboard: empty form, the sheet offers the payment in its clipboard banner (#663)
@@ -1456,7 +1523,7 @@ public final class AppModel {
         AppDefaults.store.set(true, forKey: Self.realDataKey)
         logoCache = [:]
         // nothing of the vault shown before (demo) may appear under the new one
-        page = nil; bookings = []; history = []; listBalances = ListBalances()
+        page = nil; bookings = []; history = []; categoryOtherCurrencies = []; listBalances = ListBalances()
         assetClassificationVersion += 1
         // cheap, indexed calls; everything that scans bookings goes off the main thread
         reloadAccounts()
@@ -1608,8 +1675,7 @@ public final class AppModel {
         quietSyncConnectionID = nil
         // the failure text may name a bank: gone with the vault
         autoSyncStatus = AutoSyncStatus()
-        statementsAccountID = nil
-        postboxConnectionID = nil
+        clearSyncTargets()
         syncGeneration &+= 1
         resetSyncBatch()
         transferBusy = false
@@ -1728,17 +1794,15 @@ extension AppModel {
         }
     }
 
-    /// Free-text note for an account stored in vault settings (GitHub #512).
+    /// Free-text note for an account (GitHub #512); synced like the account name (#980).
     func accountNote(for accountID: Int64) -> String {
-        accountNotes[accountID] ?? ""
+        accountsByID[accountID]?.note ?? ""
     }
 
-    /// `list_settings` only returns known keys, so the note is read with `getSetting`.
     func setAccountNote(_ note: String, for accountID: Int64) {
         guard let vault else { return }
-        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        runCore { try vault.setSetting(key: "account.note.\(accountID)", value: trimmed) }
-        accountNotes[accountID] = trimmed.isEmpty ? nil : trimmed
+        runCore { try vault.setAccountNote(accountId: accountID, note: note) }
+        reloadAccounts()
     }
 
     /// Label of the uncategorized row, list chips and title (#597).

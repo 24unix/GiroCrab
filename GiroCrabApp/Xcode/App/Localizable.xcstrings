@@ -855,6 +855,17 @@
         }
       }
     },
+    "%lld Dokumente konnten keinem Konto zugeordnet werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld documents could not be assigned to an account."
+          }
+        }
+      }
+    },
     "%lld Kategorien: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4499,6 +4510,17 @@
         }
       }
     },
+    "Andere …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other …"
+          }
+        }
+      }
+    },
     "Anderen Ordner wählen …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5392,6 +5414,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "From your data import:"
+          }
+        }
+      }
+    },
+    "Aus Ihren bisherigen Zahlungen, je IBAN eine Zeile. Ausgeblendete IBANs schlägt „Neue Überweisung“ nicht mehr vor; die Buchungen bleiben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From your past payments, one row per IBAN. Hidden IBANs are no longer suggested in “New Transfer”; the transactions stay."
           }
         }
       }
@@ -9114,13 +9147,13 @@
         }
       }
     },
-    "Das Konto wurde aufgelöst" : {
+    "Das Konto wurde aufgelöst (archivieren)" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The account has been closed"
+            "value" : "The account has been closed (archive)"
           }
         }
       }
@@ -10041,13 +10074,13 @@
         }
       }
     },
-    "Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text, und lässt sich nur mit „Aus Zwischenablage einfügen“ in GiroCrab verwenden." : {
+    "Der Schlüssel entschlüsselt Ihren gesamten Tresor. Er liegt 60 Sekunden in der Zwischenablage, nicht als Text. Über die geteilte Zwischenablage (Handoff, gleicher Apple Account) übernehmen Sie ihn auf dem anderen Gerät mit „Schlüssel einfügen …“ › „Aus Zwischenablage einfügen“; danach wird er dort aus der Zwischenablage gelöscht." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The key decrypts your entire vault. It stays on the clipboard for 60 seconds, not as text, and can only be used with “Paste from Clipboard” in GiroCrab."
+            "value" : "The key decrypts your entire vault. It stays on the clipboard for 60 seconds, not as text. Through the shared clipboard (Handoff, same Apple Account), take it over on your other device with “Paste key…” › “Paste from Clipboard”; it is then removed from the clipboard there."
           }
         }
       }
@@ -10574,6 +10607,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Asset classes show gross assets. Liabilities are currently not deducted above."
+          }
+        }
+      }
+    },
+    "Die Anmeldedaten werden nur für diesen Abruf verwendet und nie gespeichert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The sign-in details are used for this sync only and never stored."
+          }
+        }
+      }
+    },
+    "Die Anmeldedaten werden verschlüsselt im Tresor gespeichert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The sign-in details are stored encrypted in the vault."
           }
         }
       }
@@ -12209,17 +12264,6 @@
         }
       }
     },
-    "Ein Bargeld-Konto ohne Bankanbindung. Die Buchungen tragen Sie selbst ein." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A cash account without a bank connection. You enter the bookings yourself."
-          }
-        }
-      }
-    },
     "Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12260,6 +12304,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "An account belongs to at most one group. Drag accounts onto another group on the left."
+          }
+        }
+      }
+    },
+    "Ein Konto ohne Bankanbindung. Die Buchungen tragen Sie selbst ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An account without a bank connection. You enter the bookings yourself."
           }
         }
       }
@@ -12825,6 +12880,17 @@
         }
       }
     },
+    "Empfänger konnten nicht geladen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recipients could not be loaded"
+          }
+        }
+      }
+    },
     "Empfänger und Auftraggeber" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12832,6 +12898,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Payees and payers"
+          }
+        }
+      }
+    },
+    "Empfänger verwalten: veraltete IBANs nicht mehr vorschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage recipients: stop suggesting outdated IBANs"
           }
         }
       }
@@ -16229,6 +16306,17 @@
         }
       }
     },
+    "Hier erscheinen die Empfänger Ihrer Zahlungen, sobald Buchungen mit IBAN abgerufen sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recipients of your payments appear here once transactions with an IBAN have been retrieved."
+          }
+        }
+      }
+    },
     "Hilfe & FAQ" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16511,6 +16599,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ISO 20022 · for older software"
+          }
+        }
+      }
+    },
+    "ISO-Code" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ISO Code"
           }
         }
       }
@@ -19249,6 +19348,39 @@
         }
       }
     },
+    "Kontist Client-ID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontist client ID"
+          }
+        }
+      }
+    },
+    "Kontist Client-Secret" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontist client secret"
+          }
+        }
+      }
+    },
+    "Kontist OAuth2-Client" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontist OAuth2 client"
+          }
+        }
+      }
+    },
     "Konto" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21797,6 +21929,17 @@
         }
       }
     },
+    "Name oder IBAN suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search name or IBAN"
+          }
+        }
+      }
+    },
     "Name stimmt nicht überein" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22655,6 +22798,28 @@
         }
       }
     },
+    "Nicht alles abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not everything was fetched"
+          }
+        }
+      }
+    },
+    "Nicht alles abgerufen, Details im Abruf-Protokoll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not everything was fetched, details in the Fetch Log"
+          }
+        }
+      }
+    },
     "Nicht als Gehalt erkannt. Markieren Sie den Eingang, damit der Zeitraum „Seit letztem Gehalt“ ihn nutzt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22783,6 +22948,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No longer in the depot since"
+          }
+        }
+      }
+    },
+    "Nicht mehr vorschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop suggesting"
           }
         }
       }
@@ -22992,6 +23168,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No budgets yet. Set a monthly budget from a category's context menu."
+          }
+        }
+      }
+    },
+    "Noch keine Empfänger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recipients yet"
           }
         }
       }
@@ -27185,6 +27372,17 @@
         }
       }
     },
+    "Sparkonto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Savings Account"
+          }
+        }
+      }
+    },
     "Sparplan" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28050,6 +28248,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Total"
+          }
+        }
+      }
+    },
+    "Summe %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total %@"
           }
         }
       }
@@ -30590,6 +30799,17 @@
         }
       }
     },
+    "Vorgeschlagen (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggested (%lld)"
+          }
+        }
+      }
+    },
     "Vorgewählt, weil die Datei zu diesem Konto passt. Bereits vorhandene Buchungen werden nicht doppelt übernommen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -30740,6 +30960,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pending transactions could not be discarded"
+          }
+        }
+      }
+    },
+    "Vorname;TT.MM.JJJJ;PLZ" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "First name;DD.MM.YYYY;postcode"
           }
         }
       }
@@ -31565,6 +31796,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show Again"
+          }
+        }
+      }
+    },
+    "Wieder vorschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggest again"
           }
         }
       }

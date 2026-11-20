@@ -126,8 +126,12 @@ async fn run(batch_booking: bool, last: bool, unknown: bool) -> (i64, i64, i64, 
     let db = vault.db().unwrap();
     let one = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
     (
-        one("SELECT count(*) FROM planned_transfers WHERE kind = 'debit' AND end_to_end_id NOT LIKE 'DEMO%'"),
-        one("SELECT IFNULL(sum(amount_cents),0) FROM planned_transfers WHERE kind = 'debit' AND end_to_end_id NOT LIKE 'DEMO%'"),
+        one(
+            "SELECT count(*) FROM planned_transfers WHERE kind = 'debit' AND end_to_end_id NOT LIKE 'DEMO%'",
+        ),
+        one(
+            "SELECT IFNULL(sum(amount_cents),0) FROM planned_transfers WHERE kind = 'debit' AND end_to_end_id NOT LIKE 'DEMO%'",
+        ),
         one("SELECT count(*) FROM mandates WHERE active = 1"),
         one("SELECT count(*) FROM mandates WHERE last_collected IS NOT NULL"),
     )

@@ -10,13 +10,13 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::Booking;
 use crate::money::format_cents;
-use crate::vault::{sql_int_list, Vault};
+use crate::vault::{Vault, sql_int_list};
 
 pub const DOC_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS booking_documents (
@@ -975,8 +975,8 @@ impl Vault {
             let db = self.db()?;
             let mut st =
                 db.prepare("SELECT id FROM booking_documents WHERE exported_at IS NULL")?;
-            let ids = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
-            ids
+
+            st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?
         };
         if pending.is_empty() {
             return Ok(0);
@@ -1578,17 +1578,19 @@ mod tests {
         let docs = v.list_all_documents(DocumentFilter::default()).unwrap();
         assert!(docs.iter().any(|d| d.booking_label.starts_with("REWE")));
         // unmatched -> PostBox
-        assert!(v
-            .auto_match_dropped_pdf("irgendwas.pdf".into(), simple_pdf(&["Hallo".into()]))
-            .unwrap()
-            .is_none());
-        assert!(!v
-            .list_all_documents(DocumentFilter {
+        assert!(
+            v.auto_match_dropped_pdf("irgendwas.pdf".into(), simple_pdf(&["Hallo".into()]))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            !v.list_all_documents(DocumentFilter {
                 unlinked_only: true,
                 ..Default::default()
             })
             .unwrap()
-            .is_empty());
+            .is_empty()
+        );
         // export
         let export = crate::test_support::TempDir::new("export");
         let dir = export.path();

@@ -69,7 +69,7 @@ extension AppModel {
             errorMessage = describe(error)
             return
         }
-        requestSync(connections.first { $0.id == connection.id } ?? connection)
+        requestFullSync(connections.first { $0.id == connection.id } ?? connection)
     }
 
     // MARK: scheduled sync
@@ -174,7 +174,8 @@ extension AppModel {
 
     // MARK: sync notice
 
-    /// Toast text after a sync: bookings plus accounts that appeared or lost access.
+    /// Toast text after a sync: bookings plus accounts that appeared or lost access, and
+    /// a pointer to the log when parts failed (#1083; the texts name accounts, so not here).
     func syncNotice(_ connection: BankConnection, _ s: SyncSummary) -> String {
         var parts = [String(localized: "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")]
         if !s.newAccounts.isEmpty {
@@ -182,6 +183,13 @@ extension AppModel {
         }
         if !s.revokedAccounts.isEmpty {
             parts.append(String(localized: "Kein Zugriff mehr: \(s.revokedAccounts.joined(separator: ", "))"))
+        }
+        if !s.warnings.isEmpty {
+            #if os(macOS)
+            parts.append(String(localized: "Nicht alles abgerufen, Details im Abruf-Protokoll"))
+            #else
+            parts.append(String(localized: "Nicht alles abgerufen"))
+            #endif
         }
         return parts.joined(separator: " · ")
     }

@@ -26,15 +26,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use reqwest::cookie::{CookieStore, Jar};
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ORIGIN, REFERER, SET_COOKIE, USER_AGENT};
+use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, ORIGIN, REFERER, SET_COOKIE, USER_AGENT};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use serde_json::{Value, json};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use super::{
-    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteHolding, RemoteTransaction, BROWSER_UA,
+    BROWSER_UA, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
+    FetchResult, Phase, RemoteAccount, RemoteHolding, RemoteTransaction,
 };
 use crate::asset_classification::{AssetClass, ClassificationValues, InstrumentKind};
 use crate::error::{CoreError, CoreResult};
@@ -152,11 +152,7 @@ fn parse_decimal_text(text: &str) -> Option<f64> {
             let thousands = tail.len() == 4
                 && head.trim_start_matches('-').len() <= 3
                 && !head.trim_start_matches('-').contains('.');
-            if thousands {
-                t.replace('.', "")
-            } else {
-                t
-            }
+            if thousands { t.replace('.', "") } else { t }
         }
         (None, None) => t,
     };
@@ -821,7 +817,7 @@ where
             Ok(None) => {
                 return Err(transport(CoreError::Network {
                     message: trf("WebSocket während „{0}“ geschlossen.", &[&kind]),
-                }))
+                }));
             }
             Ok(Some(Err(e))) => return Err(transport(TradeRepublicConnector::ws_err(e))),
             Ok(Some(Ok(msg))) => msg,
@@ -1069,6 +1065,19 @@ impl TradeRepublicConnector {
         if let Some(c) = &self.client {
             return Ok(c.clone());
         }
+        let c = self.build_client(super::same_host_redirects())?;
+        self.client = Some(c.clone());
+        Ok(c)
+    }
+
+    /// Client for document downloads (GET without credentials in the body). Presigned
+    /// document URLs may redirect to a storage host, so redirects to other hosts are
+    /// followed here; reqwest drops the manual Cookie header on a cross-host redirect.
+    fn document_client(&self) -> CoreResult<reqwest::Client> {
+        self.build_client(reqwest::redirect::Policy::default())
+    }
+
+    fn build_client(&self, redirect: reqwest::redirect::Policy) -> CoreResult<reqwest::Client> {
         let mut h = HeaderMap::new();
         h.insert(USER_AGENT, HeaderValue::from_static(BROWSER_UA));
         h.insert(ORIGIN, HeaderValue::from_static(APP_ORIGIN));
@@ -1085,8 +1094,9 @@ impl TradeRepublicConnector {
             .cookie_provider(self.jar.clone())
             .default_headers(h)
             .timeout(std::time::Duration::from_secs(30))
+            .redirect(redirect)
+            .referer(false)
             .build()?;
-        self.client = Some(c.clone());
         Ok(c)
     }
 
@@ -1105,8 +1115,12 @@ impl TradeRepublicConnector {
 
     fn http_error(step: &str, status: u16, body: &str) -> CoreError {
         let hint = match status {
-            403 | 405 => tr(" – AWS-WAF-Schutz von Trade Republic. Bitte „Im Browser-Fenster anmelden“ verwenden."),
-            426 => tr(" – CLIENT_VERSION_OUTDATED: Trade Republic verlangt einen neueren Client. Bitte „Im Browser-Fenster anmelden“ verwenden."),
+            403 | 405 => tr(
+                " – AWS-WAF-Schutz von Trade Republic. Bitte „Im Browser-Fenster anmelden“ verwenden.",
+            ),
+            426 => tr(
+                " – CLIENT_VERSION_OUTDATED: Trade Republic verlangt einen neueren Client. Bitte „Im Browser-Fenster anmelden“ verwenden.",
+            ),
             401 => tr(" – PIN, Code oder Sitzung ungültig."),
             429 => tr(" – zu viele Versuche, bitte etwas warten."),
             _ => "",
@@ -1165,16 +1179,22 @@ impl TradeRepublicConnector {
 /// refused by Trade Republic.
 fn browser_login_message(expired: bool) -> &'static str {
     if expired {
-        tr("Die Trade-Republic-Sitzung ist abgelaufen. Bitte im Browser-Fenster neu anmelden – die neue Sitzung wird danach gespeichert.")
+        tr(
+            "Die Trade-Republic-Sitzung ist abgelaufen. Bitte im Browser-Fenster neu anmelden – die neue Sitzung wird danach gespeichert.",
+        )
     } else {
-        tr("Trade Republic schützt die Anmeldung mit AWS WAF. Bitte im Browser-Fenster anmelden – die Sitzung wird danach gespeichert und wiederverwendet.")
+        tr(
+            "Trade Republic schützt die Anmeldung mit AWS WAF. Bitte im Browser-Fenster anmelden – die Sitzung wird danach gespeichert und wiederverwendet.",
+        )
     }
 }
 
 /// PIN needed for a direct login. `expired`: as above.
 fn pin_prompt_message(expired: bool) -> &'static str {
     if expired {
-        tr("Die Trade-Republic-Sitzung ist abgelaufen. Bitte die 4-stellige PIN eingeben (oder „Im Browser-Fenster anmelden“).")
+        tr(
+            "Die Trade-Republic-Sitzung ist abgelaufen. Bitte die 4-stellige PIN eingeben (oder „Im Browser-Fenster anmelden“).",
+        )
     } else {
         tr("Bitte die 4-stellige Trade-Republic-PIN eingeben (oder „Im Browser-Fenster anmelden“).")
     }
@@ -1208,7 +1228,12 @@ impl BankConnector for TradeRepublicConnector {
             });
         }
         if self.session.phone.len() < 8 {
-            return Err(CoreError::InvalidInput { message: trf("Telefonnummer fehlt oder ist ungültig („{0}“). Bitte z. B. +4915112345678 eintragen.", &[&ctx.login_name]) });
+            return Err(CoreError::InvalidInput {
+                message: trf(
+                    "Telefonnummer fehlt oder ist ungültig („{0}“). Bitte z. B. +4915112345678 eintragen.",
+                    &[&ctx.login_name],
+                ),
+            });
         }
         if ctx.secret.is_empty() {
             return Err(CoreError::Authentication {
@@ -1309,10 +1334,10 @@ impl BankConnector for TradeRepublicConnector {
         }
         // HTTP 200 with an EMPTY body (or {}) is normal: the session comes as Set-Cookie.
         self.session.cookies = merge_cookies(self.session.cookies.expose(), &set).into();
-        if let Ok(v) = serde_json::from_str::<Value>(&text) {
-            if let Some(t) = v["sessionToken"].as_str() {
-                self.session.session_token = t.into();
-            }
+        if let Ok(v) = serde_json::from_str::<Value>(&text)
+            && let Some(t) = v["sessionToken"].as_str()
+        {
+            self.session.session_token = t.into();
         }
         if self.session.cookies.is_empty() {
             let url: url::Url = API.parse().map_err(|e| CoreError::Protocol {
@@ -1556,7 +1581,7 @@ impl BankConnector for TradeRepublicConnector {
             doc_candidates.clear();
         }
         // --- Beleg-Abruf: timelineDetailV2 -> "Dokumente" section -> PDF download
-        let client = self.client()?;
+        let client = self.document_client()?;
         let mut details: std::collections::HashMap<String, Value> = Default::default();
         // Documents not looked at (more than one pass takes, a failed request): a catch-up goes on.
         let mut docs_incomplete = doc_candidates.len() > 40;
@@ -1764,6 +1789,18 @@ mod tests {
         assert_eq!(saved.doc_items.len(), MAX_DOC_ITEMS);
         assert_eq!(saved.doc_items.first().unwrap(), "1");
         assert_eq!(saved.doc_items.last().unwrap(), &MAX_DOC_ITEMS.to_string());
+    }
+
+    #[tokio::test]
+    async fn login_client_does_not_follow_redirects_to_another_origin() {
+        let client = TradeRepublicConnector::new().client().unwrap();
+        crate::connectors::tests::redirects::assert_no_cross_origin_replay(&client).await;
+    }
+
+    #[tokio::test]
+    async fn document_client_follows_redirects_to_another_origin() {
+        let client = TradeRepublicConnector::new().document_client().unwrap();
+        crate::connectors::tests::redirects::assert_follows_cross_origin_get(&client).await;
     }
 
     fn detail(extra_rows: serde_json::Value) -> Value {

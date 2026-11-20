@@ -10,9 +10,9 @@ use crate::{
     i18n::tr,
     models::{AccountKind, ConnectorKind},
     secret::SecretJson,
-    vault::{connections::store_state, Vault},
+    vault::{Vault, connections::store_state},
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{

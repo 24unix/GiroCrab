@@ -480,12 +480,13 @@ fn account_kind(product_type: &str) -> Option<AccountKind> {
 /// (`availableAmount` = `limit` − `saldo`) is turned into a negative balance.
 fn balance_of(a: &Value, kind: AccountKind) -> Option<i64> {
     let saldo = cents(&a["saldo"])?;
-    if kind == AccountKind::CreditCard && saldo > 0 {
-        if let (Some(limit), Some(available)) = (cents(&a["limit"]), cents(&a["availableAmount"])) {
-            if limit - saldo == available && limit + saldo != available {
-                return Some(-saldo);
-            }
-        }
+    if kind == AccountKind::CreditCard
+        && saldo > 0
+        && let (Some(limit), Some(available)) = (cents(&a["limit"]), cents(&a["availableAmount"]))
+        && limit - saldo == available
+        && limit + saldo != available
+    {
+        return Some(-saldo);
     }
     Some(saldo)
 }
@@ -702,7 +703,7 @@ fn message_pdf(v: &Value) -> Option<Vec<u8>> {
 /// login (`HBSCA500`) for clients it does not recognise. Redirects stay on
 /// the host, so the password never goes elsewhere.
 fn client() -> CoreResult<reqwest::Client> {
-    use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, ORIGIN, REFERER};
+    use reqwest::header::{ACCEPT_LANGUAGE, HeaderMap, HeaderValue, ORIGIN, REFERER};
     let mut headers = HeaderMap::new();
     headers.insert(ORIGIN, HeaderValue::from_static(WEB_ORIGIN));
     headers.insert(
@@ -1034,7 +1035,7 @@ impl BankConnector for HanseaticConnector {
                 let status = match self.sca_status(&login_id, &sca.id).await {
                     Ok(v) => v,
                     Err(CoreError::Network { .. }) => {
-                        return still_waiting(self.sca_deadline, Instant::now())
+                        return still_waiting(self.sca_deadline, Instant::now());
                     }
                     Err(e) => return Err(e),
                 };

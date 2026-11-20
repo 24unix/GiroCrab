@@ -36,7 +36,7 @@ p256 = { version = "0.14", features = ["ecdsa"] }
 sha2 = "0.11"
 aes = { version = "0.9", features = ["zeroize"] }
 cbc = { version = "0.2", features = ["alloc", "zeroize"] }
-des = { version = "0.9", features = ["zeroize"] }
+des = { version = "0.9", features = ["zeroize"] } # required by FinTS RDH/RAH-10 key files; never used for vault encryption
 hmac = { version = "0.13", features = ["zeroize"] }
 pbkdf2 = "0.13"
 crypto-primes = { version = "0.7", default-features = false }
@@ -60,4 +60,6 @@ libc = "0.2"
 jiff = { version = "1.0.1", features = ["tzdb-bundle-always"] }
 
 [dev-dependencies]
+# Independent XML parser for the payment invariant tests (#947); tests only.
+roxmltree = "0.20"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }

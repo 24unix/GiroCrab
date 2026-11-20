@@ -1,7 +1,7 @@
 use base64::Engine as _;
+use rsa::PrivateKey;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use rsa::signature::{SignatureEncoding, Signer};
-use rsa::PrivateKey;
 
 use super::*;
 use crate::models::AccountKind;
@@ -669,9 +669,15 @@ async fn bunq_card_survey() {
             };
             let row = format!(
                 "decision={} auth_status={} auth_type={} payment_status={} clearing={} settlement={} billing_sign={sign} foreign={foreign} created={} reservation_expiry={} clearing_expiry={} linked_payments={linked} => open_hold={}",
-                f("decision"), f("authorisation_status"), f("authorisation_type"),
-                f("payment_status"), f("clearing_status"), f("settlement_status"),
-                rel("created"), rel("reservation_expiry_time"), rel("clearing_expiry_time"),
+                f("decision"),
+                f("authorisation_status"),
+                f("authorisation_type"),
+                f("payment_status"),
+                f("clearing_status"),
+                f("settlement_status"),
+                rel("created"),
+                rel("reservation_expiry_time"),
+                rel("clearing_expiry_time"),
                 is_open_hold(a, now)
             );
             *seen.entry(row).or_insert(0) += 1;
@@ -857,8 +863,14 @@ async fn bunq_receipt_survey() {
                         }
                         println!(
                             "  REQUEST-RESPONSE id={} status={} type={} sub_type={} event_id={} time_responded={} created={} attachment={}",
-                            r["id"], r["status"], r["type"], r["sub_type"], r["event_id"],
-                            r["time_responded"], r["created"], shape(&r["attachment"]),
+                            r["id"],
+                            r["status"],
+                            r["type"],
+                            r["sub_type"],
+                            r["event_id"],
+                            r["time_responded"],
+                            r["created"],
+                            shape(&r["attachment"]),
                         );
                         for a in attachment_items(&r["attachment"]) {
                             println!("    own attachment: {}", shape(a));
@@ -910,7 +922,9 @@ async fn bunq_receipt_survey() {
                                                 b.len(),
                                                 String::from_utf8_lossy(&b[..b.len().min(5)])
                                             ),
-                                            Err(e) => println!("      download id={aid}: ERROR {e:?}"),
+                                            Err(e) => {
+                                                println!("      download id={aid}: ERROR {e:?}")
+                                            }
                                         }
                                     }
                                 }
@@ -1244,12 +1258,16 @@ async fn bunq_refused_notes_survey() {
             let paid = ts(&p["created"]);
             println!(
                 "PAYMENT id={pid} {} {:.2} type={} sub_type={} status={status} payment_keys=[{}] scheduled_id={} batch_id={}",
-                p["created"].as_str().and_then(local_date).unwrap_or_default(),
+                p["created"]
+                    .as_str()
+                    .and_then(local_date)
+                    .unwrap_or_default(),
                 cents as f64 / 100.0,
                 p["type"].as_str().unwrap_or("-"),
                 p["sub_type"].as_str().unwrap_or("-"),
                 keys(&p),
-                p["scheduled_id"], p["batch_id"],
+                p["scheduled_id"],
+                p["batch_id"],
             );
             for e in &events {
                 let Some((t, obj)) = e["object"].as_object().and_then(|o| o.iter().next()) else {
@@ -1270,7 +1288,11 @@ async fn bunq_refused_notes_survey() {
                 }
                 println!(
                     "  EVENT {} action={} type={t} obj_id={} same_id={same_id} mentions_pid={} keys=[{}]",
-                    e["id"], e["action"], obj["id"], text.contains(&pid.to_string()), keys(obj),
+                    e["id"],
+                    e["action"],
+                    obj["id"],
+                    text.contains(&pid.to_string()),
+                    keys(obj),
                 );
                 if let (Some(seg), Some(oid)) = (segment(t), obj["id"].as_i64()) {
                     let path =

@@ -19,11 +19,9 @@ struct BookingStreamView: View {
 
     var body: some View {
         @Bindable var model = model
-        // Per-item flags instead of `sidebarSelection`: they change only when „Alle Konten“ /
-        // „Neue Umsätze“ is entered or left, so a switch between categories leaves this view alone.
-        let isOverview = model.sidebarRowSelection(for: .allAccounts).isSelected
+        let isOverview = model.showsOverview
         // „Neue Umsätze“: account cards instead of day cards, no charts
-        let isNewBookings = model.sidebarRowSelection(for: .newBookings).isSelected
+        let isNewBookings = model.showsNewBookings
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
@@ -402,7 +400,7 @@ struct MerchantFocusBar: View {
             Image(systemName: "storefront").foregroundStyle(Theme.secondary)
             Text("Alle Buchungen von").foregroundStyle(Theme.secondary)
             Text(focus.name).fontWeight(.semibold).lineLimit(1).sensitive(.personal)
-            Text(verbatim: "· \(model.periodTitle)").foregroundStyle(Theme.secondary).lineLimit(1)
+            Text(verbatim: "· \(model.shownPeriod.title)").foregroundStyle(Theme.secondary).lineLimit(1)
             Spacer(minLength: 8)
             Button("Zurück", systemImage: "xmark.circle.fill") { model.leaveMerchantFocus() }
                 .buttonStyle(.borderless)
@@ -688,6 +686,97 @@ enum ListPurpose {
     }
 }
 
+private struct BookingNoteIndicator: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
+    @Environment(\.textScale) private var textScale
+    let booking: Booking
+    #if os(macOS)
+    @State private var isHovered = false
+    @State private var didClickDuringHover = false
+    @State private var showsPreview = false
+
+    private var canShowPreview: Bool {
+        isHovered && !didClickDuringHover && !redaction.contains(.personal)
+    }
+    #endif
+
+    var body: some View {
+        let note = booking.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        ZStack {
+            if !note.isEmpty {
+                Button {
+                    #if os(macOS)
+                    didClickDuringHover = isHovered
+                    showsPreview = false
+                    #endif
+                    model.editNote(for: booking)
+                } label: {
+                    SpiralNotebook()
+                        .stroke(style: StrokeStyle(lineWidth: 1.15, lineCap: .round))
+                        .frame(width: 13 * textScale, height: 14 * textScale)
+                        .foregroundStyle(Theme.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Notiz bearbeiten")
+                #if os(macOS)
+                .onHover { inside in
+                    isHovered = inside
+                    if !inside { didClickDuringHover = false }
+                }
+                .task(id: canShowPreview) {
+                    guard canShowPreview else {
+                        showsPreview = false
+                        return
+                    }
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if !Task.isCancelled { showsPreview = true }
+                }
+                .onDisappear {
+                    isHovered = false
+                    didClickDuringHover = false
+                    showsPreview = false
+                }
+                .capturablePopover(isPresented: $showsPreview, arrowEdge: .bottom) {
+                    Text(verbatim: preview(of: note))
+                        .appFont(.callout)
+                        .lineLimit(3)
+                        .frame(maxWidth: 280 * textScale, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .sensitive()
+                        .padding(10)
+                }
+                #endif
+            }
+        }
+        .frame(width: 18 * textScale, height: 16 * textScale)
+    }
+
+    private func preview(of note: String) -> String {
+        let limited = note.prefix(240)
+        let lines = limited.split(separator: "\n", maxSplits: 3, omittingEmptySubsequences: false)
+        let preview = lines.prefix(3).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return limited.count < note.count || lines.count > 3 ? preview + " …" : preview
+    }
+}
+
+private struct SpiralNotebook: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path(roundedRect: CGRect(x: 1.5, y: 2.75, width: 10, height: 10.5), cornerRadius: 1.5)
+        for x in [4.0, 6.5, 9.0] {
+            path.move(to: CGPoint(x: x, y: 1))
+            path.addLine(to: CGPoint(x: x, y: 4.25))
+        }
+        path.move(to: CGPoint(x: 4, y: 7))
+        path.addLine(to: CGPoint(x: 9, y: 7))
+        path.move(to: CGPoint(x: 4, y: 9.5))
+        path.addLine(to: CGPoint(x: 8, y: 9.5))
+        return path.applying(CGAffineTransform(scaleX: rect.width / 13, y: rect.height / 14))
+    }
+}
+
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
     @Environment(\.reportRedaction) private var redaction
@@ -892,12 +981,18 @@ struct BookingRow: View {
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .layoutPriority(0)
             Spacer(minLength: isSingleLine ? 0 : 8)
-            // the row just checked in a list of new bookings stays without a mark until it leaves
-            if booking.checked, model.lingeringBookingID != booking.id {
-                Image(systemName: "checkmark")
-                    .appFont(.caption, weight: .semibold)
-                    .foregroundStyle(Theme.tertiary)
-                    .help("Geprüft")
+            HStack(spacing: 4) {
+                BookingNoteIndicator(booking: booking)
+                // Reserve both slots so the note stays beside the checkmark even on unchecked rows.
+                ZStack {
+                    if booking.checked, model.lingeringBookingID != booking.id {
+                        Image(systemName: "checkmark")
+                            .appFont(.caption, weight: .semibold)
+                            .foregroundStyle(Theme.tertiary)
+                            .help("Geprüft")
+                    }
+                }
+                .frame(width: 14 * textScale, height: 16 * textScale)
             }
             if booking.isPending {
                 Image(systemName: "clock")
@@ -913,7 +1008,7 @@ struct BookingRow: View {
                     // Order account: the direction is never colour alone — charges get a
                     // minus, refunds a plus (and a spoken label); both are badged
                     // symmetrically (same padding, same alignment).
-                    Text(ref.isRefund ? Money.signed(booking.amountCents) : Money.format(-abs(booking.amountCents)))
+                    Text(ref.isRefund ? Money.signed(booking.amountCents, currency: booking.currency) : Money.format(-abs(booking.amountCents), currency: booking.currency))
                         .sensitive(.amounts)
                         .appFont(.body, weight: .semibold, monospacedDigit: true)
                         .foregroundStyle(ref.isRefund ? Theme.inflow : Theme.charge)
@@ -921,9 +1016,9 @@ struct BookingRow: View {
                         .background(Capsule().fill(ref.isRefund ? Theme.inflowBadge : Theme.outflowBadge))
                         .lineLimit(1).fixedSize()
                         .help(ref.isRefund ? "Gutschrift (Erstattung)" : "Bestellung")
-                        .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(redaction.masking(Money.format(abs(booking.amountCents)), .amounts))"))
+                        .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(redaction.masking(Money.format(abs(booking.amountCents), currency: booking.currency), .amounts))"))
                 } else {
-                    AmountLabel(cents: booking.amountCents)
+                    AmountLabel(cents: booking.amountCents, currency: booking.currency)
                         .lineLimit(1)
                         .fixedSize()
                         .padding(.horizontal, booking.isPending ? 6 : 0)
@@ -1247,18 +1342,22 @@ private struct AccountChipLayout: Layout {
 /// emerald (or blue) badge; the sign always carries the direction too.
 struct AmountLabel: View {
     let cents: Int64
+    /// The booking's own currency; an empty one is EUR (as in the core).
+    var currency: String = "EUR"
     @Environment(\.negativeAmountStyle) private var negativeStyle
+
+    private var code: String { currency.isEmpty ? "EUR" : currency.uppercased() }
 
     var body: some View {
         if cents > 0 {
-            Text(Money.signed(cents))
+            Text(Money.signed(cents, currency: code))
                 .sensitive(.amounts)
                 .appFont(.body, weight: .semibold, monospacedDigit: true)
                 .foregroundStyle(negativeStyle.positiveColor)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(Capsule().fill(negativeStyle.positiveBadge))
         } else {
-            Text(Money.format(cents))
+            Text(Money.format(cents, currency: code))
                 .sensitive(.amounts)
                 .appFont(.body, weight: .medium, monospacedDigit: true)
                 .foregroundStyle(cents < 0 ? negativeStyle.color : Theme.outflow)

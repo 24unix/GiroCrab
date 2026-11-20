@@ -1,12 +1,12 @@
 //! CAMT.053 account statements, read straight from the vault.
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::iban::{has_iban_shape, normalize_iban};
 use crate::models::{Account, AccountKind};
-use crate::vault::{Vault, PENDING_SQL};
+use crate::vault::{PENDING_SQL, Vault};
 
 /// ISO 20022 message version of a CAMT.053 export.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -97,7 +97,9 @@ impl Vault {
                 what: trf("Konto {0}", &[&request.account_id]),
             })?;
         if matches!(account.kind, AccountKind::Loan | AccountKind::Brokerage) {
-            return Err(CoreError::invalid(tr("CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen.")));
+            return Err(CoreError::invalid(tr(
+                "CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen.",
+            )));
         }
         let date_from = request.date_from.as_deref().map(parse_day).transpose()?;
         let date_to = request.date_to.as_deref().map(parse_day).transpose()?;
@@ -167,7 +169,9 @@ impl Vault {
                 .iter()
                 .any(|(id, e)| !e.pending && !ids.contains(id));
             if gap {
-                return Err(CoreError::invalid(tr("CAMT.053 erfordert eine lückenlose Auswahl. Markiere alle Umsätze eines zusammenhängenden Zeitraums.")));
+                return Err(CoreError::invalid(tr(
+                    "CAMT.053 erfordert eine lückenlose Auswahl. Markiere alle Umsätze eines zusammenhängenden Zeitraums.",
+                )));
             }
         }
         let opening = booked_balance(&db, &account, &currency, &previous_day(&from))?;
@@ -511,11 +515,11 @@ fn detect_return_reason(gvc: &str, purpose: &str, booking_text: &str) -> Option<
     {
         if token.len() == 4 {
             let upper = token.to_ascii_uppercase();
-            if let Some(&found) = CODES.iter().find(|&&c| c == upper) {
-                if is_return_context || matches!(found, "AC04" | "MD01" | "MD06" | "MS03" | "AM04")
-                {
-                    return Some(found);
-                }
+            if let Some(&found) = CODES.iter().find(|&&c| c == upper)
+                && (is_return_context
+                    || matches!(found, "AC04" | "MD01" | "MD06" | "MS03" | "AM04"))
+            {
+                return Some(found);
             }
         }
     }
@@ -580,7 +584,9 @@ fn entry_xml(b: &CamtEntry, account_currency: &str, owner: &str, version: CamtVe
         "<Domn><Cd>PMNT</Cd><Fmly><Cd>{family}</Cd><SubFmlyCd>{sub_family}</SubFmlyCd></Fmly></Domn>"
     );
     e += &if gvc.len() == 3 && gvc.bytes().all(|c| c.is_ascii_digit()) {
-        format!("<BkTxCd>{domain}<Prtry><Cd>{swift_code}+{gvc}+000</Cd><Issr>DK</Issr></Prtry></BkTxCd>")
+        format!(
+            "<BkTxCd>{domain}<Prtry><Cd>{swift_code}+{gvc}+000</Cd><Issr>DK</Issr></Prtry></BkTxCd>"
+        )
     } else {
         format!("<BkTxCd>{domain}</BkTxCd>")
     };

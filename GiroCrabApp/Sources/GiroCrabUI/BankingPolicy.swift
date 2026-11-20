@@ -179,7 +179,9 @@ public struct BankingGate: Equatable, Sendable {
         case "fordmoney": base = "Ford Money"
         case "opeldirektbank": base = "Opel Direktbank"
         case "hanseatic": base = "Hanseatic Bank"
+        case "bhw": base = "BHW Bausparkasse"
         case "finpension": base = "Finpension"
+        case "kontist": base = "Kontist"
         default: base = parts.first ?? id
         }
         guard parts.count == 2 else { return base }

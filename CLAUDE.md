@@ -11,13 +11,14 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
 - `girocrab-core/src/connectors/` – `mod.rs` (submodule decls + shared HTTP helpers), `types.rs` (`BankConnector`
   trait + DTOs), `catalog.rs` (`descriptor`, `make_connector*`), `bank_directory.rs` (search routing + curated PSD2 catalog),
   `sync_session.rs` / `transfer_session.rs` (FFI state machines), `persist.rs` (`impl Vault`: `store_fetch`,
-  `begin_sync`/`begin_transfer`), tests in `connectors/tests/`; connector impls alongside: `fints/`, `comdirect.rs`,
+  `begin_sync`/`begin_transfer`), `html.rs` (helpers for connectors that read web pages), tests in `connectors/tests/`; connector impls alongside: `fints/`, `comdirect.rs`,
   `trade_republic.rs`, `enable_banking.rs` (`needs_lean_request` 90d cap for Revolut/Spuerkeess/N26), `paypal.rs`
 - `girocrab-core/src/importers/` – one-off file/web-capture importers: `moneymoney_db.rs` (encrypted SQLCipher database import),
   `moneymoney_import.rs` (CSV/XML/CAMT/MT940 exports), `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import),
   `amazon_orders.rs`
 - `girocrab-core/src/tags.rs` – booking tags (#228): schema step, `impl Vault` API, booking tag loading; `tags/merge.rs` (iCloud merge of tags and tag sets), `tags/tests.rs`
 - `girocrab-core/src/merchants.rs` – merchant matching
+- `girocrab-core/src/recipients.rs` – known recipients of the transfer form (one per IBAN, cached), hidden IBANs + merge (#978)
 - `girocrab-core/src/documents.rs` – booking documents / PDF text extraction
 - `girocrab-core/src/text.rs` – text helpers (mojibake repair etc.)
 - `girocrab-core/src/local_api.rs` + `local_api/server.rs` – read-only local interface for external analysis (#136): queries, scope/token, Unix socket server (`docs/local-api.md`)

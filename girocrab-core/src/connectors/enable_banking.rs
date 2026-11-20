@@ -25,13 +25,13 @@
 //! browser consent is only needed every ~90-180 days.
 
 use async_trait::async_trait;
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
-    http_client, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
-    ConnectContext, FetchResult, Paged, Phase, RemoteAccount, RemoteTransaction,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Paged,
+    Phase, RemoteAccount, RemoteTransaction, http_client_same_host, paginate,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -514,10 +514,10 @@ fn auth_diagnostics(list: &Value, name: &str, body: &Value) -> String {
         })
         .unwrap_or(Value::Null);
     let mut req = body.clone();
-    if let Some(o) = req.as_object_mut() {
-        if o.contains_key("state") {
-            o.insert("state".into(), json!("<redacted>"));
-        }
+    if let Some(o) = req.as_object_mut()
+        && o.contains_key("state")
+    {
+        o.insert("state".into(), json!("<redacted>"));
     }
     format!("aspsp={entry} auth_request={req}")
 }
@@ -873,8 +873,10 @@ impl EnableBankingConnector {
                 .as_str()
                 .filter(|s| !s.is_empty())
                 .map(|s| Some(s.to_string()));
-            let items = match page["transactions"].take() {
-                Value::Array(items) => items,
+            // `get_mut`, not `page["transactions"]`: `IndexMut` panics on a
+            // non-object body (array, string)
+            let items = match page.get_mut("transactions").map(Value::take) {
+                Some(Value::Array(items)) => items,
                 _ => Vec::new(),
             };
             Ok((items, next))
@@ -1122,7 +1124,10 @@ fn consent_error(code: &str, description: &str) -> CoreError {
         format!("{code}: {}", description.trim())
     };
     let message = match code {
-        "access_denied" => trf("Die Freigabe wurde bei der Bank abgelehnt ({0}).", &[&detail]),
+        "access_denied" => trf(
+            "Die Freigabe wurde bei der Bank abgelehnt ({0}).",
+            &[&detail],
+        ),
         "server_error" | "temporarily_unavailable" => trf(
             "Die Bank hat die Freigabe mit einem Fehler auf ihrer Seite beendet ({0}). Das liegt nicht an Ihren Angaben – bitte später erneut versuchen, gegebenenfalls mit weniger ausgewählten Konten.",
             &[&detail],
@@ -1176,7 +1181,7 @@ impl BankConnector for EnableBankingConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
         crate::depot_debug::log("enable_banking begin: entered");
         self.jwt = Self::make_jwt(ctx)?;
-        self.client = Some(http_client()?);
+        self.client = Some(http_client_same_host()?);
         if let Ok(st) = ctx.state.decode::<PsdState>() {
             self.st = st;
         }
@@ -1190,7 +1195,7 @@ impl BankConnector for EnableBankingConnector {
             let path = format!("/sessions/{}", self.st.session_id.expose());
             match self.call(reqwest::Method::GET, &path, None).await {
                 Ok(s) if s["status"].as_str().is_none_or(|st| st == "AUTHORIZED") => {
-                    return Ok(Phase::Ready)
+                    return Ok(Phase::Ready);
                 }
                 Ok(s) => crate::depot_debug::log(&format!(
                     "enable_banking begin: session status {} -> new consent",
@@ -1215,22 +1220,21 @@ impl BankConnector for EnableBankingConnector {
         let mut aspsp_list = Value::Null;
         // Generic banks come from our built-in catalog, whose names are
         // best-effort: ask the live ASPSP list for the exact spelling first.
-        if !self.card_mode() {
-            if let Ok(list) = self
+        if !self.card_mode()
+            && let Ok(list) = self
                 .call(
                     reqwest::Method::GET,
                     &format!("/aspsps?country={country}"),
                     None,
                 )
                 .await
+        {
+            if let Some(exact) = resolve_generic_aspsp(&list, &configured, &country)?
+                && exact != configured
             {
-                if let Some(exact) = resolve_generic_aspsp(&list, &configured, &country)? {
-                    if exact != configured {
-                        names.insert(0, exact);
-                    }
-                }
-                aspsp_list = list;
+                names.insert(0, exact);
             }
+            aspsp_list = list;
         }
         for alt in ["Open Bank", "Zinia"] {
             if self.aspsp_setting.ends_with("amazonvisa")
@@ -1387,8 +1391,14 @@ impl BankConnector for EnableBankingConnector {
         }
         self.upgrade_legacy_accounts().await;
         let mut out = FetchResult::default();
+        // One account (#1124): its requests only, for the PSD2 daily limit
+        // and the per-account history flags.
+        let refs: Vec<String> = self.st.accounts.iter().map(|a| a.ext_ref.clone()).collect();
+        let only = ctx.only_among(&refs);
+        let mut wanted = self.st.accounts.clone();
+        wanted.retain(|a| only.is_none_or(|o| a.ext_ref == o));
         if self.card_mode() {
-            for a in self.st.accounts.clone() {
+            for a in wanted {
                 self.fetch_card(ctx, &mut out, &a).await?;
             }
             out.state = Some(SecretJson::encode(&self.st)?);
@@ -1414,7 +1424,7 @@ impl BankConnector for EnableBankingConnector {
         // uid → every page of the account's bookings was read
         let mut listed: HashMap<String, bool> = HashMap::new();
         let mut stopped_early = false;
-        for a in self.st.accounts.clone() {
+        for a in wanted {
             let res = if kind_of(&a) == AccountKind::CreditCard {
                 let named = EbAccount {
                     name: display_name(&a),
@@ -1448,11 +1458,10 @@ impl BankConnector for EnableBankingConnector {
         // The vault uses the fetched name when inserting a new account.
         if let Some(label) =
             paypal_account_label(&self.aspsp_default, self.st.accounts.len(), &ctx.login_name)
+            && let [account] = out.accounts.as_mut_slice()
         {
-            if let [account] = out.accounts.as_mut_slice() {
-                account.name = label.to_owned();
-                out.name_updates.clear();
-            }
+            account.name = label.to_owned();
+            out.name_updates.clear();
         }
         // Every account of the consent was looked at: the vault may mark the
         // connection's other accounts as no longer accessible.
@@ -1833,7 +1842,7 @@ impl Vault {
         redirect_url: String,
     ) -> Result<EnableBankingAppCheck, CoreError> {
         let jwt = EnableBankingConnector::make_jwt_for(application_id.trim(), &private_key_pem)?;
-        let resp = http_client()?
+        let resp = http_client_same_host()?
             .get(format!("{API}/application"))
             .bearer_auth(jwt)
             .header("Accept", "application/json")
@@ -1876,14 +1885,16 @@ mod tests {
         );
         assert_eq!(bad.problems.len(), 3);
         assert!(bad.problems.iter().any(|p| p.contains("Sandbox")));
-        assert!(bad
-            .problems
-            .iter()
-            .any(|p| p.contains("Activate by linking accounts")));
-        assert!(bad
-            .problems
-            .iter()
-            .any(|p| p.contains("localhost/girocrab/callback")));
+        assert!(
+            bad.problems
+                .iter()
+                .any(|p| p.contains("Activate by linking accounts"))
+        );
+        assert!(
+            bad.problems
+                .iter()
+                .any(|p| p.contains("localhost/girocrab/callback"))
+        );
         // empty answer: not active, not production
         assert_eq!(
             evaluate_application(&Value::Null, redirect).problems.len(),

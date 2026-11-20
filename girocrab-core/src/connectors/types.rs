@@ -63,6 +63,9 @@ pub struct SyncSummary {
     /// New documents from the comdirect PostBox when this sync fetched it
     /// next to FinTS (#838); `None` = not fetched (not due, off or failed).
     pub postbox_documents: Option<u32>,
+    /// Parts of this sync that failed while the rest was stored (#1083), one
+    /// text each, accounts by name: e.g. bookings the bank wanted a TAN for.
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Enum)]
@@ -267,6 +270,10 @@ pub struct ConnectContext {
     /// Connectors that remember what they downloaded must not remember
     /// anything of these, or it is never fetched again once the account is back.
     pub skipped_accounts: HashSet<String>,
+    /// Sync of one account (external ref) of the login, from its sidebar menu
+    /// (#1124): the result is cut down to it in [`FetchResult::keep_only`];
+    /// connectors that request accounts one by one (FinTS) ask only for it.
+    pub only_account: Option<String>,
 }
 
 /// Document retrieval of one sync, set from the connection's settings.
@@ -361,6 +368,16 @@ pub(crate) fn since_window(
 }
 
 impl ConnectContext {
+    /// The one account a connector that requests its accounts one by one
+    /// asks for (`refs`: all it could ask for): [`only_account`](Self::only_account)
+    /// when it is among them. `None`: every account; a single-account sync
+    /// is then cut down by [`FetchResult::keep_only`].
+    pub fn only_among(&self, refs: &[String]) -> Option<&str> {
+        self.only_account
+            .as_deref()
+            .filter(|r| refs.iter().any(|x| x == r))
+    }
+
     /// Start date for one account (see [`since_by_account`](Self::since_by_account)).
     pub fn since_for(&self, account_ref: &str) -> &str {
         self.since_by_account
@@ -600,6 +617,47 @@ pub struct FetchResult {
     /// (several cards behind one portal login, #243): they are held back
     /// like accounts another login already delivers.
     pub confirm_new_accounts: bool,
+    /// Cut down to one account ([`keep_only`](Self::keep_only)): the login's
+    /// last sync time and its documents catch-up stay as they are.
+    pub single_account: bool,
+    /// Requests that failed while others worked (#1083): the sync still counts
+    /// as done and reports them. An account's external ref in a text is
+    /// replaced by the account's name when storing.
+    pub warnings: Vec<String>,
+}
+
+impl FetchResult {
+    /// Keeps the per-account data of the accounts (external refs) `keep` accepts.
+    pub fn retain_accounts(&mut self, keep: impl Fn(&str) -> bool) {
+        self.accounts.retain(|a| keep(&a.external_ref));
+        self.transactions.retain(|t| keep(&t.account_ref));
+        self.holdings.retain(|h| keep(&h.account_ref));
+        self.holdings_fetched.retain(|r| keep(r));
+        self.balances_unknown.retain(|r| keep(r));
+        self.balances_reported.retain(|r| keep(r));
+        self.security_transactions.retain(|t| keep(&t.account_ref));
+        self.standing_orders.retain(|o| keep(&o.account_ref));
+        self.standing_orders_fetched.retain(|r| keep(r));
+        self.statements_fetched.retain(|r| keep(r));
+        self.documents.retain(|d| keep(&d.account_ref));
+        self.withdrawn.retain(|(r, _)| keep(r));
+        self.name_updates.retain(|(r, ..)| keep(r));
+    }
+
+    /// Cuts the result down to one account (external ref, #1124): the
+    /// login's other accounts keep what they have and none of them counts as
+    /// missing. Renames and accounts the bank reported as revoked stay: the
+    /// connector does not report them again.
+    pub fn keep_only(&mut self, account_ref: &str) {
+        let renamed = self
+            .renamed_refs
+            .iter()
+            .find(|(old, _)| old == account_ref)
+            .map(|(_, new)| new.clone());
+        self.retain_accounts(|r| r == account_ref || renamed.as_deref() == Some(r));
+        self.accounts_complete = false;
+        self.single_account = true;
+    }
 }
 
 #[async_trait]

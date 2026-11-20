@@ -73,7 +73,7 @@ impl BankConnector for DemoConnector {
     async fn begin(&mut self, _ctx: &ConnectContext) -> CoreResult<Phase> {
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
         let c = match self.kind {
-            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::FinTsGeneric | ConnectorKind::Comdirect | ConnectorKind::ScalableCapital | ConnectorKind::VolkswagenBank | ConnectorKind::FordMoney | ConnectorKind::OpelDirektbank | ConnectorKind::HanseaticBank => Challenge {
+            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::FinTsGeneric | ConnectorKind::Comdirect | ConnectorKind::ScalableCapital | ConnectorKind::VolkswagenBank | ConnectorKind::FordMoney | ConnectorKind::OpelDirektbank | ConnectorKind::HanseaticBank | ConnectorKind::Kontist => Challenge {
                 kind: ChallengeKind::DecoupledPush,
                 title: tr("Bitte in der Banking-App freigeben").into(),
                 message: tr("Demo: Eine Push-Nachricht wurde „gesendet“. Die Freigabe wird nach wenigen Sekunden simuliert.").into(),
@@ -82,6 +82,7 @@ impl BankConnector for DemoConnector {
                     ConnectorKind::Direkt1822 | ConnectorKind::VolkswagenBank => "pushTAN (Demo)".into(),
                     ConnectorKind::FordMoney => "Security-App (Demo)".into(),
                     ConnectorKind::OpelDirektbank => "TwoVerify (Demo)".into(),
+                    ConnectorKind::Kontist => "Kontist-App (Demo)".into(),
                     ConnectorKind::HanseaticBank => "Hanseatic Bank App (Demo)".into(),
                     ConnectorKind::ScalableCapital => "Browser-Anmeldung (Demo)".into(),
                     _ => "photoTAN push (Demo)".into(),
@@ -96,6 +97,16 @@ impl BankConnector for DemoConnector {
                 title: "easybank SMS-TAN".into(),
                 message: tr("Demo: beliebigen 6-stelligen Code eingeben.").into(),
                 method_name: tr("SMS-TAN (Demo)").into(),
+                redirect_url: None,
+                image: None,
+                expires_in_seconds: Some(300),
+                poll_interval_seconds: 0,
+            },
+            ConnectorKind::Bhw => Challenge {
+                kind: ChallengeKind::Code,
+                title: "myBHW".into(),
+                message: tr("Demo: beliebigen 6-stelligen Code eingeben.").into(),
+                method_name: tr("Einmal-Code per E-Mail (Demo)").into(),
                 redirect_url: None,
                 image: None,
                 expires_in_seconds: Some(300),

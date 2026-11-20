@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use rsa::{
+    BoxedUint, PublicKey,
     pkcs8::{DecodePublicKey, EncodePublicKey},
     traits::PublicKeyParts,
-    BoxedUint, PublicKey,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -18,9 +18,9 @@ use super::{
     syntax::{self, SegmentBuilder, Value},
 };
 use crate::{
+    Vault,
     error::{CoreError, CoreResult},
     i18n::{tr, trf},
-    Vault,
 };
 
 pub const KEY_SOURCE: &str = "https://www.commerzbank.de/service/kommunikationsadressen-ports-und-oeffentlicher-bankschluessel-fuer-hbci/";
@@ -122,7 +122,9 @@ fn normalized_hash(value: &str) -> CoreResult<String> {
         .filter(|c| !c.is_whitespace() && *c != ':')
         .collect();
     if value.len() != 64 || !value.bytes().all(|c| c.is_ascii_hexdigit()) {
-        return Err(CoreError::invalid(tr("Bitte den vollständigen SHA-256-Prüfwert (64 Hex-Zeichen) aus einer unabhängigen Commerzbank-Quelle eingeben.")));
+        return Err(CoreError::invalid(tr(
+            "Bitte den vollständigen SHA-256-Prüfwert (64 Hex-Zeichen) aus einer unabhängigen Commerzbank-Quelle eingeben.",
+        )));
     }
     Ok(value.to_ascii_uppercase())
 }
@@ -148,7 +150,9 @@ pub(crate) fn confirmed_keys(
         let key = public_key(candidate)?;
         let actual = fingerprint(&key)?;
         if normalized_hash(expected)? != actual || candidate.fingerprint != actual {
-            return Err(CoreError::invalid(tr("Der Bankschlüssel stimmt nicht mit dem unabhängig bestätigten Prüfwert überein. Keine Übernahme.")));
+            return Err(CoreError::invalid(tr(
+                "Der Bankschlüssel stimmt nicht mit dem unabhängig bestätigten Prüfwert überein. Keine Übernahme.",
+            )));
         }
         if result.iter().any(|k: &BankKey| k.kind == key.kind) {
             return Err(CoreError::invalid(tr(

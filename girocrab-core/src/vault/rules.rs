@@ -2,9 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rusqlite::{params, params_from_iter, Connection};
+use rusqlite::{Connection, params, params_from_iter};
 
-use super::{Vault, LIVE_BOOKINGS_SQL};
+use super::{LIVE_BOOKINGS_SQL, Vault};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 use crate::models::*;

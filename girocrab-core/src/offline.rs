@@ -14,7 +14,7 @@
 //! offline accounts in this sense; accounts of a bank connection are synced and
 //! stay read-only.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::connectors::group_for;
 use crate::dates::{now_ms, today_iso as today};
@@ -180,13 +180,38 @@ pub(crate) fn insert_booking(
     Ok(conn.last_insert_rowid())
 }
 
+/// Normalises an account currency: three ASCII letters (ISO 4217), upper-cased; empty means EUR.
+fn clean_currency(code: &str) -> CoreResult<String> {
+    let code = code.trim();
+    if code.is_empty() {
+        return Ok("EUR".to_string());
+    }
+    if code.len() != 3 || !code.bytes().all(|b| b.is_ascii_alphabetic()) {
+        return Err(CoreError::invalid(tr(
+            "Die Währung muss ein dreistelliger ISO-Code sein (z. B. EUR).",
+        )));
+    }
+    Ok(code.to_ascii_uppercase())
+}
+
+/// Sidebar symbol of a new offline account: one per kind, so a savings account is told from cash at a glance (#1049).
+fn offline_symbol(kind: AccountKind) -> &'static str {
+    match kind {
+        AccountKind::Cash => "banknote",
+        AccountKind::Savings => "percent",
+        _ => "pencil.and.list.clipboard",
+    }
+}
+
 /// Creates the account row, places it in its sidebar group and stores the opening balance.
 pub(crate) fn create_in(
     conn: &Connection,
     name: &str,
     kind: AccountKind,
+    currency: &str,
     opening_cents: i64,
 ) -> CoreResult<i64> {
+    let currency = clean_currency(currency)?;
     let name = clean(name, MAX_NAME_CHARS)?;
     let name = if name.is_empty() {
         tr("Bargeld").to_string()
@@ -197,20 +222,17 @@ pub(crate) fn create_in(
     let gid = Vault::ensure_group(conn, group, symbol, order)?;
     conn.execute(
         "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, sf_symbol, balance_cents,
-                              balance_date, sort_order)
-         VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, (SELECT IFNULL(MAX(sort_order), 0) + 1 FROM accounts))",
+                              balance_date, currency, sort_order)
+         VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, (SELECT IFNULL(MAX(sort_order), 0) + 1 FROM accounts))",
         params![
             gid,
             format!("{EXTERNAL_REF_PREFIX}{}", uuid::Uuid::new_v4()),
             name,
             kind.as_str(),
-            if kind == AccountKind::Cash {
-                "banknote"
-            } else {
-                "pencil.and.list.clipboard"
-            },
+            offline_symbol(kind),
             opening_cents,
-            today()
+            today(),
+            currency
         ],
     )?;
     let id = conn.last_insert_rowid();
@@ -241,11 +263,13 @@ fn validate(s: &ManualBookingSetup) -> CoreResult<(String, String, String, Strin
 impl Vault {
     /// Creates an offline account (no bank connection) with a starting balance
     /// and returns its id. An empty name becomes "Bargeld". `kind` must not be a
-    /// depot or loan: they have their own flows.
+    /// depot or loan: they have their own flows. `currency` is an ISO 4217 code
+    /// (empty = EUR); bookings and balance use it, nothing is converted.
     pub fn create_offline_account(
         &self,
         name: String,
         kind: AccountKind,
+        currency: String,
         opening_cents: i64,
     ) -> Result<i64, CoreError> {
         if matches!(kind, AccountKind::Brokerage | AccountKind::Loan) {
@@ -255,7 +279,7 @@ impl Vault {
         }
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
-        let id = create_in(&tx, &name, kind, opening_cents)?;
+        let id = create_in(&tx, &name, kind, &currency, opening_cents)?;
         tx.commit()?;
         Ok(id)
     }

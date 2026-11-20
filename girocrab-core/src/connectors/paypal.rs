@@ -19,8 +19,8 @@ use serde_json::Value;
 
 use super::paypal_nvp::{NvpClient, NvpCredentials};
 use super::{
-    http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteTransaction,
+    BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase, RemoteAccount,
+    RemoteTransaction, http_client_same_host,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::models::AccountKind;
@@ -114,7 +114,7 @@ impl BankConnector for PayPalConnector {
         } else {
             "https://api-m.paypal.com".into()
         };
-        let client = http_client()?;
+        let client = http_client_same_host()?;
         let resp = client
             .post(format!("{}/v1/oauth2/token", self.base))
             .basic_auth(
@@ -155,6 +155,16 @@ impl BankConnector for PayPalConnector {
             // Every search succeeded: the holds listed are all that are open in the period.
             out.hold_prefix = Some(super::paypal_nvp::HOLD_PREFIX.into());
             retain_known(&mut out);
+            // One account (#1124): no details for bookings the vault drops,
+            // their ids would count as done.
+            let refs: Vec<String> = out
+                .accounts
+                .iter()
+                .map(|a| a.external_ref.clone())
+                .collect();
+            if let Some(only) = ctx.only_among(&refs) {
+                out.transactions.retain(|t| t.account_ref == only);
+            }
             // Purpose from GetTransactionDetails, once per booking (ids kept in the state).
             let mut state: NvpState = ctx.state.decode().unwrap_or_default();
             nvp.fill_details(&mut out.transactions, &mut state.nvp_details_done)

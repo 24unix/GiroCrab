@@ -3,7 +3,7 @@
 //! today so screenshots are reproducible. Nothing in here is real data.
 
 use jiff::civil::Date;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::connectors::{descriptor, group_for};
 use crate::error::CoreResult;
@@ -2571,7 +2571,7 @@ impl Vault {
         //   stretch from an import; the fetched values win where both exist.
         {
             use crate::depot_values::observations::{
-                record_as, ObservedValue, KIND_POSITION, KIND_TOTAL, SOURCE_FETCH, SOURCE_IMPORT,
+                KIND_POSITION, KIND_TOTAL, ObservedValue, SOURCE_FETCH, SOURCE_IMPORT, record_as,
             };
             let noon = |d: &str| {
                 Date::strptime("%Y-%m-%d", d)
@@ -2622,7 +2622,7 @@ impl Vault {
                                 && ago < 365
                                 && (ago % 9 == 4 || ago % 9 == 5 || ago % 31 == 7) =>
                         {
-                            continue
+                            continue;
                         }
                         _ => {}
                     }
@@ -2800,7 +2800,7 @@ impl Vault {
         )?;
         // Offline account (#679, #81): cash kept by hand, no bank connection. Its balance is the
         // Startsaldo plus the bookings below.
-        let cash = crate::offline::create_in(&tx, "Bargeld", AccountKind::Cash, 120_00)?;
+        let cash = crate::offline::create_in(&tx, "Bargeld", AccountKind::Cash, "EUR", 120_00)?;
         for (days_ago, cents, who, purpose) in [
             (12, 15_00, "Taschengeld", ""),
             (9, -24_50, "Tierfutter Müller", "Katzenfutter"),
@@ -2905,9 +2905,11 @@ mod tests {
         assert_eq!(accounts.len(), 3);
         for bank in [false, true] {
             for linked in [false, true] {
-                assert!(docs
-                    .iter()
-                    .any(|d| !d.source_url.is_empty() == bank && d.booking_id.is_some() == linked));
+                assert!(
+                    docs.iter()
+                        .any(|d| !d.source_url.is_empty() == bank
+                            && d.booking_id.is_some() == linked)
+                );
             }
         }
         let today = crate::dates::today();
@@ -3012,9 +3014,10 @@ mod tests {
         // the ETFs by rule, the single stocks of the second depot as its broker reports them (#351)
         use crate::asset_classification::{AssetClass, ClassificationSource, InstrumentKind};
         let etfs = v.classified_assets(depot.id).unwrap();
-        assert!(etfs
-            .iter()
-            .all(|a| a.classification.instrument == InstrumentKind::Etf));
+        assert!(
+            etfs.iter()
+                .all(|a| a.classification.instrument == InstrumentKind::Etf)
+        );
         // same wrapper, different exposure: two equity ETFs and one money market ETF
         let classes = |class: AssetClass| {
             etfs.iter()
@@ -3033,9 +3036,11 @@ mod tests {
         assert_eq!(singles.len(), 7);
         let sum: i64 = singles.iter().map(|a| a.holding.value_cents).sum();
         assert_eq!(sum, stocks.balance_cents);
-        assert!(singles
-            .iter()
-            .all(|a| a.classification.security_key.is_some()));
+        assert!(
+            singles
+                .iter()
+                .all(|a| a.classification.security_key.is_some())
+        );
         let of = |class: AssetClass, instrument: InstrumentKind, source: ClassificationSource| {
             singles
                 .iter()
@@ -3392,9 +3397,10 @@ mod tests {
             .unwrap();
         assert_eq!(page.total_count, 2);
         let cats = v.list_categories(None, None).unwrap();
-        assert!(cats
-            .iter()
-            .any(|c| c.name == "Supermarkt" && c.transaction_count > 0));
+        assert!(
+            cats.iter()
+                .any(|c| c.name == "Supermarkt" && c.transaction_count > 0)
+        );
         let page = v
             .list_transactions(BookingFilter {
                 search: Some("Lidl".into()),
@@ -3403,10 +3409,11 @@ mod tests {
             })
             .unwrap();
         assert_eq!(page.total_count, 2);
-        assert!(page
-            .transactions
-            .iter()
-            .all(|t| t.category_name == "Supermarkt" && t.flow == FlowKind::Consumption));
+        assert!(
+            page.transactions
+                .iter()
+                .all(|t| t.category_name == "Supermarkt" && t.flow == FlowKind::Consumption)
+        );
         // Private persons get a monogram, never a logo.
         let p = v
             .list_transactions(BookingFilter {
@@ -3434,7 +3441,7 @@ mod tests {
 
     #[test]
     fn default_names_are_shown_in_english_but_stored_in_german() {
-        use crate::i18n::{with_language, Lang};
+        use crate::i18n::{Lang, with_language};
         let dir_dir = crate::test_support::TempDir::new("girocrab-i18n");
         let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
@@ -3479,9 +3486,11 @@ mod tests {
             .unwrap()
         });
         let after = v.list_categories(None, None).unwrap();
-        assert!(after
-            .iter()
-            .any(|c| c.id == sm_de.id && c.name == "Supermarkt"));
+        assert!(
+            after
+                .iter()
+                .any(|c| c.id == sm_de.id && c.name == "Supermarkt")
+        );
         with_language(Lang::En, || {
             v.update_category(
                 sm_de.id,
@@ -3493,9 +3502,11 @@ mod tests {
             .unwrap()
         });
         let after = v.list_categories(None, None).unwrap();
-        assert!(after
-            .iter()
-            .any(|c| c.id == sm_de.id && c.name == "Groceries"));
+        assert!(
+            after
+                .iter()
+                .any(|c| c.id == sm_de.id && c.name == "Groceries")
+        );
         // Settings: `group` stays a stable id, `group_title` is localised.
         let s = with_language(Lang::En, || v.list_settings().unwrap());
         let days = s.iter().find(|e| e.key == "sync.days_back").unwrap();

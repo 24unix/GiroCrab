@@ -34,7 +34,7 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             login_label: tr("Anmeldename / Kontonummer").into(),
             secret_label: tr("Online-Banking-PIN").into(),
             required_settings: s(&["fints.product_id", "fints.url.50050201"]),
-            note: tr("Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de").into(),
+            note: tr("Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs6.s-fints-pt-hs.de").into(),
         },
         ConnectorKind::FinTsGeneric => BankDescriptor {
             kind,
@@ -168,6 +168,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Uberspace-Hosting: Guthaben und Buchungen aller Asteroids, die zur E-Mail-Adresse des Dashboards gehören. Inoffiziell: liest die Seiten des Dashboards, Änderungen sind möglich.").into(),
         },
+        ConnectorKind::Bhw => BankDescriptor {
+            kind,
+            name: "BHW Bausparkasse".into(),
+            protocol: tr("myBHW-Portal (Direkt-Login, Einmal-Code per E-Mail oder SMS)").into(),
+            bank_code: "25410200".into(),
+            sf_symbol: "house".into(),
+            login_label: tr("Vertragsnummer oder BHW-ID").into(),
+            secret_label: tr("Vorname;TT.MM.JJJJ;PLZ").into(),
+            required_settings: vec![],
+            note: tr("BHW Bausparkasse: Bausparverträge und Darlehen mit Saldo und Umsätzen. Anmeldung mit der 10-stelligen Vertragsnummer oder der 11-stelligen BHW-ID; statt eines Passworts kommen Vorname, Geburtsdatum und Postleitzahl getrennt durch Semikolon in das zweite Feld (z. B. „Erika;31.12.1970;12345“). Jede Anmeldung wird mit einem Einmal-Code per E-Mail oder SMS bestätigt. Dokumente aus dem myBHW-Postfach lassen sich abrufen. Inoffiziell: nutzt die Schnittstelle des myBHW-Portals, Änderungen sind möglich.").into(),
+        },
         ConnectorKind::HanseaticBank => BankDescriptor {
             kind,
             name: "Hanseatic Bank".into(),
@@ -178,6 +189,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             secret_label: tr("Passwort").into(),
             required_settings: vec![],
             note: tr("Hanseatic Bank: Kreditkarten mit vorgemerkten Umsätzen sowie SparBriefe, Tages- und Festgeld mit Saldo und Umsätzen. Ältere Umsätze, für die die Bank eine zusätzliche Freigabe verlangt, werden nicht abgerufen. Die erste Anmeldung wird in der App der Hanseatic Bank (oder per smsTAN) bestätigt; danach merkt sich GiroCrab das Gerät. Kontoauszüge und weitere Dokumente aus der Postbox lassen sich abrufen; ungelesene Dokumente gelten danach bei der Bank als gelesen. Inoffiziell: nutzt die Schnittstelle des Online-Bankings, Änderungen sind möglich.").into(),
+        },
+        ConnectorKind::Kontist => BankDescriptor {
+            kind,
+            name: "Kontist".into(),
+            protocol: tr("Kontist GraphQL-API (OAuth2 + Freigabe in der App)").into(),
+            bank_code: String::new(),
+            sf_symbol: "briefcase".into(),
+            login_label: tr("E-Mail-Adresse").into(),
+            secret_label: tr("Passwort").into(),
+            required_settings: s(&["kontist.client_id"]),
+            note: tr("Kontist: Geschäftskonto mit Saldo und Umsätzen über die offizielle API. Nötig ist ein eigener API-Client auf kontist.dev (Client Management), dessen Client-ID in den Einstellungen eingetragen wird. Die erste Anmeldung wird in der Kontist-App bestätigt, danach läuft der Abruf ohne Freigabe, solange Kontist die Anmeldung gelten lässt.").into(),
         },
         ConnectorKind::OpelDirektbank => BankDescriptor {
             kind,
@@ -674,8 +696,8 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[300],
     },
     MatrixEntry {
-        name: "Hanseatic Bank",
-        kind: Some(ConnectorKind::HanseaticBank),
+        name: "BHW Bausparkasse",
+        kind: Some(ConnectorKind::Bhw),
         interface: Interface::WebPortal,
         official: Some(false),
         capabilities: &[
@@ -684,6 +706,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Documents,
         ],
         status: Status::TestingWanted,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "Kontist",
+        kind: Some(ConnectorKind::Kontist),
+        interface: Interface::RestApi,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
         issues: &[],
     },
     MatrixEntry {
@@ -765,6 +796,19 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         status: Status::TestingWanted,
         issues: &[],
     },
+    MatrixEntry {
+        name: "Hanseatic Bank",
+        kind: Some(ConnectorKind::HanseaticBank),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Documents,
+        ],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
 ];
 
 pub fn make_connector(kind: ConnectorKind, demo: bool) -> Box<dyn BankConnector> {
@@ -812,7 +856,9 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::FordMoney => Box::new(fordmoney::FordMoneyConnector::new()),
         ConnectorKind::OpelDirektbank => Box::new(opel::OpelDirektbankConnector::new()),
         ConnectorKind::HanseaticBank => Box::new(hanseatic::HanseaticConnector::new()),
+        ConnectorKind::Bhw => Box::new(bhw::BhwConnector::new()),
         ConnectorKind::Finpension => Box::new(finpension::FinpensionConnector),
+        ConnectorKind::Kontist => Box::new(kontist::KontistConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));
@@ -885,9 +931,11 @@ mod matrix_tests {
             .unwrap();
         assert!(!e.capabilities.contains(&Capability::Transfers));
         assert!(e.capabilities.contains(&Capability::Transactions));
-        assert!(descriptor(ConnectorKind::Direkt1822)
-            .note
-            .contains("09/2025"));
+        assert!(
+            descriptor(ConnectorKind::Direkt1822)
+                .note
+                .contains("09/2025")
+        );
     }
 
     #[test]

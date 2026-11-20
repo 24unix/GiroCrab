@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
 use jiff::civil::Date;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::dates::{iso, parse_iso};
 use crate::error::{CoreError, CoreResult};
@@ -878,30 +878,33 @@ pub fn detect_price_increases(series: &[(String, String, i64)]) -> Vec<PriceIncr
         list.sort();
         let mut unique: Vec<(Date, i64)> = Vec::new();
         for (d, amount) in list {
-            if let Some(&(pd, pa)) = unique.last() {
-                if pa == amount && crate::dates::days_between(pd, d) <= DUPLICATE_WINDOW_DAYS {
-                    alerts.push(PriceIncreaseAlert {
-                        counterparty: name.clone(),
-                        previous_cents: amount,
-                        new_cents: amount * 2,
-                        increase_cents: amount,
-                        booking_date: iso(d),
-                    });
-                    continue;
-                }
+            if let Some(&(pd, pa)) = unique.last()
+                && pa == amount
+                && crate::dates::days_between(pd, d) <= DUPLICATE_WINDOW_DAYS
+            {
+                alerts.push(PriceIncreaseAlert {
+                    counterparty: name.clone(),
+                    previous_cents: amount,
+                    new_cents: amount * 2,
+                    increase_cents: amount,
+                    booking_date: iso(d),
+                });
+                continue;
             }
             unique.push((d, amount));
         }
-        if let [.., a, b, c] = unique.as_slice() {
-            if a.1 == b.1 && c.1 > b.1 && c.1 <= b.1 * 2 {
-                alerts.push(PriceIncreaseAlert {
-                    counterparty: name.clone(),
-                    previous_cents: b.1,
-                    new_cents: c.1,
-                    increase_cents: c.1 - b.1,
-                    booking_date: iso(c.0),
-                });
-            }
+        if let [.., a, b, c] = unique.as_slice()
+            && a.1 == b.1
+            && c.1 > b.1
+            && c.1 <= b.1 * 2
+        {
+            alerts.push(PriceIncreaseAlert {
+                counterparty: name.clone(),
+                previous_cents: b.1,
+                new_cents: c.1,
+                increase_cents: c.1 - b.1,
+                booking_date: iso(c.0),
+            });
         }
     }
     alerts.sort_by(|a, b| {
@@ -1137,9 +1140,10 @@ mod tests {
         v.push(bk(20, "2026-10-02", -129_900, "", "Apple")); // one-off purchase
         let s = build_series(&v, &HashMap::new(), today());
         assert_eq!(s.len(), 2, "{s:?}");
-        assert!(s
-            .iter()
-            .all(|x| x.amount_specific && x.base_key == s[0].base_key));
+        assert!(
+            s.iter()
+                .all(|x| x.amount_specific && x.base_key == s[0].base_key)
+        );
         assert!(s[0].series_key.starts_with(&s[0].base_key) && s[0].series_key.contains('#'));
         let ov = month_items(&s, &v, 2026, 11);
         assert_eq!(ov.booked_expense_cents, 299);
@@ -1425,9 +1429,10 @@ mod vault_tests {
             c.last_insert_rowid()
         };
         assert!(v.list_recurring(vec![]).unwrap().is_empty());
-        assert!(v
-            .mark_booking_recurring(id, RecurrenceInterval::Custom, vec![])
-            .is_err());
+        assert!(
+            v.mark_booking_recurring(id, RecurrenceInterval::Custom, vec![])
+                .is_err()
+        );
         v.mark_booking_recurring(id, RecurrenceInterval::Quarterly, vec![])
             .unwrap();
         let s = v.list_recurring(vec![]).unwrap();

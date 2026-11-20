@@ -434,9 +434,10 @@ fn import_categories_splits_pending_notes_and_balance() {
             (-4000, "Strom".into(), "Einkauf Lampe".into()),
         ]
     );
-    assert!(!bs
-        .iter()
-        .any(|b| b.amount_cents == -6000 || b.amount_cents == -4000));
+    assert!(
+        !bs.iter()
+            .any(|b| b.amount_cents == -6000 || b.amount_cents == -4000)
+    );
     // pending not imported
     assert!(!bs.iter().any(|b| b.counterparty == "Streaming AG"));
 
@@ -447,12 +448,16 @@ fn import_categories_splits_pending_notes_and_balance() {
     assert_eq!(vb[0].category_path, "Steuern / Büro");
     assert_eq!(vb[0].note, "Abo kündigen");
     let groups = v.list_account_groups().unwrap();
-    assert!(groups
-        .iter()
-        .any(|g| g.name == "Kreditkarten" && g.accounts.iter().any(|a| a.id == visa.id)));
-    assert!(groups
-        .iter()
-        .any(|g| g.name == "Depots & ETFs" && g.accounts.iter().any(|a| a.name == "Depot")));
+    assert!(
+        groups
+            .iter()
+            .any(|g| g.name == "Kreditkarten" && g.accounts.iter().any(|a| a.id == visa.id))
+    );
+    assert!(
+        groups
+            .iter()
+            .any(|g| g.name == "Depots & ETFs" && g.accounts.iter().any(|a| a.name == "Depot"))
+    );
     let usd = account_by_name(&v, "Dollar-Konto");
     assert_eq!(usd.currency, "USD");
     assert_eq!(bookings(&v, usd.id)[0].amount_cents, 2526);
@@ -512,9 +517,11 @@ fn reimport_is_idempotent() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     assert!(p2.accounts.iter().all(|a| a.existing_account_id.is_some()));
-    assert!(p2.banks[..2]
-        .iter()
-        .all(|b| b.existing_connection_id.is_some()));
+    assert!(
+        p2.banks[..2]
+            .iter()
+            .all(|b| b.existing_connection_id.is_some())
+    );
     let second = v
         .import_moneymoney_database(path.clone(), PW.into(), options_from(&p2, true))
         .unwrap();
@@ -576,18 +583,20 @@ fn bank_adopts_the_split_booking() {
     let whole = one_booking(&v, giro, -10_000);
     let db = v.db().unwrap();
     // the bank delivers the whole amount, which no single part had (#877)
-    assert!(crate::importers::moneymoney_import::adopt_import(
-        &db,
-        giro,
-        "bank-9",
-        "2026-03-07",
-        -10_000,
-        "",
-        "Kaufhaus Muster",
-        "Einkauf",
-        "KARTENZAHLUNG"
-    )
-    .unwrap());
+    assert!(
+        crate::importers::moneymoney_import::adopt_import(
+            &db,
+            giro,
+            "bank-9",
+            "2026-03-07",
+            -10_000,
+            "",
+            "Kaufhaus Muster",
+            "Einkauf",
+            "KARTENZAHLUNG"
+        )
+        .unwrap()
+    );
     drop(db);
     let after = one_booking(&v, giro, -10_000);
     assert_eq!(after.id, whole.id);
@@ -994,6 +1003,94 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
     );
 }
 
+/// An imported account parked on a PSD2 connection that never synced is
+/// taken over by a direct connector with the same IBAN; once the PSD2
+/// connection synced, its accounts stay where they are.
+#[test]
+fn a_direct_connector_takes_over_accounts_of_an_unsynced_psd2_connection() {
+    let v = vault();
+    let psd2 = v
+        .add_bank_connection(
+            ConnectorKind::EnableBanking,
+            "enablebanking:DE:Test Bank".into(),
+            String::new(),
+        )
+        .unwrap();
+    let direct = v
+        .add_bank_connection(ConnectorKind::FordMoney, String::new(), "1000000099".into())
+        .unwrap();
+    let db = v.db().unwrap();
+    db.execute(
+        "INSERT OR IGNORE INTO account_groups(name) VALUES ('Test')",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, currency)
+         VALUES (?1, (SELECT id FROM account_groups LIMIT 1), 'moneymoney-db:hb1', 'Test Card',
+                 'DE00 0000 0000 1000 0000 01', 'EUR')",
+        params![psd2],
+    )
+    .unwrap();
+    let imported = db.last_insert_rowid();
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, currency)
+         VALUES (?1, (SELECT id FROM account_groups LIMIT 1), 'moneymoney-db:hb2', 'Test Savings',
+                 'DE00000000001000000002', 'EUR')",
+        params![psd2],
+    )
+    .unwrap();
+    let second = db.last_insert_rowid();
+
+    assert_eq!(
+        adopt_account(
+            &db,
+            direct,
+            "fordmoney:1",
+            "DE00000000001000000001",
+            "EUR",
+            AccountKind::CreditCard
+        )
+        .unwrap(),
+        Some(imported)
+    );
+    let (cid, ext): (i64, String) = db
+        .query_row(
+            "SELECT connection_id, external_ref FROM accounts WHERE id = ?1",
+            [imported],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((cid, ext.as_str()), (direct, "fordmoney:1"));
+
+    // After the PSD2 connection synced, its accounts are its own.
+    db.execute(
+        "UPDATE bank_connections SET last_sync_unix = 1 WHERE id = ?1",
+        [psd2],
+    )
+    .unwrap();
+    assert_eq!(
+        adopt_account(
+            &db,
+            direct,
+            "fordmoney:2",
+            "DE00000000001000000002",
+            "EUR",
+            AccountKind::Savings
+        )
+        .unwrap(),
+        None
+    );
+    let still: i64 = db
+        .query_row(
+            "SELECT connection_id FROM accounts WHERE id = ?1",
+            [second],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(still, psd2);
+}
+
 /// comdirect: its own API stays the default, FinTS (bank code of the login)
 /// is offered next to it and, when chosen, becomes the login's connection.
 #[test]
@@ -1036,9 +1133,11 @@ fn comdirect_can_be_connected_via_fints() {
     }];
     v.import_moneymoney_database(path, PW.into(), o).unwrap();
     let conns = v.list_bank_connections().unwrap();
-    assert!(conns
-        .iter()
-        .all(|c| c.connector != ConnectorKind::Comdirect));
+    assert!(
+        conns
+            .iter()
+            .all(|c| c.connector != ConnectorKind::Comdirect)
+    );
     let fints = conns
         .iter()
         .find(|c| c.connector == ConnectorKind::FinTsGeneric)
@@ -1058,6 +1157,59 @@ fn comdirect_can_be_connected_via_fints() {
         .find(|a| a.name == "Girokonto")
         .unwrap();
     assert_eq!(giro.connection_id, Some(fints.id));
+}
+
+/// #1377: the FinTS endpoint URL MoneyMoney stores in `banks.server` is
+/// taken over to `fints.url.<blz>`. Without this the connection settings
+/// show an empty URL field and the user has to copy it from the DK list by
+/// hand. The server URL wins over GiroCrab's built-in directory entry, so a
+/// bank that moved to a new host keeps the MoneyMoney address.
+#[test]
+fn fints_server_url_is_imported_from_moneymoney() {
+    // Sparkasse Rosenheim-Bad/Aibling (BLZ 71150000) is in the FinTS directory,
+    // so it maps to `ConnectorKind::FinTsGeneric`. MoneyMoney stores its own
+    // URL which may differ from the bundled directory (bank-side migrations).
+    const MM_URL: &str = "https://banking-by2.s-fints-pt-by.de/fints30";
+    let extra = format!(
+        "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, server, systemid, local_storage) \
+         VALUES (4, 'DE', '71150000', 'max.m', 'max.m', 'GEHEIM-4', 'Sparkasse Rosenheim', '{MM_URL}', 'SYS', 'LS');"
+    );
+    let path = fake_db_with(false, &extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let bank = p.banks.iter().find(|b| b.mm_id == 4).unwrap();
+    assert_eq!(bank.connector, Some(ConnectorKind::FinTsGeneric));
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    assert_eq!(
+        v.get_setting("fints.url.71150000".into())
+            .unwrap()
+            .as_deref(),
+        Some(MM_URL),
+        "MoneyMoney's banks.server URL must be stored as fints.url.<blz>"
+    );
+}
+
+/// A bogus or http URL in `banks.server` must not be written through. The
+/// connector then falls back to the built-in FinTS directory at sync time.
+#[test]
+fn fints_server_url_is_rejected_when_not_https() {
+    let extra = "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, server, systemid, local_storage) \
+         VALUES (4, 'DE', '71150000', 'max.m', 'max.m', 'GEHEIM-4', 'Sparkasse Rosenheim', 'http://evil.example/fints', 'SYS', 'LS');";
+    let path = fake_db_with(false, extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
+        .unwrap();
+    assert_eq!(
+        v.get_setting("fints.url.71150000".into()).unwrap(),
+        None,
+        "an http URL must not become a FinTS endpoint setting"
+    );
 }
 
 #[test]
@@ -1125,14 +1277,16 @@ fn secret_columns_and_pins_are_never_read() {
     let path = fake_db_with(false, TRAP);
     // positive control: evaluating a trapped column fails
     let c = open_source(&path, &SecretString::new(PW.into())).unwrap();
-    assert!(c
-        .query_row("SELECT pin FROM pins LIMIT 1", [], |r| r
+    assert!(
+        c.query_row("SELECT pin FROM pins LIMIT 1", [], |r| r
             .get::<_, String>(0))
-        .is_err());
-    assert!(c
-        .query_row("SELECT credential FROM banks LIMIT 1", [], |r| r
+            .is_err()
+    );
+    assert!(
+        c.query_row("SELECT credential FROM banks LIMIT 1", [], |r| r
             .get::<_, String>(0))
-        .is_err());
+            .is_err()
+    );
     drop(c);
     let v = vault();
     let p = v
@@ -1235,11 +1389,12 @@ fn accounts_stay_unlinked_without_bank_logins() {
         .unwrap();
     v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
-    assert!(v
-        .list_accounts()
-        .unwrap()
-        .iter()
-        .all(|a| a.connection_id.is_none()));
+    assert!(
+        v.list_accounts()
+            .unwrap()
+            .iter()
+            .all(|a| a.connection_id.is_none())
+    );
 }
 
 #[test]
@@ -1554,12 +1709,14 @@ fn generic_enable_banking_connection_is_stored_once() {
         .add_enable_banking_connection("N26".into(), "DE".into(), "N26".into(), "".into())
         .unwrap();
     assert_eq!(a, b);
-    assert!(v
-        .add_enable_banking_connection("".into(), "DE".into(), "".into(), "".into())
-        .is_err());
-    assert!(v
-        .add_enable_banking_connection("N26".into(), "DEU".into(), "".into(), "".into())
-        .is_err());
+    assert!(
+        v.add_enable_banking_connection("".into(), "DE".into(), "".into(), "".into())
+            .is_err()
+    );
+    assert!(
+        v.add_enable_banking_connection("N26".into(), "DEU".into(), "".into(), "".into())
+            .is_err()
+    );
     let c = v.list_bank_connections().unwrap();
     assert_eq!(c.len(), 1);
     assert_eq!(c[0].connector, ConnectorKind::EnableBanking);
@@ -1954,9 +2111,11 @@ fn missing_asset_class_column_preserves_older_database_support() {
     let source = read_source(&path, &SecretString::new(PW.into())).unwrap();
     let holdings = source.holdings.get(&3).unwrap();
     assert_eq!(holdings.len(), 2);
-    assert!(holdings
-        .iter()
-        .all(|h| h.classification == ClassificationValues::default()));
+    assert!(
+        holdings
+            .iter()
+            .all(|h| h.classification == ClassificationValues::default())
+    );
 }
 
 #[test]
@@ -2147,13 +2306,14 @@ fn import_takes_over_moneymoney_groups() {
         .unwrap();
     assert_eq!(r.groups_created, 0);
     let gs = v.list_user_groups().unwrap();
-    assert!(gs
-        .iter()
-        .find(|g| g.is_ungrouped)
-        .unwrap()
-        .accounts
-        .iter()
-        .any(|a| a.id == giro));
+    assert!(
+        gs.iter()
+            .find(|g| g.is_ungrouped)
+            .unwrap()
+            .accounts
+            .iter()
+            .any(|a| a.id == giro)
+    );
 }
 
 #[test]
@@ -2347,9 +2507,10 @@ fn import_reports_progress_and_can_be_cancelled() {
     assert_eq!(last.bookings_done, last.bookings_total);
     assert_eq!((last.documents_done, last.documents_total), (4, 4));
     assert!(last.account_name.is_empty());
-    assert!(seen
-        .windows(2)
-        .all(|w| w[0].fraction <= w[1].fraction && w[0].account_index <= w[1].account_index));
+    assert!(
+        seen.windows(2)
+            .all(|w| w[0].fraction <= w[1].fraction && w[0].account_index <= w[1].account_index)
+    );
     assert!(seen.iter().any(|s| s.account_name == "Girokonto"));
     let _ = std::fs::remove_dir_all(folder);
 }
@@ -2536,7 +2697,9 @@ fn starter_wipe_on_import_soft_deletes_starter_categories() {
         7
     );
     assert_eq!(
-        n("SELECT count(*) FROM categories WHERE deleted_ms IS NULL AND name_ms > 0 AND uuid IS NOT NULL"),
+        n(
+            "SELECT count(*) FROM categories WHERE deleted_ms IS NULL AND name_ms > 0 AND uuid IS NOT NULL"
+        ),
         7
     );
     assert_eq!(
@@ -2557,8 +2720,17 @@ fn import_stamps_manual_category_and_note() {
     {
         let db = v.db().unwrap();
         let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
-        assert!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0") > 0);
-        assert_eq!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"), 0);
+        assert!(
+            n(
+                "SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0"
+            ) > 0
+        );
+        assert_eq!(
+            n(
+                "SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"
+            ),
+            0
+        );
         assert_eq!(
             n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms = 0"),
             0
@@ -2571,8 +2743,14 @@ fn import_stamps_manual_category_and_note() {
         .unwrap();
     let db = v.db().unwrap();
     let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
-    assert!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0") > 0);
-    assert_eq!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"), 0);
+    assert!(
+        n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0")
+            > 0
+    );
+    assert_eq!(
+        n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"),
+        0
+    );
     assert!(n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms > 0") > 0);
     assert_eq!(
         n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms = 0"),
@@ -2769,10 +2947,11 @@ fn banks_without_own_connector_are_set_up_through_enable_banking() {
     let mut names: Vec<&str> = pc.accounts.iter().map(|a| a.name.as_str()).collect();
     names.sort();
     assert_eq!(names, ["C24 Pocket", "C24 Smartkonto"]);
-    assert!(pc
-        .accounts
-        .iter()
-        .any(|a| a.iban.replace(' ', "") == "DE02500240241234567890"));
+    assert!(
+        pc.accounts
+            .iter()
+            .any(|a| a.iban.replace(' ', "") == "DE02500240241234567890")
+    );
     let conn = v
         .list_bank_connections()
         .unwrap()
@@ -2783,10 +2962,11 @@ fn banks_without_own_connector_are_set_up_through_enable_banking() {
     // Sparkasse: no choice → still skipped, by name
     assert_eq!(r.banks_skipped_unsupported, 1);
     assert_eq!(r.banks_skipped_names.len(), 1);
-    assert!(!r
-        .psd2_connections
-        .iter()
-        .any(|p| r.banks_skipped_names.contains(&p.bank_name)));
+    assert!(
+        !r.psd2_connections
+            .iter()
+            .any(|p| r.banks_skipped_names.contains(&p.bank_name))
+    );
 
     // second run: the same connection, nothing new
     let r = v.import_moneymoney_database(path, PW.into(), o).unwrap();
@@ -2892,9 +3072,11 @@ fn a_bank_can_be_switched_to_enable_banking_or_left_out() {
     ];
     let r = v.import_moneymoney_database(path, PW.into(), o).unwrap();
     let conns = v.list_bank_connections().unwrap();
-    assert!(conns
-        .iter()
-        .all(|c| c.connector != ConnectorKind::Comdirect));
+    assert!(
+        conns
+            .iter()
+            .all(|c| c.connector != ConnectorKind::Comdirect)
+    );
     assert!(conns.iter().all(
         |c| c.connector != ConnectorKind::FinTsGeneric || !c.display_name.contains("Hanseatic")
     ));
@@ -2902,10 +3084,11 @@ fn a_bank_can_be_switched_to_enable_banking_or_left_out() {
     assert_eq!(r.psd2_connections[0].bank_name, "Hanseatic Bank");
     assert_eq!(r.psd2_connections[0].accounts.len(), 1);
     // the comdirect accounts are still imported, just without a login
-    assert!(r
-        .account_checks
-        .iter()
-        .any(|c| c.name == "Girokonto" && c.ok));
+    assert!(
+        r.account_checks
+            .iter()
+            .any(|c| c.name == "Girokonto" && c.ok)
+    );
 }
 
 /// #201: a database locked by a running MoneyMoney is reported as such –
@@ -2996,12 +3179,16 @@ fn statement_lookup_rejects_symlinks_leaving_the_import_folder() {
     };
     let mut files = StatementFiles::new(folder.join("Statements"));
     assert!(files.find(&doc("Bank", "ok.pdf", String::new())).is_some());
-    assert!(files
-        .find(&doc("Bank", "link.pdf", String::new()))
-        .is_none());
-    assert!(files
-        .find(&doc("Linked", "secret.pdf", String::new()))
-        .is_none());
+    assert!(
+        files
+            .find(&doc("Bank", "link.pdf", String::new()))
+            .is_none()
+    );
+    assert!(
+        files
+            .find(&doc("Linked", "secret.pdf", String::new()))
+            .is_none()
+    );
     // the digest fallback must not hand out the linked outside file either
     let digest = sha256_hex(&secret);
     assert!(files.find(&doc("", "other.pdf", digest)).is_none());
@@ -3335,10 +3522,11 @@ CREATE VIEW payments AS SELECT rowid, version, uuid, tombstone, type, sender, re
     let path = fake_db_with(false, &extra);
     // positive control: evaluating the blob of the sent order fails
     let c = open_source(&path, &SecretString::new(PW.into())).unwrap();
-    assert!(c
-        .query_row("SELECT data FROM payments WHERE type = 7", [], |r| r
+    assert!(
+        c.query_row("SELECT data FROM payments WHERE type = 7", [], |r| r
             .get::<_, Vec<u8>>(0))
-        .is_err());
+            .is_err()
+    );
     drop(c);
     let v = vault();
     let p = v

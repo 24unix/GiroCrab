@@ -25,7 +25,7 @@
 use std::collections::{HashMap, HashSet};
 
 use jiff::civil::Date;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::dates::{iso, now_ms, parse_iso, today};
 use crate::error::{CoreError, CoreResult};
@@ -312,7 +312,7 @@ fn validate(s: &AssetItemSetup) -> CoreResult<AssetItemSetup> {
             _ => {
                 return Err(CoreError::invalid(tr(
                     "Bitte den Wert zum Kaufdatum angeben.",
-                )))
+                )));
             }
         }
         s.weight_grams = 0.0;
@@ -410,15 +410,14 @@ fn manual_value_at(
         return None;
     }
     let (d0, v0) = &points[i - 1];
-    if interp == AssetInterpolation::Linear {
-        if let Some((d1, v1)) = points.get(i) {
-            if let (Some(a), Some(b), Some(x)) = (parse_iso(d0), parse_iso(d1), parse_iso(day)) {
-                let span = crate::dates::days_between(a, b) as f64;
-                if span > 0.0 {
-                    let t = crate::dates::days_between(a, x) as f64 / span;
-                    return Some((*v0 as f64 + (*v1 - *v0) as f64 * t, day.to_string()));
-                }
-            }
+    if interp == AssetInterpolation::Linear
+        && let Some((d1, v1)) = points.get(i)
+        && let (Some(a), Some(b), Some(x)) = (parse_iso(d0), parse_iso(d1), parse_iso(day))
+    {
+        let span = crate::dates::days_between(a, b) as f64;
+        if span > 0.0 {
+            let t = crate::dates::days_between(a, x) as f64 / span;
+            return Some((*v0 as f64 + (*v1 - *v0) as f64 * t, day.to_string()));
         }
     }
     Some((*v0 as f64, d0.clone()))
@@ -794,7 +793,9 @@ fn store_item(
                 |r| r.get(0),
             )?;
             if later_before > 0 {
-                return Err(CoreError::invalid(tr("Vor dem neuen Kaufdatum liegen noch Bestands- oder Wertänderungen. Bitte diese zuerst entfernen.")));
+                return Err(CoreError::invalid(tr(
+                    "Vor dem neuen Kaufdatum liegen noch Bestands- oder Wertänderungen. Bitte diese zuerst entfernen.",
+                )));
             }
             if !is_manual(&s.price_source) {
                 let values: i64 = conn.query_row(
@@ -803,7 +804,9 @@ fn store_item(
                     |r| r.get(0),
                 )?;
                 if values > 1 {
-                    return Err(CoreError::invalid(tr("Der Sachwert hat eingetragene Werte. Bitte diese zuerst entfernen, bevor er über den Kurs bewertet wird.")));
+                    return Err(CoreError::invalid(tr(
+                        "Der Sachwert hat eingetragene Werte. Bitte diese zuerst entfernen, bevor er über den Kurs bewertet wird.",
+                    )));
                 }
             }
             conn.execute(

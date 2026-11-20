@@ -142,9 +142,11 @@ fn a_refused_request_names_its_step_and_the_banks_code() {
     assert!(!text.contains("1000000001"), "{text}");
     let e = rejected(bad, "customerportal", &json!({"errorCode": "<b>E 42</b>"}));
     assert!(e.to_string().contains("(customerportal, bE42b)"), "{e}");
-    assert!(rejected(bad, "app-token", &Value::Null)
-        .to_string()
-        .contains("(app-token)"));
+    assert!(
+        rejected(bad, "app-token", &Value::Null)
+            .to_string()
+            .contains("(app-token)")
+    );
 }
 
 #[test]
@@ -512,9 +514,11 @@ fn repeated_syncs_store_every_booking_once() {
     super::super::store_fetch(&v, ConnectorKind::HanseaticBank, conn, fetch(booked)).unwrap();
     let after_booking = rows();
     assert_eq!(after_booking.len(), 4);
-    assert!(after_booking
-        .iter()
-        .all(|(id, _)| !id.starts_with(HOLD_PREFIX)));
+    assert!(
+        after_booking
+            .iter()
+            .all(|(id, _)| !id.starts_with(HOLD_PREFIX))
+    );
     assert_eq!(
         after_booking
             .iter()

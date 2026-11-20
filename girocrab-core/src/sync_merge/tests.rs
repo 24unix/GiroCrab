@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use super::*;
 use crate::vault::Vault;
@@ -264,9 +264,10 @@ fn deleted_category_name_can_be_reused() {
     let db = v.db().unwrap();
     db.execute("INSERT INTO categories(name) VALUES ('Food')", [])
         .unwrap();
-    assert!(db
-        .execute("INSERT INTO categories(name) VALUES ('Food')", [])
-        .is_err());
+    assert!(
+        db.execute("INSERT INTO categories(name) VALUES ('Food')", [])
+            .is_err()
+    );
     db.execute(
         "UPDATE categories SET deleted_ms = 1 WHERE name = 'Food'",
         [],
@@ -799,7 +800,9 @@ fn deleting_connection_soft_deletes_it_accounts_and_bookings() {
     assert_eq!(
         n(
             &v,
-            &format!("SELECT count(*) FROM transactions WHERE account_id = {loose} AND deleted_ms IS NULL")
+            &format!(
+                "SELECT count(*) FROM transactions WHERE account_id = {loose} AND deleted_ms IS NULL"
+            )
         ),
         1
     );
@@ -1161,16 +1164,18 @@ fn twin_merge_soft_deletes_the_bank_copy() {
     )
     .unwrap();
     let bank_id = db.last_insert_rowid();
-    assert!(crate::importers::moneymoney_import::merge_synced_twin(
-        &db,
-        bank_id,
-        "2026-05-10",
-        -1250,
-        "",
-        "REWE",
-        "Einkauf"
-    )
-    .unwrap());
+    assert!(
+        crate::importers::moneymoney_import::merge_synced_twin(
+            &db,
+            bank_id,
+            "2026-05-10",
+            -1250,
+            "",
+            "REWE",
+            "Einkauf"
+        )
+        .unwrap()
+    );
     let deleted: Option<i64> = db
         .query_row(
             "SELECT deleted_ms FROM transactions WHERE id = ?1",
@@ -1452,7 +1457,8 @@ fn files_under(dir: &std::path::Path) -> Vec<String> {
 ///   account, unlinked, search), `get_document_bytes`, `export_all_documents`,
 ///   `mirror_new_documents`, `auto_match_document` (text that fits the deleted
 ///   booking best)
-/// - transfers / statements: `suggest_recipients`, `auto_statements_enabled`
+/// - transfers / statements: `suggest_recipients`, `list_known_recipients`,
+///   `auto_statements_enabled`
 /// - imports: `preview_moneymoney_import` (rows unrelated to the deleted
 ///   bookings; rows that hit a deleted booking are kept from resurrecting it on
 ///   purpose, see Task 4)
@@ -1581,6 +1587,8 @@ fn soft_deleted_rows_appear_in_no_public_api() {
         .suggest_recipients(String::new(), 20));
     both!("suggest_recipients(query)", |v| v
         .suggest_recipients("Autobank".into(), 20));
+    both!("list_known_recipients", |v| v
+        .list_known_recipients(String::new()));
 
     for &id in &accounts {
         both!(format!("list_holdings({id})"), |v| v.list_holdings(id));
@@ -2787,16 +2795,18 @@ fn twin_tombstone_is_not_revived_by_merge() {
             [acc],
         )
         .unwrap();
-        assert!(crate::importers::moneymoney_import::merge_synced_twin(
-            &db,
-            db.last_insert_rowid(),
-            "2026-05-10",
-            -1250,
-            "",
-            "REWE",
-            "Einkauf"
-        )
-        .unwrap());
+        assert!(
+            crate::importers::moneymoney_import::merge_synced_twin(
+                &db,
+                db.last_insert_rowid(),
+                "2026-05-10",
+                -1250,
+                "",
+                "REWE",
+                "Einkauf"
+            )
+            .unwrap()
+        );
     }
     // B knows the same account and only the bank's booking
     let ext = text(
@@ -2973,7 +2983,10 @@ fn identical_imported_bookings_stay_two() {
                 "two"
             );
             assert_eq!(
-                n(v, "SELECT count(*) FROM transactions WHERE external_id = 'mm-F-1' AND deleted_ms IS NULL"),
+                n(
+                    v,
+                    "SELECT count(*) FROM transactions WHERE external_id = 'mm-F-1' AND deleted_ms IS NULL"
+                ),
                 1
             );
         }
@@ -3190,7 +3203,10 @@ fn readded_connection_beats_older_deletion() {
         }
         for v in [&a, &b] {
             assert_eq!(
-                n(v, "SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL AND created_ms = 30"),
+                n(
+                    v,
+                    "SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL AND created_ms = 30"
+                ),
                 1
             );
             // the revived account keeps its cascade-deleted bookings back,
@@ -3347,7 +3363,10 @@ fn three_vaults_converge_in_any_merge_order() {
         for x in &v {
             let x: &Vault = x;
             assert_eq!(
-                text(x, "SELECT name || color_hex FROM categories WHERE deleted_ms IS NULL AND name != 'Travel'"),
+                text(
+                    x,
+                    "SELECT name || color_hex FROM categories WHERE deleted_ms IS NULL AND name != 'Travel'"
+                ),
                 "Essen#222222"
             );
             assert_eq!(
@@ -3517,7 +3536,10 @@ fn every_mutating_api_stamps_or_soft_deletes() {
                     "SELECT id FROM bank_connections WHERE connector = 'comdirect'",
                 );
                 v.delete_bank_connection(id).unwrap();
-                exec(v, "UPDATE bank_connections SET deleted_ms = 1, created_ms = 1 WHERE connector = 'comdirect'");
+                exec(
+                    v,
+                    "UPDATE bank_connections SET deleted_ms = 1, created_ms = 1 WHERE connector = 'comdirect'",
+                );
                 v.add_bank_connection(ConnectorKind::Comdirect, String::new(), "me".into())
                     .unwrap();
             }),
@@ -3533,7 +3555,7 @@ fn every_mutating_api_stamps_or_soft_deletes() {
         (
             "import_moneymoney_database",
             Box::new(|v| {
-                use crate::importers::moneymoney_db::tests::{fake_db, options_from, PW};
+                use crate::importers::moneymoney_db::tests::{PW, fake_db, options_from};
                 let path = fake_db();
                 let p = v
                     .preview_moneymoney_database(path.clone(), PW.into(), None)
@@ -3628,16 +3650,18 @@ fn twin_merge_leaves_a_tombstone_for_the_moneymoney_key() {
             &a,
             &format!("SELECT id FROM transactions WHERE account_id = {acc} AND external_id = 'f1'"),
         );
-        assert!(crate::importers::moneymoney_import::merge_synced_twin(
-            &a.db().unwrap(),
-            bank_id,
-            "2026-05-10",
-            -1250,
-            "",
-            "REWE",
-            "Einkauf"
-        )
-        .unwrap());
+        assert!(
+            crate::importers::moneymoney_import::merge_synced_twin(
+                &a.db().unwrap(),
+                bank_id,
+                "2026-05-10",
+                -1250,
+                "",
+                "REWE",
+                "Einkauf"
+            )
+            .unwrap()
+        );
         if a_first {
             both_ways(&a, &b);
         } else {
@@ -3798,17 +3822,30 @@ fn moneymoney_twin_of_a_bank_account_is_folded_on_open() {
     let twin = giro(&v, c, MM_GIRO, &["mm-1", "mm-2", "mm-3"]);
     exec(
         &v,
-        &format!("UPDATE transactions SET checked = 1, checked_ms = 5 WHERE account_id = {bank} AND external_id = 'mm-1'"),
+        &format!(
+            "UPDATE transactions SET checked = 1, checked_ms = 5 WHERE account_id = {bank} AND external_id = 'mm-1'"
+        ),
     );
     exec(
         &v,
-        &format!("UPDATE transactions SET note = 'Miete', note_ms = 9 WHERE account_id = {twin} AND external_id = 'mm-2'"),
+        &format!(
+            "UPDATE transactions SET note = 'Miete', note_ms = 9 WHERE account_id = {twin} AND external_id = 'mm-2'"
+        ),
+    );
+    exec(
+        &v,
+        &format!("UPDATE accounts SET note = 'Haushalt', note_ms = 7 WHERE id = {twin}"),
     );
     drop(v);
     let v = open(&dir, "a.db");
     assert_eq!(
         n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
         1
+    );
+    assert_eq!(
+        text(&v, &format!("SELECT note FROM accounts WHERE id = {bank}")),
+        "Haushalt",
+        "the account note goes with the twin's bookings"
     );
     assert_eq!(
         n(
@@ -3819,7 +3856,12 @@ fn moneymoney_twin_of_a_bank_account_is_folded_on_open() {
     );
     assert_eq!(live_bookings(&v), "b1::0 mm-1::1 mm-2:Miete:0 mm-3::0");
     assert_eq!(
-        n(&v, &format!("SELECT count(DISTINCT account_id) FROM transactions WHERE deleted_ms IS NULL AND account_id = {bank}")),
+        n(
+            &v,
+            &format!(
+                "SELECT count(DISTINCT account_id) FROM transactions WHERE deleted_ms IS NULL AND account_id = {bank}"
+            )
+        ),
         1
     );
 }
@@ -4050,6 +4092,31 @@ fn folded_twin_tombstone_does_not_delete_the_other_devices_account() {
     for v in [&a, &b] {
         assert_eq!(live_bookings(v), "b1::0 mm-1::0 mm-2::0 mm-4::0");
     }
+}
+
+/// #980 review: a note edited on the twin by a device that hadn't folded it
+/// yet reaches the bank account the twin was folded into here.
+#[test]
+fn note_on_an_already_folded_twin_reaches_the_bank_account() {
+    let dir = temp_dir("twin-note");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let ca = comdirect(&a);
+    let cb = comdirect(&b);
+    giro(&a, ca, MM_GIRO, &["mm-1", "mm-2"]);
+    let bank = giro(&a, ca, "API1", &["mm-1", "mm-2", "b1"]);
+    let twin = giro(&b, cb, MM_GIRO, &["mm-1", "mm-2"]);
+    for v in [&a, &b] {
+        exec(v, "UPDATE bank_connections SET created_ms = 1");
+        exec(v, "UPDATE accounts SET created_ms = 1");
+    }
+    drop(a);
+    let a = open(&dir, "a.db");
+    b.set_account_note(twin, "Haushalt".into()).unwrap();
+    merge(&a, &b);
+    assert_eq!(
+        text(&a, &format!("SELECT note FROM accounts WHERE id = {bank}")),
+        "Haushalt"
+    );
 }
 
 /// Issue #94: a closed MoneyMoney account and its successor share the
@@ -4368,4 +4435,95 @@ fn category_role_merge_converges_in_every_order() {
             }
         }
     }
+}
+
+#[test]
+fn deleting_the_last_account_of_a_login_drops_its_portal_cookies() {
+    let v = open(&temp_dir("cookiedel"), "a.db");
+    let (c, a1, a2, _) = bank_fixture(&v);
+    let key = format!("web.secret_cookies.{c}");
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, '[]', 1)",
+            [&key],
+        )
+        .unwrap();
+    let cookies = format!("SELECT count(*) FROM settings WHERE key = '{key}'");
+    v.set_account_archived(a1, true).unwrap();
+    v.set_account_archived(a2, true).unwrap();
+    v.delete_account(a1).unwrap();
+    assert_eq!(n(&v, &cookies), 1, "login still has an account");
+    v.delete_account(a2).unwrap();
+    assert_eq!(n(&v, &cookies), 0);
+}
+
+fn connection_settings(v: &Vault, c: i64) -> i64 {
+    n(
+        v,
+        &format!(
+            "SELECT count(*) FROM settings WHERE key IN ('pin.conn.{c}', 'pin.conn.{c}.login',
+                 'fints.rah10.private.{c}', 'fints.rah10.counter.{c}', 'fints.rah10.bank_keys.{c}')"
+        ),
+    )
+}
+
+fn store_connection_secrets(v: &Vault, c: i64) {
+    v.set_connection_pin(c, Some("1234".into())).unwrap();
+    let db = v.db().unwrap();
+    for key in [
+        format!("pin.conn.{c}.login"),
+        format!("fints.rah10.private.{c}"),
+        format!("fints.rah10.counter.{c}"),
+        format!("fints.rah10.bank_keys.{c}"),
+    ] {
+        db.execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, 'dummy', 1)",
+            [key],
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn merged_connection_deletion_purges_the_stored_secrets() {
+    let dir = temp_dir("conndel-merge");
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let (ca, ..) = bank_fixture(&a);
+    let (cb, ..) = bank_fixture(&b);
+    store_connection_secrets(&b, cb);
+    assert_eq!(connection_settings(&b, cb), 5);
+
+    a.delete_bank_connection(ca).unwrap();
+    merge(&b, &a);
+
+    assert_eq!(
+        n(
+            &b,
+            &format!("SELECT count(*) FROM bank_connections WHERE id = {cb} AND deleted_ms > 0")
+        ),
+        1
+    );
+    assert_eq!(connection_settings(&b, cb), 0);
+}
+
+#[test]
+fn opening_purges_secrets_of_connections_deleted_earlier() {
+    let dir = temp_dir("conndel-open");
+    let v = open(&dir, "a.db");
+    let (c, ..) = bank_fixture(&v);
+    store_connection_secrets(&v, c);
+    // a deletion merged by an older version: tombstone, secrets still there
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE bank_connections SET deleted_ms = 1 WHERE id = ?1",
+            [c],
+        )
+        .unwrap();
+    assert_eq!(connection_settings(&v, c), 5);
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(connection_settings(&v, c), 0);
 }

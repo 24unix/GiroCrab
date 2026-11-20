@@ -1,18 +1,16 @@
 //! Vault side of syncs and transfers: storing fetch results, starting
-//! sessions, statement automation, recipients and pending transfers.
+//! sessions, statement automation and pending transfers.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::iban::{normalize_iban, validate_iban};
 use crate::importers::portal_import::{CARD_BOOKING_TEXT, CARD_SEPARATOR};
-use crate::models::{
-    AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
-};
+use crate::models::{AccountKind, BatchTransferRequest, ConnectorKind, SepaTransferRequest};
 use crate::secret::{SecretJson, SecretString};
 use crate::vault::Vault;
 
@@ -106,7 +104,7 @@ impl Stored {
 }
 
 /// A booking the bank delivers again: fills bank fields an older version did
-/// not store yet (codes, SEPA references, product ids) and heals corrupted text
+/// not store yet (codes, SEPA references, product ids, an empty counterparty) and heals corrupted text
 /// (U+FFFD / mojibake) with the freshly decoded one. Writes only when a column
 /// changes, since most bookings of every fetch are already stored.
 fn refresh_existing(
@@ -130,8 +128,11 @@ fn refresh_existing(
         [&t.end_to_end_id, &t.mandate_id, &t.creditor_id],
     );
     let [items] = fill([&s.item_refs], [&t.item_refs]);
+    // a counterparty the bank (or a newer version) names now fills an empty one,
+    // e.g. the merchant of a comdirect card payment (#1135)
+    let [named] = fill([&s.counterparty], [&t.counterparty]);
     let set = [
-        heal(&s.counterparty, &t.counterparty),
+        heal(&s.counterparty, &t.counterparty).or(named),
         heal(&s.purpose, &t.purpose),
         code,
         gvc,
@@ -143,7 +144,16 @@ fn refresh_existing(
     if set == [None; 8] {
         return Ok(());
     }
-    let [counterparty, purpose, code, gvc, e2e, mandate, creditor, items] = set;
+    let [
+        counterparty,
+        purpose,
+        code,
+        gvc,
+        e2e,
+        mandate,
+        creditor,
+        items,
+    ] = set;
     tx.prepare_cached(
         "UPDATE transactions SET counterparty = COALESCE(?2, counterparty), purpose = COALESCE(?3, purpose),
                 purpose_code = COALESCE(?4, purpose_code), gvc = COALESCE(?5, gvc),
@@ -306,6 +316,22 @@ pub(crate) fn store_fetch(
             let existing = match existing {
                 Some(id) => Some(id),
                 None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
+            };
+            // A deleted duplicate of an imported account (created before the
+            // import could be taken over) gives way to the imported account,
+            // also when the connection was added again (which would revive it).
+            let existing = match existing {
+                Some(id)
+                    if tx.query_row(
+                        // includes soft-deleted rows
+                        "SELECT deleted_ms IS NOT NULL FROM accounts WHERE id = ?1",
+                        [id],
+                        |r| r.get::<_, bool>(0),
+                    )? =>
+                {
+                    Some(adopt_past_deleted_twin(&tx, connection_id, id, acc)?.unwrap_or(id))
+                }
+                other => other,
             };
             if let Some(id) = existing {
                 // Deleted accounts stay deleted (like archived ones, nothing is
@@ -611,11 +637,11 @@ pub(crate) fn store_fetch(
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
-                    if let Some(id) = archived_ids.get(&t.account_ref) {
-                        if !deleted_refs.contains(&t.account_ref) {
-                            let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
-                            skipped_archived += u32::from(!known);
-                        }
+                    if let Some(id) = archived_ids.get(&t.account_ref)
+                        && !deleted_refs.contains(&t.account_ref)
+                    {
+                        let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
+                        skipped_archived += u32::from(!known);
                     }
                     continue;
                 };
@@ -957,10 +983,30 @@ pub(crate) fn store_fetch(
         if let Some(state) = &data.state {
             crate::vault::connections::store_state(&tx, connection_id, state)?;
         }
-        tx.execute(
-            "UPDATE bank_connections SET last_sync_unix = strftime('%s','now') WHERE id = ?1",
-            [connection_id],
-        )?;
+        // one account: the others are as old as before (automatic sync, freshness)
+        if !data.single_account {
+            tx.execute(
+                "UPDATE bank_connections SET last_sync_unix = strftime('%s','now') WHERE id = ?1",
+                [connection_id],
+            )?;
+        }
+        // Accounts by the name they carry here instead of their bank reference (an IBAN).
+        let mut warnings = std::mem::take(&mut data.warnings);
+        if !warnings.is_empty() {
+            for acc in data.accounts.iter().filter(|a| !a.external_ref.is_empty()) {
+                let name: Option<String> = tx
+                    .query_row(
+                        "SELECT name FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND deleted_ms IS NULL",
+                        params![connection_id, acc.external_ref],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let name = name.unwrap_or_else(|| acc.name.clone());
+                for w in &mut warnings {
+                    *w = w.replace(&acc.external_ref, &name);
+                }
+            }
+        }
         tx.commit()?;
         if let Some(data) = deferred {
             vault
@@ -971,7 +1017,10 @@ pub(crate) fn store_fetch(
         }
         // The catch-up after switching retrieval on again is done once a sync brings no new document
         // and left none out (a failed request, a limit).
-        if documents_stored == 0 && !documents_incomplete && documents_fetch_on(&db, connection_id)?
+        if documents_stored == 0
+            && !documents_incomplete
+            && !data.single_account
+            && documents_fetch_on(&db, connection_id)?
         {
             db.execute(
                 "DELETE FROM settings WHERE key = ?1",
@@ -986,6 +1035,7 @@ pub(crate) fn store_fetch(
             new_accounts,
             revoked_accounts,
             postbox_documents,
+            warnings,
         })
     }
 }
@@ -1098,7 +1148,7 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
-        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Due)
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Due, None)
     }
 
     /// Like [`begin_sync`](Self::begin_sync) for an automatic sync in the
@@ -1110,7 +1160,30 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
-        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Off)
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Off, None)
+    }
+
+    /// Like [`begin_sync`](Self::begin_sync) for one account of its login
+    /// ("<Konto> abrufen", #1124): only its balance and bookings are fetched
+    /// and stored; the login's other accounts stay as they are. An account
+    /// still under a MoneyMoney ref (imported and not yet taken over, or
+    /// marked by „Abrufweg umstellen“) is not known to the bank under it, so
+    /// it gets a sync of the whole login, documents included (see
+    /// `single_account_ref`, #1417).
+    /// Documents
+    /// wait for the next full sync: connectors remember what they downloaded,
+    /// and a document of another account would be remembered but not stored.
+    pub fn begin_account_sync(
+        self: Arc<Self>,
+        account_id: i64,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<SyncSession>, CoreError> {
+        let (conn_id, ext) = self.account_login(account_id)?;
+        let only = single_account_ref(ext, || {
+            super::account_selection::skipped_refs(&*self.db()?, conn_id)
+        })?;
+        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, only)
     }
 
     /// Turns the PostBox fetch through comdirect's REST API on or off for a
@@ -1191,7 +1264,7 @@ impl Vault {
                 "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet.",
             )));
         }
-        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Now)
+        self.begin_sync_inner(connection_id, secret, demo, None, PostboxMode::Now, None)
     }
 
     /// Whether this connection's bank delivers documents at all (`Capability::Documents` of its
@@ -1287,20 +1360,7 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
-        let (conn_id, ext): (Option<i64>, String) = {
-            let db = self.db()?;
-            db.query_row(
-                "SELECT connection_id, external_ref FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
-                [account_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()?
-            .ok_or_else(|| CoreError::NotFound {
-                what: trf("Konto {0}", &[&account_id]),
-            })?
-        };
-        let conn_id = conn_id
-            .ok_or_else(|| CoreError::invalid(tr("Dieses Konto hat keine Bankverbindung.")))?;
+        let (conn_id, ext) = self.account_login(account_id)?;
         let kind: String = self.db()?.query_row(
             "SELECT connector FROM bank_connections WHERE id = ?1",
             [conn_id],
@@ -1315,6 +1375,7 @@ impl Vault {
                     | ConnectorKind::Easybank
                     | ConnectorKind::FordMoney
                     | ConnectorKind::OpelDirektbank
+                    | ConnectorKind::Bhw
                     | ConnectorKind::HanseaticBank
                     | ConnectorKind::Ffb
             )
@@ -1324,11 +1385,29 @@ impl Vault {
                 "Für diese Bank können keine Kontoauszüge abgerufen werden.",
             )));
         }
-        self.begin_sync_inner(conn_id, secret, demo, Some(ext), PostboxMode::Off)
+        self.begin_sync_inner(conn_id, secret, demo, Some(ext), PostboxMode::Off, None)
     }
 }
 
 impl Vault {
+    /// Login (connection id) and external ref of a synced account.
+    fn account_login(&self, account_id: i64) -> CoreResult<(i64, String)> {
+        let (conn_id, ext): (Option<i64>, String) = self
+            .db()?
+            .query_row(
+                "SELECT connection_id, external_ref FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
+                [account_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            })?;
+        let conn_id = conn_id
+            .ok_or_else(|| CoreError::invalid(tr("Dieses Konto hat keine Bankverbindung.")))?;
+        Ok((conn_id, ext))
+    }
+
     /// The documents a sync of this connection fetches; `statements_only` =
     /// external ref of the account whose statements were asked for.
     pub(super) fn documents_request(
@@ -1389,6 +1468,7 @@ impl Vault {
         demo: bool,
         statements_only: Option<String>,
         postbox: PostboxMode,
+        only_account: Option<String>,
     ) -> Result<Arc<SyncSession>, CoreError> {
         // No PIN typed: use the one stored in the vault ("PIN im Tresor speichern").
         let secret = if secret.is_empty() {
@@ -1446,6 +1526,17 @@ impl Vault {
                 let k = format!("fints.url.{blz}");
                 match Vault::setting_inner(&db, &k)? {
                     Some(v) if !v.is_empty() => {
+                        // stored before the directory fix: move to the bank's current endpoint
+                        let v = match fints_directory::replacement_for_retired_url(blz, &v) {
+                            Some(url) => {
+                                db.execute(
+                                    "UPDATE settings SET value = ?1 WHERE key = ?2",
+                                    params![url, k],
+                                )?;
+                                url.to_string()
+                            }
+                            None => v,
+                        };
                         settings.insert(k, SecretString::new(v));
                     }
                     // e.g. a MoneyMoney import created the login without a URL
@@ -1483,10 +1574,10 @@ impl Vault {
                 );
             }
             let tm_key = format!("fints.tan_medium.{connection_id}");
-            if let Some(v) = Vault::setting_inner(&db, &tm_key)? {
-                if !v.trim().is_empty() {
-                    settings.insert(tm_key, SecretString::new(v));
-                }
+            if let Some(v) = Vault::setting_inner(&db, &tm_key)?
+                && !v.trim().is_empty()
+            {
+                settings.insert(tm_key, SecretString::new(v));
             }
             // this login's own Enable Banking application, if it has one (#824)
             crate::vault::enable_banking_apps::overlay(&db, connection_id, &mut settings)?;
@@ -1510,10 +1601,19 @@ impl Vault {
                 )?;
                 let rows = st
                     .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                rows
+                    .collect::<Result<Vec<(String, Option<String>)>, _>>()?;
+                // one account: the window starts at its own newest booking
+                rows.into_iter()
+                    .filter(|(r, _)| only_account.as_ref().is_none_or(|o| o == r))
+                    .collect()
             };
             let skipped = super::account_selection::skipped_refs(&db, connection_id)?;
+            // one account, archived or switched off: store_fetch would drop all it brings
+            if only_account.as_ref().is_some_and(|r| skipped.contains(r)) {
+                return Err(CoreError::invalid(tr(
+                    "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
+                )));
+            }
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
@@ -1521,7 +1621,11 @@ impl Vault {
             (kind, key_str, login, state, settings, since, skipped, demo)
         };
         let (since, since_by_account) = since;
-        let documents = self.documents_request(connection_id, statements_only)?;
+        let documents = match only_account {
+            // see begin_account_sync
+            Some(_) => Documents::Off,
+            None => self.documents_request(connection_id, statements_only)?,
+        };
         let ctx = ConnectContext {
             connection_id,
             login_name: login,
@@ -1532,6 +1636,7 @@ impl Vault {
             since_by_account,
             documents,
             skipped_accounts: skipped.into_iter().collect(),
+            only_account,
         };
         let mut connector = make_connector_for(kind, &key_str, demo);
         if !demo && is_comdirect_fints(&key_str) {
@@ -1540,15 +1645,16 @@ impl Vault {
                     connector, since,
                 ));
             }
-        } else if !demo && is_consorsbank_fints(&key_str) {
-            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)? {
-                let known = self.consorsbank_known_documents(connection_id)?;
-                connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
-                    connector,
-                    Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
-                    since,
-                ));
-            }
+        } else if !demo
+            && is_consorsbank_fints(&key_str)
+            && let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)?
+        {
+            let known = self.consorsbank_known_documents(connection_id)?;
+            connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
+                connector,
+                Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
+                since,
+            ));
         }
         Ok(Arc::new(SyncSession::new(
             self.clone(),
@@ -1670,6 +1776,11 @@ impl Vault {
         if request.amount_cents <= 0 {
             return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
         }
+        if request.amount_cents > sepa::MAX_AMOUNT_CENTS {
+            return Err(CoreError::invalid(tr(
+                "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+            )));
+        }
         if !validate_iban(&request.recipient_iban) {
             return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
         }
@@ -1677,10 +1788,9 @@ impl Vault {
             .recipient_bic
             .as_deref()
             .filter(|b| !b.trim().is_empty())
+            && !sepa::validate_bic(b)
         {
-            if !sepa::validate_bic(b) {
-                return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
-            }
+            return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
         }
         if request.recipient_name.trim().is_empty() {
             return Err(CoreError::invalid(tr("Der Empfängername fehlt.")));
@@ -1882,6 +1992,11 @@ impl Vault {
                 if request.amount_cents <= 0 {
                     return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
                 }
+                if request.amount_cents > crate::connectors::fints::sepa::MAX_AMOUNT_CENTS {
+                    return Err(CoreError::invalid(tr(
+                        "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+                    )));
+                }
                 let today = crate::dates::today();
                 let date = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d.trim()).ok();
                 let first = date(&request.first_date).ok_or_else(|| {
@@ -1912,7 +2027,7 @@ impl Vault {
                     _ => {
                         return Err(CoreError::invalid(tr(
                             "Der Rhythmus muss Monate oder Wochen sein.",
-                        )))
+                        )));
                     }
                 };
                 if !(1..=99).contains(&request.interval) {
@@ -2013,7 +2128,9 @@ impl Vault {
                 ))
             })?;
         if o.order_id.trim().is_empty() {
-            return Err(CoreError::invalid(tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.")));
+            return Err(CoreError::invalid(tr(
+                "Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.",
+            )));
         }
         if request.action == crate::models::StandingOrderAction::Change && !o.can_change {
             return Err(CoreError::invalid(tr(
@@ -2041,12 +2158,16 @@ impl Vault {
         let group = match (groups.next(), groups.next()) {
             (Some(g), None) if g.sequence.code() == request.sequence => g,
             _ => {
-                return Err(CoreError::invalid(tr("Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.")))
+                return Err(CoreError::invalid(tr(
+                    "Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.",
+                )));
             }
         };
         let scheme = group.scheme.debit();
         if scheme == DebitScheme::B2b && !request.b2b_confirmed {
-            return Err(CoreError::invalid(tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.")));
+            return Err(CoreError::invalid(tr(
+                "Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.",
+            )));
         }
         let (connection_id, iban, _, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;
@@ -2083,41 +2204,6 @@ impl Vault {
             }),
             request.account_id,
         )))
-    }
-
-    /// Known recipients (name + IBAN) from past outgoing bookings, most used
-    /// first. `query` filters by name/IBAN substring (empty = all).
-    pub fn suggest_recipients(
-        &self,
-        query: String,
-        limit: u32,
-    ) -> Result<Vec<KnownRecipient>, CoreError> {
-        let db = self.db()?;
-        let q = query.trim().replace(' ', "").to_lowercase();
-        let mut stmt = db.prepare(
-            "SELECT counterparty, counterparty_iban, count(*) AS n FROM transactions
-             WHERE counterparty_iban <> '' AND counterparty <> '' AND amount_cents < 0 AND deleted_ms IS NULL
-             GROUP BY counterparty, counterparty_iban
-             ORDER BY n DESC, MAX(booking_date) DESC",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(KnownRecipient {
-                name: r.get(0)?,
-                iban: r.get(1)?,
-                times_used: r.get(2)?,
-            })
-        })?;
-        Ok(rows
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|r| {
-                q.is_empty()
-                    || r.name.replace(' ', "").to_lowercase().contains(&q)
-                    || r.iban.replace(' ', "").to_lowercase().contains(&q)
-            })
-            .filter(|r| validate_iban(&r.iban))
-            .take(limit as usize)
-            .collect())
     }
 }
 
@@ -2358,6 +2444,67 @@ fn payment_job(
     }
 }
 
+/// `deleted` is a deleted account of this connection with `acc`'s external
+/// ref: a duplicate the user removed because the connector had not taken over
+/// the imported account. Only that case is handled: a live imported account
+/// (`moneymoney-db:`) with the same IBAN and currency, parked on a PSD2
+/// connection that never synced. The deleted row moves aside (its key gets a
+/// suffix) and the imported one takes its place; it is stamped as created now,
+/// so on other devices it wins over the deletion of that key. Any other
+/// deleted account keeps its key and its fate (stays deleted or is revived).
+fn adopt_past_deleted_twin(
+    tx: &rusqlite::Connection,
+    connection_id: i64,
+    deleted: i64,
+    acc: &RemoteAccount,
+) -> CoreResult<Option<i64>> {
+    let iban = crate::iban::normalize_iban(&acc.iban);
+    if iban.is_empty() {
+        return Ok(None);
+    }
+    // Only the connection's own row under this key (not an unlinked account
+    // `adopt_unlinked` found, which keeps its key).
+    let own: bool = tx.query_row(
+        // includes soft-deleted rows
+        "SELECT connection_id IS ?1 AND external_ref = ?2 FROM accounts WHERE id = ?3",
+        params![connection_id, acc.external_ref, deleted],
+        |r| r.get(0),
+    )?;
+    if !own {
+        return Ok(None);
+    }
+    let currency = acc.currency.trim().to_uppercase();
+    let twin: Option<i64> = tx
+        .query_row(
+            "SELECT a.id FROM accounts a JOIN bank_connections c ON c.id = a.connection_id
+              WHERE a.deleted_ms IS NULL AND a.external_ref LIKE 'moneymoney-db:%'
+                AND upper(replace(a.iban, ' ', '')) = ?1
+                AND (?2 = '' OR upper(a.currency) IN ('', ?2))
+                AND c.id <> ?3 AND c.connector LIKE 'enablebanking%' AND c.last_sync_unix IS NULL
+              ORDER BY (upper(a.currency) <> ?2), a.id LIMIT 1",
+            params![iban, currency, connection_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(twin) = twin else {
+        return Ok(None);
+    };
+    tx.execute(
+        "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
+        params![format!("{}#deleted-{deleted}", acc.external_ref), deleted],
+    )?;
+    tx.execute(
+        "UPDATE accounts SET connection_id = ?1, external_ref = ?2, created_ms = ?3 WHERE id = ?4",
+        params![
+            connection_id,
+            acc.external_ref,
+            crate::dates::now_ms(),
+            twin
+        ],
+    )?;
+    Ok(Some(twin))
+}
+
 /// Links an unconnected stored account to `connection_id` when it matches the
 /// remote one by account number / IBAN (ignoring spaces and leading zeros) or is
 /// the single unlinked depot of the same bank. Sets `connection_id`, `external_ref`, `kind`.
@@ -2448,7 +2595,8 @@ pub(crate) fn card_open_balance(
 /// Open card balance (negative = owed) from `(date, amount_cents, text)` rows
 /// sorted ascending: sum of everything after the latest settlement booking
 /// (a positive KARTENABRECHNUNG / LASTSCHRIFT / AUSGLEICH / ZAHLUNG ERHALTEN
-/// entry). Without a settlement, the sum of all bookings.
+/// entry, also Amex's „Zahlung/Überweisung erhalten“). Without a settlement,
+/// the sum of all bookings.
 pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
     if rows.is_empty() {
         return None;
@@ -2456,14 +2604,11 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
     let is_settlement = |(_, amt, text): &(String, i64, String)| {
         let t = text.to_uppercase();
         *amt > 0
-            && [
-                "KARTENABRECHNUNG",
-                "LASTSCHRIFT",
-                "AUSGLEICH",
-                "ZAHLUNG ERHALTEN",
-            ]
-            .iter()
-            .any(|k| t.contains(k))
+            && (["KARTENABRECHNUNG", "LASTSCHRIFT", "AUSGLEICH"]
+                .iter()
+                .any(|k| t.contains(k))
+                // „ZAHLUNG ERHALTEN“, „ZAHLUNG/ÜBERWEISUNG ERHALTEN BESTEN DANK“
+                || t.contains("ZAHLUNG/ÜBERWEISUNG ERHALTEN") || t.contains("ZAHLUNG/UEBERWEISUNG ERHALTEN"))
     };
     let start = match rows.iter().rposition(is_settlement) {
         Some(i) => i + 1,
@@ -2472,4 +2617,28 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
         None => 0,
     };
     Some(rows[start..].iter().map(|r| r.1).sum())
+}
+
+/// The ref a single-account sync filters on (#1417). An account still under
+/// a MoneyMoney ref – imported and not yet taken over, or marked by
+/// "Abrufweg umstellen" (`moneymoney-db:switch:…`) – is not known to the bank
+/// under it: filtering on it would drop everything and report success with 0
+/// bookings. Only a sync of the whole login takes such an account over, so
+/// it gets one (`None`). An archived or excluded account is refused as for a
+/// single-account sync, before it would turn into a full one.
+pub(super) fn single_account_ref(
+    ext: String,
+    skipped: impl FnOnce() -> CoreResult<Vec<String>>,
+) -> CoreResult<Option<String>> {
+    if !ext.starts_with("moneymoney-db:") {
+        return Ok(Some(ext));
+    }
+    let unmarked = ext.strip_prefix(crate::vault::connections::SWITCH_MARK);
+    let skipped = skipped()?;
+    if skipped.contains(&ext) || unmarked.is_some_and(|u| skipped.iter().any(|s| s == u)) {
+        return Err(CoreError::invalid(tr(
+            "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
+        )));
+    }
+    Ok(None)
 }

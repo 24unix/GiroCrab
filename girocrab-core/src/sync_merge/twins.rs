@@ -20,7 +20,7 @@
 //! IBAN only when exactly one bank depot has its number, name and bank (#400:
 //! other unlinked accounts without IBAN stay apart).
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashMap;
 
 use crate::error::CoreResult;
@@ -136,10 +136,10 @@ fn best<'a>(
 ) -> CoreResult<Option<i64>> {
     let mut best: Option<(i64, i64)> = None;
     for c in candidates {
-        if let Some(s) = score(c)? {
-            if best.is_none_or(|(top, _)| s > top) {
-                best = Some((s, c.id));
-            }
+        if let Some(s) = score(c)?
+            && best.is_none_or(|(top, _)| s > top)
+        {
+            best = Some((s, c.id));
         }
     }
     Ok(best.map(|(_, id)| id))
@@ -382,6 +382,8 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
     )?;
     // the imported depot history belongs to the bank's account from now on (#578)
     crate::depot_values::move_account(conn, twin, bank)?;
+    // so does the user's note (newer edit wins, like a merge, #980)
+    crate::user_groups::pass_note_on(conn, twin, bank)?;
     super::soft_delete_account(conn, twin)?;
     Ok(())
 }

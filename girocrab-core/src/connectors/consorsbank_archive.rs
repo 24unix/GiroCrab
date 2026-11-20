@@ -26,12 +26,12 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::comdirect_postbox::PostboxSource;
 use super::{
-    http_client_same_host, read_body_limited, read_json_or_null, read_text_limited, Challenge,
-    ChallengeKind, ChallengeResponse, ConnectContext, Phase, RemoteAccount,
+    Challenge, ChallengeKind, ChallengeResponse, ConnectContext, Phase, RemoteAccount,
+    http_client_same_host, read_body_limited, read_json_or_null, read_text_limited,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
@@ -111,11 +111,7 @@ fn xsrf_token(html: &str) -> Option<String> {
 fn norm(number: &str) -> &str {
     let n = number.trim();
     let t = n.trim_start_matches('0');
-    if t.is_empty() {
-        n
-    } else {
-        t
-    }
+    if t.is_empty() { n } else { t }
 }
 
 /// Does `account` carry the account number `number`? Directly, or as the last
@@ -192,10 +188,10 @@ pub(crate) fn assign<'a>(
         }
     }
     let accountno = entry["accountno"].as_str().unwrap_or_default();
-    if norm(accountno) != "0" {
-        if let Some(a) = find(accountno) {
-            return Some(a);
-        }
+    if norm(accountno) != "0"
+        && let Some(a) = find(accountno)
+    {
+        return Some(a);
     }
     find(entry["kto"].as_str().unwrap_or_default())
 }
@@ -264,7 +260,7 @@ fn stub(entry: &Value) -> Option<RemoteDocument> {
 /// with the key it came in. The field name is not documented, so any string
 /// field that decodes to an image counts.
 fn qr_image(v: &Value) -> Option<(String, Vec<u8>)> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     v.as_object()?.iter().find_map(|(k, x)| {
         let raw = x.as_str()?.trim();
         let raw = raw.split_once("base64,").map_or(raw, |(_, b)| b);
@@ -492,13 +488,17 @@ impl ConsorsbankArchive {
             (
                 ChallengeKind::ImageCode,
                 tr("QR-Code mit dem TAN-Generator scannen"),
-                tr("Scannen Sie den QR-Code mit dem SecurePlus Generator und geben Sie die angezeigte TAN ein. GiroCrab lädt danach die Dokumente aus dem Online-Archiv."),
+                tr(
+                    "Scannen Sie den QR-Code mit dem SecurePlus Generator und geben Sie die angezeigte TAN ein. GiroCrab lädt danach die Dokumente aus dem Online-Archiv.",
+                ),
             )
         } else {
             (
                 ChallengeKind::Code,
                 tr("Anmeldung mit TAN bestätigen"),
-                tr("Erzeugen Sie eine TAN mit der Consorsbank App oder dem SecurePlus Generator und geben Sie sie hier ein. GiroCrab lädt danach die Dokumente aus dem Online-Archiv."),
+                tr(
+                    "Erzeugen Sie eine TAN mit der Consorsbank App oder dem SecurePlus Generator und geben Sie sie hier ein. GiroCrab lädt danach die Dokumente aus dem Online-Archiv.",
+                ),
             )
         };
         Challenge {
@@ -768,7 +768,7 @@ impl PostboxSource for ConsorsbankArchive {
             match word.expose().trim() {
                 SWITCH_TO_TAN if !self.tan_mode => return self.start_tan(None).await,
                 SWITCH_TO_APP if self.tan_mode && self.push_available => {
-                    return self.start_push().await
+                    return self.start_push().await;
                 }
                 _ => {}
             }
@@ -903,10 +903,10 @@ impl PostboxSource for ConsorsbankArchive {
     }
 
     async fn finish(&mut self, _ctx: &ConnectContext) {
-        if self.logged_in {
-            if let Ok((status, _)) = self.post("/web-sec-service/api/logout", None).await {
-                Self::log(&format!("logout HTTP {status}"));
-            }
+        if self.logged_in
+            && let Ok((status, _)) = self.post("/web-sec-service/api/logout", None).await
+        {
+            Self::log(&format!("logout HTTP {status}"));
         }
         self.logged_in = false;
         self.client = None;
@@ -1074,7 +1074,7 @@ mod tests {
 
     #[test]
     fn qr_image_is_found_in_any_field() {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
         let mut png = vec![0x89, b'P', b'N', b'G'];
         png.extend([0u8; 80]);
         let answer = json!({"authorizationMethod": "tg", "qrCode": STANDARD.encode(&png)});

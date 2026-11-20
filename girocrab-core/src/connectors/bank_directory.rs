@@ -14,8 +14,8 @@
 
 use std::sync::Arc;
 
-use super::enable_banking::{parse_aspsps, EnableBankingConnector};
-use super::fints_directory::{self, fold, FinTsBankInfo};
+use super::enable_banking::{EnableBankingConnector, parse_aspsps};
+use super::fints_directory::{self, FinTsBankInfo, fold};
 use crate::error::CoreError;
 use crate::i18n::tr;
 use crate::models::ConnectorKind;
@@ -99,7 +99,9 @@ pub fn psd2_catalog() -> Vec<Psd2Bank> {
         psd2("Revolut", "DE", "Revolut", None),
         tested(
             psd2("C24 Bank", "DE", "C24", None),
-            tr("Mit echtem Konto getestet: Girokonto, Gemeinschaftskonto und Tagesgeld-Pocket (auch ohne eigene IBAN); Abruf ohne TAN, Zustimmung 180 Tage."),
+            tr(
+                "Mit echtem Konto getestet: Girokonto, Gemeinschaftskonto und Tagesgeld-Pocket (auch ohne eigene IBAN); Abruf ohne TAN, Zustimmung 180 Tage.",
+            ),
         ),
         psd2("Tomorrow", "DE", "Tomorrow", None),
         psd2("Vivid Money", "DE", "Vivid Money", None),
@@ -168,6 +170,16 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             ConnectorKind::HanseaticBank,
             "Hanseatic Bank",
             "hanseatic hanseaticbank hanseatic bank genialcard goldcard kreditkarte sparbrief tagesgeld festgeld",
+        ),
+        (
+            ConnectorKind::Bhw,
+            "BHW (Bausparen)",
+            "bhw mybhw bausparvertrag bausparen baufinanzierung darlehen",
+        ),
+        (
+            ConnectorKind::Kontist,
+            "Kontist",
+            "kontist geschäftskonto selbstständige freelancer solaris",
         ),
         (
             ConnectorKind::OpelDirektbank,
@@ -274,6 +286,8 @@ const OPEL_DIREKTBANK_BLZ: &str = "50025000";
 /// Hanseatic Bank, no FinTS: served by its own connector (PSD2 stays in the catalog).
 const HANSEATIC_BLZ: &str = "20120700";
 const SCHWAEBISCH_HALL_BLZ: &str = "62220000";
+/// BHW Bausparkasse, no public FinTS: served by its own connector (myBHW portal).
+const BHW_BLZ: &str = "25410200";
 
 fn own_result(kind: ConnectorKind, name: &str) -> BankSearchResult {
     BankSearchResult {
@@ -350,6 +364,8 @@ pub fn search(
             out.push(fints_result(b));
         } else if blz == "70013000" {
             out.push(own_result(ConnectorKind::Fnz, "FNZ Bank"));
+        } else if blz == BHW_BLZ {
+            out.push(own_result(ConnectorKind::Bhw, "BHW (Bausparen)"));
         } else if blz == OPEL_DIREKTBANK_BLZ {
             out.push(own_result(ConnectorKind::OpelDirektbank, "Opel Direktbank"));
         } else if blz == HANSEATIC_BLZ {
@@ -383,10 +399,11 @@ pub fn search(
     );
     for (blz, extra) in FINTS_ALIASES {
         let hit = words.iter().all(|w| extra.split(' ').any(|x| x == *w));
-        if hit && !out.iter().any(|r| r.blz == *blz) {
-            if let Some(b) = fints_directory::lookup(blz) {
-                out.push(fints_result(b));
-            }
+        if hit
+            && !out.iter().any(|r| r.blz == *blz)
+            && let Some(b) = fints_directory::lookup(blz)
+        {
+            out.push(fints_result(b));
         }
     }
     // comdirect by name: FinTS next to its own API (the FinTS directory
@@ -635,9 +652,11 @@ mod tests {
             assert!(!b.aspsp.is_empty() && !b.live);
         }
         assert_eq!(search_psd2_catalog("revolut".into()).len(), 2);
-        assert!(search_psd2_catalog("österreich erste".into())
-            .iter()
-            .all(|b| b.country == "AT"));
+        assert!(
+            search_psd2_catalog("österreich erste".into())
+                .iter()
+                .all(|b| b.country == "AT")
+        );
         // Amex / Amazon Visa keep their dedicated connectors
         let amex = c.iter().find(|b| b.name == "American Express").unwrap();
         assert_eq!(amex.connector, Some(ConnectorKind::AmericanExpress));
@@ -675,21 +694,26 @@ mod tests {
 
         let r = search("sparkasse", vec![], 5);
         assert_eq!(r.len(), 5);
-        assert!(r
-            .iter()
-            .all(|b| b.mode == BankAccessMode::FinTs && b.url.starts_with("https://")));
+        assert!(
+            r.iter()
+                .all(|b| b.mode == BankAccessMode::FinTs && b.url.starts_with("https://"))
+        );
 
         let r = search("ING", vec![], 10);
-        assert!(r
-            .iter()
-            .any(|b| b.mode == BankAccessMode::FinTs && b.blz == "50010517"));
-        assert!(r
-            .iter()
-            .any(|b| b.mode == BankAccessMode::Psd2 && b.name == "ING Business"));
+        assert!(
+            r.iter()
+                .any(|b| b.mode == BankAccessMode::FinTs && b.blz == "50010517")
+        );
+        assert!(
+            r.iter()
+                .any(|b| b.mode == BankAccessMode::Psd2 && b.name == "ING Business")
+        );
         assert!(search("DKB", vec![], 5).iter().any(|b| b.blz == "12030000"));
-        assert!(search("volksbank", vec![], 5)
-            .iter()
-            .all(|b| b.mode == BankAccessMode::FinTs));
+        assert!(
+            search("volksbank", vec![], 5)
+                .iter()
+                .all(|b| b.mode == BankAccessMode::FinTs)
+        );
         assert!(search("postbank", vec![], 3).len() == 3);
         assert!(search("", vec![], 5).is_empty());
         assert!(search("zzzzqqq", vec![], 5).is_empty());
@@ -786,9 +810,11 @@ mod tests {
         assert_eq!(r[0].url, fints_directory::COMDIRECT_FINTS_URL);
         assert_eq!(r[0].name, r[1].name);
         // unrelated searches are unaffected
-        assert!(search("paypal", vec![], 10)
-            .iter()
-            .all(|b| b.id != "fints:comdirect"));
+        assert!(
+            search("paypal", vec![], 10)
+                .iter()
+                .all(|b| b.id != "fints:comdirect")
+        );
     }
 
     #[test]

@@ -136,7 +136,7 @@ struct SidebarView: View {
                                 .foregroundStyle(model.missingSettings(for: c).isEmpty ? Theme.secondary : Theme.warning)
                         }
                         Spacer()
-                        Button(model.missingSettings(for: c).isEmpty ? "Abrufen" : "Einrichten") { model.requestSync(c) }
+                        Button(model.missingSettings(for: c).isEmpty ? "Abrufen" : "Einrichten") { model.requestFullSync(c) }
                             .controlSize(.small)
                             .disabled(model.bankingGate(for: c) != nil)
                             .help(model.bankingGate(for: c)?.message ?? "")
@@ -235,7 +235,7 @@ struct SidebarView: View {
         ) { d in
             switch d {
             case .archiveAccount(let a): Button("Archivieren") { model.setAccountArchived(a, true) }
-            case .deleteAccount(let a): Button("Löschen", role: .destructive) { model.deleteAccount(a.id) }
+            case .deleteAccount(let a): AccountDeletionPrompt.confirmButton { model.deleteAccount(a.id) }
             case .removeConnection(let id): Button("Entfernen", role: .destructive) { model.removeConnection(id) }
             case .deleteCategory(let c): Button("Löschen", role: .destructive) { model.deleteCategory(c.id) }
             }
@@ -244,8 +244,7 @@ struct SidebarView: View {
             switch d {
             case .archiveAccount:
                 Text("Das Konto wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Es lässt sich jederzeit reaktivieren.")
-            case .deleteAccount(let a):
-                Text("Das Konto wird samt \(a.transactionCount) Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.")
+            case .deleteAccount(let a): AccountDeletionPrompt.message(a)
             case .deleteCategory:
                 Text("Die Kategorie wird samt ihren Unterkategorien und Regeln unwiderruflich gelöscht. Zugeordnete Buchungen bleiben erhalten und stehen danach ohne Kategorie da.")
             case .removeConnection:
@@ -478,8 +477,8 @@ struct SidebarView: View {
         ManualLoanAccountMenu(model: model, account: account)
         OfflineAccountMenuItems(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
-            Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
-                .disabled(model.bankingGate(for: conn) != nil)
+            Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSyncAccount(account) }
+                .disabled(model.bankingGate(for: conn) != nil || model.syncingConnectionID != nil)
         }
         AccountCopyMenu(account: account)
         Button("Belege anzeigen", systemImage: "doc.text.magnifyingglass") {
@@ -847,21 +846,36 @@ struct AccountRow: View {
 }
 
 struct CategoryRow: View {
+    @Environment(AppModel.self) private var model
     let category: GiroCrabCore.Category
 
     var body: some View {
+        // "Zusätzlich" (#1049): what the category holds in currencies other than EUR, under its total.
+        let other = (model.categoryOtherTotals[category.id] ?? []).map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · ")
         HStack(spacing: 8) {
             Image(systemName: category.sfSymbol)
                 .foregroundStyle(Color.readable(hex: category.colorHex).opacity(0.85))
                 .frame(width: 20)
             Text(category.name).lineLimit(1).appDefaultFont().sensitive(.labels)
             Spacer(minLength: 4)
-            if category.totalCents != 0 {
-                Text(Money.format(category.totalCents))
-                    .sensitive(.amounts)
-                    .appFont(.caption, monospacedDigit: true)
-                    .fixedSize()
-                    .foregroundStyle(.secondary) // follows selection, Dark Mode, Increase Contrast
+            if category.totalCents != 0 || !other.isEmpty {
+                VStack(alignment: .trailing, spacing: 1) {
+                    if category.totalCents != 0 {
+                        Text(Money.format(category.totalCents, currency: model.categorySumCurrency))
+                            .sensitive(.amounts)
+                            .appFont(.caption, monospacedDigit: true)
+                            .fixedSize()
+                            .foregroundStyle(.secondary) // follows selection, Dark Mode, Increase Contrast
+                    }
+                    if !other.isEmpty {
+                        Text("Zusätzlich: \(other)")
+                            .sensitive(.amounts)
+                            .appFont(.caption2, monospacedDigit: true)
+                            .fixedSize()
+                            .foregroundStyle(.secondary)
+                            .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
+                    }
+                }
             }
         }
     }
@@ -1011,7 +1025,7 @@ private enum SidebarDialog {
     var title: Text {
         switch self {
         case .archiveAccount(let a): Text("Konto „\(a.name)“ archivieren?")
-        case .deleteAccount(let a): Text("Konto „\(a.name)“ löschen?")
+        case .deleteAccount(let a): AccountDeletionPrompt.title(a)
         case .removeConnection: Text("Bankzugang entfernen?")
         case .deleteCategory(let c): Text("Kategorie „\(c.name)“ löschen?")
         }

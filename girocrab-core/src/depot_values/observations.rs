@@ -17,7 +17,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::dates::iso;
 use crate::error::CoreResult;

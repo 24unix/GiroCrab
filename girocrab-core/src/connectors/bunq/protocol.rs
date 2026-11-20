@@ -10,7 +10,7 @@ use rsa::pkcs8::{
 };
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
 use rsa::{PrivateKey, PublicKey};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::parse::find;
@@ -31,7 +31,9 @@ impl ApiError {
             401 | 403 => CoreError::Authentication {
                 message: format!(
                     "{} ({})",
-                    tr("bunq hat den API-Schlüssel oder diese IP-Adresse abgelehnt. Erstellen Sie in der bunq-App einen API-Schlüssel mit „Alle IP-Adressen erlauben“ und tragen Sie ihn neu ein."),
+                    tr(
+                        "bunq hat den API-Schlüssel oder diese IP-Adresse abgelehnt. Erstellen Sie in der bunq-App einen API-Schlüssel mit „Alle IP-Adressen erlauben“ und tragen Sie ihn neu ein."
+                    ),
                     self.message
                 ),
             },

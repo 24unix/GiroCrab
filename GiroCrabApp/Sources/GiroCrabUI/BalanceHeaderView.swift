@@ -54,9 +54,6 @@ struct StreamHeaderCard: View {
     #endif
     @State private var showDocuments = false
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
-    private var isOverviewSelection: Bool {
-        model.sidebarRowSelection(for: .allAccounts).isSelected
-    }
     /// Where the tag button sits in the filter row: the tag popover points at it (#228).
     @State private var tagButtonFrame: CGRect = .zero
     @State private var showAmountFilter = false
@@ -68,7 +65,7 @@ struct StreamHeaderCard: View {
     @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
     private var account: Account? {
-        if case .account(let id) = model.sidebarSelection { return model.account(for: id) }
+        if case .account(let id) = model.shownSelection { return model.account(for: id) }
         return nil
     }
 
@@ -87,7 +84,7 @@ struct StreamHeaderCard: View {
                     if !compactHeader {
                     Group {
                         if let a = account {
-                            Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
+                            Text(([model.isOffline(a.id) ? OfflineAccountOptions.subtitle(a) : ""] + [a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)]).filter { !$0.isEmpty }.joined(separator: " · "))
                                 .sensitive()
                             if let holder = accountHolderLine(a) {
                                 Text(holder)
@@ -133,7 +130,7 @@ struct StreamHeaderCard: View {
                 Spacer()
                 if let hb = model.headerBalance {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(Money.format(hb.cents))
+                        Text(Money.format(hb.cents, currency: model.balanceCurrency))
                             .sensitive(.amounts)
                             .appFont(compactHeader ? .subheadline : .largeTitle, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
@@ -149,6 +146,14 @@ struct StreamHeaderCard: View {
                                     .lineLimit(1)
                                     .help(fetch.help ?? "")
                             }
+                        }
+                        if case .category = model.shownSelection, !model.categoryOtherCurrencies.isEmpty {
+                            Text("Zusätzlich: \(model.categoryOtherCurrencies.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
+                                .sensitive(.amounts)
+                                .appFont(.caption, monospacedDigit: true)
+                                .foregroundStyle(Theme.secondary)
+                                .lineLimit(1)
+                                .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
                         }
                         if account == nil, let split = model.headerTotalSplit {
                             Text("Zusätzlich: \(split.others.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
@@ -208,7 +213,7 @@ struct StreamHeaderCard: View {
     }
 
     private var isCategory: Bool {
-        if case .category = model.sidebarSelection { return true }
+        if case .category = model.shownSelection { return true }
         return false
     }
 
@@ -232,7 +237,7 @@ struct StreamHeaderCard: View {
     private var headerChart: some View {
         if chartStyle == .pie {
             Group {
-                if case .category(let id) = model.sidebarSelection {
+                if case .category(let id) = model.shownSelection {
                     HeaderPieChart(
                         slices: HeaderPieSlices.fold(HeaderPieSlices.subcategories(of: id, in: model.categories), limit: HeaderPieSlices.limit),
                         emptyText: "Keine Buchungen im Zeitraum"
@@ -244,23 +249,31 @@ struct StreamHeaderCard: View {
                 }
             }
             .contextMenu { ChartStyleInlinePicker() }
-        } else if case .category = model.sidebarSelection {
+        } else if case .category = model.shownSelection {
             CategorySumChart(sums: model.categoryHistory, style: chartStyle)
         } else {
             BalanceChart(points: model.history) { model.jumpToDay($0) }
         }
     }
 
-    /// The tiles belong to the selection: no stale sums while it loads.
+    /// The tiles belong to the selection: no stale sums while it loads or after its load failed.
     private func kpiValue(_ cents: Int64) -> String {
-        model.isLoadingSelection ? "–" : Money.format(cents)
+        model.selectionFiguresMissing ? "–" : Money.format(cents, currency: model.balanceCurrency)
+    }
+
+    /// "Zusätzlich" line of a tile: its value in the currencies other than EUR (#1049); none while loading.
+    private func kpiExtra(_ pick: (CurrencyFlow) -> Int64) -> String? {
+        model.selectionFiguresMissing ? nil : model.otherCurrencyText(pick)
     }
 
     @ViewBuilder
     private var kpis: some View {
-        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(-model.consumptionThisMonth), tint: Theme.outflow)
-        KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: kpiValue(model.investedThisMonth), tint: Theme.invest)
-        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(model.incomeThisMonth), tint: Theme.inflow)
+        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(-model.consumptionThisMonth), tint: Theme.outflow,
+            extra: kpiExtra { -$0.consumptionCents })
+        KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: kpiValue(model.investedThisMonth), tint: Theme.invest,
+            extra: kpiExtra { $0.investedCents })
+        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(model.incomeThisMonth), tint: Theme.inflow,
+            extra: kpiExtra { $0.incomeCents })
         fixedCostsKPI
     }
 
@@ -268,9 +281,11 @@ struct StreamHeaderCard: View {
     @ViewBuilder
     private var fixedCostsKPI: some View {
         let open = model.recurringMonth?.items.filter { !$0.booked && $0.amountCents < 0 }.count ?? 0
+        // like the other tiles: none of the previous selection's figures while loading or after a failed load
+        let missing = model.selectionFiguresMissing
         Button { model.showRecurringSheet = true } label: {
-            KPI(title: "Fixkosten offen", subtitle: "Diesen Monat · \(open) offen",
-                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0)), tint: Theme.outflow,
+            KPI(title: "Fixkosten offen", subtitle: missing ? "Diesen Monat" : "Diesen Monat · \(open) offen",
+                value: missing ? "–" : Money.format(-(model.recurringMonth?.openExpenseCents ?? 0), currency: model.balanceCurrency), tint: Theme.outflow,
                 disclosure: true)
         }
         .buttonStyle(.plain)
@@ -282,16 +297,21 @@ struct StreamHeaderCard: View {
     @ViewBuilder
     private var filterRow: some View {
         @Bindable var model = model
-        // Never let the fixed-size filter controls widen the header card:
-        // fits -> normal row (count right-aligned); too narrow -> scrolls.
-        ViewThatFits(in: .horizontal) {
-            filterContent
+        // Never let the fixed-size filter controls widen the header card: they scroll when the
+        // row is too narrow, the count stays at its end. Always the scroll view, no `ViewThatFits`:
+        // the split view measures the column at width 0 on every frame of a sidebar animation or
+        // window resize, and `ViewThatFits` then built a scrolling copy of the controls (menus,
+        // pop-up buttons) and dropped it again in the layout right after (#1131).
+        HStack(spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
-                filterContent.fixedSize(horizontal: true, vertical: false)
+                filterControls.fixedSize(horizontal: true, vertical: false)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            bookingCount
         }
+        .appFont(.caption)
+        .foregroundStyle(Theme.secondary)
         .coordinateSpace(.named(TagFilterButton.rowSpace))
-        // Outside ViewThatFits: its candidates must not each carry the popover.
         .capturablePopover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
             CustomPeriodForm()
         }
@@ -401,7 +421,7 @@ struct StreamHeaderCard: View {
     }
 
     @ViewBuilder
-    private var filterContent: some View {
+    private var filterControls: some View {
         @Bindable var model = model
         let account = self.account
         HStack(spacing: 12) {
@@ -475,7 +495,7 @@ struct StreamHeaderCard: View {
                     .buttonStyle(.borderless)
                     .capturableSheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
                 }
-                if showStatistics, !isOverviewSelection, model.scope != .investments, !model.allAccounts.isEmpty {
+                if showStatistics, !model.showsOverview, model.scope != .investments, !model.allAccounts.isEmpty {
                     Button {
                         withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { showAnalytics.toggle() }
                     } label: {
@@ -489,25 +509,26 @@ struct StreamHeaderCard: View {
                     .foregroundStyle(showAnalytics ? Color.accentColor : Theme.secondary)
                     .help("Cashflow und Budgets für dieses Konto ein-/ausblenden")
                 }
-                Spacer()
-                #if os(iOS)
-                if sizeClass != .compact {
-                    Text("\(model.bookingCountLabel) Buchungen")
-                        .appFont(.caption)
-                        .foregroundStyle(Theme.secondary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                #else
-                Text("\(model.bookingCountLabel) Buchungen")
-                    .appFont(.caption)
-                    .foregroundStyle(Theme.secondary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                #endif
             }
-        .appFont(.caption)
-        .foregroundStyle(Theme.secondary)
+    }
+
+    @ViewBuilder
+    private var bookingCount: some View {
+        #if os(iOS)
+        if sizeClass != .compact {
+            Text("\(model.bookingCountLabel) Buchungen")
+                .appFont(.caption)
+                .foregroundStyle(Theme.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        #else
+        Text("\(model.bookingCountLabel) Buchungen")
+            .appFont(.caption)
+            .foregroundStyle(Theme.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        #endif
     }
 }
 
@@ -540,7 +561,7 @@ struct PeriodMenuButton: View {
         } label: {
             // Single period control (GitHub #102): the menu is the only selector,
             // so it always shows the active range.
-            Label(forDepot ? model.depotPeriodTitle : model.periodTitle, systemImage: "calendar")
+            Label(forDepot ? model.depotPeriodTitle : model.shownPeriod.title, systemImage: "calendar")
                 .lineLimit(1)
         }
         .menuStyle(.borderlessButton)
@@ -555,6 +576,8 @@ struct KPI: View {
     let tint: Color
     /// Tile opens a detail view: shows a chevron next to the title.
     var disclosure = false
+    /// Amounts in currencies other than EUR, which `value` leaves out (#1049).
+    var extra: String?
 
     var body: some View {
         // Title and amount sit at a fixed distance and the title keeps to one line, so the
@@ -573,6 +596,13 @@ struct KPI: View {
             Text(value).appFont(.title3, weight: .semibold, monospacedDigit: true).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .sensitive(.amounts)
+            if let extra {
+                Text("Zusätzlich: \(extra)")
+                    .appFont(.caption2, monospacedDigit: true).foregroundStyle(Theme.secondary)
+                    .lineLimit(1)
+                    .sensitive(.amounts)
+                    .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
+            }
             Spacer(minLength: 2)
             Text(subtitle).appFont(.caption2).foregroundStyle(Theme.tertiary)
                 .lineLimit(2)
@@ -599,10 +629,19 @@ struct BalanceChart: View {
     @AppStorage(BalanceChartStyle.defaultsKey) private var style: BalanceChartStyle = .line
     @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
-    /// Width of the chart: the x-axis spaces its labels by it (no overlapping years).
-    @State private var chartWidth: CGFloat = 600
+    /// Width of the chart: the x-axis spaces its labels by it (no overlapping years). A reference,
+    /// so a new width is no state change: a sidebar animation or window resize changes it every
+    /// frame, and each body run makes Charts rebuild the chart.
+    @State private var chartWidth = ChartWidth()
+    /// Label spacing at the last width: the only state the width changes, so the body runs
+    /// again only when the labels move.
+    @State private var xStride = 0
     /// Height of the chart: the y-axis keeps its labels apart by it (large text in a small chart).
     @State private var chartHeight: CGFloat = 0
+
+    private final class ChartWidth {
+        var value: CGFloat = 600
+    }
 
     @Observable fileprivate final class Hover {
         /// Day under the mouse pointer (hover readout: date + balance).
@@ -789,15 +828,16 @@ struct BalanceChart: View {
             return String(localized: "Keine Daten")
         }
         let d = Date.FormatStyle.dateTime.day().month(.wide)
-        return String(localized: "Von \(Money.format(first.cents)) am \(first.date.formatted(d)) auf \(Money.format(last.cents)) am \(last.date.formatted(d)). Tiefststand \(Money.format(low.cents)) am \(low.date.formatted(d)), Höchststand \(Money.format(high.cents)) am \(high.date.formatted(d)).")
+        let cur = model.balanceCurrency
+        return String(localized: "Von \(Money.format(first.cents, currency: cur)) am \(first.date.formatted(d)) auf \(Money.format(last.cents, currency: cur)) am \(last.date.formatted(d)). Tiefststand \(Money.format(low.cents, currency: cur)) am \(low.date.formatted(d)), Höchststand \(Money.format(high.cents, currency: cur)) am \(high.date.formatted(d)).")
     }
 
     private var currentValue: String {
         if drawStyle == .bars, let b = hover.bar {
-            return String(localized: "\(barTitle(b)): Ø \(Money.format(b.averageCents)), Ende \(Money.format(b.closingCents))")
+            return String(localized: "\(barTitle(b)): Ø \(Money.format(b.averageCents, currency: model.balanceCurrency)), Ende \(Money.format(b.closingCents, currency: model.balanceCurrency))")
         }
         guard let h = hover.point else { return summary }
-        return "\(h.date.formatted(.dateTime.weekday(.wide).day().month(.wide))): \(Money.format(h.cents))"
+        return "\(h.date.formatted(.dateTime.weekday(.wide).day().month(.wide))): \(Money.format(h.cents, currency: model.balanceCurrency))"
     }
 
     private func barTitle(_ b: BalanceBucket) -> String {
@@ -813,6 +853,18 @@ struct BalanceChart: View {
     private func spanDays(_ first: Date?, _ last: Date?) -> Double {
         guard let first, let last else { return 0 }
         return last.timeIntervalSince(first) / 86_400
+    }
+
+    /// Days the x-axis covers in the drawn style.
+    private var xSpan: Double {
+        drawStyle == .bars ? spanDays(buckets.first?.start, buckets.last?.last) : spanDays(pts.first?.date, pts.last?.date)
+    }
+
+    /// Keeps `xStride` at the spacing the axis draws. A new span or text size changes the drawn
+    /// spacing without a width change; a stale value could then swallow the next real change.
+    private func syncXStride() {
+        let count = Self.xAxisStride(span: xSpan, width: chartWidth.value, textScale: textScale)
+        if count != xStride { xStride = count }
     }
 
     private func clearHover() { hover.point = nil; hover.bar = nil }
@@ -845,17 +897,24 @@ struct BalanceChart: View {
                 }
             }
             .accessibilityAction(named: "Buchungen dieses Tages zeigen") { selectHovered() }
-            .accessibilityChartDescriptor(BalanceChartDescriptor(points: pts.map { ($0.date, $0.euros) }))
+            .accessibilityChartDescriptor(BalanceChartDescriptor(points: pts.map { ($0.date, $0.euros) }, currency: model.balanceCurrency))
     }
 
     @ViewBuilder private var interactiveChart: some View {
+        // reads `xStride`, so a new spacing runs the body again
+        let _ = xStride
         Group {
             if drawStyle == .bars { barChart } else { lineChart }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chartWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            chartWidth.value = width
+            syncXStride()
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chartHeight = $0 }
         .onChange(of: points.first?.date) { _, _ in clearHover() }
         .onChange(of: points.count) { _, _ in clearHover() }
+        .onChange(of: xSpan) { _, _ in syncXStride() }
+        .onChange(of: textScale) { _, _ in syncXStride() }
         .onChange(of: style) { _, _ in clearHover() }
         .onChange(of: barUnit) { _, _ in hover.bar = nil }
         .onDisappear { model.chartHoverDay = nil }
@@ -964,7 +1023,7 @@ struct BalanceChart: View {
         .chartXScale(domain: cur.xDomain)
         .chartYScale(domain: yDomain)
         .chartYAxis { yAxis(min: cur.low, max: cur.high, domain: yDomain) }
-        .chartXAxis { xAxis(span: spanDays(pts.first?.date, pts.last?.date)) }
+        .chartXAxis { xAxis(span: xSpan) }
         .chartOverlay { proxy in
             GeometryReader { geo in
                 ObservationScope { marker(in: pts, proxy: proxy, geo: geo) }
@@ -1026,7 +1085,7 @@ struct BalanceChart: View {
             yAxis(min: bars.map(\.euros).min() ?? 0, max: bars.map(\.euros).max() ?? 0,
                   domain: (lo - (lo < 0 ? pad : 0))...(hi + pad))
         }
-        .chartXAxis { xAxis(span: spanDays(bars.first?.start, bars.last?.last), centered: barUnit != .day) }
+        .chartXAxis { xAxis(span: xSpan, centered: barUnit != .day) }
         .chartOverlay { proxy in
             GeometryReader { geo in
                 ObservationScope { barHighlight(in: bars, unit: barUnit, proxy: proxy, geo: geo) }
@@ -1120,7 +1179,7 @@ struct BalanceChart: View {
             AxisValueLabel {
                 if let d = v.as(Double.self) {
                     // fixed minimum width: changing values never shift the plot sideways
-                    Text(verbatim: Self.compactEuros(d))
+                    Text(verbatim: Self.compactEuros(d, currency: model.balanceCurrency))
                         .sensitive(.amounts)
                         .appFont(.caption2, monospacedDigit: true)
                         .foregroundStyle(Theme.tertiary)
@@ -1149,11 +1208,11 @@ struct BalanceChart: View {
     /// "4.820 €", "-850 €", "0 €", "1,2 Mio. €": three significant digits, short enough for the
     /// slim axis. German compact notation only abbreviates from millions on (and then drops
     /// the thousands separator below), so smaller amounts use the grouped number style.
-    static func compactEuros(_ euros: Double) -> String {
+    static func compactEuros(_ euros: Double, currency: String = "EUR") -> String {
         let digits = FloatingPointFormatStyle<Double>.number.precision(.significantDigits(1...3))
         // compact currency notation needs macOS 15; the compact number style is older
         let text = abs(euros) < 1_000_000 ? euros.formatted(digits) : euros.formatted(digits.notation(.compactName))
-        return text + " €"
+        return text + " " + Money.symbol(currency)
     }
 
     /// Every how many units (years, months, days) the x-axis gets a label: the smallest
@@ -1163,27 +1222,35 @@ struct BalanceChart: View {
         return steps.first { units / Double($0) <= fit } ?? steps.last ?? 1
     }
 
+    /// Label spacing of the x-axis over `span` days: years for long periods (every 1/2/5/10 so
+    /// the labels never crowd), weekly days for short ones (this/last month), else months.
+    static func xAxisStride(span: Double, width: CGFloat, textScale: CGFloat) -> Int {
+        if span > 400 {
+            axisStride(units: span / 365.25, width: width, labelWidth: 64 * textScale, steps: [1, 2, 5, 10, 20])
+        } else if span < 62 {
+            axisStride(units: span, width: width, labelWidth: 64 * textScale, steps: [7, 14, 28])
+        } else {
+            axisStride(units: span / 30.44, width: width, labelWidth: 44 * textScale, steps: [1, 2, 3, 6])
+        }
+    }
+
     /// `centered`: bar mode puts a year/month label under the middle of its bar, not its start.
     @AxisContentBuilder private func xAxis(span: Double, centered: Bool = false) -> some AxisContent {
+        let count = Self.xAxisStride(span: span, width: chartWidth.value, textScale: textScale)
         if span > 400 {
-            // long periods: years, every 1/2/5/10 so the labels never crowd
-            let years = Self.axisStride(units: span / 365.25, width: chartWidth, labelWidth: 64 * textScale, steps: [1, 2, 5, 10, 20])
-            AxisMarks(values: .stride(by: .year, count: years)) { v in
+            AxisMarks(values: .stride(by: .year, count: count)) { v in
                 // centred = midway to the next label: only right if that is the next year
-                AxisValueLabel(centered: centered && years == 1) { Self.axisDate(v, .dateTime.year()) }
+                AxisValueLabel(centered: centered && count == 1) { Self.axisDate(v, .dateTime.year()) }
                     .foregroundStyle(Theme.tertiary)
             }
         } else if span < 62 {
-            // short periods (this/last month): weekly day labels
-            let days = Self.axisStride(units: span, width: chartWidth, labelWidth: 64 * textScale, steps: [7, 14, 28])
-            AxisMarks(values: .stride(by: .day, count: days)) { v in
+            AxisMarks(values: .stride(by: .day, count: count)) { v in
                 AxisValueLabel { Self.axisDate(v, .dateTime.day().month(.abbreviated)) }
                     .foregroundStyle(Theme.tertiary)
             }
         } else {
-            let months = Self.axisStride(units: span / 30.44, width: chartWidth, labelWidth: 44 * textScale, steps: [1, 2, 3, 6])
-            AxisMarks(values: .stride(by: .month, count: months)) { v in
-                AxisValueLabel(centered: centered && months == 1) { Self.axisDate(v, .dateTime.month(.abbreviated)) }
+            AxisMarks(values: .stride(by: .month, count: count)) { v in
+                AxisValueLabel(centered: centered && count == 1) { Self.axisDate(v, .dateTime.month(.abbreviated)) }
                     .foregroundStyle(Theme.tertiary)
             }
         }
@@ -1199,7 +1266,7 @@ struct BalanceChart: View {
             Text(title)
                 .appFont(.caption2)
                 .foregroundStyle(Theme.secondary)
-            Text(verbatim: prefix + Money.format(cents))
+            Text(verbatim: prefix + Money.format(cents, currency: model.balanceCurrency))
                 .sensitive(.amounts)
                 .appFont(.caption, weight: .semibold, monospacedDigit: true)
                 .foregroundStyle(cents < 0 ? Theme.outflow : Theme.text)
@@ -1256,6 +1323,7 @@ private struct ObservationScope<Content: View>: View {
 /// Audio Graph / VoiceOver chart description of the balance history.
 private struct BalanceChartDescriptor: AXChartDescriptorRepresentable {
     let points: [(Date, Double)]
+    var currency = "EUR"
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let dates = points.map(\.0)
@@ -1267,7 +1335,7 @@ private struct BalanceChartDescriptor: AXChartDescriptorRepresentable {
         ) { Date(timeIntervalSince1970: $0).formatted(date: .abbreviated, time: .omitted) }
         let y = AXNumericDataAxisDescriptor(
             title: String(localized: "Saldo"), range: (values.min() ?? 0)...max(values.max() ?? 1, (values.min() ?? 0) + 1), gridlinePositions: []
-        ) { Money.format(Int64(($0 * 100).rounded())) }
+        ) { Money.format(Int64(($0 * 100).rounded()), currency: currency) }
         let series = AXDataSeriesDescriptor(
             name: String(localized: "Saldo"), isContinuous: true,
             dataPoints: points.map { AXDataPoint(x: $0.0.timeIntervalSince1970, y: $0.1) }
@@ -1390,7 +1458,7 @@ struct AmountFilterForm: View {
                 .multilineTextAlignment(.trailing)
                 .frame(width: 125)
                 .onSubmit { apply() }
-            Text(verbatim: "€").fixedSize()
+            Text(verbatim: Money.symbol(model.balanceCurrency)).fixedSize()
         }
         .fixedSize()
     }

@@ -25,8 +25,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{
-    http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, KnownDocuments,
-    Phase, RemoteAccount, RemoteTransaction,
+    BankConnector, ChallengeResponse, ConnectContext, FetchResult, KnownDocuments, Phase,
+    RemoteAccount, RemoteTransaction, http_client_same_host,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -551,23 +551,23 @@ pub(crate) fn complete_from_details(account: &mut RemoteAccount, details: &[Deta
             .map(|d| d.value.trim().to_string())
             .filter(|v| !v.is_empty())
     };
-    if account.iban.is_empty() {
-        if let Some(iban) = find(&["IBAN"]) {
-            let iban = normalize_iban(&iban);
-            if validate_iban(&iban) {
-                account.iban = iban;
-            }
+    if account.iban.is_empty()
+        && let Some(iban) = find(&["IBAN"])
+    {
+        let iban = normalize_iban(&iban);
+        if validate_iban(&iban) {
+            account.iban = iban;
         }
     }
-    if account.account_number.is_empty() {
-        if let Some(n) = find(&["Vertragsnummer", "Kontonummer"]) {
-            account.account_number = n;
-        }
+    if account.account_number.is_empty()
+        && let Some(n) = find(&["Vertragsnummer", "Kontonummer"])
+    {
+        account.account_number = n;
     }
-    if account.owner.is_empty() {
-        if let Some(o) = find(&["Inhaber", "Kontoinhaber"]) {
-            account.owner = o;
-        }
+    if account.owner.is_empty()
+        && let Some(o) = find(&["Inhaber", "Kontoinhaber"])
+    {
+        account.owner = o;
     }
 }
 
@@ -759,7 +759,7 @@ impl BankConnector for Fin4uConnector {
                 message: tr("Benutzername (E-Mail) und Passwort für fin4u erforderlich").into(),
             });
         }
-        let client = http_client()?;
+        let client = http_client_same_host()?;
         let username = ctx.login_name.trim();
         let v = login(&client, username, ctx.secret.expose()).await?;
         self.access_token =
@@ -842,20 +842,19 @@ impl BankConnector for Fin4uConnector {
                     .unwrap_or(true);
                 let has_title = !str_of(&detail, "customTitle").is_empty()
                     || !str_of(&detail, "title").is_empty();
-                if refreshed {
-                    if let Some((did, mut acc)) =
+                if refreshed
+                    && let Some((did, mut acc)) =
                         parse_accounts(&Value::Array(vec![detail]), true, &super::today())
                             .into_iter()
                             .next()
-                    {
-                        // keep the stable reference from the list entry
-                        acc.external_ref = account.external_ref.clone();
-                        if !has_title {
-                            acc.name = account.name.clone();
-                        }
-                        id = did;
-                        account = acc;
+                {
+                    // keep the stable reference from the list entry
+                    acc.external_ref = account.external_ref.clone();
+                    if !has_title {
+                        acc.name = account.name.clone();
                     }
+                    id = did;
+                    account = acc;
                 }
                 // IBAN, contract number and holder of Bausparverträge are only
                 // in the details; the external ref stays the list's.
@@ -1008,12 +1007,14 @@ mod tests {
             .unwrap();
         assert_eq!(plain, b"geheim");
         // The server would reject MGF1-SHA-256.
-        assert!(private
-            .decrypt(
-                rsa::Oaep::<sha2::Sha256, sha2::Sha256>::new_with_mgf_hash(),
-                &cipher
-            )
-            .is_err());
+        assert!(
+            private
+                .decrypt(
+                    rsa::Oaep::<sha2::Sha256, sha2::Sha256>::new_with_mgf_hash(),
+                    &cipher
+                )
+                .is_err()
+        );
     }
 
     #[test]
