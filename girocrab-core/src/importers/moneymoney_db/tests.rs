@@ -928,7 +928,17 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
     let conn_id = v.list_bank_connections().unwrap()[0].id;
     let db = v.db().unwrap();
     assert_eq!(
-        adopt_account(&db, conn_id, "remote-1", "", "", "", AccountKind::Checking).unwrap(),
+        adopt_account(
+            &db,
+            conn_id,
+            "remote-1",
+            "",
+            "",
+            "",
+            AccountKind::Checking,
+            &[]
+        )
+        .unwrap(),
         None
     );
     let adopted = adopt_account(
@@ -939,6 +949,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
         "",
         "",
         AccountKind::Checking,
+        &[],
     )
     .unwrap();
     assert_eq!(adopted, Some(giro.id));
@@ -959,7 +970,8 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
             "DE89370400440532013000",
             "",
             "",
-            AccountKind::Checking
+            AccountKind::Checking,
+            &[]
         )
         .unwrap(),
         None
@@ -998,7 +1010,8 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
             iban,
             "",
             "EUR",
-            AccountKind::Checking
+            AccountKind::Checking,
+            &[]
         )
         .unwrap(),
         Some(eur)
@@ -1011,7 +1024,8 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
             iban,
             "",
             "USD",
-            AccountKind::Checking
+            AccountKind::Checking,
+            &[]
         )
         .unwrap(),
         Some(usd)
@@ -1025,7 +1039,8 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
             iban,
             "",
             "GBP",
-            AccountKind::Checking
+            AccountKind::Checking,
+            &[]
         )
         .unwrap(),
         None
@@ -1079,7 +1094,8 @@ fn a_direct_connector_takes_over_accounts_of_an_unsynced_psd2_connection() {
             "DE00000000001000000001",
             "",
             "EUR",
-            AccountKind::CreditCard
+            AccountKind::CreditCard,
+            &[]
         )
         .unwrap(),
         Some(imported)
@@ -1107,7 +1123,8 @@ fn a_direct_connector_takes_over_accounts_of_an_unsynced_psd2_connection() {
             "DE00000000001000000002",
             "",
             "EUR",
-            AccountKind::Savings
+            AccountKind::Savings,
+            &[]
         )
         .unwrap(),
         None
@@ -1449,7 +1466,8 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
             "DE02120300000000202051",
             "",
             "",
-            AccountKind::CreditCard
+            AccountKind::CreditCard,
+            &[]
         )
         .unwrap(),
         None
@@ -1463,14 +1481,25 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
             "",
             "5232123456789999",
             "",
-            AccountKind::CreditCard
+            AccountKind::CreditCard,
+            &[]
         )
         .unwrap(),
         Some(visa.id)
     );
     // only once, and never for another login
     assert_eq!(
-        adopt_account(&db, conn_id, "card-2", "", "", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(
+            &db,
+            conn_id,
+            "card-2",
+            "",
+            "",
+            "",
+            AccountKind::CreditCard,
+            &[]
+        )
+        .unwrap(),
         None
     );
     assert_eq!(
@@ -1481,7 +1510,8 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
             "",
             "",
             "",
-            AccountKind::Brokerage
+            AccountKind::Brokerage,
+            &[]
         )
         .unwrap(),
         None
@@ -1516,7 +1546,8 @@ fn only_cards_are_adopted_by_number() {
             "",
             "99991111",
             "EUR",
-            AccountKind::Brokerage
+            AccountKind::Brokerage,
+            &[]
         )
         .unwrap(),
         None
@@ -1564,7 +1595,8 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
             "",
             "",
             "",
-            AccountKind::CreditCard
+            AccountKind::CreditCard,
+            &[]
         )
         .unwrap(),
         Some(card.id)
@@ -1582,7 +1614,8 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
             "",
             "",
             "",
-            AccountKind::CreditCard
+            AccountKind::CreditCard,
+            &[]
         )
         .unwrap(),
         None
@@ -3176,7 +3209,9 @@ fn miles_and_more_pseudo_code_maps_to_the_deutsche_bank_card_login() {
         assert_eq!(account_by_name(&v, name).connection_id, None, "{name}");
     }
 
-    // first sync: each card by its number, though two hang on the login
+    // first sync: each card by its number, though two hang on the login; a
+    // new card fetched in between does not inherit the partner card (#1030)
+    let fetched = ["5232123456781234", "5232123456789999", "5232123456785678"];
     let (main, partner) = (
         account_by_name(&v, "Miles & More Blue Credit Card").id,
         account_by_name(&v, "Partnerkarte").id,
@@ -3191,12 +3226,13 @@ fn miles_and_more_pseudo_code_maps_to_the_deutsche_bank_card_login() {
             number,
             "EUR",
             AccountKind::CreditCard,
+            &fetched,
         )
         .unwrap()
     };
-    assert_eq!(take("card-b", "5232123456785678"), Some(partner));
-    assert_eq!(take("card-a", "5232123456781234"), Some(main));
-    assert_eq!(take("card-c", "5232123456789999"), None);
+    assert_eq!(take("card-a", fetched[0]), Some(main));
+    assert_eq!(take("card-c", fetched[1]), None);
+    assert_eq!(take("card-b", fetched[2]), Some(partner));
 }
 
 #[test]
@@ -3213,6 +3249,7 @@ fn same_card_number_needs_the_same_digits_or_a_masked_side() {
     assert!(!same_card_number("123", "123"));
     // masked at the end: the last four are not shown
     assert!(!same_card_number("5232 12XX XXXX XXXX", "5232123456783212"));
+    assert!(!same_card_number("5232 XXXX XXXX XX34", "4111111111113234"));
 }
 
 #[test]
@@ -3961,6 +3998,7 @@ fn adopt_account_reuses_imported_trade_republic_checking_account_without_iban() 
             "",
             "EUR",
             AccountKind::Checking,
+            &[],
         )
         .unwrap();
         assert!(

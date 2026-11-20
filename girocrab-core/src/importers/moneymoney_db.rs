@@ -2358,7 +2358,8 @@ fn find_connection(
 /// an account created by this importer instead of adding a second one. Matched
 /// by IBAN; without one (credit cards, PayPal) by the card number among the
 /// imported accounts of that kind linked to this bank login, else only when
-/// exactly one of them is.
+/// exactly one of them is. `fetched_cards`: the numbers of every card in this
+/// fetch, so the fallback never takes a card another fetched card matches.
 pub(crate) fn adopt_account(
     conn: &Connection,
     connection_id: i64,
@@ -2367,6 +2368,7 @@ pub(crate) fn adopt_account(
     account_number: &str,
     currency: &str,
     kind: AccountKind,
+    fetched_cards: &[&str],
 ) -> CoreResult<Option<i64>> {
     let iban = normalize_iban(iban);
     // „Abrufweg umstellen“ marked it: the same way back finds it by its old
@@ -2423,10 +2425,18 @@ pub(crate) fn adopt_account(
         };
         // else the only one of its kind (also a replacement card with a new
         // number), preferring those without an IBAN; widened: the only one in
-        // that currency, with or without an IBAN
+        // that currency, with or without an IBAN. A card that another card of
+        // this fetch matches by number waits for that one, whatever the order.
+        let taken_by_number = |number: &str| {
+            card && fetched_cards
+                .iter()
+                .any(|fetched| same_card_number(number, fetched))
+        };
         let single = |widened: bool| {
-            unique(rows.iter().filter(|(_, _, has_iban, cur)| {
-                if widened {
+            unique(rows.iter().filter(|(_, number, has_iban, cur)| {
+                if taken_by_number(number) {
+                    false
+                } else if widened {
                     currency.is_empty() || cur.is_empty() || *cur == currency
                 } else {
                     !has_iban
@@ -2484,15 +2494,22 @@ fn full_card_number(s: &str) -> bool {
 
 /// Whether two card (account) numbers name the same card: two complete ones
 /// by all digits, a masked or shortened one (`5232 •••• •••• 1234`, `1234`) by
-/// the last four – only if they are shown (not `5232 12•• •••• ••••`).
+/// the last four – only if all four are shown (not `5232 12•• •••• ••••` or
+/// `5232 •••• •••• ••34`).
 fn same_card_number(a: &str, b: &str) -> bool {
     if full_card_number(a) && full_card_number(b) {
         return digits(a) == digits(b);
     }
+    // the shown digits at the end, reversed: separators skipped, a mask stops
     let last_four = |s: &str| {
-        let d = digits(s);
-        (s.trim_end().ends_with(|c: char| c.is_ascii_digit()) && d.len() >= 4)
-            .then(|| d[d.len() - 4..].to_string())
+        let tail: String = s
+            .chars()
+            .rev()
+            .filter(|c| !matches!(c, ' ' | '-'))
+            .take_while(char::is_ascii_digit)
+            .take(4)
+            .collect();
+        (tail.len() == 4).then_some(tail)
     };
     last_four(a).is_some_and(|x| last_four(b) == Some(x))
 }

@@ -1060,6 +1060,7 @@ mod tests {
                 "",
                 "EUR",
                 crate::models::AccountKind::Checking,
+                &[],
             )
             .unwrap();
             assert_eq!(adopted, Some(acc));
@@ -1451,6 +1452,7 @@ mod tests {
             "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, Some(depot));
@@ -1487,6 +1489,7 @@ mod tests {
                 "",
                 "EUR",
                 crate::models::AccountKind::Checking,
+                &[],
             )
             .unwrap();
             assert_eq!(adopted, Some(giro));
@@ -1564,8 +1567,17 @@ mod tests {
             let db = a.db().unwrap();
             let iban = "DE10200411550123456789";
             let take = |ext: &str, iban: &str, kind| {
-                crate::importers::moneymoney_db::adopt_account(&db, c, ext, iban, "", "EUR", kind)
-                    .unwrap()
+                crate::importers::moneymoney_db::adopt_account(
+                    &db,
+                    c,
+                    ext,
+                    iban,
+                    "",
+                    "EUR",
+                    kind,
+                    &[],
+                )
+                .unwrap()
             };
             assert_eq!(
                 take("A1B2C3", iban, crate::models::AccountKind::Checking),
@@ -1695,6 +1707,7 @@ mod tests {
             "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, Some(depot));

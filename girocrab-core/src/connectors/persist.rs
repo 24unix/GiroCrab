@@ -285,6 +285,12 @@ pub(crate) fn store_fetch(
             |r| r.get(0),
         )?;
         let mut new_accounts: Vec<String> = Vec::new();
+        let fetched_cards: Vec<&str> = data
+            .accounts
+            .iter()
+            .filter(|a| a.kind == AccountKind::CreditCard && !a.account_number.is_empty())
+            .map(|a| a.account_number.as_str())
+            .collect();
         for acc in &data.accounts {
             if blocked_refs.contains(&acc.external_ref) {
                 continue;
@@ -310,6 +316,7 @@ pub(crate) fn store_fetch(
                     &acc.account_number,
                     &acc.currency,
                     acc.kind,
+                    &fetched_cards,
                 )?,
             };
             // Sub-accounts known from an earlier import/sync without a connection
