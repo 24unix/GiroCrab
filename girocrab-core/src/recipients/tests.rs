@@ -83,6 +83,23 @@ fn one_entry_per_iban_newest_first_under_the_most_used_name() {
     );
 }
 
+/// One name under both spellings of an IBAN counts once: 3 + 3 uses beat a rival's 4.
+#[test]
+fn a_name_under_both_iban_spellings_sums_its_uses() {
+    let dir = TempDir::new("recipients-spellings");
+    let v = open(&dir, "v.db");
+    for d in ["2020-01-05", "2020-02-05", "2020-03-05"] {
+        book(&v, "Alice", OLD, d, -100);
+        book(&v, "Alice", "DE89 3704 0044 0532 0130 00", d, -100);
+    }
+    for d in ["2020-01-06", "2020-02-06", "2020-03-06", "2020-04-06"] {
+        book(&v, "Bob", OLD, d, -100);
+    }
+    let s = v.suggest_recipients(String::new(), 5).unwrap();
+    assert_eq!(ibans(&s), [OLD]);
+    assert_eq!((s[0].name.as_str(), s[0].times_used), ("Alice", 10));
+}
+
 #[test]
 fn search_matches_every_spelling_and_the_iban() {
     let dir = TempDir::new("recipients-search");

@@ -24,7 +24,7 @@ use crate::vault::Vault;
 #[cfg(test)]
 mod tests;
 
-/// Step 32 (#978). `hidden_recipients`: IBANs left out of the suggestions; `hidden = 0` is an
+/// Step 33 (#978). `hidden_recipients`: IBANs left out of the suggestions; `hidden = 0` is an
 /// IBAN shown again, kept for the merge. `tx_recipients` covers the read of the known recipients
 /// (outgoing live bookings with an IBAN, in group order), so it reads no booking rows; SQLite
 /// counts the index as covering only with the columns of its own WHERE in it.
@@ -58,17 +58,26 @@ fn search_key(s: &str) -> String {
 /// Folds the (IBAN, name) groups into one entry per IBAN: the most used name (then the most
 /// recent), use counts summed, the latest booking date. Invalid IBANs are left out.
 fn build(rows: Vec<(String, String, u32, String)>, hidden: &HashSet<String>) -> Recipients {
-    // per IBAN: (name, uses, last date) of each spelling
-    let mut by_iban: HashMap<String, Vec<(String, u32, String)>> = HashMap::new();
+    // per IBAN: name -> (uses, last date); a name booked under several spellings of the IBAN
+    // ("DE89…" and "DE89 3704 …") counts once, with its uses summed
+    let mut by_iban: HashMap<String, HashMap<String, (u32, String)>> = HashMap::new();
     for (iban, name, n, last) in rows {
         let iban = normalize_iban(&iban);
         if validate_iban(&iban) {
-            by_iban.entry(iban).or_default().push((name, n, last));
+            let slot = by_iban.entry(iban).or_default().entry(name).or_default();
+            slot.0 += n;
+            if last > slot.1 {
+                slot.1 = last;
+            }
         }
     }
     let mut entries: Vec<Entry> = by_iban
         .into_iter()
-        .map(|(iban, mut names)| {
+        .map(|(iban, names)| {
+            let mut names: Vec<(String, u32, String)> = names
+                .into_iter()
+                .map(|(name, (n, last))| (name, n, last))
+                .collect();
             names.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)).then(a.0.cmp(&b.0)));
             let times_used = names.iter().map(|n| n.1).sum();
             let last_used = names.iter().map(|n| n.2.clone()).max().unwrap_or_default();
