@@ -161,8 +161,13 @@ extension AppModel {
     /// The load is slow: the column switches to the new selection with an empty
     /// list and chart, so nothing of the previous selection stays under its title.
     private func showSelectionPlaceholder() {
-        showSelection()
         isLoadingSelection = true
+        showSelectionWithoutData()
+    }
+
+    /// The column switches to the new selection with nothing of the previous one in it.
+    private func showSelectionWithoutData() {
+        showSelection()
         page = nil
         bookings = []
         listBalances = ListBalances()
@@ -261,7 +266,7 @@ extension AppModel {
                 guard !Task.isCancelled, let self else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
-                self.showSelection()
+                self.showSelectionWithoutData()
                 self.errorMessage = describe(error)
             }
         }

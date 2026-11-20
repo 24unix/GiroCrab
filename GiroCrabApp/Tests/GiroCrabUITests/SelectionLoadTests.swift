@@ -217,4 +217,32 @@ final class SelectionLoadTests: XCTestCase {
         model.reloadCategories()
         XCTAssertEqual(model.categories.map(\.totalCents), shown)
     }
+
+    /// Category view with an account filter → account (still loading) → Geplant: the cancelled
+    /// account load would have dropped the filter from the sums, so Geplant does it.
+    func testNonBookingColumnDropsFilterOfCategoryStillShown() throws {
+        model.selectionPlaceholderDelay = .seconds(30)
+        let category = try XCTUnwrap(model.categories.first)
+        let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
+        model.sidebarSelection = .category(category.id)
+        model.categoryAccountFilter = [account.id]
+        let filtered = model.categories.map(\.totalCents)
+
+        model.interactiveSidebarSelection = .account(account.id)
+        XCTAssertEqual(model.shownSelection, .category(category.id))
+        model.interactiveSidebarSelection = .planned
+        let shown = model.categories.map(\.totalCents)
+        XCTAssertNotEqual(shown, filtered)
+        model.reloadCategories()
+        XCTAssertEqual(model.categories.map(\.totalCents), shown)
+    }
+
+    /// „Neue Umsätze“ orders the stream by account card; leaving it regroups the same
+    /// bookings by day even when the list itself is reloaded before the column switches.
+    func testLeavingNewBookingsRegroupsTheStreamByDay() {
+        model.sidebarSelection = .newBookings
+        model.sidebarSelection = .allAccounts
+        XCTAssertEqual(model.dayGroups.flatMap(\.bookings).map(\.id), model.bookings.map(\.id))
+        XCTAssertEqual(Set(model.dayGroups.map(\.date)).count, model.dayGroups.count, "one header per day")
+    }
 }

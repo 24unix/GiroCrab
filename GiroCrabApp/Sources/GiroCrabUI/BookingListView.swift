@@ -1436,7 +1436,7 @@ private struct ScopeToolbarControl: View {
             // Sachwerte have neither booking scopes nor depot tabs; the item stays so the
             // customizable toolbar keeps its layout
             case .tangible: Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
-            case .bookings: BookingScopePicker().disabled(model.showsNewBookings)
+            case .bookings: BookingScopePicker().disabled(model.sidebarRowSelection(for: .newBookings).isSelected)
             }
         }
     }

@@ -800,7 +800,7 @@ extension AppModel {
         rebuildDayGroups()
     }
 
-    private func rebuildDayGroups() {
+    func rebuildDayGroups() {
         var out: [DayGroup] = []
         var current: [Booking] = []
         var day = ""

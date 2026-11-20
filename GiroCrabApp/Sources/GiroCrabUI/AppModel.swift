@@ -152,8 +152,8 @@ public final class AppModel {
             // all accounts only replaced the list the column shows next (#1396).
             guard MainColumn(sidebarSelection) == .bookings else {
                 if selectionLoadTask != nil { endSelectionLoad() }
-                // the sidebar sums no longer follow the category view's account filter (#406)
-                switch oldValue {
+                // the sidebar sums no longer follow the account filter of the category view shown (#406)
+                switch shownSelection {
                 case .category?, .uncategorized?: if !categoryAccountFilter.isEmpty { reloadCategories() }
                 default: break
                 }
@@ -169,6 +169,8 @@ public final class AppModel {
             mainColumn = MainColumn(shownSelection)
             showsOverview = shownSelection == .allAccounts
             showsNewBookings = shownSelection == .newBookings
+            // „Neue Umsätze“ orders the stream by account card (`visibleBookings`)
+            if (oldValue == .newBookings) != showsNewBookings { rebuildDayGroups() }
             refreshAccountMarkerVisibility()
         }
     }
