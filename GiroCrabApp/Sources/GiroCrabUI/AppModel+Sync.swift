@@ -457,13 +457,27 @@ extension AppModel {
             activeChallenge = nil
             syncingConnectionID = nil
             activeSession = nil
+            let statementsFetch = statementsAccountID != nil
             if let accountID = statementsAccountID {
                 statementsAccountID = nil
-                documentsVersion += 1
-                let n = max(0, accountDocuments(accountID).count - statementsCountBefore)
-                toast = n > 0
-                    ? String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
-                    : String(localized: "\(connection.displayName): keine neuen Kontoauszüge. Falls die Bank keine elektronischen Kontoauszüge per FinTS anbietet, lassen sie sich hier nicht abrufen.")
+                let before = statementsCountBefore
+                let name = connection.displayName
+                let report = { [self] in
+                    documentsVersion += 1
+                    let n = max(0, accountDocuments(accountID).count - before)
+                    toast = n > 0
+                        ? String(localized: "\(name): \(n) neue Kontoauszüge")
+                        : String(localized: "\(name): keine neuen Kontoauszüge. Falls die Bank keine elektronischen Kontoauszüge per FinTS anbietet, lassen sie sich hier nicht abrufen.")
+                }
+                if connection.connector == .bhw {
+                    // BHW: mailbox PDFs reach their account only once their text was read.
+                    Task { @MainActor in
+                        _ = await self.placeBhwDocuments()
+                        report()
+                    }
+                } else {
+                    report()
+                }
             } else if postboxConnectionID == connection.id {
                 postboxConnectionID = nil
                 documentsVersion += 1
@@ -482,6 +496,12 @@ extension AppModel {
             let wasQuiet = quietSyncConnectionID == connection.id
             quietSyncConnectionID = nil
             if wasQuiet { reloadAllInBackground() } else { reloadAll() }
+            // A regular BHW sync can bring mailbox PDFs too (automatic statements).
+            if connection.connector == .bhw && !statementsFetch {
+                Task { @MainActor in
+                    if await self.placeBhwDocuments() > 0 { self.documentsVersion += 1 }
+                }
+            }
             checkPendingAccountSelection()
             syncNextInQueue()
         }

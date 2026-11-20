@@ -32,9 +32,9 @@ Sheet {
     /// comdirect logins can switch between FinTS and comdirect's own API.
     readonly property bool isComdirect: kind === "Comdirect"
         || (kind === "FinTsGeneric" && ["20041111", "20041133", "20041144", "20041155"].indexOf(connection.bank_code) >= 0)
-    readonly property bool usesPin: ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Comdirect", "TradeRepublic", "Bunq", "Ibkr", "Easybank", "AlteLeipziger", "VolkswagenBank", "Uberspace", "Ffb", "FordMoney", "OpelDirektbank"].indexOf(kind) >= 0
+    readonly property bool usesPin: ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Comdirect", "TradeRepublic", "Bunq", "Ibkr", "Easybank", "AlteLeipziger", "VolkswagenBank", "Uberspace", "Ffb", "FordMoney", "OpelDirektbank", "Bhw"].indexOf(kind) >= 0
     /// ConnectionsUI.swift › ConnectionEditSheet: these portals take a password, not a PIN
-    readonly property bool usesPassword: ["Easybank", "AlteLeipziger", "Uberspace", "FordMoney", "OpelDirektbank"].indexOf(kind) >= 0
+    readonly property bool usesPassword: ["Easybank", "AlteLeipziger", "Uberspace", "FordMoney", "OpelDirektbank", "Bhw"].indexOf(kind) >= 0
     /// AppModel+Rah.swift › usesRah10 (#460): the secret is the key file's password, the login is fixed.
     readonly property bool isRah10: !!connection && kind === "FinTsGeneric"
         && (AppModel.run(() => AppModel.core("connection_key", { connection_id: connection.id })) || "").endsWith(":rah10")
