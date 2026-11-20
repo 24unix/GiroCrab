@@ -1276,9 +1276,31 @@ QtObject {
     }
     /// Shown while searching: its name matches, or a listed account lives in it or a subgroup.
     function isUserGroupListed(g) {
-        if (!isSidebarAccountSearching) return isUserGroupVisible(g)
+        if (!isSidebarAccountSearching) return isUserGroupVisible(g) && !isUserGroupHiddenAsArchived(g)
         return userGroupSubtree(g.uuid).some(n => sidebarTextMatches(n.name, sidebarAccountSearch)
                                                   || n.accounts.some(a => isSidebarAccountListed(a)))
+    }
+    /// isSidebarSectionListed (#814): a kind or bank section is shown while searching only with a hit;
+    /// otherwise it stays unless archived accounts are hidden and it holds nothing but archived
+    /// accounts. A section without accounts stays.
+    function isSidebarSectionListed(accounts) {
+        const listed = accounts.some(a => isSidebarAccountListed(a))
+        if (isSidebarAccountSearching) return listed
+        return listed || !accounts.length || showArchivedAccounts
+    }
+    /// isUserGroupOnlyArchived (#814): archived accounts are hidden and this group (with its subgroups)
+    /// holds accounts, all of them archived. A group without accounts stays.
+    function isUserGroupOnlyArchived(g) {
+        if (showArchivedAccounts) return false
+        const accounts = [].concat(...userGroupSubtree(g.uuid).map(n => n.accounts))
+        return accounts.length > 0 && accounts.every(a => a.archived_unix !== null)
+    }
+    /// The group or any group above it holds only archived accounts: a subgroup never stays behind
+    /// under a hidden parent.
+    function isUserGroupHiddenAsArchived(g) {
+        for (let n = g; n; n = n.parent_uuid ? userGroups.find(x => x.uuid === n.parent_uuid) : null)
+            if (isUserGroupOnlyArchived(n)) return true
+        return false
     }
     function isKindGroupOpen(id) { return isSidebarAccountSearching || !collapsedGroups[id] }
     function isBankGroupOpen(key) { return isSidebarAccountSearching || !collapsedBankGroups[key] }

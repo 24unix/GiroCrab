@@ -321,9 +321,10 @@ WebLoginFlow {
                 return AppModel.corePromise("import_equateplus_snapshot", { connection_id: id, snapshot_json: snapshot })
             })
             .then(s => {
-                if (gen !== generation) throw cancelled
-                AppModel.toast = qsTr("EquatePlus: %1 Programme aktualisiert.").arg(s.accounts_updated)
+                // the import is stored even when the window was closed meanwhile: reload anyway
                 finish(true)
+                if (gen !== generation) return
+                AppModel.toast = qsTr("EquatePlus: %1 Programme aktualisiert.").arg(s.accounts_updated)
                 close(true)
             }, e => {
                 if (e !== cancelled) {
