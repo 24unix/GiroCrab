@@ -34,8 +34,9 @@ use async_trait::async_trait;
 use regex::Regex;
 use zeroize::Zeroize;
 
-use super::uberspace::{
-    FORM, INPUT, LINK, attr, attrs, element_by_id, parse_date, table_cells, text,
+use super::html::{
+    FORM, INPUT, LINK, attr, attrs, de_date, element_by_id, parse_date, table_cells, table_texts,
+    text,
 };
 use super::{
     BankConnector, ChallengeResponse, ConnectContext, Documents, FetchResult, KnownDocuments,
@@ -166,12 +167,6 @@ fn eur_and_native(s: &str) -> (Option<i64>, Option<(i64, String)>) {
     let eur = all.iter().find(|(_, c)| c == "EUR").map(|(v, _)| *v);
     let native = all.into_iter().find(|(_, c)| c != "EUR");
     (eur, native)
-}
-
-/// `YYYY-MM-DD` → `DD.MM.YYYY` (the site's date format).
-fn site_date(iso: &str) -> Option<String> {
-    let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).ok()?;
-    Some(d.strftime("%d.%m.%Y").to_string())
 }
 
 /// Session id from a URL or page (`;jsessionid=…`).
@@ -414,13 +409,7 @@ fn parse_transactions(
         .map(|r| {
             let row = r.get(0).map_or("", |m| m.as_str());
             let a = attrs(&r[1]);
-            let cells: Vec<String> = table_cells(row)
-                .into_iter()
-                .next()
-                .unwrap_or_default()
-                .into_iter()
-                .map(text)
-                .collect();
+            let cells = table_texts(row).into_iter().next().unwrap_or_default();
             let class = attr(&a, "class").unwrap_or("").to_string();
             let order = attr(&a, "name")
                 .or_else(|| attr(&a, "id"))
@@ -639,7 +628,7 @@ impl FfbConnector {
     ) -> CoreResult<Vec<RemoteDocument>> {
         self.page("/api/kundenansicht/postfach/overview", &[])
             .await?;
-        let end = site_date(today).unwrap_or_default();
+        let end = de_date(today).unwrap_or_default();
         let mut next = Some(self.url(
             "/api/kundenansicht/postfach/query",
             &[
@@ -715,7 +704,7 @@ impl FfbConnector {
         {
             positions.extend(parse_holdings(&vl, true)?);
         }
-        let end = site_date(today).unwrap_or_default();
+        let end = de_date(today).unwrap_or_default();
         let invested = match self
             .page(
                 "/api/kundenansicht/depotentwicklung/positionenView",
@@ -761,7 +750,7 @@ impl FfbConnector {
         });
 
         let since = ctx.since_for(&depot_ref).to_string();
-        let from = site_date(&since).unwrap_or_else(|| "01.01.2008".into());
+        let from = de_date(&since).unwrap_or_else(|| "01.01.2008".into());
         let mut next = Some(self.url(
             "/api/kundenansicht/transaktion/query/",
             &[
@@ -1503,8 +1492,6 @@ mod tests {
         assert_eq!(money("04.03.2026 55,5500 USD"), vec![(5_555, "USD".into())]);
         assert_eq!(money("-0,01 EUR"), vec![(-1, "EUR".into())]);
         assert_eq!(money("11.111,11 €"), vec![(1_111_111, "EUR".into())]);
-        assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
-        assert_eq!(site_date("x"), None);
     }
 
     #[test]

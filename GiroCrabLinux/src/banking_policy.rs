@@ -391,6 +391,7 @@ pub fn display_name(id: &str) -> String {
         "amazon-orders" => "Amazon",
         "fnz" => "FNZ Bank",
         "ibkr" => "Interactive Brokers",
+        "equateplus" => "EquatePlus",
         "quirion" => "quirion",
         "uberspace" => "Uberspace",
         "schwaebischhall" => "Schwäbisch Hall",
@@ -398,6 +399,8 @@ pub fn display_name(id: &str) -> String {
         "ffb" => "FFB",
         "fordmoney" => "Ford Money",
         "opeldirektbank" => "Opel Direktbank",
+        "bhw" => "BHW Bausparkasse",
+        "kontist" => "Kontist",
         other => other,
     };
     match tail {

@@ -400,7 +400,7 @@ struct MerchantFocusBar: View {
             Image(systemName: "storefront").foregroundStyle(Theme.secondary)
             Text("Alle Buchungen von").foregroundStyle(Theme.secondary)
             Text(focus.name).fontWeight(.semibold).lineLimit(1).sensitive(.personal)
-            Text(verbatim: "· \(model.periodTitle)").foregroundStyle(Theme.secondary).lineLimit(1)
+            Text(verbatim: "· \(model.shownPeriod.title)").foregroundStyle(Theme.secondary).lineLimit(1)
             Spacer(minLength: 8)
             Button("Zurück", systemImage: "xmark.circle.fill") { model.leaveMerchantFocus() }
                 .buttonStyle(.borderless)
@@ -686,6 +686,97 @@ enum ListPurpose {
     }
 }
 
+private struct BookingNoteIndicator: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
+    @Environment(\.textScale) private var textScale
+    let booking: Booking
+    #if os(macOS)
+    @State private var isHovered = false
+    @State private var didClickDuringHover = false
+    @State private var showsPreview = false
+
+    private var canShowPreview: Bool {
+        isHovered && !didClickDuringHover && !redaction.contains(.personal)
+    }
+    #endif
+
+    var body: some View {
+        let note = booking.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        ZStack {
+            if !note.isEmpty {
+                Button {
+                    #if os(macOS)
+                    didClickDuringHover = isHovered
+                    showsPreview = false
+                    #endif
+                    model.editNote(for: booking)
+                } label: {
+                    SpiralNotebook()
+                        .stroke(style: StrokeStyle(lineWidth: 1.15, lineCap: .round))
+                        .frame(width: 13 * textScale, height: 14 * textScale)
+                        .foregroundStyle(Theme.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Notiz bearbeiten")
+                #if os(macOS)
+                .onHover { inside in
+                    isHovered = inside
+                    if !inside { didClickDuringHover = false }
+                }
+                .task(id: canShowPreview) {
+                    guard canShowPreview else {
+                        showsPreview = false
+                        return
+                    }
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if !Task.isCancelled { showsPreview = true }
+                }
+                .onDisappear {
+                    isHovered = false
+                    didClickDuringHover = false
+                    showsPreview = false
+                }
+                .capturablePopover(isPresented: $showsPreview, arrowEdge: .bottom) {
+                    Text(verbatim: preview(of: note))
+                        .appFont(.callout)
+                        .lineLimit(3)
+                        .frame(maxWidth: 280 * textScale, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .sensitive()
+                        .padding(10)
+                }
+                #endif
+            }
+        }
+        .frame(width: 18 * textScale, height: 16 * textScale)
+    }
+
+    private func preview(of note: String) -> String {
+        let limited = note.prefix(240)
+        let lines = limited.split(separator: "\n", maxSplits: 3, omittingEmptySubsequences: false)
+        let preview = lines.prefix(3).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return limited.count < note.count || lines.count > 3 ? preview + " …" : preview
+    }
+}
+
+private struct SpiralNotebook: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path(roundedRect: CGRect(x: 1.5, y: 2.75, width: 10, height: 10.5), cornerRadius: 1.5)
+        for x in [4.0, 6.5, 9.0] {
+            path.move(to: CGPoint(x: x, y: 1))
+            path.addLine(to: CGPoint(x: x, y: 4.25))
+        }
+        path.move(to: CGPoint(x: 4, y: 7))
+        path.addLine(to: CGPoint(x: 9, y: 7))
+        path.move(to: CGPoint(x: 4, y: 9.5))
+        path.addLine(to: CGPoint(x: 8, y: 9.5))
+        return path.applying(CGAffineTransform(scaleX: rect.width / 13, y: rect.height / 14))
+    }
+}
+
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
     @Environment(\.reportRedaction) private var redaction
@@ -890,12 +981,18 @@ struct BookingRow: View {
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .layoutPriority(0)
             Spacer(minLength: isSingleLine ? 0 : 8)
-            // the row just checked in a list of new bookings stays without a mark until it leaves
-            if booking.checked, model.lingeringBookingID != booking.id {
-                Image(systemName: "checkmark")
-                    .appFont(.caption, weight: .semibold)
-                    .foregroundStyle(Theme.tertiary)
-                    .help("Geprüft")
+            HStack(spacing: 4) {
+                BookingNoteIndicator(booking: booking)
+                // Reserve both slots so the note stays beside the checkmark even on unchecked rows.
+                ZStack {
+                    if booking.checked, model.lingeringBookingID != booking.id {
+                        Image(systemName: "checkmark")
+                            .appFont(.caption, weight: .semibold)
+                            .foregroundStyle(Theme.tertiary)
+                            .help("Geprüft")
+                    }
+                }
+                .frame(width: 14 * textScale, height: 16 * textScale)
             }
             if booking.isPending {
                 Image(systemName: "clock")

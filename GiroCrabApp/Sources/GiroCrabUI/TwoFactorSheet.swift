@@ -11,6 +11,7 @@ struct TwoFactorSheet: View {
     /// The bank's consent page inside GiroCrab (PSD2 redirect).
     @State private var consent: ConsentBrowser?
     @State private var showManualRedirect = false
+    @FocusState private var codeFocused: Bool
 
     /// The sheet shows the bank's consent page (needs a browser-sized window).
     private var showsConsentPage: Bool {
@@ -94,6 +95,8 @@ struct TwoFactorSheet: View {
                         .multilineTextAlignment(.center)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 220)
+                        .focused($codeFocused)
+                        .onAppear { codeFocused = true }
                         #if os(iOS)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)

@@ -48,7 +48,7 @@ extension AppModel {
             webLoginConnection = connection
             return
         }
-        if !isDemo, let st = connectionStatus(connection.id), (st.hasPin || (connection.connector == .tradeRepublic && st.hasSession)),
+        if !isDemo, let st = connectionStatus(connection.id), (st.hasPin || ([.tradeRepublic, .kontist].contains(connection.connector) && st.hasSession)),
            missingSettings(for: connection).isEmpty {
             startSync(connection, secret: "")
             return
@@ -457,13 +457,31 @@ extension AppModel {
             activeChallenge = nil
             syncingConnectionID = nil
             activeSession = nil
+            let statementsFetch = statementsAccountID != nil
             if let accountID = statementsAccountID {
                 statementsAccountID = nil
-                documentsVersion += 1
-                let n = max(0, accountDocuments(accountID).count - statementsCountBefore)
-                toast = n > 0
-                    ? String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
-                    : String(localized: "\(connection.displayName): keine neuen Kontoauszüge. Falls die Bank keine elektronischen Kontoauszüge per FinTS anbietet, lassen sie sich hier nicht abrufen.")
+                let before = statementsCountBefore
+                let name = connection.displayName
+                let warnings = s.warnings
+                let report = { [self] (unplaced: Int) in
+                    documentsVersion += 1
+                    let n = max(0, accountDocuments(accountID).count - before)
+                    var note = n > 0
+                        ? String(localized: "\(name): \(n) neue Kontoauszüge")
+                        : String(localized: "\(name): keine neuen Kontoauszüge. Falls die Bank keine elektronischen Kontoauszüge per FinTS anbietet, lassen sie sich hier nicht abrufen.")
+                    // a partial download or a failed placement must not look like a finished fetch
+                    if !warnings.isEmpty { note += " · " + warnings.joined(separator: " / ") }
+                    if unplaced > 0 { note += " · " + String(localized: "\(unplaced) Dokumente konnten keinem Konto zugeordnet werden.") }
+                    toast = note
+                }
+                if connection.connector == .bhw {
+                    // BHW: mailbox PDFs reach their account only once their text was read.
+                    Task { @MainActor in
+                        report(await self.placeBhwDocuments().failed)
+                    }
+                } else {
+                    report(0)
+                }
             } else if postboxConnectionID == connection.id {
                 postboxConnectionID = nil
                 documentsVersion += 1
@@ -482,6 +500,12 @@ extension AppModel {
             let wasQuiet = quietSyncConnectionID == connection.id
             quietSyncConnectionID = nil
             if wasQuiet { reloadAllInBackground() } else { reloadAll() }
+            // A regular BHW sync can bring mailbox PDFs too (automatic statements).
+            if connection.connector == .bhw && !statementsFetch {
+                Task { @MainActor in
+                    if await self.placeBhwDocuments().placed > 0 { self.documentsVersion += 1 }
+                }
+            }
             checkPendingAccountSelection()
             syncNextInQueue()
         }
@@ -632,12 +656,13 @@ extension AppModel {
         activeSession = nil
         activeChallenge = nil
         syncingConnectionID = nil
-        // Trade Republic on its stored session alone (no PIN given, none stored) whose session
-        // expired (#1128): the core asks for the PIN, which only the PIN sheet takes (it also
-        // offers the browser login). A PIN typed there that fails stays an error.
+        // Trade Republic or Kontist on its stored session alone (no PIN given, none stored) whose
+        // session expired (#1128): the core asks for the PIN/password, which only the PIN sheet
+        // takes (for Trade Republic it also offers the browser login). One typed there that fails
+        // stays an error.
         if let ce = error as? CoreError, case .Authentication = ce, retrySecret?.isEmpty ?? true,
            let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }),
-           conn.connector == .tradeRepublic, connectionStatus(conn.id)?.hasPin != true {
+           [.tradeRepublic, .kontist].contains(conn.connector), connectionStatus(conn.id)?.hasPin != true {
             toast = describe(error)
             pendingLogin = PendingLogin(connection: conn)
             return

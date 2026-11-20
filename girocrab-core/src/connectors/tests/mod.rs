@@ -452,6 +452,16 @@ fn card_open_balance_since_settlement() {
         r("2026-11-05", -1000, "Cafe"),
     ];
     assert_eq!(open_card_balance(&with_refund), Some(-137371));
+    // Amex: the statement paid by direct debit, nothing charged since
+    let paid = vec![
+        r("2026-10-20", -12345, "Shop"),
+        r(
+            "2026-11-12",
+            12345,
+            "Zahlung/Überweisung Erhalten Besten Dank",
+        ),
+    ];
+    assert_eq!(open_card_balance(&paid), Some(0));
     assert_eq!(open_card_balance(&[]), None);
 }
 
@@ -2158,4 +2168,19 @@ fn sync_moves_a_retired_fints_url_to_the_current_endpoint() {
         v.get_setting("fints.url.30060601".into()).unwrap(),
         Some("https://fints.apobank.de/FinTs30PinTanHttpGate".into())
     );
+}
+
+#[test]
+fn single_account_ref_refuses_switched_account_excluded_in_selection() {
+    let res = crate::connectors::persist::single_account_ref(
+        "moneymoney-db:switch:DE89370400440532013000".into(),
+        || Ok(vec!["DE89370400440532013000".into()]),
+    );
+    assert!(res.is_err());
+    let ok = crate::connectors::persist::single_account_ref(
+        "moneymoney-db:switch:DE89370400440532013000".into(),
+        || Ok(vec!["OTHER".into()]),
+    )
+    .unwrap();
+    assert_eq!(ok, None);
 }

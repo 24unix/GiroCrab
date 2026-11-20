@@ -369,6 +369,12 @@ extension AppModel {
         (showsCategoryAccountFilter ? categoryAccountIDs : [], statusFilter == .all ? nil : statusFilter == .checked, directionFilter, amountFilter)
     }
 
+    /// Period and `categorySumFilter` the sidebar sums load for now.
+    var categorySumsRequest: CategorySumsRequest {
+        let (from, to) = periodRange, sums = categorySumFilter
+        return CategorySumsRequest(from: from, to: to, accounts: sums.accounts, checked: sums.checked, direction: sums.direction, amount: sums.amount)
+    }
+
     /// Hint under the sidebar's „Kategorien“ header while a filter narrows the sums; nil = none.
     /// Names no account (the sidebar is part of bug report screenshots).
     var categorySumNote: String? {
@@ -733,8 +739,19 @@ extension AppModel {
 
     /// Accounts and day count of the balance chart for the current selection and period.
     var historyRequest: (ids: [Int64], days: UInt32) {
-        var ids: [Int64]
-        switch sidebarSelection {
+        let ids = chartAccountIDs(sidebarSelection)
+        // The chart follows the selected period. "Gesamter Zeitraum": up to ~15 years back,
+        // then the flat lead-in before the first booking is cut off.
+        let today = Calendar.current.startOfDay(for: Date())
+        let start = periodRange.0.flatMap(DateText.date) ?? Calendar.current.date(byAdding: .year, value: -15, to: today)!
+        let days = max(2, (Calendar.current.dateComponents([.day], from: start, to: today).day ?? 120) + 1)
+        return (ids, UInt32(days))
+    }
+
+    /// Accounts behind the header chart (balance history, expense pie #634) of a selection.
+    private func chartAccountIDs(_ selection: SidebarItem?) -> [Int64] {
+        let ids: [Int64]
+        switch selection {
         case .account(let id): ids = [id]
         // same accounts as the group's sum in the header (#208), and like that
         // sum only the effectively included ones (#337; `inTotal` also covers
@@ -744,17 +761,11 @@ extension AppModel {
         case .userGroup(let uuid): ids = userGroupBalanceAccountIDs(uuid)
         default: ids = liquidAccounts.map(\.id)
         }
-        if ids.isEmpty { ids = [-1] }
-        // The chart follows the selected period. "Gesamter Zeitraum": up to ~15 years back,
-        // then the flat lead-in before the first booking is cut off.
-        let today = Calendar.current.startOfDay(for: Date())
-        let start = periodRange.0.flatMap(DateText.date) ?? Calendar.current.date(byAdding: .year, value: -15, to: today)!
-        let days = max(2, (Calendar.current.dateComponents([.day], from: start, to: today).day ?? 120) + 1)
-        return (ids, UInt32(days))
+        return ids.isEmpty ? [-1] : ids
     }
 
-    /// Accounts behind the header chart (balance history, expense pie #634).
-    var headerChartAccountIDs: [Int64] { historyRequest.ids }
+    /// Accounts behind the header's expense pie: those of the selection shown (#1413).
+    var headerChartAccountIDs: [Int64] { chartAccountIDs(shownSelection) }
 
     static func trimmedHistory(_ all: [DailyBalance], from: String?, to: String?) -> [DailyBalance] {
         var points = all

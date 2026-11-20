@@ -504,7 +504,9 @@ extension ConnectorKind {
         case .ffb: return "FFB (FIL Fondsbank)"
         case .fordMoney: return "Ford Money"
         case .opelDirektbank: return "Opel Direktbank"
+        case .bhw: return "BHW Bausparkasse"
         case .finpension: return "Finpension"
+        case .kontist: return "Kontist"
         }
     }
 
@@ -536,7 +538,9 @@ extension ConnectorKind {
         case .ffb: return "#1C5A8C"
         case .fordMoney: return "#20396E"
         case .opelDirektbank: return "#1A1A1A"
+        case .bhw: return "#C8102E"
         case .finpension: return "#00A68C"
+        case .kontist: return "#2B2D73"
         }
     }
 
@@ -575,7 +579,9 @@ extension ConnectorKind {
         case .ffb: return "FFB"
         case .fordMoney: return "FM"
         case .opelDirektbank: return "OD"
+        case .bhw: return "BHW"
         case .finpension: return "FP"
+        case .kontist: return "KT"
         }
     }
 }

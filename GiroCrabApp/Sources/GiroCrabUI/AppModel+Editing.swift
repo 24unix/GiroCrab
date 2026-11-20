@@ -293,9 +293,11 @@ extension AppModel {
     /// Select the booking and put the cursor into its note field in the inspector.
     func editNote(for booking: Booking) {
         #if os(macOS)
-        // the note lives in the inspector: show it if it was hidden (the field claims the focus when it appears)
         AppDefaults.store.set(true, forKey: ViewLayout.inspectorKey)
+        #else
+        showBookingSheet = true
         #endif
+        selectedBookingIDs = [booking.id]
         selectedBookingID = booking.id
         pendingNoteFocus = booking.id
     }

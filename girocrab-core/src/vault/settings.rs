@@ -44,7 +44,7 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
         "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.",
         "FinTS 3.0",
         false,
-        "https://banking-hs5.s-fints-pt-hs.de/fints30",
+        "https://banking-hs6.s-fints-pt-hs.de/fints30",
     ),
     (
         "comdirect.client_id",
@@ -109,6 +109,22 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
         "PayPal",
         false,
         "live",
+    ),
+    (
+        "kontist.client_id",
+        "Kontist Client-ID",
+        "Auf kontist.dev unter Client Management einen Client anlegen (Redirect-URI z. B. https://localhost/girocrab/callback, Scopes Offline, Accounts, Transactions, Users) und dessen Client-ID hier eintragen.",
+        "Kontist",
+        false,
+        "",
+    ),
+    (
+        "kontist.client_secret",
+        "Kontist Client-Secret",
+        "Nur nötig, wenn kontist.dev zum Client ein Secret anzeigt; sonst leer lassen.",
+        "Kontist",
+        true,
+        "",
     ),
     (
         "bunq.environment",

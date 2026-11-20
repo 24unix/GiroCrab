@@ -1381,6 +1381,7 @@ impl Vault {
                     | ConnectorKind::Easybank
                     | ConnectorKind::FordMoney
                     | ConnectorKind::OpelDirektbank
+                    | ConnectorKind::Bhw
                     | ConnectorKind::Ffb
             )
         });
@@ -2599,7 +2600,8 @@ pub(crate) fn card_open_balance(
 /// Open card balance (negative = owed) from `(date, amount_cents, text)` rows
 /// sorted ascending: sum of everything after the latest settlement booking
 /// (a positive KARTENABRECHNUNG / LASTSCHRIFT / AUSGLEICH / ZAHLUNG ERHALTEN
-/// entry). Without a settlement, the sum of all bookings.
+/// entry, also Amex's „Zahlung/Überweisung erhalten“). Without a settlement,
+/// the sum of all bookings.
 pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
     if rows.is_empty() {
         return None;
@@ -2607,14 +2609,11 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
     let is_settlement = |(_, amt, text): &(String, i64, String)| {
         let t = text.to_uppercase();
         *amt > 0
-            && [
-                "KARTENABRECHNUNG",
-                "LASTSCHRIFT",
-                "AUSGLEICH",
-                "ZAHLUNG ERHALTEN",
-            ]
-            .iter()
-            .any(|k| t.contains(k))
+            && (["KARTENABRECHNUNG", "LASTSCHRIFT", "AUSGLEICH"]
+                .iter()
+                .any(|k| t.contains(k))
+                // „ZAHLUNG ERHALTEN“, „ZAHLUNG/ÜBERWEISUNG ERHALTEN BESTEN DANK“
+                || t.contains("ZAHLUNG/ÜBERWEISUNG ERHALTEN") || t.contains("ZAHLUNG/UEBERWEISUNG ERHALTEN"))
     };
     let start = match rows.iter().rposition(is_settlement) {
         Some(i) => i + 1,
@@ -2639,7 +2638,9 @@ pub(super) fn single_account_ref(
     if !ext.starts_with("moneymoney-db:") {
         return Ok(Some(ext));
     }
-    if skipped()?.contains(&ext) {
+    let unmarked = ext.strip_prefix(crate::vault::connections::SWITCH_MARK);
+    let skipped = skipped()?;
+    if skipped.contains(&ext) || unmarked.is_some_and(|u| skipped.iter().any(|s| s == u)) {
         return Err(CoreError::invalid(tr(
             "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
         )));

@@ -19,6 +19,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use url::Url;
 
+use super::html;
 use crate::connectors::broker_documents::{is_pdf, source_url};
 use crate::documents::RemoteDocument;
 use crate::importers::amazon_orders::Booking;
@@ -84,16 +85,6 @@ fn is_amazon_host(host: &str) -> bool {
         && h.rsplit('.').next().is_some_and(|tld| tld.len() >= 2)
 }
 
-fn strip_tags(s: &str) -> String {
-    static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<[^>]*>").unwrap());
-    let text = TAG.replace_all(s, " ");
-    let text = text
-        .replace("&nbsp;", " ")
-        .replace("&amp;", "&")
-        .replace("&#39;", "'");
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 fn classify(href: &Url, text: &str) -> Option<DocKind> {
     let t = text.to_lowercase();
     if t.contains("gutschrift") || t.contains("credit note") {
@@ -132,7 +123,7 @@ pub fn extract_links(html: &str, base_url: &str, fallback_order: &str) -> Vec<Do
             continue;
         }
         url.set_fragment(None);
-        let Some(kind) = classify(&url, &strip_tags(&cap[2])) else {
+        let Some(kind) = classify(&url, &html::text(&cap[2])) else {
             continue;
         };
         let order_code = url

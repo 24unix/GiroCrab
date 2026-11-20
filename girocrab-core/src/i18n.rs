@@ -488,8 +488,8 @@ fn english(de: &str) -> Option<&'static str> {
             "Approve in the SecureGo plus app (decoupled, TAN process 4, HKTAN v7). Server: fints1.atruvia.de"
         }
         "Anmeldename / Kontonummer" => "Login name / account number",
-        "Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de" => {
-            "Read-only via FinTS (transactions, balances, securities, documents): 1822direkt disabled SEPA transfers over FinTS in 09/2025. pushTAN app (decoupled) or chipTAN. Server: banking-hs5.s-fints-pt-hs.de"
+        "Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs6.s-fints-pt-hs.de" => {
+            "Read-only via FinTS (transactions, balances, securities, documents): 1822direkt disabled SEPA transfers over FinTS in 09/2025. pushTAN app (decoupled) or chipTAN. Server: banking-hs6.s-fints-pt-hs.de"
         }
         "comdirect REST-API (OAuth2 + Session-TAN)" => "comdirect REST API (OAuth2 + session TAN)",
         "Zugangsnummer" => "Access number",
@@ -1133,6 +1133,56 @@ fn english(de: &str) -> Option<&'static str> {
         "Volkswagen Bank: Unerwartete Antwort auf die TAN-Abfrage." => {
             "Volkswagen Bank: unexpected answer to the TAN request."
         }
+        // ------------------------------------------------------------ connectors/kontist.rs
+        "Kontist GraphQL-API (OAuth2 + Freigabe in der App)" => {
+            "Kontist GraphQL API (OAuth2 + approval in the app)"
+        }
+        "Kontist: Geschäftskonto mit Saldo und Umsätzen über die offizielle API. Nötig ist ein eigener API-Client auf kontist.dev (Client Management), dessen Client-ID in den Einstellungen eingetragen wird. Die erste Anmeldung wird in der Kontist-App bestätigt, danach läuft der Abruf ohne Freigabe, solange Kontist die Anmeldung gelten lässt." => {
+            "Kontist: business account with balance and bookings via the official API. Requires your own API client on kontist.dev (Client Management) whose client ID is entered in the settings. The first login is confirmed in the Kontist app; after that, syncs run without approval as long as Kontist keeps the login valid."
+        }
+        "Kontist-App" => "Kontist app",
+        "Bitte die Anmeldung in der Kontist-App bestätigen." => {
+            "Please confirm the login in the Kontist app."
+        }
+        "Bargeldauszahlung" => "Cash withdrawal",
+        "Lastschriftrückgabe" => "Direct debit return",
+        "Kontist: Anmeldung fehlgeschlagen. Bitte E-Mail-Adresse und Passwort prüfen." => {
+            "Kontist: Login failed. Please check email address and password."
+        }
+        "Kontist: Anmeldung fehlgeschlagen (HTTP {0})." => "Kontist: Login failed (HTTP {0}).",
+        "Kontist: Dem OAuth2-Client fehlen Berechtigungen (benötigt: offline, accounts, transactions, users)." => {
+            "Kontist: The OAuth2 client lacks permissions (needed: offline, accounts, transactions, users)."
+        }
+        "Kontist: Die OAuth2-Client-ID (oder das Secret) wurde abgelehnt. Bitte die Client-ID in den Einstellungen mit kontist.dev (Client Management) vergleichen; ohne angezeigtes Secret das Secret-Feld leer lassen." => {
+            "Kontist: The OAuth2 client ID (or secret) was rejected. Please compare the client ID in the settings with kontist.dev (Client Management); if no secret is shown there, leave the secret field empty."
+        }
+        "Kontist: Die Anmeldung wurde in der Kontist-App abgelehnt." => {
+            "Kontist: The login was denied in the Kontist app."
+        }
+        "Kontist: Die Freigabe in der App konnte nicht gestartet werden." => {
+            "Kontist: The approval in the app could not be started."
+        }
+        "Kontist: Die Freigabe ist abgelaufen. Bitte den Abruf erneut starten." => {
+            "Kontist: The approval has expired. Please start the sync again."
+        }
+        "Kontist: E-Mail-Adresse und Passwort erforderlich." => {
+            "Kontist: Email address and password required."
+        }
+        "Kontist: Kein Konto in der Antwort gefunden." => {
+            "Kontist: No account found in the response."
+        }
+        "Kontist: Zugriff verweigert. Bitte den Abruf erneut starten und in der Kontist-App freigeben." => {
+            "Kontist: Access denied. Please start the sync again and approve it in the Kontist app."
+        }
+        "Kontist: Unerwartete Antwort der API (HTTP {0})." => {
+            "Kontist: Unexpected API response (HTTP {0})."
+        }
+        "Kontist: Der Anmeldedienst antwortet nicht (HTTP {0}). Bitte später erneut versuchen." => {
+            "Kontist: The login service is not responding (HTTP {0}). Please try again later."
+        }
+        "Kontist: Die Umsatzliste wurde nicht vollständig geliefert. Bitte den Abruf erneut starten." => {
+            "Kontist: The list of bookings was not delivered completely. Please start the sync again."
+        }
         // ------------------------------------------------------------ connectors/uberspace.rs
         "Web-Dashboard (Direkt-Login)" => "Web dashboard (direct login)",
         "E-Mail-Adresse" => "Email address",
@@ -1157,6 +1207,61 @@ fn english(de: &str) -> Option<&'static str> {
         }
         "Uberspace: Keine Asteroids gefunden (Dashboard geändert?)." => {
             "Uberspace: No Asteroids found (dashboard changed?)."
+        }
+        // ------------------------------------------------------------ connectors/bhw.rs
+        "BHW: Antwort nicht erkannt (myBHW geändert?)." => {
+            "BHW: response not recognised (myBHW changed?)."
+        }
+        "BHW: Unvollständige oder ungültige Antwort. Es wurden keine Daten übernommen." => {
+            "BHW: Incomplete or invalid response. No data was imported."
+        }
+        "BHW: Bitte die 10-stellige Vertragsnummer oder die 11-stellige BHW-ID als Anmeldenamen eintragen." => {
+            "BHW: Please enter the 10-digit contract number or the 11-digit BHW ID as the login name."
+        }
+        "BHW: Bitte Vorname, Geburtsdatum und Postleitzahl getrennt durch Semikolon eintragen, z. B. „Erika;31.12.1970;12345“." => {
+            "BHW: Please enter first name, date of birth and postcode separated by semicolons, e.g. “Erika;31.12.1970;12345”."
+        }
+        "BHW: Anmeldung fehlgeschlagen. Bitte Vertragsnummer oder BHW-ID, Vorname, Geburtsdatum und Postleitzahl prüfen." => {
+            "BHW: Login failed. Please check contract number or BHW ID, first name, date of birth and postcode."
+        }
+        "BHW: Für den Einmal-Code ist weder eine E-Mail-Adresse noch eine Mobilnummer hinterlegt." => {
+            "BHW: Neither an email address nor a mobile number is registered for the one-time code."
+        }
+        "BHW: Bitte einmal im Browser bei myBHW anmelden und den Nutzungsbedingungen zustimmen." => {
+            "BHW: Please log in to myBHW once in the browser and accept the terms of use."
+        }
+        "BHW: Der Einmal-Code konnte nicht angefordert werden." => {
+            "BHW: The one-time code could not be requested."
+        }
+        "BHW: Der Einmal-Code wurde nicht akzeptiert. Bitte den Abruf erneut starten." => {
+            "BHW: The one-time code was not accepted. Please start the sync again."
+        }
+        "BHW: Die Sitzung wurde beendet. Bitte den Abruf erneut starten." => {
+            "BHW: The session has ended. Please start the sync again."
+        }
+        "BHW: Die Anfrage wurde abgelehnt." => "BHW: The request was rejected.",
+        "BHW: Nicht alle Dokumente konnten geladen werden. Sie folgen mit dem nächsten Abruf." => {
+            "BHW: Not all documents could be downloaded. They follow with the next fetch."
+        }
+        "BHW: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen." => {
+            "BHW: Unexpected redirect to another address – aborted."
+        }
+        "Die BHW hat einen Einmal-Code an die hinterlegte E-Mail-Adresse geschickt. Bitte hier eingeben." => {
+            "BHW has sent a one-time code to your registered email address. Please enter it here."
+        }
+        "Die BHW hat einen Einmal-Code per SMS an die hinterlegte Mobilnummer geschickt. Bitte hier eingeben." => {
+            "BHW has sent a one-time code by SMS to your registered mobile number. Please enter it here."
+        }
+        "Einmal-Code per E-Mail" => "One-time code by email",
+        "Einmal-Code per SMS" => "One-time code by SMS",
+        "Einmal-Code per E-Mail (Demo)" => "One-time code by email (demo)",
+        "myBHW-Portal (Direkt-Login, Einmal-Code per E-Mail oder SMS)" => {
+            "myBHW portal (direct login, one-time code by email or SMS)"
+        }
+        "Vertragsnummer oder BHW-ID" => "Contract number or BHW ID",
+        "Vorname;TT.MM.JJJJ;PLZ" => "First name;DD.MM.YYYY;postcode",
+        "BHW Bausparkasse: Bausparverträge und Darlehen mit Saldo und Umsätzen. Anmeldung mit der 10-stelligen Vertragsnummer oder der 11-stelligen BHW-ID; statt eines Passworts kommen Vorname, Geburtsdatum und Postleitzahl getrennt durch Semikolon in das zweite Feld (z. B. „Erika;31.12.1970;12345“). Jede Anmeldung wird mit einem Einmal-Code per E-Mail oder SMS bestätigt. Dokumente aus dem myBHW-Postfach lassen sich abrufen. Inoffiziell: nutzt die Schnittstelle des myBHW-Portals, Änderungen sind möglich." => {
+            "BHW Bausparkasse: building savings contracts and loans with balance and transactions. Log in with the 10-digit contract number or the 11-digit BHW ID; instead of a password, first name, date of birth and postcode go into the second field, separated by semicolons (e.g. “Erika;31.12.1970;12345”). Every login is confirmed with a one-time code by email or SMS. Documents from the myBHW mailbox can be fetched. Unofficial: uses the interface of the myBHW portal, changes are possible."
         }
         // ------------------------------------------------------------ connectors/opel.rs
         "Online-Banking (Direkt-Login, TwoVerify-App)" => {
@@ -1516,6 +1621,15 @@ fn english(de: &str) -> Option<&'static str> {
         "Aus dem comdirect-Entwicklerportal (Persönlicher Bereich › Verwaltung › Entwicklerzugang)." => {
             "From the comdirect developer portal (Persönlicher Bereich › Verwaltung › Entwicklerzugang)."
         }
+        "Kontist Client-ID" => "Kontist client ID",
+        "Auf kontist.dev unter Client Management einen Client anlegen (Redirect-URI z. B. https://localhost/girocrab/callback, Scopes Offline, Accounts, Transactions, Users) und dessen Client-ID hier eintragen." => {
+            "Create a client on kontist.dev under Client Management (redirect URI e.g. https://localhost/girocrab/callback, scopes Offline, Accounts, Transactions, Users) and enter its client ID here."
+        }
+        "Kontist Client-Secret" => "Kontist client secret",
+        "Nur nötig, wenn kontist.dev zum Client ein Secret anzeigt; sonst leer lassen." => {
+            "Only needed if kontist.dev shows a secret for the client; otherwise leave empty."
+        }
+        "Kontist" => "Kontist",
         "comdirect Client-Secret" => "comdirect client secret",
         "Wird beim Freischalten des API-Zugangs einmalig angezeigt." => {
             "Shown once when API access is activated."
