@@ -129,9 +129,10 @@ extension AppModel {
         (try? vault?.suggestRecipients(query: query, limit: 5)) ?? []
     }
 
-    /// Every known recipient, hidden ones included ("Empfänger verwalten", #978).
-    func knownRecipients(_ query: String) async -> [KnownRecipient] {
-        (try? await vaultOffMain { try $0.listKnownRecipients(query: query) }) ?? []
+    /// Every known recipient, hidden ones included ("Empfänger verwalten", #978). Nil when the
+    /// vault was locked or swapped meanwhile; a failed read throws, so it never reads as "none".
+    func knownRecipients(_ query: String) async throws -> [KnownRecipient]? {
+        try await vaultOffMain { try $0.listKnownRecipients(query: query) }
     }
 
     /// "Nicht mehr vorschlagen" or show again; the bookings stay. A failure ends up in the alert.

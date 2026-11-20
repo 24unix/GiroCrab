@@ -26,7 +26,8 @@ final class KnownRecipientsTests: XCTestCase {
         model.setRecipientHidden(tim.iban, true)
         XCTAssertTrue(model.suggestRecipients("hoffmann").isEmpty)
 
-        let listed = await model.knownRecipients("hoffmann")
+        let read = try await model.knownRecipients("hoffmann")
+        let listed = try XCTUnwrap(read)
         XCTAssertEqual(listed.map(\.iban), [tim.iban])
         XCTAssertEqual(listed.first?.hidden, true)
 

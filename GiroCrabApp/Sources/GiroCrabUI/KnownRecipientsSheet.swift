@@ -10,6 +10,8 @@ struct KnownRecipientsSheet: View {
     @State private var recipients: [KnownRecipient] = []
     @State private var loaded = false
     @State private var search = ""
+    /// Why the last read failed; the rows of the last good read stay.
+    @State private var loadError: String?
     /// Counts the loads: only the newest one may show its result (search typed on, a toggle).
     @State private var loads = 0
 
@@ -33,9 +35,19 @@ struct KnownRecipientsSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
                 TextField("Name oder IBAN suchen", text: $search)
                     .textFieldStyle(.roundedBorder)
+                    .sensitive() // typed names / IBANs
+                if let loadError {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Empfänger konnten nicht geladen werden", systemImage: "exclamationmark.triangle")
+                            .appFont(.caption, weight: .semibold).foregroundStyle(Theme.warning)
+                        Text(loadError).appFont(.caption2).foregroundStyle(Theme.tertiary).lineLimit(2)
+                        Button("Erneut versuchen") { Task { await reload() } }
+                            .buttonStyle(.borderless).appFont(.caption)
+                    }
+                }
             }
             .padding(16)
-            if loaded && recipients.isEmpty {
+            if loaded && recipients.isEmpty && loadError == nil {
                 Group {
                     if search.trimmingCharacters(in: .whitespaces).isEmpty {
                         ContentUnavailableView {
@@ -53,7 +65,8 @@ struct KnownRecipientsSheet: View {
             }
         }
         .macFrame(minWidth: 520, idealWidth: 560, minHeight: 480)
-        .task(id: search) { await reload() }
+        // a vault swap (demo ↔ own) keeps the transfer form open: read the new vault's rows
+        .task(id: "\(model.vaultRevision)|\(search)") { await reload() }
         #if os(macOS)
         .onExitCommand { dismiss() }
         #endif
@@ -119,12 +132,19 @@ struct KnownRecipientsSheet: View {
 
     /// A load cancelled or overtaken by a newer one (typing on, a toggle) drops its result: a
     /// cancelled one would read as "nothing found", an older one would overwrite newer rows.
+    /// A failed one keeps the rows and says so (with "Erneut versuchen").
     private func reload() async {
         loads += 1
         let load = loads
-        let found = await model.knownRecipients(search)
-        guard !Task.isCancelled, load == loads else { return }
-        recipients = found
-        loaded = true
+        do {
+            let found = try await model.knownRecipients(search)
+            guard !Task.isCancelled, load == loads, let found else { return }
+            recipients = found
+            loadError = nil
+            loaded = true
+        } catch {
+            guard !Task.isCancelled, load == loads else { return }
+            loadError = describe(error)
+        }
     }
 }

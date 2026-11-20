@@ -12847,6 +12847,17 @@
         }
       }
     },
+    "Empfänger konnten nicht geladen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recipients could not be loaded"
+          }
+        }
+      }
+    },
     "Empfänger und Auftraggeber" : {
       "extractionState" : "manual",
       "localizations" : {

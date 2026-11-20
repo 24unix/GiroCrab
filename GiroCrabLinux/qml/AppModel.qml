@@ -3296,7 +3296,8 @@ QtObject {
     }
     function suggestRecipients(query) { try { return core("suggest_recipients", { query: query, limit: 5 }) } catch (e) { return [] } }
     // AppModel+Transfer.swift › knownRecipients / setRecipientHidden ("Empfänger verwalten", #978)
-    function knownRecipients(query) { try { return core("list_known_recipients", { query: query }) } catch (e) { return [] } }
+    // throws: a failed read must not read as "no recipients"
+    function knownRecipients(query) { return core("list_known_recipients", { query: query }) }
     function setRecipientHidden(iban, hidden) { run(() => core("set_recipient_hidden", { iban: iban, hidden: hidden })) }
 
     function startTransfer() {

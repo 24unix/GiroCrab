@@ -37,11 +37,13 @@ Geräte (neueste Änderung gewinnt).
 Geöffnet über „Empfänger“ im Kopf des Formulars. Oben ein Satz, was die Liste ist, und die Suche (Name oder IBAN,
 gefiltert im Core; nur das Ergebnis der jüngsten Suche wird gezeigt). Darunter „Ausgeblendet“ zuerst (meist wenige
 Zeilen, so ist Rückgängigmachen nah), dann „Vorgeschlagen“. Jede Zeile hat „Ausblenden“ bzw. „Einblenden“ und
-dasselbe im Kontextmenü.
+dasselbe im Kontextmenü. Scheitert das Lesen, bleiben die zuletzt gelesenen Zeilen stehen; unter der Suche steht
+„Empfänger konnten nicht geladen werden“ mit „Erneut versuchen“ (nie „Noch keine Empfänger“). Ein Tresorwechsel
+(Demo ↔ eigene Daten) bei offenem Blatt liest die Liste neu.
 
 ## Regeln
 
-- Namen und IBANs tragen `.sensitive()`; Anzahl und Datum bleiben im Bild „Problem melden“ sichtbar. Das Blatt wird
+- Namen, IBANs und das Suchfeld tragen `.sensitive()`; Anzahl und Datum bleiben im Bild „Problem melden“ sichtbar. Das Blatt wird
   mit `.capturableSheet` gezeigt.
 - Keine Löschfunktion für Buchungen und kein „Bearbeiten“ von Namen oder IBANs hier: Das wäre eine Änderung an
   Buchungen bzw. eine Vorlage (dafür gibt es „Vorlagen“).

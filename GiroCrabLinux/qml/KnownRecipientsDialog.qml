@@ -8,10 +8,15 @@ Sheet {
     id: sheet
     sheetWidth: 560
     property var recipients: []
+    /// Why the last read failed; the rows of the last good read stay.
+    property string loadError: ""
     readonly property var hidden: recipients.filter(r => r.hidden)
     readonly property var suggested: recipients.filter(r => !r.hidden)
 
-    function reload() { recipients = AppModel.knownRecipients(searchField.text) }
+    function reload() {
+        try { recipients = AppModel.knownRecipients(searchField.text); loadError = "" }
+        catch (e) { loadError = e.message }
+    }
     function toggle(r) { AppModel.setRecipientHidden(r.iban, !r.hidden); reload() }
     onAboutToShow: { searchField.text = ""; reload() }
 
@@ -38,8 +43,17 @@ Sheet {
             onTextEdited: sheet.reload()
             Sensitive {}
         }
+        ColumnLayout {
+            visible: sheet.loadError !== ""
+            Layout.fillWidth: true; Layout.topMargin: 10
+            spacing: 4
+            Text { text: qsTr("Empfänger konnten nicht geladen werden"); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.warning }
+            Text { text: sheet.loadError; font.pixelSize: Theme.caption; color: Theme.tertiary; wrapMode: Text.WordWrap; maximumLineCount: 2
+                   elide: Text.ElideRight; Layout.fillWidth: true }
+            Button { flat: true; text: qsTr("Erneut versuchen"); onClicked: sheet.reload() }
+        }
         Text {
-            visible: sheet.recipients.length === 0
+            visible: sheet.recipients.length === 0 && sheet.loadError === ""
             Layout.fillWidth: true; Layout.topMargin: 24; Layout.bottomMargin: 24
             horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
             text: searchField.text.trim() === "" ? qsTr("Hier erscheinen die Empfänger Ihrer Zahlungen, sobald Buchungen mit IBAN abgerufen sind.")
