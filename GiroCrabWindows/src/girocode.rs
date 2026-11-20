@@ -3,7 +3,7 @@
 //! or logged (the texts are personal data).
 
 use girocrab_core::payment_input::{
-    girocode_matrix, girocode_payload, parse_payment_text, GiroCodeMatrix, PaymentDetails,
+    GiroCodeMatrix, PaymentDetails, girocode_matrix, girocode_payload, parse_payment_text,
 };
 
 /// Pixels per QR module; the core's quiet zone is kept as it is.
@@ -171,9 +171,11 @@ mod tests {
 
     #[test]
     fn paste_reports_nothing_recognised() {
-        assert!(paste_into(&Fields::default(), "  \n ")
-            .unwrap_err()
-            .contains("keine Zahlungsdaten"));
+        assert!(
+            paste_into(&Fields::default(), "  \n ")
+                .unwrap_err()
+                .contains("keine Zahlungsdaten")
+        );
     }
 
     #[test]

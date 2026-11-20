@@ -53,7 +53,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::connectors::group_for;
 use crate::dates::now_ms;
@@ -1085,7 +1085,9 @@ impl Vault {
         if let Some(p) = &parent_uuid
             && subtree(&effective_parents(&db)?, &uuid).contains(p)
         {
-            return Err(CoreError::invalid(tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden")));
+            return Err(CoreError::invalid(tr(
+                "Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden",
+            )));
         }
         set_parent(&db, &uuid, parent_uuid.as_deref(), now_ms())
     }

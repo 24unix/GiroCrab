@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 
 use jiff::civil::Date;
 use regex::Regex;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;

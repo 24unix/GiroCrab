@@ -105,7 +105,9 @@ async fn run(batch_booking: bool, date: Option<&str>) -> (i64, i64, i64, i64) {
     let one = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
     (
         one("SELECT count(*) FROM transactions WHERE external_id LIKE 'pending-%'"),
-        one("SELECT IFNULL(sum(amount_cents),0) FROM transactions WHERE external_id LIKE 'pending-%'"),
+        one(
+            "SELECT IFNULL(sum(amount_cents),0) FROM transactions WHERE external_id LIKE 'pending-%'",
+        ),
         one("SELECT count(*) FROM planned_transfers"),
         one("SELECT IFNULL(sum(amount_cents),0) FROM planned_transfers"),
     )

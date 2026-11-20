@@ -1,13 +1,13 @@
 //! Managing bank logins: edit, de-duplicate, optional stored PIN, session
 //! hand-over from the in-app browser login.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::connectors::trade_republic::normalize_phone;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::ConnectorKind;
-use crate::secret::{wipe, SecretJson, SecretString};
+use crate::secret::{SecretJson, SecretString, wipe};
 use crate::vault::Vault;
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -597,7 +597,9 @@ impl Vault {
             .as_deref()
             .is_some_and(|b| crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&b));
         if !from_api && !is_comdirect_fints {
-            return Err(CoreError::invalid(tr("Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen.")));
+            return Err(CoreError::invalid(tr(
+                "Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen.",
+            )));
         }
         let (kind, new_key, new_code) = if from_api {
             let blz = comdirect_blz(&tx, connection_id, &bank_code)?.ok_or_else(|| {
@@ -1007,18 +1009,20 @@ mod tests {
             .unwrap();
             assert_eq!(adopted, Some(acc));
             // … and the booking, although FinTS sends another id and text
-            assert!(crate::importers::moneymoney_import::adopt_import(
-                &db,
-                acc,
-                "fints-77",
-                "2026-11-04",
-                -8600,
-                "",
-                "VATTENFALL EUROPE SALES GMBH",
-                "EREF+123 Abschlag Strom",
-                "LASTSCHRIFT",
-            )
-            .unwrap());
+            assert!(
+                crate::importers::moneymoney_import::adopt_import(
+                    &db,
+                    acc,
+                    "fints-77",
+                    "2026-11-04",
+                    -8600,
+                    "",
+                    "VATTENFALL EUROPE SALES GMBH",
+                    "EREF+123 Abschlag Strom",
+                    "LASTSCHRIFT",
+                )
+                .unwrap()
+            );
             let (ext, note, source): (String, String, String) = db
                 .query_row(
                     "SELECT external_id, note, category_source FROM transactions WHERE id = ?1",
@@ -1226,11 +1230,7 @@ mod tests {
                 db.execute("INSERT INTO accounts(connection_id, group_id, external_ref, name, kind) VALUES (?1, ?2, ?3, 'Darlehen', 'loan')", params![conn, g, n]).unwrap();
                 let id = db.last_insert_rowid();
                 db.execute("INSERT INTO transactions(account_id, external_id, booking_date, amount_cents) VALUES (?1, 'x', '2026-11-01', ?2)", params![id, sub]).unwrap();
-                if sub == 1 {
-                    a1 = id
-                } else {
-                    a2 = id
-                }
+                if sub == 1 { a1 = id } else { a2 = id }
             }
         }
         // same external_id in two accounts must not collide
@@ -1319,7 +1319,9 @@ mod tests {
             1
         );
         assert_eq!(
-            q("SELECT count(*) FROM accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE c.deleted_ms IS NULL AND a.deleted_ms IS NULL"),
+            q(
+                "SELECT count(*) FROM accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE c.deleted_ms IS NULL AND a.deleted_ms IS NULL"
+            ),
             1
         );
         let _ = std::fs::remove_file(p);
@@ -1431,18 +1433,20 @@ mod tests {
             )
             .unwrap();
             assert_eq!(adopted, Some(giro));
-            assert!(crate::importers::moneymoney_import::adopt_import(
-                &db,
-                giro,
-                "fints-77",
-                "2026-11-03",
-                -8600,
-                "",
-                "VATTENFALL",
-                "Abschlag",
-                "LASTSCHRIFT",
-            )
-            .unwrap());
+            assert!(
+                crate::importers::moneymoney_import::adopt_import(
+                    &db,
+                    giro,
+                    "fints-77",
+                    "2026-11-03",
+                    -8600,
+                    "",
+                    "VATTENFALL",
+                    "Abschlag",
+                    "LASTSCHRIFT",
+                )
+                .unwrap()
+            );
             let ext: String = db
                 .query_row(
                     "SELECT external_id FROM transactions WHERE id = ?1",
@@ -1514,18 +1518,20 @@ mod tests {
                 take("dep-1", "", crate::models::AccountKind::Brokerage),
                 Some(depot)
             );
-            assert!(crate::importers::moneymoney_import::adopt_import(
-                &db,
-                giro,
-                "rest-1",
-                "2026-11-03",
-                -8600,
-                "",
-                "Vattenfall",
-                "Abschlag",
-                "",
-            )
-            .unwrap());
+            assert!(
+                crate::importers::moneymoney_import::adopt_import(
+                    &db,
+                    giro,
+                    "rest-1",
+                    "2026-11-03",
+                    -8600,
+                    "",
+                    "Vattenfall",
+                    "Abschlag",
+                    "",
+                )
+                .unwrap()
+            );
             let ext: String = db
                 .query_row(
                     "SELECT external_id FROM transactions WHERE id = ?1",

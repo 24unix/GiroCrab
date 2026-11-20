@@ -351,7 +351,9 @@ fn message_has_correct_length_and_structure() {
     let ids: Vec<&str> = segs.iter().map(|s| s.id()).collect();
     assert_eq!(
         ids,
-        vec!["HNHBK", "HNVSK", "HNSHK", "HKIDN", "HKVVB", "HKTAN", "HNSHA", "HNHBS"]
+        vec![
+            "HNHBK", "HNVSK", "HNSHK", "HKIDN", "HKVVB", "HKTAN", "HNSHA", "HNHBS"
+        ]
     );
     assert_eq!(segs[3].get(2, 0), "user:1", "login is escaped and restored");
     assert_eq!(segs[6].get(3, 0), "12345");
@@ -1451,11 +1453,12 @@ async fn order_source_account_honours_the_upd_and_says_why_it_is_missing() {
         .await
         .unwrap();
     assert_eq!(acc.map(|a| a.iban).as_deref(), Some(IBAN_A));
-    assert!(c
-        .source_account(&ctx, IBAN_A, "HKIPZ")
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        c.source_account(&ctx, IBAN_A, "HKIPZ")
+            .await
+            .unwrap()
+            .is_none()
+    );
     // The HKSPA error explains the missing account.
     match c.source_account(&ctx, IBAN_B, "HKCCS").await {
         Err(CoreError::NotFound { what }) => assert!(what.contains("HKSPA"), "{what}"),
@@ -1517,4 +1520,13 @@ async fn bookings_that_need_a_tan_are_reported_and_not_requested_twice() {
         .find(|a| a.external_ref == IBAN_A)
         .unwrap();
     assert_eq!(a.balance_cents, 123_456);
+}
+
+#[test]
+fn hispas_advertises_pain_001_09_for_hkccs() {
+    let mut c = FinTsConnector::new("20041133");
+    c.learn_bpd(&reply(
+        b"HICCSS:10:1:3+1+1+0'HISPAS:11:1:3+1+1+0+J:N:N:sepade.pain.001.001.09.xsd:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.008.001.08'",
+    ));
+    assert_eq!(c.pain_version("HKCCS"), Some(super::sepa::PainVersion::V09));
 }

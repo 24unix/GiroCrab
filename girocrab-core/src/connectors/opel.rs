@@ -35,11 +35,14 @@ use async_trait::async_trait;
 use regex::Regex;
 use zeroize::Zeroize;
 
-use super::uberspace::{attr, attrs, parse_date, text, INPUT};
+use super::html::{
+    Form, LINK, attr, attrs, de_date, form_by_id, parse_amount, parse_date, partial_updates,
+    select_options, text,
+};
 use super::{
-    http_client_same_host, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
-    ConnectContext, ContentIds, Documents, FetchResult, KnownDocuments, Phase, RemoteAccount,
-    RemoteTransaction,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, ContentIds,
+    Documents, FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
+    http_client_same_host,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
@@ -63,13 +66,7 @@ const MAX_ROWS: usize = 5000;
 /// Start of the date range for the Postbox lists.
 const POSTBOX_START: &str = "01.01.2010";
 
-static FORM_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<form\b([^>]*)>").unwrap());
-static SELECT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<select\b([^>]*)>(.*?)</select\s*>").unwrap());
-static OPTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<option\b([^>]*)>").unwrap());
 static BUTTON: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<button\b([^>]*)>").unwrap());
-static A_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<a\b([^>]*)>(.*?)</a\s*>").unwrap());
 static POLLER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?s)cw\("Poll",\s*"[^"]*",\s*\{id:"([^"]+)".*?u:"([^"]+)""#).unwrap()
 });
@@ -88,9 +85,6 @@ static ACCOUNT_ROW: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 static DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(\d{6,})\b").unwrap());
-static CDATA_UPDATE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?s)<update id="([^"]+)"><!\[CDATA\[(.*?)\]\]></update>"#).unwrap()
-});
 static REDIRECT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"<redirect url="([^"]+)""#).unwrap());
 
@@ -152,118 +146,7 @@ fn push_challenge() -> Challenge {
     }
 }
 
-// ------------------------------------------------------------------ JSF forms
-
-/// A page form as the browser would submit it.
-#[derive(Debug, Clone, PartialEq)]
-struct Form {
-    /// Absolute path (with query) the form posts to.
-    action: String,
-    /// Hidden and text fields and selects with their current values.
-    fields: Vec<(String, String)>,
-}
-
-impl Form {
-    fn set(&mut self, name: &str, value: &str) {
-        match self.fields.iter_mut().find(|(n, _)| n == name) {
-            Some((_, v)) => *v = value.to_string(),
-            None => self.fields.push((name.to_string(), value.to_string())),
-        }
-    }
-
-    fn get(&self, name: &str) -> Option<&str> {
-        self.fields
-            .iter()
-            .find(|(n, _)| n == name)
-            .map(|(_, v)| v.as_str())
-    }
-
-    fn field_ending(&self, suffix: &str) -> Option<String> {
-        self.fields
-            .iter()
-            .map(|(n, _)| n.clone())
-            .find(|n| n.ends_with(suffix))
-    }
-
-    /// The fields plus `name=name` (a clicked button or command link).
-    fn clicked(&self, name: &str) -> Vec<(String, String)> {
-        let mut out = self.fields.clone();
-        out.push((name.to_string(), name.to_string()));
-        out
-    }
-}
-
-/// The form with `id` (up to its first `</form>`: these forms nest none).
-/// Only same-site actions are accepted.
-fn form_by_id(html: &str, id: &str) -> Option<Form> {
-    let open = FORM_TAG
-        .captures_iter(html)
-        .find(|c| attr(&attrs(&c[1]), "id") == Some(id))?;
-    let a = attrs(&open[1]);
-    let action = attr(a.as_slice(), "action")?.trim().to_string();
-    if !action.starts_with('/') || action.starts_with("//") {
-        return None;
-    }
-    let start = open.get(0)?.end();
-    let rest = &html[start..];
-    let end = rest
-        .to_ascii_lowercase()
-        .find("</form")
-        .unwrap_or(rest.len());
-    let body = &rest[..end];
-    let mut fields = Vec::new();
-    for input in INPUT.captures_iter(body) {
-        let a = attrs(&input[1]);
-        let Some(name) = attr(&a, "name").filter(|n| !n.is_empty()) else {
-            continue;
-        };
-        if attr(&a, "disabled").is_some() {
-            continue;
-        }
-        let kind = attr(&a, "type").unwrap_or("text").to_ascii_lowercase();
-        if matches!(kind.as_str(), "hidden" | "text") {
-            fields.push((
-                name.to_string(),
-                attr(&a, "value").unwrap_or("").to_string(),
-            ));
-        }
-    }
-    for select in SELECT.captures_iter(body) {
-        let a = attrs(&select[1]);
-        let Some(name) = attr(&a, "name") else {
-            continue;
-        };
-        let options: Vec<Vec<(String, String)>> = OPTION
-            .captures_iter(&select[2])
-            .map(|o| attrs(&o[1]))
-            .filter(|o| attr(o, "disabled").is_none())
-            .collect();
-        let chosen = options
-            .iter()
-            .find(|o| attr(o, "selected").is_some())
-            .or(options.first())
-            .and_then(|o| attr(o, "value"))
-            .unwrap_or("");
-        fields.push((name.to_string(), chosen.to_string()));
-    }
-    Some(Form { action, fields })
-}
-
-/// Options (`value`) of the select whose name ends in `suffix`.
-fn select_options(html: &str, suffix: &str) -> Vec<String> {
-    SELECT
-        .captures_iter(html)
-        .find(|s| attr(&attrs(&s[1]), "name").is_some_and(|n| n.ends_with(suffix)))
-        .map(|s| {
-            OPTION
-                .captures_iter(&s[2])
-                .map(|o| attrs(&o[1]))
-                .filter(|o| attr(o, "disabled").is_none())
-                .filter_map(|o| attr(&o, "value").map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
+// ------------------------------------------------------------------ page helpers
 
 /// Id of the first `<button>` whose `onclick` mentions `needle`.
 fn button_for(html: &str, needle: &str) -> Option<String> {
@@ -278,20 +161,12 @@ fn button_for(html: &str, needle: &str) -> Option<String> {
 
 /// Id of the command link with the visible text `label` ("Gelesen").
 fn link_with_text(html: &str, label: &str) -> Option<String> {
-    A_TAG.captures_iter(html).find_map(|c| {
+    LINK.captures_iter(html).find_map(|c| {
         if text(&c[2]) != label {
             return None;
         }
         attr(&attrs(&c[1]), "id").map(str::to_string)
     })
-}
-
-/// `(update id, content)` of a JSF partial response.
-fn partial_updates(xml: &str) -> Vec<(String, String)> {
-    CDATA_UPDATE
-        .captures_iter(xml)
-        .map(|c| (c[1].to_string(), c[2].to_string()))
-        .collect()
 }
 
 fn view_state(xml: &str) -> Option<String> {
@@ -392,19 +267,6 @@ fn german_iban(blz: &str, number: &str) -> Option<String> {
         .bytes()
         .fold(0u32, |r, b| (r * 10 + u32::from(b - b'0')) % 97);
     Some(format!("DE{:02}{blz}{number}", 98 - rem))
-}
-
-/// "- 1,17 €", "+ 5,55 €", "50.000,00&nbsp;€" → cents.
-fn parse_amount(s: &str) -> Option<i64> {
-    let cleaned: String = text(s)
-        .replace(['\u{2212}', '\u{2013}'], "-")
-        .chars()
-        .filter(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | ',' | '.'))
-        .collect();
-    if !cleaned.chars().any(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    crate::money::parse_cents(&cleaned).ok()
 }
 
 fn parse_accounts(html: &str) -> CoreResult<Vec<Account>> {
@@ -565,12 +427,6 @@ fn document_file_name(row: &PostboxRow) -> String {
         })
         .collect();
     format!("{}_{}.pdf", row.date, subject.trim().replace(' ', "_"))
-}
-
-/// `YYYY-MM-DD` → `DD.MM.YYYY`.
-fn site_date(iso: &str) -> Option<String> {
-    let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).ok()?;
-    Some(d.strftime("%d.%m.%Y").to_string())
 }
 
 // ------------------------------------------------------------------ connector
@@ -798,8 +654,8 @@ impl OpelDirektbankConnector {
             .filtered_table(
                 path,
                 Some(&account.number),
-                &site_date(since).ok_or_else(invalid)?,
-                &site_date(today).ok_or_else(invalid)?,
+                &de_date(since).ok_or_else(invalid)?,
+                &de_date(today).ok_or_else(invalid)?,
             )
             .await?;
         parse_bookings(&table, &account.external_ref(), since)
@@ -823,7 +679,7 @@ impl OpelDirektbankConnector {
             button_for(&page, "postboxTableWrapper"),
         ) {
             head.set(&start, POSTBOX_START);
-            head.set(&end, &site_date(&super::today()).unwrap_or_default());
+            head.set(&end, &de_date(&super::today()).unwrap_or_default());
             let xml = self
                 .ajax(&head, &button, "contentHead", "contentForm", &[])
                 .await?;
@@ -1360,6 +1216,5 @@ mod tests {
         assert_eq!(parse_amount("+ 3.333,33 €"), Some(333_333));
         assert_eq!(parse_amount("50.000,00&nbsp;€"), Some(5_000_000));
         assert_eq!(parse_amount("—"), None);
-        assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
     }
 }

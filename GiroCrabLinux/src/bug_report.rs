@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 
 use girocrab_core::sync_log::{SyncLogEntry, SyncLogFilter};
 use girocrab_core::{BankDescriptor, Vault};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::i18n::tr;
 
@@ -384,7 +384,9 @@ pub fn prepare(v: Option<&Vault>, include_log: bool, demo: bool) -> Value {
 
 /// The issue text the Linux app shows: Strg+V instead of ⌘V.
 pub fn paste_hint() -> String {
-    tr("📋 Der geschwärzte Screenshot liegt in deiner Zwischenablage – klicke hier ins Textfeld und drücke **Strg+V**, um ihn einzufügen.")
+    tr(
+        "📋 Der geschwärzte Screenshot liegt in deiner Zwischenablage – klicke hier ins Textfeld und drücke **Strg+V**, um ihn einzufügen.",
+    )
 }
 
 /// Markdown body of the new issue. With `with_screenshot` false the paste
@@ -393,7 +395,9 @@ pub fn issue_body(diagnostics: &str, with_screenshot: bool) -> String {
     let mut parts = vec![
         format!("### {}", tr("Was ist passiert?")),
         String::new(),
-        tr("<!-- Beschreibe kurz das Problem: Was hast du getan, was hast du erwartet, was ist stattdessen passiert? Bitte keine echten IBANs, Namen oder Buchungsdaten. -->"),
+        tr(
+            "<!-- Beschreibe kurz das Problem: Was hast du getan, was hast du erwartet, was ist stattdessen passiert? Bitte keine echten IBANs, Namen oder Buchungsdaten. -->",
+        ),
         String::new(),
     ];
     if with_screenshot {
@@ -541,7 +545,9 @@ mod tests {
 
     #[test]
     fn log_lines_lose_ibans_names_amounts_and_emails() {
-        let log = [entry("Konto DE89370400440532013000 von Erika Mustermann: Saldo 1.234,56 €, Kontakt erika@example.de")];
+        let log = [entry(
+            "Konto DE89370400440532013000 von Erika Mustermann: Saldo 1.234,56 €, Kontakt erika@example.de",
+        )];
         let lines = sanitized_log(&log, &["Erika Mustermann".into()]);
         let text = render(&info(), &lines);
         for leak in ["DE89", "0532013000", "Erika", "1.234,56", "example.de"] {

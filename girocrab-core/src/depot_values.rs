@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use jiff::civil::Date;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::CoreResult;
 
@@ -457,7 +457,9 @@ mod tests {
             .unwrap();
         assert_eq!(
             s.values,
-            vec![0, 0, 100_000, 100_000, 100_000, 100_000, 110_000, 110_000, 110_000, 130_000]
+            vec![
+                0, 0, 100_000, 100_000, 100_000, 100_000, 110_000, 110_000, 110_000, 130_000
+            ]
         );
         assert_eq!(s.covered, vec![0, 0, 1, 1, 1, 1, 1, 1, 1, 1]);
         assert_eq!(s.total_depots, 1);

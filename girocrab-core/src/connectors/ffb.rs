@@ -34,12 +34,13 @@ use async_trait::async_trait;
 use regex::Regex;
 use zeroize::Zeroize;
 
-use super::uberspace::{
-    attr, attrs, element_by_id, parse_date, table_cells, text, FORM, INPUT, LINK,
+use super::html::{
+    FORM, INPUT, LINK, attr, attrs, de_date, element_by_id, parse_date, table_cells, table_texts,
+    text,
 };
 use super::{
-    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, Documents,
-    FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
+    BankConnector, ChallengeResponse, ConnectContext, Documents, FetchResult, KnownDocuments,
+    Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction, http_client_same_host,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
@@ -166,12 +167,6 @@ fn eur_and_native(s: &str) -> (Option<i64>, Option<(i64, String)>) {
     let eur = all.iter().find(|(_, c)| c == "EUR").map(|(v, _)| *v);
     let native = all.into_iter().find(|(_, c)| c != "EUR");
     (eur, native)
-}
-
-/// `YYYY-MM-DD` → `DD.MM.YYYY` (the site's date format).
-fn site_date(iso: &str) -> Option<String> {
-    let d = jiff::civil::Date::strptime("%Y-%m-%d", iso).ok()?;
-    Some(d.strftime("%d.%m.%Y").to_string())
 }
 
 /// Session id from a URL or page (`;jsessionid=…`).
@@ -414,13 +409,7 @@ fn parse_transactions(
         .map(|r| {
             let row = r.get(0).map_or("", |m| m.as_str());
             let a = attrs(&r[1]);
-            let cells: Vec<String> = table_cells(row)
-                .into_iter()
-                .next()
-                .unwrap_or_default()
-                .into_iter()
-                .map(text)
-                .collect();
+            let cells = table_texts(row).into_iter().next().unwrap_or_default();
             let class = attr(&a, "class").unwrap_or("").to_string();
             let order = attr(&a, "name")
                 .or_else(|| attr(&a, "id"))
@@ -639,7 +628,7 @@ impl FfbConnector {
     ) -> CoreResult<Vec<RemoteDocument>> {
         self.page("/api/kundenansicht/postfach/overview", &[])
             .await?;
-        let end = site_date(today).unwrap_or_default();
+        let end = de_date(today).unwrap_or_default();
         let mut next = Some(self.url(
             "/api/kundenansicht/postfach/query",
             &[
@@ -715,7 +704,7 @@ impl FfbConnector {
         {
             positions.extend(parse_holdings(&vl, true)?);
         }
-        let end = site_date(today).unwrap_or_default();
+        let end = de_date(today).unwrap_or_default();
         let invested = match self
             .page(
                 "/api/kundenansicht/depotentwicklung/positionenView",
@@ -761,7 +750,7 @@ impl FfbConnector {
         });
 
         let since = ctx.since_for(&depot_ref).to_string();
-        let from = site_date(&since).unwrap_or_else(|| "01.01.2008".into());
+        let from = de_date(&since).unwrap_or_else(|| "01.01.2008".into());
         let mut next = Some(self.url(
             "/api/kundenansicht/transaktion/query/",
             &[
@@ -1260,9 +1249,11 @@ mod tests {
         let h = parse_holdings(&page, true).unwrap();
         assert_eq!(h[0].0, "VL-4-A0TES1");
         assert_eq!(h[0].1.name, "Beispiel Deutschland Aktien (VL)");
-        assert!(parse_holdings("<div>Keine Bestände</div>", false)
-            .unwrap()
-            .is_empty());
+        assert!(
+            parse_holdings("<div>Keine Bestände</div>", false)
+                .unwrap()
+                .is_empty()
+        );
         let broken = page.replace("3,333", "n/a");
         assert!(parse_holdings(&broken, true).is_err());
     }
@@ -1441,17 +1432,21 @@ mod tests {
         .unwrap();
         assert_eq!(
             next.as_deref(),
-            Some("/api/kundenansicht/transaktion/query/;jsessionid=X?transactionType=&d-49751-p=2&datumVon=01.01.2026")
+            Some(
+                "/api/kundenansicht/transaktion/query/;jsessionid=X?transactionType=&d-49751-p=2&datumVon=01.01.2026"
+            )
         );
-        assert!(parse_transactions(
-            "<p>Es wurden keine Transaktionen gefunden</p>",
-            "d",
-            "2000-01-01",
-            &HashMap::new()
-        )
-        .unwrap()
-        .0
-        .is_empty());
+        assert!(
+            parse_transactions(
+                "<p>Es wurden keine Transaktionen gefunden</p>",
+                "d",
+                "2000-01-01",
+                &HashMap::new()
+            )
+            .unwrap()
+            .0
+            .is_empty()
+        );
     }
 
     const POSTFACH: &str = r#"<div class='tabellenkopf'>Ergebnis Ihrer Suche: 3 Dokumente<br/>
@@ -1497,8 +1492,6 @@ mod tests {
         assert_eq!(money("04.03.2026 55,5500 USD"), vec![(5_555, "USD".into())]);
         assert_eq!(money("-0,01 EUR"), vec![(-1, "EUR".into())]);
         assert_eq!(money("11.111,11 €"), vec![(1_111_111, "EUR".into())]);
-        assert_eq!(site_date("2026-01-05").as_deref(), Some("05.01.2026"));
-        assert_eq!(site_date("x"), None);
     }
 
     #[test]
@@ -1508,7 +1501,10 @@ mod tests {
             session: "S1".into(),
         };
         assert_eq!(
-            c.url("/api/kundenansicht/transaktion/query/", &[("datumVon", "01.01.2026"), ("product", "")]),
+            c.url(
+                "/api/kundenansicht/transaktion/query/",
+                &[("datumVon", "01.01.2026"), ("product", "")]
+            ),
             "https://www.ffb.de/api/kundenansicht/transaktion/query/;jsessionid=S1?datumVon=01.01.2026&product="
         );
     }

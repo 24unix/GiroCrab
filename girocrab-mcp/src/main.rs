@@ -1,9 +1,9 @@
 //! `girocrab-mcp`: started by an MCP client, talks JSON-RPC over stdin/stdout.
 //! Logs go to stderr only (stdout carries the protocol).
 
-use girocrab_mcp::{no_token, rpc_error, Adapter, Config};
-use serde_json::json;
+use girocrab_mcp::{Adapter, Config, no_token, rpc_error};
 use serde_json::Value;
+use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
@@ -118,11 +118,7 @@ fn config(args: Vec<String>) -> Result<(Config, bool, bool), String> {
         .ok_or("no socket path: pass --socket or GIROCRAB_API_SOCKET")?;
     let token = token.and_then(|t| {
         let t = t.trim().to_string();
-        if t.is_empty() {
-            Err(no_token())
-        } else {
-            Ok(t)
-        }
+        if t.is_empty() { Err(no_token()) } else { Ok(t) }
     });
     Ok((Config { socket, token }, check, json_output))
 }
@@ -131,7 +127,9 @@ fn config(args: Vec<String>) -> Result<(Config, bool, bool), String> {
 fn read_token_file(path: &str) -> Result<String, String> {
     use std::os::unix::fs::PermissionsExt;
     let unreadable = |e: std::io::Error| {
-        format!("The access key file {path} cannot be read ({e}). Check --token-file in this program's configuration.")
+        format!(
+            "The access key file {path} cannot be read ({e}). Check --token-file in this program's configuration."
+        )
     };
     let meta = std::fs::metadata(path).map_err(unreadable)?;
     if meta.permissions().mode() & 0o077 != 0 {

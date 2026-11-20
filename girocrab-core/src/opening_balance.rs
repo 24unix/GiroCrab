@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -40,7 +40,9 @@ fn not_found(account_id: i64) -> CoreError {
 }
 
 fn bank_balance() -> CoreError {
-    CoreError::invalid(tr("Der Saldo dieses Kontos kommt von der Bank. Ein Startsaldo gilt nur für Konten, deren Saldo GiroCrab aus den Umsätzen berechnet."))
+    CoreError::invalid(tr(
+        "Der Saldo dieses Kontos kommt von der Bank. Ein Startsaldo gilt nur für Konten, deren Saldo GiroCrab aus den Umsätzen berechnet.",
+    ))
 }
 
 fn normalize_date(date: &str) -> CoreResult<String> {

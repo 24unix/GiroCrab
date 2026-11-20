@@ -13,11 +13,11 @@
 
 use async_trait::async_trait;
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
-    http_client_same_host, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
-    ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
+    RemoteAccount, RemoteTransaction, http_client_same_host, paginate,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -464,7 +464,7 @@ impl BankConnector for ComdirectConnector {
             other => {
                 return Err(CoreError::protocol(format!(
                     "unsupported comdirect TAN type '{other}'"
-                )))
+                )));
             }
         };
         self.challenge = Some(c.clone());
@@ -492,7 +492,7 @@ impl BankConnector for ComdirectConnector {
             ChallengeResponse::ConfirmPayee => {
                 return Err(CoreError::protocol(
                     "comdirect: no payee confirmation pending",
-                ))
+                ));
             }
         }
         self.secondary_token(ctx).await?;

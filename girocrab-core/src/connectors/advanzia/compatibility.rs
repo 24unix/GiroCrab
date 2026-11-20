@@ -112,13 +112,17 @@ pub(super) fn prepare_ids(
         let old_row = stored.get(old);
         let new_row = stored.get(&t.external_id);
         if old_row.is_some() && new_row.is_some() {
-            return Err(invalid("Für einen Advanzia-Umsatz bestehen mehrere Kennungen. Es wurden keine Daten verändert."));
+            return Err(invalid(
+                "Für einen Advanzia-Umsatz bestehen mehrere Kennungen. Es wurden keine Daten verändert.",
+            ));
         }
         let row = old_row.or(new_row);
         if row.is_some_and(|(date, cents, currency)| {
             date != &t.booking_date || *cents != t.amount_cents || currency != &t.currency
         }) {
-            return Err(invalid("Eine bestehende Advanzia-Buchungskennung widerspricht den Bankdaten. Es wurden keine Daten verändert."));
+            return Err(invalid(
+                "Eine bestehende Advanzia-Buchungskennung widerspricht den Bankdaten. Es wurden keine Daten verändert.",
+            ));
         }
         let original = t.external_id.clone();
         if old_row.is_some() || (legacy && new_row.is_none()) {

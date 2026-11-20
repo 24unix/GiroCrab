@@ -17,7 +17,7 @@ use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 
-use super::{http_client_same_host, RemoteAccount, RemoteTransaction};
+use super::{RemoteAccount, RemoteTransaction, http_client_same_host};
 use crate::error::{CoreError, CoreResult};
 use crate::models::AccountKind;
 use crate::money::parse_cents;
@@ -391,11 +391,7 @@ pub(crate) fn transactions_from_search(r: &Nvp) -> (Vec<RemoteTransaction>, Vec<
         let date: String = get("L_TIMESTAMP").chars().take(10).collect();
         let currency = {
             let c = get("L_CURRENCYCODE");
-            if c.is_empty() {
-                "EUR".into()
-            } else {
-                c
-            }
+            if c.is_empty() { "EUR".into() } else { c }
         };
         let name = get("L_NAME");
         let email = get("L_EMAIL");

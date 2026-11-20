@@ -25,8 +25,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{
-    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, FetchResult,
-    KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
+    BankConnector, ChallengeResponse, ConnectContext, FetchResult, KnownDocuments, Phase,
+    RemoteAccount, RemoteTransaction, http_client_same_host,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -1007,12 +1007,14 @@ mod tests {
             .unwrap();
         assert_eq!(plain, b"geheim");
         // The server would reject MGF1-SHA-256.
-        assert!(private
-            .decrypt(
-                rsa::Oaep::<sha2::Sha256, sha2::Sha256>::new_with_mgf_hash(),
-                &cipher
-            )
-            .is_err());
+        assert!(
+            private
+                .decrypt(
+                    rsa::Oaep::<sha2::Sha256, sha2::Sha256>::new_with_mgf_hash(),
+                    &cipher
+                )
+                .is_err()
+        );
     }
 
     #[test]

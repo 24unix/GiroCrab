@@ -44,8 +44,9 @@ Rectangle {
                     const byBank = m.accountView === "byBank"
                     for (const g of (byBank ? m.bankGroups : m.groups)) {
                         const listed = g.accounts.filter(shown)
-                        // while searching, hide empty sections so only hits remain
-                        if (m.isSidebarAccountSearching && !listed.length) continue
+                        // hide sections without a hit while searching, and ones holding only
+                        // archived accounts while those are hidden (#814)
+                        if (!m.isSidebarSectionListed(g.accounts)) continue
                         const open = byBank ? m.isBankGroupOpen(g.id) : m.isKindGroupOpen(g.id)
                         out.push({ type: "kindGroup", group: g, open: open, bank: byBank })
                         if (open) for (const a of listed) out.push({ type: "account", account: a, indent: 0 })

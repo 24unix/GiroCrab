@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::syntax::Segment;
-use super::{debit, sepa, standing_order, transfer, BankReply, FinTsConnector, UpdAccount};
+use super::{BankReply, FinTsConnector, UpdAccount, debit, sepa, standing_order, transfer};
 
 /// Versions of each business transaction this client implements.
 const IMPLEMENTED: &[(&str, &[u32])] = &[
@@ -325,6 +325,29 @@ impl FinTsConnector {
                 let list = self.st.pain_formats.entry(tx.to_string()).or_default();
                 if !list.contains(&f) {
                     list.push(f);
+                }
+            }
+        }
+        // FinTS 3.0 banks (e.g. comdirect, #1419) advertise supported SEPA schemas
+        // centrally in HISPAS while HICCSS carries no format list of its own.
+        for spas in reply.all("HISPAS") {
+            for el in &spas.elements {
+                for v in el {
+                    let t = v.text();
+                    let targets: &[&str] = if t.contains("pain.001.") {
+                        &["HKCCS", "HKCSE", "HKCCM", "HKCDE", "HKCDN", "HKCDL"]
+                    } else if t.contains("pain.008.") {
+                        &["HKDSE", "HKDME", "HKDSC", "HKDMC", "HKBSE", "HKBME"]
+                    } else {
+                        continue;
+                    };
+                    for tx in targets {
+                        let list = self.st.pain_formats.entry((*tx).to_string()).or_default();
+                        let norm = t.strip_suffix(".xsd").unwrap_or(t);
+                        if !list.iter().any(|f| f == norm) {
+                            list.push(norm.to_string());
+                        }
+                    }
                 }
             }
         }

@@ -379,7 +379,9 @@ pub fn parse_pain008(xml: &str) -> CoreResult<Vec<ParsedDebitBlock>> {
         if declared_count.is_some_and(|n| n != collections.len())
             || declared_sum.is_some_and(|s| Some(s) != actual_sum)
         {
-            return Err(CoreError::invalid(tr("Anzahl oder Kontrollsumme der Datei stimmen nicht mit den Lastschriften überein (pain.008).")));
+            return Err(CoreError::invalid(tr(
+                "Anzahl oder Kontrollsumme der Datei stimmen nicht mit den Lastschriften überein (pain.008).",
+            )));
         }
         out.push(ParsedDebitBlock {
             creditor_id: nested(head, "CdtrSchmeId", "Id")

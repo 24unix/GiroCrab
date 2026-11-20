@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use girocrab_core::Vault;
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 type R = Result<Value, String>;
 
@@ -402,7 +402,7 @@ pub fn call_json(method: &str, args: &str) -> String {
         match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => {
-                return json!({ "err": format!("bad arguments for {method}: {e}") }).to_string()
+                return json!({ "err": format!("bad arguments for {method}: {e}") }).to_string();
             }
         }
     };
@@ -640,6 +640,15 @@ fn call(method: &str, a: &Value) -> R {
             let v = vault()?;
             let s = v
                 .begin_sync(arg(a, "connection_id")?, arg(a, "secret")?, arg(a, "demo")?)
+                .map_err(|e| core_error_json(&e))?;
+            ok(crate::sessions::register(crate::sessions::Session::Sync(s)))
+        }
+        // Automatischer Abruf (AutoSync.qml, PSD2Consent.swift › autoSyncTick, #546): the same
+        // SyncSession without anything that needs a new approval (no comdirect PostBox, #838).
+        "begin_quiet_sync" => {
+            let v = vault()?;
+            let s = v
+                .begin_quiet_sync(arg(a, "connection_id")?, arg(a, "secret")?, arg(a, "demo")?)
                 .map_err(|e| core_error_json(&e))?;
             ok(crate::sessions::register(crate::sessions::Session::Sync(s)))
         }
@@ -888,7 +897,7 @@ fn call(method: &str, a: &Value) -> R {
         }
         // --- Händler-Logos (AppModel+Logos.swift, #33) --- network: called with Core.callAsync
         "merchant_logo" => merchant_logo(&*vault()?, a),
-        // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion/Schwäbisch Hall imports)
+        // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion/Schwäbisch Hall/EquatePlus imports)
         m if crate::web_login::handles(m) => crate::web_login::call(m, a, vault),
         _ => {
             let v = vault()?;
@@ -1144,7 +1153,7 @@ fn print_pdf(a: &Value) -> R {
 
 /// One step of a bank dialog; a finished or failed dialog leaves the registry.
 fn session_step(method: &str, a: &Value) -> R {
-    use crate::sessions::{Session, RUNTIME};
+    use crate::sessions::{RUNTIME, Session};
     let id: u64 = arg(a, "session")?;
     let s = crate::sessions::get(id)?;
     let code: Option<String> = arg(a, "code")?;
@@ -1674,6 +1683,52 @@ mod tests {
         let _ = std::fs::remove_dir_all(run);
     }
 
+    /// Automatischer Abruf (#546, AutoSync.qml): `begin_quiet_sync` registers a SyncSession in
+    /// the registry that `session_start` drives like a manual one (demo bank, no network).
+    #[test]
+    fn quiet_sync_session_round_trip() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        call_ok("open_demo", json!({}));
+        let conns = call_ok("list_bank_connections", json!({}));
+        let conn = conns
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["connector"] == "FinTsGeneric")
+            .or_else(|| conns.as_array().unwrap().first())
+            .expect("the demo has bank connections")
+            .clone();
+        let id = call_ok(
+            "begin_quiet_sync",
+            json!({ "connection_id": conn["id"], "secret": "", "demo": true }),
+        );
+        let id = id.as_u64().expect("a session handle");
+        assert!(crate::sessions::get(id).is_ok());
+        let step = call_ok("session_start", json!({ "session": id }));
+        assert!(
+            ["NeedsChallenge", "StillWaiting", "Finished"]
+                .iter()
+                .any(|k| step.get(k).is_some()),
+            "{step}"
+        );
+        if step.get("Finished").is_none() {
+            call_ok("session_cancel", json!({ "session": id }));
+        }
+        assert!(
+            crate::sessions::get(id).is_err(),
+            "the session left the registry"
+        );
+        let missing: Value = serde_json::from_str(&call_json(
+            "begin_quiet_sync",
+            &json!({ "connection_id": -1, "secret": "", "demo": true }).to_string(),
+        ))
+        .unwrap();
+        assert!(
+            missing.get("err").is_some(),
+            "unknown connection is refused"
+        );
+    }
+
     /// Own vault lifecycle with the keychain bypass: create, use, lock, reopen,
     /// demo in front of the unlocked own vault.
     #[test]
@@ -1812,10 +1867,12 @@ mod tests {
         };
         let p = logo_payload(&png(64));
         assert_eq!(p["pixels"], json!(64));
-        assert!(p["url"]
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/png;base64,"));
+        assert!(
+            p["url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
         // ICO: a 16 px bitmap and an embedded 48 px PNG → the PNG alone
         let bmp = vec![0u8; 40];
         let big = png(48);
@@ -1943,9 +2000,11 @@ mod tests {
         let p = call_ok("suggested_backup_password", json!({}));
         let p = p.as_str().unwrap();
         assert_eq!(p.len(), 20);
-        assert!(p.split('-').all(|g| g.len() == 6
-            && g.bytes()
-                .all(|b| b"abcdefghijkmnpqrstuvwxyz23456789".contains(&b))));
+        assert!(p.split('-').all(|g| {
+            g.len() == 6
+                && g.bytes()
+                    .all(|b| b"abcdefghijkmnpqrstuvwxyz23456789".contains(&b))
+        }));
         assert_ne!(
             p,
             call_ok("suggested_backup_password", json!({}))
@@ -2154,11 +2213,13 @@ mod tests {
         assert_eq!(preview["status"]["remaining_cents"], json!(500000));
         let id = call("create_manual_loan", json!({ "setup": setup }));
         let loans = call("list_manual_loans", json!({}));
-        assert!(loans
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|l| l["account_id"] == id));
+        assert!(
+            loans
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l["account_id"] == id)
+        );
         call(
             "update_manual_loan",
             json!({ "account_id": id, "setup": setup }),
@@ -2326,12 +2387,14 @@ mod tests {
             json!({ "connection_id": second }),
         );
         let rows = choices.as_array().unwrap();
-        assert!(rows
-            .iter()
-            .any(|c| c["pending"] == true && c["enabled"] == false));
-        assert!(rows
-            .iter()
-            .all(|c| c["account_ref"].is_string() && c["existing_connection"].is_string()));
+        assert!(
+            rows.iter()
+                .any(|c| c["pending"] == true && c["enabled"] == false)
+        );
+        assert!(
+            rows.iter()
+                .all(|c| c["account_ref"].is_string() && c["existing_connection"].is_string())
+        );
         let keep: Vec<Value> = rows
             .iter()
             .filter(|c| c["enabled"] == true)
@@ -2350,16 +2413,20 @@ mod tests {
             "connection_account_choices",
             json!({ "connection_id": second }),
         );
-        assert!(after
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|c| c["pending"] == false));
-        assert!(set_connection_account_choices(
-            &v,
-            &json!({ "connection_id": second, "enabled_refs": ["unknown"] }),
-        )
-        .is_err());
+        assert!(
+            after
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|c| c["pending"] == false)
+        );
+        assert!(
+            set_connection_account_choices(
+                &v,
+                &json!({ "connection_id": second, "enabled_refs": ["unknown"] }),
+            )
+            .is_err()
+        );
         let _ = std::fs::remove_file(path);
     }
 
@@ -2419,10 +2486,12 @@ mod tests {
         let presets = call_ok("asset_weight_presets", json!({}));
         assert!(presets[0]["label"].is_string() && presets[0]["grams"].is_f64());
         let account = call("create_tangible_account", json!({ "name": "" }));
-        assert!(call("list_tangible_account_ids", json!({}))
-            .as_array()
-            .unwrap()
-            .contains(&account));
+        assert!(
+            call("list_tangible_account_ids", json!({}))
+                .as_array()
+                .unwrap()
+                .contains(&account)
+        );
         let setup = json!({ "name": "Bild", "price_source": "manual", "weight_grams": 0.0,
             "purity_permille": 1000.0, "interpolation": "Linear", "purchase_date": "2024-01-10",
             "quantity": 2.0, "purchase_price_cents": 200000, "start_value_cents": 100000,
@@ -2473,10 +2542,12 @@ mod tests {
             json!({ "item_id": item, "date": "2025-07-01" }),
         );
         call("delete_asset_item", json!({ "item_id": item }));
-        assert!(call("list_asset_items", json!({ "account_id": account }))
-            .as_array()
-            .unwrap()
-            .is_empty());
+        assert!(
+            call("list_asset_items", json!({ "account_id": account }))
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
         let _ = std::fs::remove_file(path);
     }
 
@@ -2753,12 +2824,14 @@ mod tests {
                     "direction": "All" }),
         );
         let cat = cats.as_array().unwrap()[0]["id"].clone();
-        assert!(call(
-            "category_history_by_unit",
-            json!({ "category_id": cat, "account_ids": [], "date_from": null, "date_to": null,
+        assert!(
+            call(
+                "category_history_by_unit",
+                json!({ "category_id": cat, "account_ids": [], "date_from": null, "date_to": null,
                     "key_length": 7 }),
-        )
-        .is_array());
+            )
+            .is_array()
+        );
         // Geplant
         let range = json!({ "from": null, "to": null, "account_ids": [] });
         assert!(call("list_planned_payments", range.clone()).is_array());

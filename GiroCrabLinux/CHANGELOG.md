@@ -10,6 +10,46 @@ Funktionsumfang der Oberfläche.
 
 ## Funktionsstand 0.8.6 (in Arbeit)
 
+### EquatePlus (#720)
+
+- **Mitarbeiter-Aktienprogramme über EquatePlus:** Anmeldung im Browserfenster (bestätigt mit
+  EquateAccess oder der angebotenen Alternative), danach **„Programme und Bestände abrufen“**:
+  Jedes Programm wird ein eigenes Depot mit verfügbaren und gesperrten Beständen. Bisher führte
+  ein EquatePlus-Zugang unter Linux in den falschen Anmeldeablauf.
+- **„Dokumente laden …“** lädt die PDFs der Bibliothek (Bestätigungen, Auszüge,
+  Steuerbescheinigungen), nur noch fehlende. Sie liegen in **„Belege & PostBox“** (Suche:
+  equateplus), beim Programm-Depot nur bei eindeutigem Programmnamen. Einzelne defekte Dokumente
+  halten den Lauf nicht an; die Meldung nennt die häufigsten Gründe.
+- **Abgewählte Konten werden ausgeblendet:** In der Kontenauswahl eines Zugangs archiviert das
+  Abwählen das Konto (nicht mehr abgerufen, nicht in der Summe, Daten bleiben), und die
+  Seitenleiste blendet archivierte Konten aus; das Archiv-Symbol zeigt sie wieder an. Im
+  Bearbeiten-Fenster eines Zugangs speichern „Speichern“ und „Speichern & abrufen“ die
+  Kontenauswahl mit; ein Abruf startet erst danach.
+- Die Skripte im Browser sind die der Mac-App (`scripts/gen-equateplus-qml.py`, abgeglichen von
+  `scripts/test-equateplus-linux.cjs`). Mit einem echten EquatePlus-Zugang noch nicht getestet.
+### Automatischer Abruf (#546, #567)
+
+- **Einstellungen › Allgemein › Abruf › „Automatischer Abruf“:** Aus (Standard), jede Stunde oder
+  alle 2, 4, 6, 12 oder 24 Stunden. GiroCrab ruft die Kontostände im gewählten Abstand ab, solange
+  die App läuft und der Tresor entsperrt ist; bei gesperrtem Tresor wird der Abruf nach dem
+  Entsperren nachgeholt. Die Wahl bleibt über Neustarts erhalten.
+- Abgerufen werden nur Zugänge mit gespeicherter PIN oder gültiger Freigabe, nie mit einem
+  Anmeldedialog: Verlangt die Bank eine TAN oder neue Freigabe, wird der Abruf übersprungen und
+  im Abruf-Protokoll als „Automatisch“ vermerkt. Fehler erscheinen nur als Hinweis, ein Hinweis
+  zu neuen Buchungen nur, wenn sich etwas geändert hat. Die comdirect-PostBox bleibt außen vor.
+- Nicht in der Demo. Die Menüleiste mit Kontoständen der Mac-App gibt es unter Linux nicht.
+
+### FinTS-Produkt-ID nur noch optional (#842, #865, #789)
+
+- Die eigene FinTS-Produktregistrierung wird beim Hinzufügen einer Bank, im Dialog „… einrichten“
+  und in der Seitenleiste nie mehr als fehlend gemeldet und blockiert „Speichern & abrufen“ nicht.
+- Fehlt beim Abruf trotzdem eine Registrierung, wechselt GiroCrab auf die eingebaute und ruft
+  einmal neu ab. Ohne eingebaute Registrierung erscheint „Diese Version enthält keine
+  FinTS-Registrierung von GiroCrab. Tragen Sie Ihre eigene Registrierung ein.“ mit
+  **Eigene Registrierung eintragen …**.
+- **Eigene Registrierung eintragen …** stellt erst auf die eigene Registrierung um, wenn eine
+  gespeichert ist, und setzt den Cursor in das Feld unter Einstellungen › Banken.
+
 ### Tags
 
 - **Buchungen nach Tags filtern und auswerten:** In der Filterzeile über der Buchungsliste
@@ -52,8 +92,6 @@ Funktionsumfang der Oberfläche.
   Passwort bzw. PIN samt „im Tresor speichern“; Easybank, Ford Money und Opel Direktbank bieten
   „Kontoauszüge abrufen“ an. Bei der Commerzbank mit Schlüsseldatei (RAH-10) fragt der Dialog nach
   dem „Passwort der Schlüsseldatei“, die Benutzerkennung ist fest.
-- **EquatePlus** erscheint unter Linux vorerst nicht im Bankkatalog: Sein Anmeldeablauf ist noch
-  nicht übernommen, die Auswahl öffnete das falsche Browserfenster.
 - **Regeln, die nur Tags setzen** (in der Mac-App angelegt), zeigen „→ Nur Tags“ und ihre Tags statt
   einer leeren Kategorie; im Formular steht „Keine (nur Tags)“.
 

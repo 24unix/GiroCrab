@@ -10,7 +10,7 @@
 //! old pair as its own ([`pin_default_app`]), whichever front end or path
 //! (settings form, key file, iCloud Keychain) writes the new one.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
 

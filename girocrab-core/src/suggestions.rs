@@ -384,9 +384,9 @@ fn decide<'a>(
     }
     // heaviest first; equal weight: more bookings, then the lower id (stable)
     let (category_id, (weight, support)) = tally.into_iter().max_by(|a, b| {
-        a.1 .0
-            .total_cmp(&b.1 .0)
-            .then(a.1 .1.cmp(&b.1 .1))
+        a.1.0
+            .total_cmp(&b.1.0)
+            .then(a.1.1.cmp(&b.1.1))
             .then(b.0.cmp(&a.0))
     })?;
     (support >= min_support && total > 0.0 && weight / total >= min_share).then_some(

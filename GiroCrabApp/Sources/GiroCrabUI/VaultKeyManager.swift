@@ -326,42 +326,56 @@ public final class VaultKeyManager: @unchecked Sendable {
     /// Pasteboard type of the vault key. The key is never offered as plain text
     /// (`.string`): clipboard history, text fields of other apps and "paste" in a
     /// browser would all take it. Only GiroCrab's "Aus Zwischenablage einfügen"
-    /// reads this type.
+    /// reads this type. It must reach the other device via Universal Clipboard
+    /// (#1138), so it is neither `.localOnly` nor marked transient.
     public static let keyPasteboardType = "de.girocrab.tresor-key"
 
     /// How long the copied key stays on the clipboard; Settings counts it down.
     public static let keyClipboardLifetime: TimeInterval = 60
 
+    /// The pasted key, if `data` (the [`keyPasteboardType`] item) holds a valid one.
+    static func pastedKey(_ data: Data?) -> String? {
+        guard let text = data.flatMap({ String(data: $0, encoding: .utf8) }), (try? parseKey(text)) != nil else { return nil }
+        return text
+    }
+
     #if os(macOS)
     /// Puts the key on `pasteboard` under [`keyPasteboardType`] only, marked
-    /// concealed/transient for clipboard managers (nspasteboard.org); cleared after 60 s.
+    /// concealed for clipboard managers (nspasteboard.org); cleared after 60 s.
+    /// Not `TransientType`: that would keep it off Universal Clipboard.
     @MainActor public static func copyKeyToPasteboard(_ text: String, pasteboard pb: NSPasteboard = .general) {
         let custom = NSPasteboard.PasteboardType(keyPasteboardType)
         let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
-        let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
         pb.clearContents()
-        pb.declareTypes([custom, concealed, transient], owner: nil)
+        pb.declareTypes([custom, concealed], owner: nil)
         pb.setData(Data(text.utf8), forType: custom)
         pb.setData(Data(), forType: concealed)
-        pb.setData(Data(), forType: transient)
         let count = pb.changeCount
         DispatchQueue.main.asyncAfter(deadline: .now() + keyClipboardLifetime) {
             if pb.changeCount == count { pb.clearContents() }
         }
     }
 
-    /// The key copied by [`copyKeyToPasteboard`], if the pasteboard still holds it.
+    /// The key copied by [`copyKeyToPasteboard`] (here or on another device), if the
+    /// pasteboard still holds it. Clears it then: a copy that came in via Universal
+    /// Clipboard has no 60 s timer on this device.
     @MainActor public static func keyFromPasteboard(_ pb: NSPasteboard = .general) -> String? {
-        pb.data(forType: NSPasteboard.PasteboardType(keyPasteboardType)).flatMap { String(data: $0, encoding: .utf8) }
+        guard let key = pastedKey(pb.data(forType: NSPasteboard.PasteboardType(keyPasteboardType))) else { return nil }
+        pb.clearContents()
+        return key
     }
     #else
+    /// Not `.localOnly`: the key has to reach the Mac via Universal Clipboard (#1138).
     @MainActor public static func copyKeyToPasteboard(_ text: String) {
         UIPasteboard.general.setItems([[keyPasteboardType: Data(text.utf8)]],
-                                      options: [.expirationDate: Date().addingTimeInterval(keyClipboardLifetime), .localOnly: true])
+                                      options: [.expirationDate: Date().addingTimeInterval(keyClipboardLifetime)])
     }
 
+    /// See the macOS variant: clears the pasteboard once the key is read.
     @MainActor public static func keyFromPasteboard() -> String? {
-        UIPasteboard.general.data(forPasteboardType: keyPasteboardType).flatMap { String(data: $0, encoding: .utf8) }
+        guard let key = pastedKey(UIPasteboard.general.data(forPasteboardType: keyPasteboardType)) else { return nil }
+        UIPasteboard.general.items = []
+        return key
     }
     #endif
 
