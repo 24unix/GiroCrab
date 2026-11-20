@@ -372,6 +372,8 @@ impl Vault {
         // fold MoneyMoney accounts a merge added next to the bank account
         // that took them over (keeps bookings)
         let _ = crate::sync_merge::twins::fold_twins(conn);
+        // card holds an older „Abrufweg umstellen“ turned into bookings (#1134)
+        let _ = connections::drop_switched_holds(conn);
         // repair "MÃ¼ller" -> "Müller" stored by older versions
         let _ = crate::text::repair_stored_text(conn);
         // one-time purge of favicons that don't belong to a known brand

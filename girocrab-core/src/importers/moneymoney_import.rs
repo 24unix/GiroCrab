@@ -576,13 +576,23 @@ pub(crate) struct Existing {
     from_import: bool,
 }
 
+/// The account's rows an import matches against, deleted ones included (a
+/// booking the user deleted is not imported again). Dropped holds are left
+/// out: one carries the date, amount and text of the payment, so the posted
+/// booking would match it and never be imported (#1134). That covers settled
+/// holds, holds dropped by „Abrufweg umstellen“ (`switch-stale-…:pending-…`)
+/// and the card holds an older switch had marked (`mm-switch-pending-hold-…`).
 pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Vec<Existing>> {
     let mut q = conn.prepare(
         "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
                 import_fp, category_source, note, deleted_ms IS NOT NULL, external_id,
                 splits_ms != 0 OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id),
                 external_id LIKE 'mm-%', external_id LIKE 'mm-%' OR import_fp != ''
-         FROM transactions WHERE account_id = ?1 ORDER BY id",
+         FROM transactions WHERE account_id = ?1
+           AND NOT (deleted_ms IS NOT NULL
+                    AND (external_id LIKE 'pending-%' OR external_id LIKE 'mm-switch-pending-hold-%'
+                         OR (external_id LIKE 'switch-stale-%' AND external_id LIKE '%:pending-%')))
+         ORDER BY id",
     )?;
     let it = q.query_map([account_id], |r| {
         let (date, cents, iban, name, purpose): (String, i64, String, String, String) =
@@ -1299,13 +1309,16 @@ fn find_twin(
 
 /// Imported rows of amount `?2` within two days of `?4`. The BETWEEN bounds, a
 /// day wider than the window, let `tx_amount_date` find the candidates; the
-/// julianday test still decides.
+/// julianday test still decides. Card holds an older „Abrufweg umstellen“
+/// marked (`mm-switch-pending-hold-…`) are never twins: the booking taking one over
+/// would keep the hold's date and text (#1134).
 const TWIN_CANDIDATES_SQL: &str =
     "SELECT id, counterparty, counterparty_iban, purpose, booking_date,
         IFNULL(category_id, 0), trim(IFNULL(note, '')),
         abs(julianday(booking_date) - julianday(?4))
    FROM transactions
   WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
+    AND external_id NOT LIKE 'mm-switch-pending-hold-%'
     AND deleted_ms IS NULL AND id != ?3
     AND booking_date BETWEEN date(?4, '-3 days') AND date(?4, '+3 days')
     AND abs(julianday(booking_date) - julianday(?4)) <= 2
@@ -1392,7 +1405,8 @@ fn same_tax_line(bank_purpose: &str, mm_name: &str, mm_purpose: &str) -> bool {
 /// repeats its condition: a bound `import_fp = ?2` does not imply it.
 const IMPORTED_BY_FP_SQL: &str = "SELECT id FROM transactions
      WHERE account_id = ?1 AND import_fp = ?2 AND import_fp != ''
-       AND external_id LIKE 'mm-%' AND deleted_ms IS NULL LIMIT 1";
+       AND external_id LIKE 'mm-%' AND external_id NOT LIKE 'mm-switch-pending-hold-%'
+       AND deleted_ms IS NULL LIMIT 1";
 
 /// A FinTS/API booking arrives that was already imported from MoneyMoney:
 /// take over the row (category + note stay) instead of inserting a duplicate.
@@ -2113,6 +2127,71 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         assert_eq!((p.new_bookings, p.duplicates_skipped_or_enriched), (0, 3));
         assert_eq!(p.date_range_start.as_deref(), Some("2012-03-15"));
         assert_eq!(p.date_range_end.as_deref(), Some("2026-04-01"));
+    }
+
+    /// A dropped card hold carries date, amount and text of the payment: the
+    /// posted booking from an export must still be imported. A booking the
+    /// user deleted is still not imported again (#1134).
+    #[test]
+    fn dropped_holds_do_not_hide_the_posted_booking() {
+        let (_dir, v) = vault();
+        let a = v
+            .import_moneymoney_data(CSV.as_bytes().to_vec(), "a.csv".into(), None, true, true)
+            .unwrap();
+        {
+            let db = v.db().unwrap();
+            for (ext, date, cents, name, purpose) in [
+                // settled hold
+                (
+                    "pending-hold-fints-h1",
+                    "2030-01-01",
+                    -500,
+                    "Bäcker",
+                    "Brötchen",
+                ),
+                // dropped by „Abrufweg umstellen“
+                (
+                    "switch-stale-7:pending-hold-comdirect-h2",
+                    "2030-01-03",
+                    -700,
+                    "Laden",
+                    "Einkauf",
+                ),
+                // marked by an older switch, dropped on open
+                (
+                    "mm-switch-pending-hold-fints-h3",
+                    "2030-01-04",
+                    -900,
+                    "Kino",
+                    "Karte",
+                ),
+                // deleted by the user
+                ("fints-9", "2030-01-02", -300, "Kiosk", "Zeitung"),
+            ] {
+                db.execute(
+                    "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty,
+                                              counterparty_iban, purpose, deleted_ms)
+                     VALUES (?1, ?2, ?3, ?4, ?5, '', ?6, 1)",
+                    params![a.account_id, ext, date, cents, name, purpose],
+                )
+                .unwrap();
+            }
+        }
+        let csv = "Datum;Name;Verwendungszweck;Betrag\n\
+                   01.01.2030;Bäcker;Brötchen;-5,00\n\
+                   02.01.2030;Kiosk;Zeitung;-3,00\n\
+                   03.01.2030;Laden;Einkauf;-7,00\n\
+                   04.01.2030;Kino;Karte;-9,00\n";
+        let r = v
+            .import_moneymoney_data(
+                csv.as_bytes().to_vec(),
+                "b.csv".into(),
+                Some(a.account_id),
+                true,
+                true,
+            )
+            .unwrap();
+        assert_eq!((r.imported, r.duplicates), (3, 1));
     }
 
     #[test]
