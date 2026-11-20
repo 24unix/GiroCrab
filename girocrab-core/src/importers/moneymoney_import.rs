@@ -581,7 +581,7 @@ pub(crate) struct Existing {
 /// out: one carries the date, amount and text of the payment, so the posted
 /// booking would match it and never be imported (#1134). That covers settled
 /// holds, holds dropped by „Abrufweg umstellen“ (`switch-stale-…:pending-…`)
-/// and the ones an older switch had marked (`mm-switch-pending-…`).
+/// and the card holds an older switch had marked (`mm-switch-pending-hold-…`).
 pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Vec<Existing>> {
     let mut q = conn.prepare(
         "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
@@ -590,7 +590,7 @@ pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Ve
                 external_id LIKE 'mm-%', external_id LIKE 'mm-%' OR import_fp != ''
          FROM transactions WHERE account_id = ?1
            AND NOT (deleted_ms IS NOT NULL
-                    AND (external_id LIKE 'pending-%' OR external_id LIKE 'mm-switch-pending-%'
+                    AND (external_id LIKE 'pending-%' OR external_id LIKE 'mm-switch-pending-hold-%'
                          OR (external_id LIKE 'switch-stale-%' AND external_id LIKE '%:pending-%')))
          ORDER BY id",
     )?;
@@ -1310,7 +1310,7 @@ fn find_twin(
 /// Imported rows of amount `?2` within two days of `?4`. The BETWEEN bounds, a
 /// day wider than the window, let `tx_amount_date` find the candidates; the
 /// julianday test still decides. Card holds an older „Abrufweg umstellen“
-/// marked (`mm-switch-pending-…`) are never twins: the booking taking one over
+/// marked (`mm-switch-pending-hold-…`) are never twins: the booking taking one over
 /// would keep the hold's date and text (#1134).
 const TWIN_CANDIDATES_SQL: &str =
     "SELECT id, counterparty, counterparty_iban, purpose, booking_date,
@@ -1318,7 +1318,7 @@ const TWIN_CANDIDATES_SQL: &str =
         abs(julianday(booking_date) - julianday(?4))
    FROM transactions
   WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
-    AND external_id NOT LIKE 'mm-switch-pending-%'
+    AND external_id NOT LIKE 'mm-switch-pending-hold-%'
     AND deleted_ms IS NULL AND id != ?3
     AND booking_date BETWEEN date(?4, '-3 days') AND date(?4, '+3 days')
     AND abs(julianday(booking_date) - julianday(?4)) <= 2
@@ -1405,7 +1405,7 @@ fn same_tax_line(bank_purpose: &str, mm_name: &str, mm_purpose: &str) -> bool {
 /// repeats its condition: a bound `import_fp = ?2` does not imply it.
 const IMPORTED_BY_FP_SQL: &str = "SELECT id FROM transactions
      WHERE account_id = ?1 AND import_fp = ?2 AND import_fp != ''
-       AND external_id LIKE 'mm-%' AND external_id NOT LIKE 'mm-switch-pending-%'
+       AND external_id LIKE 'mm-%' AND external_id NOT LIKE 'mm-switch-pending-hold-%'
        AND deleted_ms IS NULL LIMIT 1";
 
 /// A FinTS/API booking arrives that was already imported from MoneyMoney:

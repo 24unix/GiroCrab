@@ -549,16 +549,18 @@ fn comdirect_blz(
 pub(crate) const SWITCH_MARK: &str = "moneymoney-db:switch:";
 
 /// Repair for vaults switched before #1134 was fixed: the switch marked open
-/// card holds like bookings (`mm-switch-pending-…`). They count as posted, no
+/// card holds like bookings (`mm-switch-pending-hold-…`). They count as posted, no
 /// hold cleanup reaches them and the bank's real booking comes next to them.
 /// Drops them like a settled hold (category and note go with it); the
-/// tombstones keep their ids, so other devices drop them on merge. Returns
-/// how many were dropped.
+/// tombstones keep their ids, so other devices drop them on merge. Transfer
+/// bookings of the app the switch had marked (`mm-switch-pending-<e2e>`) stay:
+/// the bank's booking takes them over by fingerprint, with category and note.
+/// Returns how many were dropped.
 pub(crate) fn drop_switched_holds(conn: &Connection) -> CoreResult<usize> {
     let ids: Vec<i64> = conn
         .prepare(
             "SELECT id FROM transactions
-              WHERE external_id LIKE 'mm-switch-pending-%' AND deleted_ms IS NULL",
+              WHERE external_id LIKE 'mm-switch-pending-hold-%' AND deleted_ms IS NULL",
         )?
         .query_map([], |r| r.get(0))?
         .collect::<Result<_, _>>()?;
@@ -2016,7 +2018,8 @@ mod tests {
     }
 
     /// Vaults switched by an older build: their marked holds go on open (and
-    /// after a merge), marked bookings stay; running it again changes nothing.
+    /// after a merge), marked bookings and marked transfer bookings of the app
+    /// stay; running it again changes nothing.
     #[test]
     fn marked_holds_of_an_older_switch_are_dropped_on_open() {
         let dir = crate::test_support::TempDir::new("girocrab-switch-hold-repair");
@@ -2041,6 +2044,14 @@ mod tests {
                 )
                 .unwrap();
             }
+            // a transfer of the app, still open when the older build switched
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose,
+                                          category_source, note)
+                 VALUES (?1, 'mm-switch-pending-e2e-1', '2026-11-18', -5000, 'Miete', 'manual', 'Wohnung')",
+                [giro],
+            )
+            .unwrap();
             giro
         };
         let v = Vault::open(path, vec![9u8; 32]).unwrap();
@@ -2049,7 +2060,7 @@ mod tests {
                 .into_iter()
                 .map(|r| r.0)
                 .collect::<Vec<_>>(),
-            vec!["mm-switch-rest-1"]
+            vec!["mm-switch-rest-1", "mm-switch-pending-e2e-1"]
         );
         let db = v.db().unwrap();
         assert_eq!(drop_switched_holds(&db).unwrap(), 0);
@@ -2057,7 +2068,8 @@ mod tests {
 
     /// A vault the repair has not reached yet (another device, before the
     /// merge): a booking must not take over a marked hold and keep its date
-    /// and text. A marked booking is still taken over.
+    /// and text. A marked booking and a marked transfer booking of the app
+    /// are still taken over.
     #[test]
     fn a_booking_never_takes_over_a_marked_hold() {
         let dir = crate::test_support::TempDir::new("girocrab-switch-hold-twin");
@@ -2089,5 +2101,7 @@ mod tests {
         assert!(!take("camt:REF1"), "a marked hold is no twin");
         add("mm-switch-rest-9");
         assert!(take("camt:REF2"), "a marked booking still is");
+        add("mm-switch-pending-e2e-1");
+        assert!(take("camt:REF3"), "and a marked transfer of the app");
     }
 }
