@@ -1529,6 +1529,7 @@ vault_methods! {
     set_account_archived(account_id, archived) set_account_color(account_id, color_hex)
     set_account_symbol(account_id, sf_symbol) reset_account_symbol(account_id)
     set_account_kind(account_id, kind) set_account_owner(account_id, owner)
+    set_account_note(account_id, note)
     // categories
     list_categories(date_from, date_to)
     create_category(name, parent_id, sf_symbol, color_hex)

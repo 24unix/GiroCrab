@@ -43,7 +43,7 @@ impl Vault {
         let conn_map = crate::sync_merge::merge_connections(&tx)?;
         let (acc_map, acc_inserted) =
             crate::sync_merge::merge_accounts(&tx, &conn_map, &group_map, &mut st)?;
-        // user groups, account placements and names (newest edit wins)
+        // user groups and account fields (newest edit wins)
         st.groups_updated = crate::user_groups::merge_attached(&tx, &acc_map, &acc_inserted)?;
 
         // categories and rules (newest edit wins, deletions stay deleted)
@@ -80,7 +80,8 @@ pub struct MergeStats {
     pub rules_added: u32,
     pub bookings_added: u32,
     pub bookings_updated: u32,
-    /// User groups and account placements taken over from the other vault.
+    /// User groups and account fields taken over from the other vault (rows
+    /// changed by `user_groups::merge_attached`).
     pub groups_updated: u32,
     /// Rows this merge changed in the vault (part of [`Vault::change_count`]),
     /// so the app can tell its own changes from merged ones.
@@ -120,8 +121,13 @@ impl Vault {
             Self::apply_key(&o, &key)?;
             let has_uuid =
                 crate::schema::has_column(&o, "main", "categories", "uuid").unwrap_or(true);
+            let has_notes =
+                crate::schema::has_column(&o, "main", "accounts", "note").unwrap_or(true);
             Self::migrate(&mut o)?;
             crate::sync_merge::fill_missing_uuids(&o)?;
+            if !has_notes {
+                crate::user_groups::mark_old_build_notes(&o)?;
+            }
             !has_uuid
         };
         let conn = self.db()?;

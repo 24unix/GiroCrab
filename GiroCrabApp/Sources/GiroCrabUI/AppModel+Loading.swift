@@ -1006,11 +1006,6 @@ extension AppModel {
         if let vault {
             uncategorizedName = (((try? vault.getSetting(key: "ui.uncategorized_name")) ?? nil) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            accountNotes = Dictionary(accounts.compactMap { a in
-                let n = ((try? vault.getSetting(key: "account.note.\(a.id)")) ?? nil)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                return n.isEmpty ? nil : (a.id, n)
-            }, uniquingKeysWith: { a, _ in a })
         }
         // " (MoneyMoney)": suffix that earlier versions appended to accounts created by a file import.
         func base(_ a: Account) -> String {
