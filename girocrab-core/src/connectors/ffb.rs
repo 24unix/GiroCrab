@@ -38,8 +38,8 @@ use super::uberspace::{
     attr, attrs, element_by_id, parse_date, table_cells, text, FORM, INPUT, LINK,
 };
 use super::{
-    http_client, BankConnector, ChallengeResponse, ConnectContext, Documents, FetchResult,
-    KnownDocuments, Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
+    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, Documents,
+    FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
@@ -797,7 +797,7 @@ impl BankConnector for FfbConnector {
                 message: tr("FFB: Login/Benutzername und Passwort/PIN erforderlich.").into(),
             });
         }
-        let client = http_client()?;
+        let client = http_client_same_host()?;
         let resp = client.get(format!("{BASE}/login/login.jsp")).send().await?;
         let page_url = resp.url().clone();
         ensure_ffb(&page_url)?;

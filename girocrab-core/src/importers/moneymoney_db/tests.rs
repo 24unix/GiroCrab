@@ -994,6 +994,94 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
     );
 }
 
+/// An imported account parked on a PSD2 connection that never synced is
+/// taken over by a direct connector with the same IBAN; once the PSD2
+/// connection synced, its accounts stay where they are.
+#[test]
+fn a_direct_connector_takes_over_accounts_of_an_unsynced_psd2_connection() {
+    let v = vault();
+    let psd2 = v
+        .add_bank_connection(
+            ConnectorKind::EnableBanking,
+            "enablebanking:DE:Test Bank".into(),
+            String::new(),
+        )
+        .unwrap();
+    let direct = v
+        .add_bank_connection(ConnectorKind::FordMoney, String::new(), "1000000099".into())
+        .unwrap();
+    let db = v.db().unwrap();
+    db.execute(
+        "INSERT OR IGNORE INTO account_groups(name) VALUES ('Test')",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, currency)
+         VALUES (?1, (SELECT id FROM account_groups LIMIT 1), 'moneymoney-db:hb1', 'Test Card',
+                 'DE00 0000 0000 1000 0000 01', 'EUR')",
+        params![psd2],
+    )
+    .unwrap();
+    let imported = db.last_insert_rowid();
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, currency)
+         VALUES (?1, (SELECT id FROM account_groups LIMIT 1), 'moneymoney-db:hb2', 'Test Savings',
+                 'DE00000000001000000002', 'EUR')",
+        params![psd2],
+    )
+    .unwrap();
+    let second = db.last_insert_rowid();
+
+    assert_eq!(
+        adopt_account(
+            &db,
+            direct,
+            "fordmoney:1",
+            "DE00000000001000000001",
+            "EUR",
+            AccountKind::CreditCard
+        )
+        .unwrap(),
+        Some(imported)
+    );
+    let (cid, ext): (i64, String) = db
+        .query_row(
+            "SELECT connection_id, external_ref FROM accounts WHERE id = ?1",
+            [imported],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((cid, ext.as_str()), (direct, "fordmoney:1"));
+
+    // After the PSD2 connection synced, its accounts are its own.
+    db.execute(
+        "UPDATE bank_connections SET last_sync_unix = 1 WHERE id = ?1",
+        [psd2],
+    )
+    .unwrap();
+    assert_eq!(
+        adopt_account(
+            &db,
+            direct,
+            "fordmoney:2",
+            "DE00000000001000000002",
+            "EUR",
+            AccountKind::Savings
+        )
+        .unwrap(),
+        None
+    );
+    let still: i64 = db
+        .query_row(
+            "SELECT connection_id FROM accounts WHERE id = ?1",
+            [second],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(still, psd2);
+}
+
 /// comdirect: its own API stays the default, FinTS (bank code of the login)
 /// is offered next to it and, when chosen, becomes the login's connection.
 #[test]

@@ -19,11 +19,9 @@ struct BookingStreamView: View {
 
     var body: some View {
         @Bindable var model = model
-        // Per-item flags instead of `sidebarSelection`: they change only when „Alle Konten“ /
-        // „Neue Umsätze“ is entered or left, so a switch between categories leaves this view alone.
-        let isOverview = model.sidebarRowSelection(for: .allAccounts).isSelected
+        let isOverview = model.showsOverview
         // „Neue Umsätze“: account cards instead of day cards, no charts
-        let isNewBookings = model.sidebarRowSelection(for: .newBookings).isSelected
+        let isNewBookings = model.showsNewBookings
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
@@ -913,7 +911,7 @@ struct BookingRow: View {
                     // Order account: the direction is never colour alone — charges get a
                     // minus, refunds a plus (and a spoken label); both are badged
                     // symmetrically (same padding, same alignment).
-                    Text(ref.isRefund ? Money.signed(booking.amountCents) : Money.format(-abs(booking.amountCents)))
+                    Text(ref.isRefund ? Money.signed(booking.amountCents, currency: booking.currency) : Money.format(-abs(booking.amountCents), currency: booking.currency))
                         .sensitive(.amounts)
                         .appFont(.body, weight: .semibold, monospacedDigit: true)
                         .foregroundStyle(ref.isRefund ? Theme.inflow : Theme.charge)
@@ -921,9 +919,9 @@ struct BookingRow: View {
                         .background(Capsule().fill(ref.isRefund ? Theme.inflowBadge : Theme.outflowBadge))
                         .lineLimit(1).fixedSize()
                         .help(ref.isRefund ? "Gutschrift (Erstattung)" : "Bestellung")
-                        .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(redaction.masking(Money.format(abs(booking.amountCents)), .amounts))"))
+                        .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(redaction.masking(Money.format(abs(booking.amountCents), currency: booking.currency), .amounts))"))
                 } else {
-                    AmountLabel(cents: booking.amountCents)
+                    AmountLabel(cents: booking.amountCents, currency: booking.currency)
                         .lineLimit(1)
                         .fixedSize()
                         .padding(.horizontal, booking.isPending ? 6 : 0)
@@ -1247,18 +1245,22 @@ private struct AccountChipLayout: Layout {
 /// emerald (or blue) badge; the sign always carries the direction too.
 struct AmountLabel: View {
     let cents: Int64
+    /// The booking's own currency; an empty one is EUR (as in the core).
+    var currency: String = "EUR"
     @Environment(\.negativeAmountStyle) private var negativeStyle
+
+    private var code: String { currency.isEmpty ? "EUR" : currency.uppercased() }
 
     var body: some View {
         if cents > 0 {
-            Text(Money.signed(cents))
+            Text(Money.signed(cents, currency: code))
                 .sensitive(.amounts)
                 .appFont(.body, weight: .semibold, monospacedDigit: true)
                 .foregroundStyle(negativeStyle.positiveColor)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(Capsule().fill(negativeStyle.positiveBadge))
         } else {
-            Text(Money.format(cents))
+            Text(Money.format(cents, currency: code))
                 .sensitive(.amounts)
                 .appFont(.body, weight: .medium, monospacedDigit: true)
                 .foregroundStyle(cents < 0 ? negativeStyle.color : Theme.outflow)

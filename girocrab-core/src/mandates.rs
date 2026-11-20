@@ -441,10 +441,10 @@ pub(crate) fn store_mandate(
             if n == 0 {
                 return Err(CoreError::invalid(tr("Das Mandat gibt es nicht mehr.")));
             }
-            if let Some((acc, old_ref)) = old {
-                if acc != input.account_id || old_ref != reference {
-                    merge::mark_deleted(db, acc, &old_ref, now)?;
-                }
+            if let Some((acc, old_ref)) = old
+                && (acc != input.account_id || old_ref != reference)
+            {
+                merge::mark_deleted(db, acc, &old_ref, now)?;
             }
             merge::unmark_deleted(db, input.account_id, &reference)?;
             id

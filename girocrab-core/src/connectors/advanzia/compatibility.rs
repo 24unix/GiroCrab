@@ -125,10 +125,10 @@ pub(super) fn prepare_ids(
             t.external_id = old.clone();
         }
         // FNV collisions in the same response must fail instead of dropping a booking.
-        if let Some(previous) = chosen.insert(t.external_id.clone(), original.clone()) {
-            if previous != original {
-                return Err(invalid("Widersprüchliche Buchungsreferenz."));
-            }
+        if let Some(previous) = chosen.insert(t.external_id.clone(), original.clone())
+            && previous != original
+        {
+            return Err(invalid("Widersprüchliche Buchungsreferenz."));
         }
     }
     Ok(())

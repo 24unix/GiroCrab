@@ -192,10 +192,10 @@ pub(crate) fn assign<'a>(
         }
     }
     let accountno = entry["accountno"].as_str().unwrap_or_default();
-    if norm(accountno) != "0" {
-        if let Some(a) = find(accountno) {
-            return Some(a);
-        }
+    if norm(accountno) != "0"
+        && let Some(a) = find(accountno)
+    {
+        return Some(a);
     }
     find(entry["kto"].as_str().unwrap_or_default())
 }
@@ -903,10 +903,10 @@ impl PostboxSource for ConsorsbankArchive {
     }
 
     async fn finish(&mut self, _ctx: &ConnectContext) {
-        if self.logged_in {
-            if let Ok((status, _)) = self.post("/web-sec-service/api/logout", None).await {
-                Self::log(&format!("logout HTTP {status}"));
-            }
+        if self.logged_in
+            && let Ok((status, _)) = self.post("/web-sec-service/api/logout", None).await
+        {
+            Self::log(&format!("logout HTTP {status}"));
         }
         self.logged_in = false;
         self.client = None;

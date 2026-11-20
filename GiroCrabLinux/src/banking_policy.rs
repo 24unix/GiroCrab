@@ -290,11 +290,11 @@ fn load_local(st: &mut State) {
         .as_ref()
         .and_then(|s| verified(&decode(&s.json), &decode(&s.signature)));
     let was_online = stored.as_ref().is_some_and(|s| s.verified_online);
-    if let Some(b) = verified(BUNDLED_JSON, BUNDLED_SIG) {
-        if doc.as_ref().is_none_or(|d| b.sequence > d.sequence) {
-            save_stored(BUNDLED_JSON, BUNDLED_SIG, was_online);
-            doc = Some(b);
-        }
+    if let Some(b) = verified(BUNDLED_JSON, BUNDLED_SIG)
+        && doc.as_ref().is_none_or(|d| b.sequence > d.sequence)
+    {
+        save_stored(BUNDLED_JSON, BUNDLED_SIG, was_online);
+        doc = Some(b);
     }
     st.document = doc;
     st.verified_online = was_online;

@@ -49,7 +49,7 @@ pub fn fints_presets() -> Vec<FinTsPreset> {
           "BLZ Ihrer Filiale eintragen (steht in Ihrer IBAN, Stellen 5–12)."),
         p("hvb", "HypoVereinsbank (UniCredit)", "70020270", "https://hbci.hypovereinsbank.de/hbci/hbci.do", ""),
         p("bbbank", "BBBank", "66090800", ATRUVIA, ""),
-        p("apobank", "Deutsche Apotheker- und Ärztebank (apoBank)", "30060601", ATRUVIA, ""),
+        p("apobank", "Deutsche Apotheker- und Ärztebank (apoBank)", "30060601", "https://fints.apobank.de/FinTs30PinTanHttpGate", ""),
         p("ethikbank", "EthikBank", "83094495", ATRUVIA, ""),
         p("psd", "PSD Banken (Atruvia)", "", ATRUVIA, "BLZ Ihrer PSD Bank eintragen."),
         p("custom", "Andere FinTS-Bank (BLZ + URL manuell)", "", "",

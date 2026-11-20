@@ -84,6 +84,41 @@ fn norm(s: &str) -> String {
         .collect()
 }
 
+/// [`norm`] without accents, for comparing names and purposes of one booking
+/// from two sources: MoneyMoney writes "Muller" where the bank sends "Müller".
+/// Only for comparisons – fingerprints keep [`norm`], so stored import keys
+/// stay valid.
+fn fold(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in norm(s).chars() {
+        match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ą' | 'ă' => out.push('a'),
+            'ç' | 'č' | 'ć' => out.push('c'),
+            'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' | 'ě' | 'ė' => out.push('e'),
+            'ì' | 'í' | 'î' | 'ï' | 'ī' | 'į' | 'ı' => out.push('i'),
+            'ñ' | 'ń' | 'ň' => out.push('n'),
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ő' => out.push('o'),
+            'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ů' | 'ű' | 'ų' => out.push('u'),
+            'ý' | 'ÿ' => out.push('y'),
+            'š' | 'ś' => out.push('s'),
+            'ž' | 'ź' | 'ż' => out.push('z'),
+            'ł' => out.push('l'),
+            'ß' => out.push_str("ss"),
+            'đ' => out.push('d'),
+            'æ' => out.push_str("ae"),
+            'œ' => out.push_str("oe"),
+            'ř' | 'ŕ' => out.push('r'),
+            'ť' | 'ț' => out.push('t'),
+            'ď' => out.push('d'),
+            'ğ' => out.push('g'),
+            'ş' | 'ș' => out.push('s'),
+            'ľ' | 'ĺ' => out.push('l'),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Deterministic de-duplication key (stable across Rust versions: FNV-1a 64).
 pub fn fingerprint(date: &str, cents: i64, iban: &str, name: &str, purpose: &str) -> String {
     let who = if iban.trim().is_empty() {
@@ -271,10 +306,10 @@ fn field_for(header: &str) -> Option<Field> {
 
 fn detect_delimiter(text: &str) -> char {
     let first = text.lines().next().unwrap_or("");
-    if let Some(rest) = first.strip_prefix("sep=") {
-        if let Some(c) = rest.chars().next() {
-            return c;
-        }
+    if let Some(rest) = first.strip_prefix("sep=")
+        && let Some(c) = rest.chars().next()
+    {
+        return c;
     }
     let header = text
         .lines()
@@ -571,18 +606,31 @@ pub(crate) struct Existing {
     booking_date: String,
     amount_cents: i64,
     bare_bank_purpose: Option<String>,
+    /// Counterparty IBAN and accent-free name, for [`match_folded_name`].
+    iban_norm: String,
+    name_fold: String,
     split_set: bool,
     imported: Option<(String, i64)>,
     from_import: bool,
 }
 
+/// The account's rows an import matches against, deleted ones included (a
+/// booking the user deleted is not imported again). Dropped holds are left
+/// out: one carries the date, amount and text of the payment, so the posted
+/// booking would match it and never be imported (#1134). That covers settled
+/// holds, holds dropped by „Abrufweg umstellen“ (`switch-stale-…:pending-…`)
+/// and the card holds an older switch had marked (`mm-switch-pending-hold-…`).
 pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Vec<Existing>> {
     let mut q = conn.prepare(
         "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
                 import_fp, category_source, note, deleted_ms IS NOT NULL, external_id,
                 splits_ms != 0 OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id),
                 external_id LIKE 'mm-%', external_id LIKE 'mm-%' OR import_fp != ''
-         FROM transactions WHERE account_id = ?1 ORDER BY id",
+         FROM transactions WHERE account_id = ?1
+           AND NOT (deleted_ms IS NOT NULL
+                    AND (external_id LIKE 'pending-%' OR external_id LIKE 'mm-switch-pending-hold-%'
+                         OR (external_id LIKE 'switch-stale-%' AND external_id LIKE '%:pending-%')))
+         ORDER BY id",
     )?;
     let it = q.query_map([account_id], |r| {
         let (date, cents, iban, name, purpose): (String, i64, String, String, String) =
@@ -603,7 +651,9 @@ pub(crate) fn load_existing(conn: &Connection, account_id: i64) -> CoreResult<Ve
             category_source: r.get(7)?,
             note: r.get(8)?,
             deleted: r.get(9)?,
-            bare_bank_purpose: bare.then(|| norm(&purpose)),
+            bare_bank_purpose: bare.then(|| fold(&purpose)),
+            iban_norm: norm(&iban),
+            name_fold: fold(&name),
             booking_date: date.clone(),
             amount_cents: cents,
             split_set: r.get(11)?,
@@ -736,7 +786,8 @@ fn join_notes(notes: impl IntoIterator<Item = String>) -> String {
 /// 2. rows still unmatched: same date, amount and counterparty (purpose
 ///    ignored), in order,
 /// 3. rows without counterparty IBAN: same date, amount and name,
-/// 4. [`match_bank_without_counterparty`].
+/// 4. [`match_folded_name`],
+/// 5. [`match_bank_without_counterparty`].
 pub(crate) fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Option<usize>> {
     let (mut out, mut used) = match_by_fingerprint(rows, existing);
     let mut by_weak: HashMap<&str, std::collections::VecDeque<usize>> = HashMap::new();
@@ -757,15 +808,49 @@ pub(crate) fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Optio
         by_name.entry(e.named.as_str()).or_default().push_back(j);
     }
     for (r, m) in rows.iter().zip(out.iter_mut()).filter(|(_, m)| m.is_none()) {
-        if let Some(key) = r.named_fp() {
-            if let Some(j) = by_name.get_mut(key.as_str()).and_then(|q| q.pop_front()) {
-                used[j] = true;
-                *m = Some(j);
-            }
+        if let Some(key) = r.named_fp()
+            && let Some(j) = by_name.get_mut(key.as_str()).and_then(|q| q.pop_front())
+        {
+            used[j] = true;
+            *m = Some(j);
         }
     }
+    match_folded_name(rows, existing, &mut out, &mut used);
     match_bank_without_counterparty(rows, existing, &mut out, &mut used);
     out
+}
+
+/// Same date, amount and name apart from accents ("Müller" from the bank,
+/// "Muller" from MoneyMoney), the IBANs not contradicting each other (one side
+/// without, or both the same). Pass 3 compares names exactly and only for
+/// rows without IBAN, so an accent or an IBAN on one side only kept them
+/// apart. In order, like the other passes.
+pub(crate) fn match_folded_name(
+    rows: &[MmRow],
+    existing: &[Existing],
+    out: &mut [Option<usize>],
+    used: &mut [bool],
+) {
+    for (r, m) in rows.iter().zip(out.iter_mut()) {
+        if m.is_some() {
+            continue;
+        }
+        let (name, iban) = (fold(&r.name), norm(&r.iban));
+        if name.len() < 3 {
+            continue;
+        }
+        let hit = existing.iter().enumerate().position(|(j, e)| {
+            !used[j]
+                && e.booking_date == r.booking_date
+                && e.amount_cents == r.amount_cents
+                && e.name_fold == name
+                && (iban.is_empty() || e.iban_norm.is_empty() || e.iban_norm == iban)
+        });
+        if let Some(j) = hit {
+            used[j] = true;
+            *m = Some(j);
+        }
+    }
 }
 
 /// Pass 1 of [`match_existing`]: exact fingerprint, as a multiset. Returns
@@ -811,7 +896,7 @@ pub(crate) fn match_bank_without_counterparty(
         if m.is_some() {
             continue;
         }
-        let (name, purpose) = (norm(&r.name), norm(&purpose_without_refs(&r.purpose)));
+        let (name, purpose) = (fold(&r.name), fold(&purpose_without_refs(&r.purpose)));
         let mut hits = existing.iter().enumerate().filter(|(j, e)| {
             !used[*j]
                 && e.amount_cents == r.amount_cents
@@ -1274,11 +1359,14 @@ fn find_twin(
             })
         },
     )?;
-    let (n_iban, n_name, n_purpose) = (norm(iban), norm(name), norm(purpose));
+    // names and purposes without accents: MoneyMoney writes "Muller" where the
+    // bank sends "Müller"; the tax lines keep their own normalisation
+    let (n_iban, n_name, n_purpose) = (norm(iban), fold(name), fold(purpose));
+    let (tax_name, tax_purpose) = (norm(name), norm(purpose));
     let mut hits = Vec::new();
     for row in rows {
         let t = row?;
-        let (m_iban, m_name) = (norm(&t.iban), norm(&t.name));
+        let (m_iban, m_name) = (norm(&t.iban), fold(&t.name));
         let ok = if !n_iban.is_empty() && !m_iban.is_empty() {
             n_iban == m_iban
         } else {
@@ -1287,8 +1375,9 @@ fn find_twin(
                 || (m_name.len() >= 3 && (n_purpose.contains(&m_name) || n_name.contains(&m_name)))
                 // the bank sends no counterparty (comdirect REST, some debits): the
                 // purposes still start the same (reference numbers, invoice text)
-                || purposes_alike(&n_purpose, &norm(&t.purpose))
-                || (n_name.is_empty() && same_tax_line(&n_purpose, &m_name, &norm(&t.purpose)))
+                || purposes_alike(&n_purpose, &fold(&t.purpose))
+                || (tax_name.is_empty()
+                    && same_tax_line(&tax_purpose, &norm(&t.name), &norm(&t.purpose)))
         };
         if ok {
             hits.push(t);
@@ -1299,13 +1388,16 @@ fn find_twin(
 
 /// Imported rows of amount `?2` within two days of `?4`. The BETWEEN bounds, a
 /// day wider than the window, let `tx_amount_date` find the candidates; the
-/// julianday test still decides.
+/// julianday test still decides. Card holds an older „Abrufweg umstellen“
+/// marked (`mm-switch-pending-hold-…`) are never twins: the booking taking one over
+/// would keep the hold's date and text (#1134).
 const TWIN_CANDIDATES_SQL: &str =
     "SELECT id, counterparty, counterparty_iban, purpose, booking_date,
         IFNULL(category_id, 0), trim(IFNULL(note, '')),
         abs(julianday(booking_date) - julianday(?4))
    FROM transactions
   WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
+    AND external_id NOT LIKE 'mm-switch-pending-hold-%'
     AND deleted_ms IS NULL AND id != ?3
     AND booking_date BETWEEN date(?4, '-3 days') AND date(?4, '+3 days')
     AND abs(julianday(booking_date) - julianday(?4)) <= 2
@@ -1392,7 +1484,8 @@ fn same_tax_line(bank_purpose: &str, mm_name: &str, mm_purpose: &str) -> bool {
 /// repeats its condition: a bound `import_fp = ?2` does not imply it.
 const IMPORTED_BY_FP_SQL: &str = "SELECT id FROM transactions
      WHERE account_id = ?1 AND import_fp = ?2 AND import_fp != ''
-       AND external_id LIKE 'mm-%' AND deleted_ms IS NULL LIMIT 1";
+       AND external_id LIKE 'mm-%' AND external_id NOT LIKE 'mm-switch-pending-hold-%'
+       AND deleted_ms IS NULL LIMIT 1";
 
 /// A FinTS/API booking arrives that was already imported from MoneyMoney:
 /// take over the row (category + note stay) instead of inserting a duplicate.
@@ -2115,6 +2208,71 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         assert_eq!(p.date_range_end.as_deref(), Some("2026-04-01"));
     }
 
+    /// A dropped card hold carries date, amount and text of the payment: the
+    /// posted booking from an export must still be imported. A booking the
+    /// user deleted is still not imported again (#1134).
+    #[test]
+    fn dropped_holds_do_not_hide_the_posted_booking() {
+        let (_dir, v) = vault();
+        let a = v
+            .import_moneymoney_data(CSV.as_bytes().to_vec(), "a.csv".into(), None, true, true)
+            .unwrap();
+        {
+            let db = v.db().unwrap();
+            for (ext, date, cents, name, purpose) in [
+                // settled hold
+                (
+                    "pending-hold-fints-h1",
+                    "2030-01-01",
+                    -500,
+                    "Bäcker",
+                    "Brötchen",
+                ),
+                // dropped by „Abrufweg umstellen“
+                (
+                    "switch-stale-7:pending-hold-comdirect-h2",
+                    "2030-01-03",
+                    -700,
+                    "Laden",
+                    "Einkauf",
+                ),
+                // marked by an older switch, dropped on open
+                (
+                    "mm-switch-pending-hold-fints-h3",
+                    "2030-01-04",
+                    -900,
+                    "Kino",
+                    "Karte",
+                ),
+                // deleted by the user
+                ("fints-9", "2030-01-02", -300, "Kiosk", "Zeitung"),
+            ] {
+                db.execute(
+                    "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty,
+                                              counterparty_iban, purpose, deleted_ms)
+                     VALUES (?1, ?2, ?3, ?4, ?5, '', ?6, 1)",
+                    params![a.account_id, ext, date, cents, name, purpose],
+                )
+                .unwrap();
+            }
+        }
+        let csv = "Datum;Name;Verwendungszweck;Betrag\n\
+                   01.01.2030;Bäcker;Brötchen;-5,00\n\
+                   02.01.2030;Kiosk;Zeitung;-3,00\n\
+                   03.01.2030;Laden;Einkauf;-7,00\n\
+                   04.01.2030;Kino;Karte;-9,00\n";
+        let r = v
+            .import_moneymoney_data(
+                csv.as_bytes().to_vec(),
+                "b.csv".into(),
+                Some(a.account_id),
+                true,
+                true,
+            )
+            .unwrap();
+        assert_eq!((r.imported, r.duplicates), (3, 1));
+    }
+
     #[test]
     fn overlap_with_fints_booking_enriches_and_fints_adopts_import() {
         let (_dir, v) = vault();
@@ -2388,6 +2546,97 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
         v.import_moneymoney_data(csv.into_bytes(), "t.csv".into(), Some(acc), true, true)
             .unwrap();
         assert_eq!(live(&v.db().unwrap(), acc).len(), 3);
+    }
+
+    #[test]
+    fn fold_drops_accents_only() {
+        assert_eq!(fold("Hannah Müller"), fold("Hannah Muller"));
+        assert_eq!(fold("Weiß-Straße"), "weissstrasse");
+        assert_eq!(fold("Café Noël"), "cafenoel");
+        assert_eq!(fold("Dvořák"), fold("Dvorak"));
+        assert_ne!(fold("Müller"), fold("Maier"));
+        // fingerprints keep the accents: stored import keys stay valid
+        assert_ne!(
+            fingerprint("2026-03-23", 100, "", "Müller", ""),
+            fingerprint("2026-03-23", 100, "", "Muller", "")
+        );
+    }
+
+    /// The bank's credit as FinTS delivers it: accented name, long purpose.
+    fn bank_credit(db: &Connection, acc: i64, iban: &str, name: &str) {
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, counterparty_iban, purpose)
+             VALUES (?1, 'fints-1', '2026-03-23', 120000, ?2, ?3,
+                     'Fahrrad X3 Hannah Müller Fahrrad X3 End-to-End-Ref.: NOTPROVIDED Kundenreferenz: TEST0001')",
+            params![acc, name, iban],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn import_matches_a_fetched_booking_whose_name_differs_by_accents() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(&v, "01.03.2026;Arbeitgeber;Gehalt;100,00;;\n");
+        bank_credit(
+            &v.db().unwrap(),
+            acc,
+            "DE02120300000000202051",
+            "Hannah Müller",
+        );
+        // MoneyMoney's export: name without accents, no IBAN column
+        let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n23.03.2026;Hannah Muller;Fahrrad X3;1200,00;Einzahlung;\n";
+        v.import_moneymoney_data(
+            csv.as_bytes().to_vec(),
+            "t.csv".into(),
+            Some(acc),
+            true,
+            true,
+        )
+        .unwrap();
+        let rows = live(&v.db().unwrap(), acc);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows[1].0, "fints-1");
+        assert!(rows[1].1.is_some(), "category carried over: {rows:?}");
+    }
+
+    #[test]
+    fn import_keeps_a_different_name_apart() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(&v, "01.03.2026;Arbeitgeber;Gehalt;100,00;;\n");
+        bank_credit(&v.db().unwrap(), acc, "", "Hannah Maier");
+        let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n23.03.2026;Hannah Muller;Fahrrad X3;1200,00;Einzahlung;\n";
+        v.import_moneymoney_data(
+            csv.as_bytes().to_vec(),
+            "t.csv".into(),
+            Some(acc),
+            true,
+            true,
+        )
+        .unwrap();
+        assert_eq!(live(&v.db().unwrap(), acc).len(), 3);
+    }
+
+    #[test]
+    fn fetch_adopts_an_imported_row_whose_name_differs_by_accents() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(
+            &v,
+            "23.03.2026;Hannah Muller;Fahrrad X3;1200,00;Einzahlung;\n",
+        );
+        let db = v.db().unwrap();
+        assert!(adopt_import(
+            &db,
+            acc,
+            "fints-1",
+            "2026-03-23",
+            120000,
+            "",
+            "Hannah Müller",
+            "Fahrrad X3 Hannah Müller Fahrrad X3 End-to-End-Ref.: NOTPROVIDED",
+            "Gutschrift"
+        )
+        .unwrap());
+        assert_eq!(ext_ids(&db, acc), vec!["fints-1"]);
     }
 
     #[test]

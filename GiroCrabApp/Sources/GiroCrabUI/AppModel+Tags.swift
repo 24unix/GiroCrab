@@ -49,7 +49,7 @@ extension AppModel {
     /// The header offers the tag filter once tags exist (or a filter is still on);
     /// not in „Neue Umsätze“, which ignores the list filters.
     var showsTagFilter: Bool {
-        sidebarSelection != .newBookings && (!tags.isEmpty || tagFilter.isActive)
+        shownSelection != .newBookings && (!tags.isEmpty || tagFilter.isActive)
     }
 
     /// Label of the header's tag button. Never names a tag (the header is part of

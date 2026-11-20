@@ -70,8 +70,11 @@ impl IbkrConnector {
         if let Some(c) = &self.client {
             return Ok(c.clone());
         }
+        // The Flex token is in the query: no redirect to another origin, no Referer.
         let c = super::client_builder(Duration::from_secs(60))
             .connect_timeout(CONNECT_TIMEOUT)
+            .redirect(super::same_host_redirects())
+            .referer(false)
             .build()
             .map_err(net_err)?;
         Ok(self.client.insert(c).clone())
@@ -1014,6 +1017,12 @@ fn build_fetch(xml: &str, since: &str) -> CoreResult<FetchResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn token_client_does_not_follow_redirects_to_another_origin() {
+        let client = IbkrConnector::new().client().unwrap();
+        crate::connectors::tests::redirects::assert_no_cross_origin_replay(&client).await;
+    }
 
     const OK_SEND: &str = r#"<FlexStatementResponse timestamp='13 November, 2026 10:00 AM EST'>
 <Status>Success</Status>

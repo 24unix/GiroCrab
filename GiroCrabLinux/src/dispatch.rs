@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 type R = Result<Value, String>;
 
-extern "C" {
+unsafe extern "C" {
     fn girocrab_grab_window(path: *const std::os::raw::c_char) -> bool;
     fn girocrab_print_pdf(
         path: *const std::os::raw::c_char,
@@ -1081,11 +1081,11 @@ fn save_export_file(a: &Value) -> R {
         path
     } else {
         let mut dir = std::path::PathBuf::from(arg::<String>(a, "dir")?);
-        if !dir.is_dir() {
-            if let Some(fallback) = arg::<Option<String>>(a, "fallback_dir")? {
-                dir = fallback.into();
-                std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-            }
+        if !dir.is_dir()
+            && let Some(fallback) = arg::<Option<String>>(a, "fallback_dir")?
+        {
+            dir = fallback.into();
+            std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         let filename: String = arg(a, "filename")?;
         let (stem, ext) = match filename.rsplit_once('.') {
@@ -1280,7 +1280,7 @@ const fn libc_o_nofollow() -> i32 {
     0o400000 // O_NOFOLLOW on Linux
 }
 
-extern "C" {
+unsafe extern "C" {
     fn getuid() -> u32;
 }
 
@@ -1328,10 +1328,11 @@ fn prepared_quicklook_dir() -> Option<std::path::PathBuf> {
 pub fn remove_quicklook_files() {
     use std::os::unix::fs::MetadataExt;
     let dir = quicklook_dir();
-    if let Ok(m) = std::fs::symlink_metadata(&dir) {
-        if m.file_type().is_dir() && m.uid() == current_uid() {
-            let _ = std::fs::remove_dir_all(&dir);
-        }
+    if let Ok(m) = std::fs::symlink_metadata(&dir)
+        && m.file_type().is_dir()
+        && m.uid() == current_uid()
+    {
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
@@ -1389,14 +1390,13 @@ fn embedded_invoice_xml(pdf: &[u8]) -> Option<String> {
         if find_bytes(body, MARKER, 0).is_some() {
             return Some(xml_text(body));
         }
-        if body.len() > 8 && body[0] == 0x78 {
-            if let Ok(inflated) =
+        if body.len() > 8
+            && body[0] == 0x78
+            && let Ok(inflated) =
                 miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(body, MAX_INFLATED_STREAM)
-            {
-                if find_bytes(&inflated, MARKER, 0).is_some() {
-                    return Some(xml_text(&inflated));
-                }
-            }
+            && find_bytes(&inflated, MARKER, 0).is_some()
+        {
+            return Some(xml_text(&inflated));
         }
     }
     None
@@ -1529,6 +1529,7 @@ vault_methods! {
     set_account_archived(account_id, archived) set_account_color(account_id, color_hex)
     set_account_symbol(account_id, sf_symbol) reset_account_symbol(account_id)
     set_account_kind(account_id, kind) set_account_owner(account_id, owner)
+    set_account_note(account_id, note)
     // categories
     list_categories(date_from, date_to)
     create_category(name, parent_id, sf_symbol, color_hex)
@@ -1595,6 +1596,8 @@ vault_methods! {
     add_tag_to_bookings(booking_ids, tag_id) remove_tag_from_bookings(booking_ids, tag_id)
     rename_tag(id, name) set_tag_color(id, color_hex) reorder_tags(ids) delete_tag(id)
     merge_tag_into(source, target) set_booking_tags(booking_id, tag_ids)
+    // --- Tag-Filter und Auswertung (AppModel+Tags, TagFilterUI, TagManagerView, #778) ---
+    tag_totals(filter) tag_account_counts(tag_id)
     // --- Anlageklassen (AssetClassificationUI, DepotMetrics) ---
     classified_assets(account_id)
     set_asset_class_override(security_key, value) set_instrument_override(security_key, value)
@@ -1608,6 +1611,18 @@ mod tests {
 
     /// The tests share the process-wide vault slots.
     static SERIAL: Mutex<()> = Mutex::new(());
+
+    /// Sets (`Some`) or removes (`None`) an environment variable for a test that holds
+    /// `SERIAL`.
+    fn set_env(key: &str, value: Option<impl AsRef<std::ffi::OsStr>>) {
+        // SAFETY: test-only; every test that changes the environment holds `SERIAL`.
+        unsafe {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
 
     fn call_ok(method: &str, args: Value) -> Value {
         let r: Value = serde_json::from_str(&call_json(method, &args.to_string())).unwrap();
@@ -1624,7 +1639,7 @@ mod tests {
         let run = std::env::temp_dir().join(format!("girocrab-ql-{}", std::process::id()));
         std::fs::create_dir_all(&run).unwrap();
         let saved = std::env::var_os("XDG_RUNTIME_DIR");
-        std::env::set_var("XDG_RUNTIME_DIR", &run);
+        set_env("XDG_RUNTIME_DIR", Some(&run));
         call_ok("open_demo", json!({}));
         let docs = call_ok(
             "list_all_documents",
@@ -1655,10 +1670,7 @@ mod tests {
             !shown.exists() && !fourth.exists(),
             "a vault switch removes every copy"
         );
-        match saved {
-            Some(v) => std::env::set_var("XDG_RUNTIME_DIR", v),
-            None => std::env::remove_var("XDG_RUNTIME_DIR"),
-        }
+        set_env("XDG_RUNTIME_DIR", saved);
         let _ = std::fs::remove_dir_all(run);
     }
 
@@ -1668,8 +1680,8 @@ mod tests {
     fn own_vault_lifecycle() {
         let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("girocrab-test-{}", std::process::id()));
-        std::env::set_var("XDG_DATA_HOME", &dir);
-        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        set_env("XDG_DATA_HOME", Some(&dir));
+        set_env("GIROCRAB_NO_KEYCHAIN", Some("1"));
         assert_eq!(call_ok("vault_info", json!({}))["size"], json!(-1));
         let r = call_ok("unlock_own", json!({ "allow_create": true }));
         assert_eq!(r["account_count"], json!(0));
@@ -1881,9 +1893,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("girocrab-reset-{}", std::process::id()));
         let (data, config) = (dir.join("data"), dir.join("config"));
         std::fs::create_dir_all(config.join("GiroCrab")).unwrap();
-        std::env::set_var("XDG_DATA_HOME", &data);
-        std::env::set_var("XDG_CONFIG_HOME", &config);
-        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        set_env("XDG_DATA_HOME", Some(&data));
+        set_env("XDG_CONFIG_HOME", Some(&config));
+        set_env("GIROCRAB_NO_KEYCHAIN", Some("1"));
         assert!(vault_path().starts_with(&data) && settings_file().starts_with(&config));
         call_ok("unlock_own", json!({ "allow_create": true }));
         call_ok("use_own", json!({}));
@@ -1925,8 +1937,8 @@ mod tests {
             .iter()
             .map(|k| (*k, std::env::var_os(k)))
             .collect();
-        std::env::set_var("XDG_DATA_HOME", dir.join("data"));
-        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        set_env("XDG_DATA_HOME", Some(dir.join("data")));
+        set_env("GIROCRAB_NO_KEYCHAIN", Some("1"));
         let p = call_ok("suggested_backup_password", json!({}));
         let p = p.as_str().unwrap();
         assert_eq!(p.len(), 20);
@@ -1968,10 +1980,7 @@ mod tests {
         call_ok("lock", json!({}));
         let _ = std::fs::remove_dir_all(dir);
         for (k, v) in saved {
-            match v {
-                Some(v) => std::env::set_var(k, v),
-                None => std::env::remove_var(k),
-            }
+            set_env(k, v);
         }
     }
 
@@ -3037,6 +3046,79 @@ mod tests {
         assert_eq!(row(&a["id"]).unwrap()["booking_count"], json!(2));
         call("delete_tag", json!({ "id": a["id"] }));
         assert!(row(&a["id"]).is_none());
+        drop(v);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Tag-Filter und Auswertung (#778, TagFilter.qml / TagManagerSheet.qml): the list filter's
+    /// `tag_ids` (AND) and `untagged_only`, `tag_totals` per tag plus „Ohne Tag“, and
+    /// `tag_account_counts`, whose own rows add up to the tag's booking count.
+    #[test]
+    fn tag_filter_calls() {
+        let path = std::env::temp_dir().join(format!(
+            "girocrab-tagfilter-{}.girocrab",
+            std::process::id()
+        ));
+        let v = Vault::open(path.display().to_string(), vec![6; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let filter = |tag_ids: Value, untagged: bool| {
+            json!({
+            "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": null, "date_from": null, "date_to": null,
+            "limit": 0, "offset": 0, "scope": "All", "merchant_key": null, "direction": "All",
+            "checked": null, "whole_days": false, "tag_ids": tag_ids, "untagged_only": untagged })
+        };
+        let count = |f: Value| {
+            call("list_transactions", json!({ "filter": f }))["transactions"]
+                .as_array()
+                .unwrap()
+                .len() as u64
+        };
+        let tags = call("list_tags", json!({}));
+        let used: Vec<Value> = tags
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|t| t["booking_count"].as_u64().unwrap() > 0)
+            .cloned()
+            .collect();
+        assert!(used.len() >= 2, "demo has tagged bookings");
+        let first = &used[0];
+        let all = count(filter(json!([]), false));
+        let tagged = count(filter(json!([first["id"]]), false));
+        assert_eq!(json!(tagged), first["booking_count"]);
+        let untagged = count(filter(json!([]), true));
+        assert!(untagged > 0 && untagged < all);
+        // several tags: only bookings carrying all of them
+        let both = count(filter(json!([used[0]["id"], used[1]["id"]]), false));
+        assert!(both <= tagged);
+        // totals ignore the filter's own tag choice
+        let totals = call(
+            "tag_totals",
+            json!({ "filter": filter(json!([first["id"]]), true) }),
+        );
+        let rows = totals.as_array().unwrap();
+        let of = |id: &Value| rows.iter().find(|r| r["tag_id"] == *id).cloned();
+        let row = of(&first["id"]).unwrap();
+        assert_eq!(row["booking_count"], first["booking_count"]);
+        assert!(row["sum_cents"].is_i64());
+        assert_eq!(of(&Value::Null).unwrap()["booking_count"], json!(untagged));
+        // per account: own rows add up to the tag's count, linked loans come extra
+        let accounts = call("tag_account_counts", json!({ "tag_id": first["id"] }));
+        let own: u64 = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["linked"] == json!(false))
+            .map(|r| r["booking_count"].as_u64().unwrap())
+            .sum();
+        assert_eq!(json!(own), first["booking_count"]);
+        assert!(accounts[0]["account_id"].is_i64());
         drop(v);
         let _ = std::fs::remove_file(&path);
     }
