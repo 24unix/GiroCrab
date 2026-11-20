@@ -7,8 +7,8 @@
 #
 # Without arguments it reads the sources (seconds; pre-push and the CI lint step).
 # Text patterns can be written around, so two checks back it up:
-# - `--compiled [cargo args]` checks the core library and reads which files and
-#   environment variables the compiler took in for it (CI): only non-test sources,
+# - `--compiled [cargo args]` runs `cargo check -p girocrab-core --lib` with the given
+#   flags and reads from Cargo's dep-info which files and env vars the compiler took in: only non-test sources,
 #   the data tables and the build script's product ID, however they were named.
 # - Clippy bans process and loader calls by resolved path (girocrab-core/clippy.toml).
 set -euo pipefail
@@ -119,7 +119,11 @@ find_code() { # <re> <skip> <allow> <files…>
 # denied so that sys.rs can lift it.
 unsafe_levels() {
     python3 -I - <<'PY'
-import json, os, subprocess, tomllib
+import json, os, re, subprocess
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
 
 meta = json.loads(subprocess.run(
     ["cargo", "metadata", "-q", "--no-deps", "--format-version", "1", "--offline"],
@@ -127,8 +131,39 @@ meta = json.loads(subprocess.run(
 root = meta["workspace_root"]
 
 def load(manifest):
-    with open(manifest, "rb") as f:
-        return tomllib.load(f)
+    if tomllib is not None:
+        with open(manifest, "rb") as f:
+            return tomllib.load(f)
+    out, sec = {}, []
+    for raw in open(manifest, encoding="utf-8"):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        m_sec = re.fullmatch(r"\[([^\[\]]+)\]", line)
+        if m_sec:
+            sec = [p.strip().strip('"') for p in m_sec.group(1).split(".")]
+            cur = out
+            for k in sec:
+                cur = cur.setdefault(k, {})
+            continue
+        m_kv = re.match(r'^([A-Za-z0-9_.-]+)\s*=\s*(.+)$', line)
+        if m_kv and sec:
+            keys = sec + [p.strip().strip('"') for p in m_kv.group(1).split(".")]
+            val_s = m_kv.group(2).strip()
+            if val_s in ("true", "false"):
+                val = (val_s == "true")
+            elif val_s.startswith('"') and val_s.endswith('"'):
+                val = val_s[1:-1]
+            elif val_s.startswith("{") and "level" in val_s:
+                ml = re.search(r'level\s*=\s*"([^"]+)"', val_s)
+                val = {"level": ml.group(1)} if ml else {}
+            else:
+                val = val_s
+            cur = out
+            for k in keys[:-1]:
+                cur = cur.setdefault(k, {})
+            cur[keys[-1]] = val
+    return out
 
 workspace = load(os.path.join(root, "Cargo.toml")).get("workspace", {}).get("lints", {}).get("rust", {})
 for package in meta["packages"]:
