@@ -19348,6 +19348,39 @@
         }
       }
     },
+    "Kontist Client-ID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontist client ID"
+          }
+        }
+      }
+    },
+    "Kontist Client-Secret" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontist client secret"
+          }
+        }
+      }
+    },
+    "Kontist OAuth2-Client" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontist OAuth2 client"
+          }
+        }
+      }
+    },
     "Konto" : {
       "extractionState" : "manual",
       "localizations" : {
