@@ -61,6 +61,12 @@ Card {
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: budgetMenu.popup() }
                 HoverHandler { id: rowHover }
                 ToolTip.visible: rowHover.hovered; ToolTip.delay: 600; ToolTip.text: qsTr("Budget bearbeiten …")
+                // the Mac row is a Button that merges its children and keeps the bar's value (#571)
+                Accessible.role: Accessible.Button
+                Accessible.name: AppModel.masking(modelData.name, AppModel.redactLabels) + ", "
+                    + AppModel.masking(Fmt.money(modelData.spent_cents) + " / " + Fmt.money(modelData.budget_cents), AppModel.redactAmounts)
+                Accessible.description: card.spokenValue(modelData.percent)
+                Accessible.onPressAction: AppModel.budgetCategoryID = modelData.category_id
                 AppMenu { id: budgetMenu
                     AppMenuItem { text: qsTr("Budget bearbeiten …"); icon.name: SF.icon("pencil"); onTriggered: AppModel.budgetCategoryID = modelData.category_id }
                     AppMenuItem { text: qsTr("Budget entfernen"); icon.name: SF.icon("trash"); onTriggered: AppModel.setBudget(null, modelData.category_id) } }
@@ -75,9 +81,19 @@ Card {
         }
     }
 
+    /// BudgetBar.spokenValue: "85 % des Budgets verbraucht"; over budget (red bar) is never spoken as 100 %.
+    function spokenValue(percent) {
+        const rounded = Math.round(percent)
+        return percent > 100 ? qsTr("%1 % des Budgets verbraucht, überschritten").arg(Math.max(rounded, 101))
+                             : qsTr("%1 % des Budgets verbraucht").arg(Math.min(rounded, 100))
+    }
+
     // PlanningUI.swift › BudgetBar: capsule in the tone of the share spent.
     component BudgetBar: Rectangle {
         property real percent: 0
+        Accessible.role: Accessible.ProgressBar
+        Accessible.name: qsTr("Budgetverbrauch")
+        Accessible.description: card.spokenValue(percent)
         implicitHeight: 6; radius: 3; color: Theme.border
         Rectangle { height: 6; radius: 3; color: card.tone(parent.percent); width: parent.width * Math.min(Math.max(parent.percent, 0), 100) / 100 }
     }

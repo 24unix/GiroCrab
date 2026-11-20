@@ -250,8 +250,21 @@ Item {
                    Sensitive { amounts: true } }
         }
     }
+    // CategorySumChart.swift › Descriptor (#571, #674): title, a whole sentence per unit as the
+    // summary (flipped bars = expenses), and the hovered bar like the tooltip (no amount while hidden).
+    readonly property string accessibleSummary: {
+        switch (unit) {
+        case "day": return flip ? qsTr("Ausgaben je Tag") : qsTr("Summe je Tag")
+        case "quarter": return flip ? qsTr("Ausgaben je Quartal") : qsTr("Summe je Quartal")
+        case "year": return flip ? qsTr("Ausgaben je Jahr") : qsTr("Summe je Jahr")
+        default: return flip ? qsTr("Ausgaben je Monat") : qsTr("Summe je Monat")
+        }
+    }
     Accessible.role: Accessible.Chart
     Accessible.name: qsTr("Summen der Kategorie")
+    Accessible.description: hovered < 0 || hovered >= bars.length || (AppModel.effectiveRedaction & AppModel.redactAmounts) !== 0
+        ? accessibleSummary
+        : accessibleSummary + ". " + tooltipText(bars[hovered].period) + ": " + Fmt.money(flip ? -bars[hovered].cents : bars[hovered].cents)
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true

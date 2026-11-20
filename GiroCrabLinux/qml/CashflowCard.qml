@@ -79,6 +79,7 @@ Card {
                 visible: !card.collapsed
                 Layout.preferredWidth: 220
                 options: [{ id: "Month", title: qsTr("Monat") }, { id: "Quarter", title: qsTr("Quartal") }, { id: "Year", title: qsTr("Jahr") }]
+                Accessible.name: qsTr("Zeitraum")   // Picker("Zeitraum", …).labelsHidden() (ff91866)
                 current: card.granularity
                 onActivated: id => card.granularity = id
             }
@@ -87,6 +88,10 @@ Card {
             visible: !card.collapsed
             Layout.fillWidth: true
             Layout.preferredHeight: 160
+            // PlanningUI.swift › CashflowCard: .accessibilityLabel("Cashflow") + chart descriptor (#571)
+            Accessible.role: Accessible.Chart
+            Accessible.name: qsTr("Cashflow")
+            Accessible.description: qsTr("Einnahmen und Ausgaben je Zeitraum")
             // y axis + dashed grid
             Repeater {
                 model: 4
