@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
