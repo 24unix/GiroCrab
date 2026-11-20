@@ -391,6 +391,7 @@ pub fn display_name(id: &str) -> String {
         "amazon-orders" => "Amazon",
         "fnz" => "FNZ Bank",
         "ibkr" => "Interactive Brokers",
+        "equateplus" => "EquatePlus",
         "quirion" => "quirion",
         "uberspace" => "Uberspace",
         "schwaebischhall" => "Schwäbisch Hall",
