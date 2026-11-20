@@ -855,6 +855,17 @@
         }
       }
     },
+    "%lld Dokumente konnten keinem Konto zugeordnet werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld documents could not be assigned to an account."
+          }
+        }
+      }
+    },
     "%lld Kategorien: %@" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -297,7 +297,15 @@ fn repeated_syncs_store_every_booking_once() {
     };
     super::super::store_fetch(&v, ConnectorKind::Bhw, conn, fetch("2026-01-01")).unwrap();
     let first = rows();
-    assert_eq!(first.len(), 4);
+    assert_eq!(
+        first,
+        vec![
+            ("2026-10-01".to_string(), -500),
+            ("2026-10-05".to_string(), 10_000),
+            ("2026-10-05".to_string(), 10_000),
+            ("2026-11-05".to_string(), 10_000),
+        ]
+    );
     for since in ["2026-01-01", "2026-10-01", "2026-10-05"] {
         super::super::store_fetch(&v, ConnectorKind::Bhw, conn, fetch(since)).unwrap();
         assert_eq!(rows(), first, "since {since}");
@@ -556,6 +564,29 @@ fn unplaced_mailbox_pdfs_move_to_the_contract_their_text_names() {
             .unwrap(),
         None
     );
+    // an archived account gets no document placed
+    super::super::store_fetch(
+        &v,
+        ConnectorKind::Bhw,
+        conn,
+        FetchResult {
+            accounts: contracts
+                .iter()
+                .map(|c| remote_account(c, "2026-11-20"))
+                .collect(),
+            documents: vec![pdf("3")],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let third = *v.bhw_unplaced_documents().unwrap().last().unwrap();
+    v.set_account_archived(loan, true).unwrap();
+    assert_eq!(
+        v.place_bhw_document(third, "Vertrags-Nr. 20 0000 0002".into())
+            .unwrap(),
+        None
+    );
+    assert!(v.bhw_unplaced_documents().unwrap().contains(&third));
     drop(v);
     std::fs::remove_file(path).ok();
 }
@@ -720,8 +751,21 @@ fn a_number_matches_only_as_a_number_of_its_own() {
     ]}))
     .unwrap();
     let place = |t: &str| contract_in_text(t, &contracts, &[]);
-    // part of a longer number: no match
+    // part of a longer number, also a grouped one: no match
     assert_eq!(place("Kundennummer: 91234567801"), (None, TextMatch::None));
+    assert_eq!(
+        place("Kundennummer: 9 12 3456 7801"),
+        (None, TextMatch::None)
+    );
+    assert_eq!(place("Referenz 12 3456 7801 5"), (None, TextMatch::None));
+    // a label in a text whose lower case is longer than the text itself
+    assert_eq!(
+        place(&format!(
+            "{} Vertragsnummer 1234567851, Bezug 1234567801",
+            "İ".repeat(40)
+        )),
+        (Some("bhw-1234567851".into()), TextMatch::Label)
+    );
     assert_eq!(place("Referenz 12345678011"), (None, TextMatch::None));
     // followed by a date or written in groups: a match
     assert_eq!(

@@ -644,19 +644,50 @@ enum TextMatch {
     None,
 }
 
+/// Separators the BHW writes between the digit groups of a number.
+fn number_separator(c: char) -> bool {
+    matches!(c, ' ' | '.' | '\u{a0}')
+}
+
 /// Where `digits` stand in `hay` as a number of their own: written with or
 /// without single spaces or dots between the digits ("12 3456 7801"), but not
-/// as part of a longer number ("Kundennummer 91234567801").
+/// as part of a longer number, grouped or not ("Kundennummer 9 12 3456 7801",
+/// "91234567801"). A date may follow ("1234567801 19.01.2024").
 fn number_at(hay: &str, digits: &str) -> Option<usize> {
+    static DATE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{2,4}(?:[^0-9]|$)").expect("date pattern")
+    });
     let body = digits
         .chars()
         .map(String::from)
         .collect::<Vec<_>>()
         .join("[ .\u{a0}]?");
-    regex::Regex::new(&format!("(?:^|[^0-9]){body}(?:[^0-9]|$)"))
-        .ok()?
-        .find(hay)
-        .map(|m| m.start())
+    let re = regex::Regex::new(&body).ok()?;
+    let mut from = 0;
+    while let Some(m) = re.find_at(hay, from) {
+        let mut before = hay[..m.start()].chars().rev();
+        let starts_alone = match before.next() {
+            None => true,
+            Some(c) if c.is_ascii_digit() => false,
+            Some(c) if number_separator(c) => !before.next().is_some_and(|d| d.is_ascii_digit()),
+            Some(_) => true,
+        };
+        let after = &hay[m.end()..];
+        let mut next = after.chars();
+        let ends_alone = match next.next() {
+            None => true,
+            Some(c) if c.is_ascii_digit() => false,
+            Some(c) if number_separator(c) && next.next().is_some_and(|d| d.is_ascii_digit()) => {
+                DATE.is_match(&after[c.len_utf8()..])
+            }
+            Some(_) => true,
+        };
+        if starts_alone && ends_alone {
+            return Some(m.start());
+        }
+        from = m.start() + hay[m.start()..].chars().next().map_or(1, char::len_utf8);
+    }
+    None
 }
 
 /// The contract a mailbox PDF is about, read from its text: the BHW prints
@@ -682,7 +713,8 @@ fn contract_in_text(
         .filter(|(digits, _)| digits.len() >= 6)
         .collect();
     // The windows right after a label ("Vertragsnummer", "Vertrags-/Kontonummer").
-    let lower = text.to_lowercase();
+    // ASCII only: the label offsets must fit the original text.
+    let lower = text.to_ascii_lowercase();
     let windows: Vec<String> = lower
         .match_indices("vertrag")
         .map(|(pos, _)| text.get(pos..).unwrap_or("").chars().take(80).collect())
@@ -1043,12 +1075,12 @@ impl BhwConnector {
             if let Some(id) = &self.request_id {
                 req = req.header("x-request-id", id.as_str());
             }
-            // A failed download leaves the rest for a later fetch; the ones
-            // already downloaded are kept.
+            // A failed download stays unknown for a later fetch; the other
+            // PDFs are still downloaded.
             let Ok(resp) = req.send().await else {
                 crate::depot_debug::log(&format!("bhw document #{n}: request failed"));
                 incomplete = true;
-                break;
+                continue;
             };
             ensure_host(resp.url())?;
             let status = resp.status();
@@ -1364,19 +1396,35 @@ impl ZeroizeStrings for Value {
 
 // ------------------------------------------------------------------ placing mailbox PDFs by their text
 
-/// Account id, external ref and kind of every BHW account.
+/// Account id, external ref and kind of every BHW account a sync stores
+/// data for: archived accounts and accounts switched off or pending in the
+/// account selection get no documents placed.
 fn bhw_accounts(db: &rusqlite::Connection) -> CoreResult<Vec<(i64, String, String)>> {
     let mut st = db.prepare(
-        "SELECT a.id, a.external_ref, a.kind FROM accounts a
+        "SELECT a.id, a.external_ref, a.kind, a.connection_id FROM accounts a
            JOIN bank_connections c ON c.id = a.connection_id
-          WHERE c.connector = ?1 AND c.deleted_ms IS NULL AND a.deleted_ms IS NULL",
+          WHERE c.connector = ?1 AND c.deleted_ms IS NULL AND a.deleted_ms IS NULL
+            AND a.archived_unix IS NULL",
     )?;
     let rows = st
         .query_map([crate::models::ConnectorKind::Bhw.as_str()], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
         })?
-        .collect::<Result<Vec<(i64, String, String)>, _>>()?;
-    Ok(rows)
+        .collect::<Result<Vec<(i64, String, String, i64)>, _>>()?;
+    let mut skipped: std::collections::HashMap<i64, Vec<String>> = Default::default();
+    let mut out = Vec::new();
+    for (id, external_ref, kind, connection_id) in rows {
+        let refs = match skipped.entry(connection_id) {
+            std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(super::account_selection::skipped_refs(db, connection_id)?)
+            }
+        };
+        if !refs.contains(&external_ref) {
+            out.push((id, external_ref, kind));
+        }
+    }
+    Ok(out)
 }
 
 const UNPLACED: &str = "account_id IS NULL AND source_url LIKE 'bhw:message:%'";

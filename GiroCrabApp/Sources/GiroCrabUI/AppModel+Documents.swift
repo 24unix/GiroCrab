@@ -133,20 +133,26 @@ extension AppModel {
 
     /// BHW mailbox PDFs whose mailbox entry names no listed contract are stored without
     /// an account; their text layer (PDFKit, which reads fonts the core's extractor cannot)
-    /// names the contract. Returns how many moved to an account.
-    func placeBhwDocuments() async -> Int {
-        guard let pin = pinVault() else { return 0 }
-        let placed = try? await pin.run { vault -> Int in
+    /// names the contract. Returns how many moved to an account and how many could not be
+    /// read or written (a PDF without text, or whose text names no contract, is no failure).
+    func placeBhwDocuments() async -> (placed: Int, failed: Int) {
+        guard let pin = pinVault() else { return (0, 0) }
+        let result = try? await pin.run { vault -> (placed: Int, failed: Int) in
             var placed = 0
+            var failed = 0
             for id in try vault.bhwUnplacedDocuments() {
-                // A document deleted or moved meanwhile is skipped; the others still go.
-                guard let data = try? vault.getDocumentBytes(docId: id),
-                      let text = PDFDocument(data: data)?.string, !text.isEmpty else { continue }
-                if (try? vault.placeBhwDocument(docId: id, text: text)) != nil { placed += 1 }
+                // One failing document does not stop the others.
+                do {
+                    let data = try vault.getDocumentBytes(docId: id)
+                    guard let text = PDFDocument(data: data)?.string, !text.isEmpty else { continue }
+                    if try vault.placeBhwDocument(docId: id, text: text) != nil { placed += 1 }
+                } catch {
+                    failed += 1
+                }
             }
-            return placed
+            return (placed, failed)
         }
-        return placed ?? 0
+        return result ?? (0, 1)
     }
 
     /// Explicit "Kontoauszüge abrufen": regular syncs never fetch statements (speed, no extra TAN).
