@@ -393,11 +393,11 @@ impl Vault {
         login_name: String,
     ) -> Result<(), CoreError> {
         let db = self.db()?;
-        let (kind, old_name): (String, String) = db
+        let (kind, old_name, old_login): (String, String, String) = db
             .query_row(
-                "SELECT connector, display_name FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
+                "SELECT connector, display_name, login_name FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                 [connection_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()?
             .ok_or_else(|| CoreError::NotFound {
@@ -415,6 +415,11 @@ impl Vault {
             "UPDATE bank_connections SET display_name = ?1, login_name = ?2 WHERE id = ?3",
             params![name, login, connection_id],
         )?;
+        // A stored session (cookies, refresh token) belongs to the old login:
+        // keeping it would fetch that login's data under the new one.
+        if login != old_login {
+            clear_session_inner(&db, connection_id)?;
+        }
         // The sidebar shows `accounts.bank_name`: follow the rename where it
         // still carries the old or generic name (never a name the bank sent).
         db.execute(
@@ -850,6 +855,32 @@ mod tests {
             .unwrap();
         assert!(v.connection_status(c).unwrap().has_session);
         v.clear_connection_session(c).unwrap();
+        assert!(!v.connection_status(c).unwrap().has_session);
+    }
+
+    #[test]
+    fn a_new_login_drops_the_stored_session_a_rename_keeps_it() {
+        let dir = crate::test_support::TempDir::new("girocrab-login-change");
+        let path = dir.join("v.db");
+        let v = Vault::open(path.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
+        let c = v
+            .add_bank_connection(ConnectorKind::Kontist, String::new(), "a@b.de".into())
+            .unwrap();
+        let store = |v: &Vault| {
+            v.db()
+                .unwrap()
+                .execute(
+                    "UPDATE bank_connections SET state_json = '{\"refresh_token\":\"r\"}' WHERE id = ?1",
+                    [c],
+                )
+                .unwrap();
+        };
+        store(&v);
+        v.update_bank_connection(c, "Firma".into(), "a@b.de".into())
+            .unwrap();
+        assert!(v.connection_status(c).unwrap().has_session);
+        v.update_bank_connection(c, "Firma".into(), "x@y.de".into())
+            .unwrap();
         assert!(!v.connection_status(c).unwrap().has_session);
     }
 
