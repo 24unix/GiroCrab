@@ -618,12 +618,11 @@ mod upgrade_tests {
             let mut st = c
                 .prepare("SELECT name FROM pragma_table_info('transactions')")
                 .unwrap();
-            let names = st
-                .query_map([], |r| r.get(0))
+
+            st.query_map([], |r| r.get(0))
                 .unwrap()
                 .collect::<Result<_, _>>()
-                .unwrap();
-            names
+                .unwrap()
         };
         for col in ["purpose_code", "gvc", "salary_flag"] {
             assert!(cols.iter().any(|c| c == col), "{col} missing");

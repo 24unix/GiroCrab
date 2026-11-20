@@ -155,22 +155,21 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
                  ON k.account_id = ?1 AND k.external_id = o.external_id
               WHERE o.account_id = ?2",
         )?;
-        let r = st
-            .query_map(params![keep, dup], |r| {
-                Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
-                    r.get(6)?,
-                    r.get(7)?,
-                    r.get(8)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        r
+
+        st.query_map(params![keep, dup], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
     };
     for (k, o, same_amount, cat, src, rule, checked, note, salary) in pairs {
         conn.execute(
@@ -280,10 +279,9 @@ fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
     let rows: Vec<(i64, String, String)> = {
         let mut st =
             conn.prepare("SELECT id, connector, login_name FROM bank_connections WHERE deleted_ms IS NULL ORDER BY id")?;
-        let r = st
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-            .collect::<Result<Vec<_>, _>>()?;
-        r
+
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?
     };
     let mut removed = 0u32;
     let mut keepers: Vec<(String, String, i64)> = Vec::new();
@@ -305,10 +303,9 @@ fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
                 let mut st =
                     // includes soft-deleted rows
                     conn.prepare("SELECT id, external_ref FROM accounts WHERE connection_id = ?1")?;
-                let r = st
-                    .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                r
+
+                st.query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?
             };
             for (acc_id, ext) in accs {
                 let target: Option<i64> = conn
@@ -761,19 +758,18 @@ impl Vault {
                   WHERE a.connection_id = ?1 AND t.deleted_ms IS NULL AND t.external_id NOT LIKE 'mm-%'
                     AND t.external_id NOT LIKE 'switch-stale-%' AND t.external_id NOT LIKE 'pending-%'",
             )?;
-            let r = st
-                .query_map([connection_id], |r| {
-                    Ok((
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                    ))
-                })?
-                .collect::<Result<_, _>>()?;
-            r
+
+            st.query_map([connection_id], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })?
+            .collect::<Result<_, _>>()?
         };
         for (id, date, cents, iban, name, purpose) in rows {
             let fp = crate::importers::moneymoney_import::fingerprint(

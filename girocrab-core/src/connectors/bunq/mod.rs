@@ -637,14 +637,14 @@ impl BunqConnector {
                 .unwrap_or_default()
             {
                 let ext = format!("bunq-{pid}");
-                if let Some(t) = payments.iter_mut().find(|t| t.external_id == ext) {
-                    if !t.purpose.contains(&note) {
-                        t.purpose = if t.purpose.is_empty() {
-                            note.clone()
-                        } else {
-                            format!("{} · {note}", t.purpose)
-                        };
-                    }
+                if let Some(t) = payments.iter_mut().find(|t| t.external_id == ext)
+                    && !t.purpose.contains(&note)
+                {
+                    t.purpose = if t.purpose.is_empty() {
+                        note.clone()
+                    } else {
+                        format!("{} · {note}", t.purpose)
+                    };
                 }
             }
         }

@@ -275,10 +275,9 @@ impl BookingFinisher {
                          OR (c.id IS NULL AND (lower(a.name) LIKE '%paypal%'
                                                OR lower(a.bank_name) LIKE '%paypal%')))",
             )?;
-            let ids = st
-                .query_map([], |r| r.get::<_, i64>(0))?
-                .collect::<Result<_, _>>()?;
-            ids
+
+            st.query_map([], |r| r.get::<_, i64>(0))?
+                .collect::<Result<_, _>>()?
         };
         Ok(Self {
             language: crate::i18n::current(),

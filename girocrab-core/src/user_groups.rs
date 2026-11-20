@@ -610,10 +610,10 @@ pub(crate) fn merge_attached(
         )?;
         // a MoneyMoney twin folded here and edited on a device that hadn't
         // folded it yet: the note goes on to the bank account, like the fold
-        if note_rows > 0 {
-            if let Some(bank) = crate::sync_merge::twins::folded_into(tx, id)? {
-                pass_note_on(tx, id, bank)?;
-            }
+        if note_rows > 0
+            && let Some(bank) = crate::sync_merge::twins::folded_into(tx, id)?
+        {
+            pass_note_on(tx, id, bank)?;
         }
         changed += note_rows;
     }
@@ -1082,10 +1082,10 @@ impl Vault {
                 return Err(not_found(u));
             }
         }
-        if let Some(p) = &parent_uuid {
-            if subtree(&effective_parents(&db)?, &uuid).contains(p) {
-                return Err(CoreError::invalid(tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden")));
-            }
+        if let Some(p) = &parent_uuid
+            && subtree(&effective_parents(&db)?, &uuid).contains(p)
+        {
+            return Err(CoreError::invalid(tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden")));
         }
         set_parent(&db, &uuid, parent_uuid.as_deref(), now_ms())
     }
@@ -1167,10 +1167,10 @@ impl Vault {
         index: Option<u32>,
     ) -> Result<(), CoreError> {
         let db = self.db()?;
-        if let Some(u) = &group_uuid {
-            if !group_exists(&db, u)? {
-                return Err(not_found(u));
-            }
+        if let Some(u) = &group_uuid
+            && !group_exists(&db, u)?
+        {
+            return Err(not_found(u));
         }
         let mut ids: Vec<i64> = db
             .prepare(

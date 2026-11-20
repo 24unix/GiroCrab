@@ -630,11 +630,11 @@ pub(crate) fn store_fetch(
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
-                    if let Some(id) = archived_ids.get(&t.account_ref) {
-                        if !deleted_refs.contains(&t.account_ref) {
-                            let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
-                            skipped_archived += u32::from(!known);
-                        }
+                    if let Some(id) = archived_ids.get(&t.account_ref)
+                        && !deleted_refs.contains(&t.account_ref)
+                    {
+                        let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
+                        skipped_archived += u32::from(!known);
                     }
                     continue;
                 };
@@ -1557,10 +1557,10 @@ impl Vault {
                 );
             }
             let tm_key = format!("fints.tan_medium.{connection_id}");
-            if let Some(v) = Vault::setting_inner(&db, &tm_key)? {
-                if !v.trim().is_empty() {
-                    settings.insert(tm_key, SecretString::new(v));
-                }
+            if let Some(v) = Vault::setting_inner(&db, &tm_key)?
+                && !v.trim().is_empty()
+            {
+                settings.insert(tm_key, SecretString::new(v));
             }
             // this login's own Enable Banking application, if it has one (#824)
             crate::vault::enable_banking_apps::overlay(&db, connection_id, &mut settings)?;
@@ -1628,15 +1628,16 @@ impl Vault {
                     connector, since,
                 ));
             }
-        } else if !demo && is_consorsbank_fints(&key_str) {
-            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)? {
-                let known = self.consorsbank_known_documents(connection_id)?;
-                connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
-                    connector,
-                    Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
-                    since,
-                ));
-            }
+        } else if !demo
+            && is_consorsbank_fints(&key_str)
+            && let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)?
+        {
+            let known = self.consorsbank_known_documents(connection_id)?;
+            connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
+                connector,
+                Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
+                since,
+            ));
         }
         Ok(Arc::new(SyncSession::new(
             self.clone(),
@@ -1765,10 +1766,9 @@ impl Vault {
             .recipient_bic
             .as_deref()
             .filter(|b| !b.trim().is_empty())
+            && !sepa::validate_bic(b)
         {
-            if !sepa::validate_bic(b) {
-                return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
-            }
+            return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
         }
         if request.recipient_name.trim().is_empty() {
             return Err(CoreError::invalid(tr("Der Empfängername fehlt.")));

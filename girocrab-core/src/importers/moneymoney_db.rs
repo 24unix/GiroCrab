@@ -1006,13 +1006,12 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
         if !cfg!(test) {
             let _ = conn.query_row("PRAGMA cipher_memory_security = ON;", [], |_| Ok(()));
         }
-        if let Some(v) = compat {
-            if conn
+        if let Some(v) = compat
+            && conn
                 .execute_batch(&format!("PRAGMA cipher_compatibility = {v};"))
                 .is_err()
-            {
-                continue;
-            }
+        {
+            continue;
         }
         match conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
             r.get::<_, i64>(0)
@@ -1048,10 +1047,9 @@ fn objects(conn: &Connection) -> CoreResult<HashSet<String>> {
 fn select(conn: &Connection, table: &str, cols: &[&str], tail: &str) -> CoreResult<String> {
     let have: HashSet<String> = {
         let mut st = conn.prepare("SELECT lower(name) FROM pragma_table_info(?1)")?;
-        let r = st
-            .query_map([table], |r| r.get::<_, String>(0))?
-            .collect::<Result<_, _>>()?;
-        r
+
+        st.query_map([table], |r| r.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?
     };
     let list = cols
         .iter()
@@ -1419,10 +1417,10 @@ fn read_categories(conn: &Connection, have: &HashSet<String>) -> CoreResult<SrcC
     let mut group_ids: Vec<&i64> = groups.keys().collect();
     group_ids.sort();
     for g in group_ids {
-        if let (Some(color), path) = (&groups[g].2, group_path(*g)) {
-            if !path.is_empty() {
-                cats.colors.push((path, color.clone()));
-            }
+        if let (Some(color), path) = (&groups[g].2, group_path(*g))
+            && !path.is_empty()
+        {
+            cats.colors.push((path, color.clone()));
         }
     }
     let sql = select(
@@ -2031,19 +2029,19 @@ impl Source {
                 .and_then(real_to_cents)
                 .is_some(),
         };
-        if let Some((cents, cur)) = &a.shown_balance {
-            if cur.is_empty() || *cur == a.currency {
-                let d = a.balance_ts.and_then(unix_to_date).unwrap_or_default();
-                out.balance_cents = *cents;
-                out.balance_shown = true;
-                out.balance_source = if d.is_empty() {
-                    tr("Saldo laut Datenbank").into()
-                } else {
-                    trf("Saldo laut Datenbank ({0})", &[&d])
-                };
-                out.balance_date = last.max(d);
-                return out;
-            }
+        if let Some((cents, cur)) = &a.shown_balance
+            && (cur.is_empty() || *cur == a.currency)
+        {
+            let d = a.balance_ts.and_then(unix_to_date).unwrap_or_default();
+            out.balance_cents = *cents;
+            out.balance_shown = true;
+            out.balance_source = if d.is_empty() {
+                tr("Saldo laut Datenbank").into()
+            } else {
+                trf("Saldo laut Datenbank ({0})", &[&d])
+            };
+            out.balance_date = last.max(d);
+            return out;
         }
         let (base, source, base_date) = match self.balances.get(&(a.id, a.currency.clone())) {
             Some((ts, v)) => {
@@ -3369,10 +3367,10 @@ impl Vault {
         let password = SecretString::new(password);
         let (db_path, found) = locate(&path)?;
         // "reading the database" until the accounts start
-        if let Some(o) = observer {
-            if !o.progress(MoneyMoneyDbImportProgress::default()) {
-                return Err(cancelled());
-            }
+        if let Some(o) = observer
+            && !o.progress(MoneyMoneyDbImportProgress::default())
+        {
+            return Err(cancelled());
         }
         let src = read_source(&db_path, &password)?;
         drop(password);

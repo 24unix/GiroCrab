@@ -1309,10 +1309,10 @@ impl BankConnector for TradeRepublicConnector {
         }
         // HTTP 200 with an EMPTY body (or {}) is normal: the session comes as Set-Cookie.
         self.session.cookies = merge_cookies(self.session.cookies.expose(), &set).into();
-        if let Ok(v) = serde_json::from_str::<Value>(&text) {
-            if let Some(t) = v["sessionToken"].as_str() {
-                self.session.session_token = t.into();
-            }
+        if let Ok(v) = serde_json::from_str::<Value>(&text)
+            && let Some(t) = v["sessionToken"].as_str()
+        {
+            self.session.session_token = t.into();
         }
         if self.session.cookies.is_empty() {
             let url: url::Url = API.parse().map_err(|e| CoreError::Protocol {

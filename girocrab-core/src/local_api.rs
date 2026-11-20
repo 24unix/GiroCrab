@@ -614,12 +614,12 @@ impl Vault {
         // The totals enrich every booking of the range while holding the vault:
         // a bounded range keeps one request short (~2 ms per year on 31k bookings).
         let day = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d).ok();
-        if let (Some(f), Some(t)) = (day(&from), day(&to)) {
-            if crate::dates::days_between(f, t) > MAX_SUMMARY_DAYS {
-                return Err(ApiError::invalid(format!(
-                    "at most {MAX_SUMMARY_DAYS} days per summary"
-                )));
-            }
+        if let (Some(f), Some(t)) = (day(&from), day(&to))
+            && crate::dates::days_between(f, t) > MAX_SUMMARY_DAYS
+        {
+            return Err(ApiError::invalid(format!(
+                "at most {MAX_SUMMARY_DAYS} days per summary"
+            )));
         }
         // One lock for both reads, so totals and categories see the same vault.
         let db = self.db()?;

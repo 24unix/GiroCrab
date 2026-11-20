@@ -484,8 +484,8 @@ impl FinTsConnector {
         self.learn_bpd(&reply);
         // Optional: TAN media list (needed by some banks for HKTAN).
         let tab_v = self.version("HKTAB");
-        if self.bank_supports("HKTAB") {
-            if let Ok(r) = self
+        if self.bank_supports("HKTAB")
+            && let Ok(r) = self
                 .send(
                     ctx,
                     vec![SegmentBuilder::new("HKTAB", 3, tab_v)
@@ -496,9 +496,8 @@ impl FinTsConnector {
                     None,
                 )
                 .await
-            {
-                self.learn_bpd(&r);
-            }
+        {
+            self.learn_bpd(&r);
         }
         self.end_dialog(ctx, "999").await;
         if self.st.system_id.is_empty() {

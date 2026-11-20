@@ -263,21 +263,17 @@ fn parse_natural(q: &mut SmartSearchQuery, words: &[String]) {
     }
 
     // "Welche Versicherungen habe ich?" -> category.
-    if q.category_hint.is_none() {
-        if let Some(i) = lower
+    if q.category_hint.is_none()
+        && let Some(i) = lower
             .iter()
             .position(|w| matches!(w.as_str(), "welche" | "welcher" | "welchen"))
-        {
-            if let Some(noun) = words.get(i + 1) {
-                if !EXPENSE_WORDS.contains(&lower[i + 1].as_str())
-                    && !STOP_WORDS.contains(&lower[i + 1].as_str())
-                {
-                    q.category_hint = Some(singular(noun));
-                    consumed[i + 1] = true;
-                    captured = true;
-                }
-            }
-        }
+        && let Some(noun) = words.get(i + 1)
+        && !EXPENSE_WORDS.contains(&lower[i + 1].as_str())
+        && !STOP_WORDS.contains(&lower[i + 1].as_str())
+    {
+        q.category_hint = Some(singular(noun));
+        consumed[i + 1] = true;
+        captured = true;
     }
 
     // Plain words without any question cue are free text ("amazon prime").
