@@ -435,11 +435,18 @@ Sheet {
             parent = anchor
             // to the left, over the list: the count sits at the sheet's right edge
             x = -width - 6
-            y = Math.min(0, sheet.height - anchor.mapToItem(sheet.contentItem, 0, 0).y - implicitHeight - 24)
+            place()
             open()
             const id = t.id
             TagFilter.loadAccountCounts(id, r => { if (accountsPopover.tag && accountsPopover.tag.id === id) accountsPopover.rows = r || [] })
         }
+        /// Keeps the popover inside the sheet, also once the rows have arrived.
+        function place() {
+            if (!parent || !parent.mapToItem) return
+            const top = parent.mapToItem(sheet.contentItem, 0, 0).y
+            y = Math.max(-top + 12, Math.min(0, sheet.height - top - implicitHeight - 24))
+        }
+        onImplicitHeightChanged: if (visible) place()
         function toggleFor(t, anchor) {
             hoverTimer.stop()
             if (visible && tag && tag.id === t.id) close(); else openFor(t, anchor)
@@ -454,11 +461,26 @@ Sheet {
             HoverHandler { onHoveredChanged: { sheet.overPopover = hovered; sheet.hoverChanged() } }
             Text { text: qsTr("Buchungen nach Konten"); font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.text }
             Spinner { visible: accountsPopover.rows === null; size: 16 }
-            // each booking once, at its own account (adds up to the tag's count) …
-            Repeater { model: accountsPopover.own; AccountCountRow { required property var modelData; Layout.fillWidth: true; entry: modelData } }
-            // … then loans whose view shows some of them too (rates linked from the Girokonto)
-            Rectangle { visible: accountsPopover.linked.length > 0; Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
-            Repeater { model: accountsPopover.linked; AccountCountRow { required property var modelData; Layout.fillWidth: true; entry: modelData } }
+            // many accounts: the rows scroll, the popover stays inside the sheet
+            Flickable {
+                id: accountFlick
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(accountRows.implicitHeight, Math.max(80, sheet.height - 160))
+                contentHeight: accountRows.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: accountRows.implicitHeight > accountFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+                ColumnLayout {
+                    id: accountRows
+                    width: accountFlick.width
+                    spacing: 6
+                    // each booking once, at its own account (adds up to the tag's count) …
+                    Repeater { model: accountsPopover.own; AccountCountRow { required property var modelData; Layout.fillWidth: true; entry: modelData } }
+                    // … then loans whose view shows some of them too (rates linked from the Girokonto)
+                    Rectangle { visible: accountsPopover.linked.length > 0; Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
+                    Repeater { model: accountsPopover.linked; AccountCountRow { required property var modelData; Layout.fillWidth: true; entry: modelData } }
+                }
+            }
             Text {
                 visible: accountsPopover.linked.length > 0
                 Layout.fillWidth: true; wrapMode: Text.WordWrap

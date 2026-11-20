@@ -296,6 +296,19 @@ Card {
         readonly property bool hovered: mlArea.containsMouse
         signal clicked()
         implicitWidth: r.implicitWidth; implicitHeight: 22
+        // keyboard: Tab reaches it, Space / Return opens it
+        activeFocusOnTab: true
+        Keys.onSpacePressed: ml.clicked()
+        Keys.onReturnPressed: ml.clicked()
+        Keys.onEnterPressed: ml.clicked()
+        Accessible.role: Accessible.Button
+        Accessible.name: ml.text
+        Accessible.onPressAction: ml.clicked()
+        Rectangle {
+            visible: ml.activeFocus
+            anchors.fill: parent; anchors.margins: -3
+            radius: 5; color: "transparent"; border.width: 2; border.color: Theme.accent
+        }
         RowLayout {
             id: r
             anchors.verticalCenter: parent.verticalCenter

@@ -63,6 +63,14 @@ QtObject {
         const names = TagsModel.tags.filter(t => tagIDs.indexOf(t.id) >= 0).map(t => t.name)
         return names.length === 0 ? "" : qsTr("Tags: %1").arg(names.join(", "))
     }
+    /// The note for a filter as sent to the vault: none where the tag choice does not apply
+    /// („Neue Umsätze“, CAMT.053), so a header never names a filter its rows ignore.
+    function noteFor(filter) {
+        if (filter.untagged_only) return qsTr("Ohne Tag")
+        const ids = filter.tag_ids || []
+        const names = TagsModel.tags.filter(t => ids.indexOf(t.id) >= 0).map(t => t.name)
+        return names.length === 0 ? "" : qsTr("Tags: %1").arg(names.join(", "))
+    }
 
     /// loadTagTotals: bookings and sum per tag (`tag_id` null = untagged) for the list's current
     /// filter without its tag choice – what ticking each tag would show. An aggregate over the
@@ -100,7 +108,7 @@ QtObject {
         AppModel.directionFilter = "All"
         // tag_account_counts counts every booking of the account, whatever the scope
         AppModel.scope = "All"
-        if (AppModel.searchText !== "") { AppModel.searchText = ""; AppModel.searchTimer.stop() }
+        if (AppModel.searchText !== "") { AppModel.searchText = ""; AppModel.searchTimer.restart() }
         AppModel.sidebarSelection = "account:" + accountID
         if (AppModel.period !== "all") AppModel.choosePeriod("all")
         TagManager.shown = false

@@ -109,9 +109,20 @@ Popup {
         property string symbol: ""
         signal toggled()
         implicitHeight: Math.max(22, rowLayout.implicitHeight + 6)
+        // keyboard: Tab / Shift+Tab move between the rows, Space ticks
+        activeFocusOnTab: true
+        Keys.onSpacePressed: row.toggled()
         Accessible.role: Accessible.CheckBox
         Accessible.name: label
+        Accessible.checkable: true
         Accessible.checked: checked
+        Accessible.onToggleAction: row.toggled()
+        Accessible.onPressAction: row.toggled()
+        Rectangle {
+            visible: row.activeFocus
+            anchors.fill: parent
+            radius: 5; color: "transparent"; border.width: 2; border.color: Theme.accent
+        }
         RowLayout {
             id: rowLayout
             anchors.fill: parent

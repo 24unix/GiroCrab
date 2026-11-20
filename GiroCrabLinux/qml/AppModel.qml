@@ -3029,8 +3029,9 @@ QtObject {
             // The list's own income/expense filter is named in the printout header.
             const notes = directionFilter === "Income" ? [PrintReport.directionTitle("income")]
                         : directionFilter === "Expense" ? [PrintReport.directionTitle("expenses")] : []
-            // and the tag filter (#228)
-            if (TagFilter.note() !== "") notes.push(TagFilter.note())
+            // and the tag filter (#228), as far as this list applies it
+            const tagNote = TagFilter.noteFor(filter)
+            if (tagNote !== "") notes.push(tagNote)
             return { title: title, period_label: periodTitle, rows: rows, accounts: accounts, daily_balances: ({}),
                      generated_at: new Date(), filter_notes: notes }
         } catch (e) {
