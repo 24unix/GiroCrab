@@ -587,6 +587,13 @@ fn unplaced_mailbox_pdfs_move_to_the_contract_their_text_names() {
         None
     );
     assert!(v.bhw_unplaced_documents().unwrap().contains(&third));
+    // the label names the archived loan: no other contract gets it
+    assert_eq!(
+        v.place_bhw_document(third, "Vertragsnummer 2000000002, Bezug 1000000001".into())
+            .unwrap(),
+        None
+    );
+    assert!(v.bhw_unplaced_documents().unwrap().contains(&third));
     drop(v);
     std::fs::remove_file(path).ok();
 }

@@ -1396,33 +1396,33 @@ impl ZeroizeStrings for Value {
 
 // ------------------------------------------------------------------ placing mailbox PDFs by their text
 
-/// Account id, external ref and kind of every BHW account a sync stores
-/// data for: archived accounts and accounts switched off or pending in the
-/// account selection get no documents placed.
-fn bhw_accounts(db: &rusqlite::Connection) -> CoreResult<Vec<(i64, String, String)>> {
+/// Account id, external ref, kind and eligibility of every BHW account.
+/// All of them take part in matching a letter's number; only an eligible
+/// one (not archived, not switched off or pending in the account
+/// selection) gets the document.
+fn bhw_accounts(db: &rusqlite::Connection) -> CoreResult<Vec<(i64, String, String, bool)>> {
     let mut st = db.prepare(
-        "SELECT a.id, a.external_ref, a.kind, a.connection_id FROM accounts a
+        "SELECT a.id, a.external_ref, a.kind, a.connection_id, a.archived_unix IS NULL
+           FROM accounts a
            JOIN bank_connections c ON c.id = a.connection_id
-          WHERE c.connector = ?1 AND c.deleted_ms IS NULL AND a.deleted_ms IS NULL
-            AND a.archived_unix IS NULL",
+          WHERE c.connector = ?1 AND c.deleted_ms IS NULL AND a.deleted_ms IS NULL",
     )?;
     let rows = st
         .query_map([crate::models::ConnectorKind::Bhw.as_str()], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
         })?
-        .collect::<Result<Vec<(i64, String, String, i64)>, _>>()?;
+        .collect::<Result<Vec<(i64, String, String, i64, bool)>, _>>()?;
     let mut skipped: std::collections::HashMap<i64, Vec<String>> = Default::default();
     let mut out = Vec::new();
-    for (id, external_ref, kind, connection_id) in rows {
+    for (id, external_ref, kind, connection_id, active) in rows {
         let refs = match skipped.entry(connection_id) {
             std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
             std::collections::hash_map::Entry::Vacant(e) => {
                 e.insert(super::account_selection::skipped_refs(db, connection_id)?)
             }
         };
-        if !refs.contains(&external_ref) {
-            out.push((id, external_ref, kind));
-        }
+        let eligible = active && !refs.contains(&external_ref);
+        out.push((id, external_ref, kind, eligible));
     }
     Ok(out)
 }
@@ -1474,7 +1474,7 @@ impl Vault {
         let (accounts, logins) = accounts;
         let contracts: Vec<Contract> = accounts
             .iter()
-            .filter_map(|(_, r, kind)| Some((r.strip_prefix(REF_PREFIX)?, kind)))
+            .filter_map(|(_, r, kind, _)| Some((r.strip_prefix(REF_PREFIX)?, kind)))
             .map(|(id, kind)| Contract {
                 id: id.to_string(),
                 name: String::new(),
@@ -1485,11 +1485,13 @@ impl Vault {
             })
             .collect();
         let (found, _) = contract_in_text(&text, &contracts, &logins);
+        // The letter's contract, if it may get documents: an archived or
+        // excluded one leaves the PDF unplaced, never moved to another.
         let Some(account) = found.and_then(|r| {
             accounts
                 .iter()
-                .find(|(_, x, _)| *x == r)
-                .map(|(id, _, _)| *id)
+                .find(|(_, x, _, eligible)| *x == r && *eligible)
+                .map(|(id, _, _, _)| *id)
         }) else {
             return Ok(None);
         };
