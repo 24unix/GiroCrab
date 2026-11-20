@@ -1521,3 +1521,12 @@ async fn bookings_that_need_a_tan_are_reported_and_not_requested_twice() {
         .unwrap();
     assert_eq!(a.balance_cents, 123_456);
 }
+
+#[test]
+fn hispas_advertises_pain_001_09_for_hkccs() {
+    let mut c = FinTsConnector::new("20041133");
+    c.learn_bpd(&reply(
+        b"HICCSS:10:1:3+1+1+0'HISPAS:11:1:3+1+1+0+J:N:N:sepade.pain.001.001.09.xsd:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.008.001.08'",
+    ));
+    assert_eq!(c.pain_version("HKCCS"), Some(super::sepa::PainVersion::V09));
+}
