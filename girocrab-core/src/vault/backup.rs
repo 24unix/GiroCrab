@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use rusqlite::backup::Backup;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use zeroize::Zeroizing;
 
 use super::Vault;

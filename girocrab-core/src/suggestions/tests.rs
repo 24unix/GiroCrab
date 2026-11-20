@@ -322,11 +322,11 @@ fn only_uncategorised_bookings_get_one() {
     let manual = f.add(b("Edeka Center", -31_00).manual("Haushalt"));
     let rule = f.rule("Haushalt", MatchKind::Keyword, "Edeka", (None, None));
     let by_rule = f.add(b("Edeka Center", -31_00).by_rule(rule, "Haushalt", false));
-    assert!(f
-        .v
-        .suggest_categories(vec![manual, by_rule, 999_999])
-        .unwrap()
-        .is_empty());
+    assert!(
+        f.v.suggest_categories(vec![manual, by_rule, 999_999])
+            .unwrap()
+            .is_empty()
+    );
     assert!(f.v.suggest_categories(vec![]).unwrap().is_empty());
 }
 

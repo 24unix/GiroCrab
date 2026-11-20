@@ -48,7 +48,7 @@ where
                 return Ok(Paged {
                     items,
                     stopped: Some(e),
-                })
+                });
             }
         };
         items.extend(got);

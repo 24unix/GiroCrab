@@ -18,16 +18,16 @@
 //! Scalable web profile. See docs/scalable-capital-connector.md.
 
 use async_trait::async_trait;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::dpop::DpopKey;
 use super::{
-    http_client_same_host, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
-    ConnectContext, FetchResult, Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction,
-    RemoteTransaction,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
+    RemoteAccount, RemoteHolding, RemoteSecurityTransaction, RemoteTransaction,
+    http_client_same_host,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -376,11 +376,7 @@ pub(crate) fn map_transaction(
         amount_cents: amount,
         currency: {
             let c = str_of(&item["currency"]);
-            if c.is_empty() {
-                "EUR".into()
-            } else {
-                c
-            }
+            if c.is_empty() { "EUR".into() } else { c }
         },
         counterparty,
         counterparty_iban: String::new(),
@@ -466,11 +462,7 @@ pub(crate) fn map_security_transaction(
     };
     let currency = {
         let c = str_of(&item["currency"]);
-        if c.is_empty() {
-            "EUR".to_string()
-        } else {
-            c
-        }
+        if c.is_empty() { "EUR".to_string() } else { c }
     };
     Some(RemoteSecurityTransaction {
         account_ref: depot_ref.to_string(),
@@ -782,7 +774,7 @@ impl ScalableConnector {
                                 "Scalable-Sitzung abgelaufen ({0}) – bitte erneut anmelden.",
                                 &[&e.error],
                             ),
-                        })
+                        });
                     }
                 }
             }
@@ -1534,11 +1526,7 @@ impl BankConnector for ScalableConnector {
             .await?;
         let account_id = {
             let a = str_of(&ids["account"]["id"]);
-            if a.is_empty() {
-                person_id.clone()
-            } else {
-                a
-            }
+            if a.is_empty() { person_id.clone() } else { a }
         };
         let portfolios: Vec<String> = ids["account"]["brokerPortfolios"]
             .as_array()

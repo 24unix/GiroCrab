@@ -959,9 +959,10 @@ mod tests {
                 .unwrap(),
             25
         );
-        assert!(conn
-            .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
-            .unwrap());
+        assert!(
+            conn.query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -1012,9 +1013,10 @@ mod tests {
         };
         assert_eq!(role(&conn, builtin).as_deref(), Some("Freizeit"));
         assert_eq!(role(&conn, custom), None);
-        assert!(conn
-            .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
-            .unwrap());
+        assert!(
+            conn.query_row("PRAGMA foreign_keys", [], |r| r.get::<_, bool>(0))
+                .unwrap()
+        );
         assert_eq!(
             conn.query_row("SELECT count(*) FROM accounts", [], |r| r.get::<_, i64>(0))
                 .unwrap(),

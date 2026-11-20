@@ -287,7 +287,9 @@ fn legacy_advanzia_hold_never_changes_a_reported_balance_or_running_history() {
     );
     let db = v.db().unwrap();
     assert_eq!(super::booked_after(&db, a, "2026-03-02").unwrap(), 0);
-    assert!(super::booked_per_day(&db, &[a], "2026-03-02", None)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::booked_per_day(&db, &[a], "2026-03-02", None)
+            .unwrap()
+            .is_empty()
+    );
 }

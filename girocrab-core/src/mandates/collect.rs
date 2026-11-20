@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use crate::connectors::fints::pain008::{
-    build_pain008, Collection, DebitVersion, Pain008, SequenceType,
+    Collection, DebitVersion, Pain008, SequenceType, build_pain008,
 };
 use crate::connectors::fints::sepa::PainHeader;
 use crate::error::{CoreError, CoreResult};

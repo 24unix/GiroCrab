@@ -30,11 +30,11 @@ use std::sync::LazyLock;
 use regex::{Captures, Regex};
 use rusqlite::params_from_iter;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::CoreError;
 use crate::merchants::FlowKind;
-use crate::models::{kpi_side, Booking, BookingDirection, BookingFilter, KpiSide};
+use crate::models::{Booking, BookingDirection, BookingFilter, KpiSide, kpi_side};
 use crate::vault::Vault;
 
 /// Version of the request/response format; a breaking change bumps it.
@@ -433,7 +433,7 @@ impl Vault {
                 return Err(ApiError::new(
                     ApiErrorCode::UnknownMethod,
                     format!("unknown method: {other}"),
-                ))
+                ));
             }
         };
         Ok(value)

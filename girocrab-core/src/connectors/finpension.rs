@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use super::{persist::store_fetch, ContentIds, RemoteHolding, RemoteTransaction, SyncSummary};
+use super::{ContentIds, RemoteHolding, RemoteTransaction, SyncSummary, persist::store_fetch};
 use crate::{
     error::{CoreError, CoreResult},
     i18n::tr,
@@ -59,11 +59,7 @@ pub fn validate_finpension_url(url: &str) -> CoreResult<()> {
         || host
             .strip_suffix(".finpension.ch")
             .is_some_and(|sub| !sub.is_empty() && sub.split('.').all(valid_label));
-    if ok {
-        Ok(())
-    } else {
-        Err(bad())
-    }
+    if ok { Ok(()) } else { Err(bad()) }
 }
 
 fn valid_label(l: &str) -> bool {
@@ -773,9 +769,10 @@ IE0000000022;Synthetic Bond Fund;3;49.99;149.97;EUR\n";
             .unwrap();
         assert_eq!(again.transactions_imported, 0);
         // garbage and wrong connector
-        assert!(v
-            .clone()
-            .import_finpension_export(conn, b"x".to_vec())
-            .is_err());
+        assert!(
+            v.clone()
+                .import_finpension_export(conn, b"x".to_vec())
+                .is_err()
+        );
     }
 }

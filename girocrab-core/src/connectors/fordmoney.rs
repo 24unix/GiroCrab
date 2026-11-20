@@ -41,7 +41,7 @@ use regex::Regex;
 use tokio::task::JoinHandle;
 use zeroize::Zeroize;
 
-use super::uberspace::{attr, attrs, parse_date, text, INPUT};
+use super::uberspace::{INPUT, attr, attrs, parse_date, text};
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, ContentIds,
     Documents, FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
@@ -1002,7 +1002,7 @@ impl BankConnector for FordMoneyConnector {
             PollStep::Waiting => return Ok(Phase::Pending(push_challenge())),
             PollStep::Answer(Ok(xml)) => xml,
             PollStep::Answer(Err(CoreError::Network { .. })) => {
-                return Ok(Phase::Pending(push_challenge()))
+                return Ok(Phase::Pending(push_challenge()));
             }
             PollStep::Answer(Err(e)) => return Err(e),
         };
@@ -1399,9 +1399,11 @@ mod tests {
         let tx2 = parse_bookings(&list, "fordmoney:DE00", "2000-01-01", &mut again).unwrap();
         assert_eq!(tx2[3].external_id, tx[3].external_id);
         let mut recent = ContentIds::default();
-        assert!(parse_bookings(&list, "a", "2026-11-01", &mut recent)
-            .unwrap()
-            .is_empty());
+        assert!(
+            parse_bookings(&list, "a", "2026-11-01", &mut recent)
+                .unwrap()
+                .is_empty()
+        );
         let broken = list.replace("- 21,37 €", "n/a");
         assert!(parse_bookings(&broken, "a", "2000-01-01", &mut ContentIds::default()).is_err());
     }

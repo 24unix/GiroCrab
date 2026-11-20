@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -146,7 +146,16 @@ fn refresh_existing(
     if set == [None; 8] {
         return Ok(());
     }
-    let [counterparty, purpose, code, gvc, e2e, mandate, creditor, items] = set;
+    let [
+        counterparty,
+        purpose,
+        code,
+        gvc,
+        e2e,
+        mandate,
+        creditor,
+        items,
+    ] = set;
     tx.prepare_cached(
         "UPDATE transactions SET counterparty = COALESCE(?2, counterparty), purpose = COALESCE(?3, purpose),
                 purpose_code = COALESCE(?4, purpose_code), gvc = COALESCE(?5, gvc),
@@ -2018,7 +2027,7 @@ impl Vault {
                     _ => {
                         return Err(CoreError::invalid(tr(
                             "Der Rhythmus muss Monate oder Wochen sein.",
-                        )))
+                        )));
                     }
                 };
                 if !(1..=99).contains(&request.interval) {
@@ -2119,7 +2128,9 @@ impl Vault {
                 ))
             })?;
         if o.order_id.trim().is_empty() {
-            return Err(CoreError::invalid(tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.")));
+            return Err(CoreError::invalid(tr(
+                "Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.",
+            )));
         }
         if request.action == crate::models::StandingOrderAction::Change && !o.can_change {
             return Err(CoreError::invalid(tr(
@@ -2147,12 +2158,16 @@ impl Vault {
         let group = match (groups.next(), groups.next()) {
             (Some(g), None) if g.sequence.code() == request.sequence => g,
             _ => {
-                return Err(CoreError::invalid(tr("Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.")))
+                return Err(CoreError::invalid(tr(
+                    "Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.",
+                )));
             }
         };
         let scheme = group.scheme.debit();
         if scheme == DebitScheme::B2b && !request.b2b_confirmed {
-            return Err(CoreError::invalid(tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.")));
+            return Err(CoreError::invalid(tr(
+                "Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.",
+            )));
         }
         let (connection_id, iban, _, key_str, kind, demo) =
             self.transfer_source(request.account_id, demo)?;

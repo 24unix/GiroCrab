@@ -2,8 +2,8 @@
 //! on 307/308 the HTTP client would send the login body there again.
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::connectors::{http_client_same_host, same_host_redirects};
 

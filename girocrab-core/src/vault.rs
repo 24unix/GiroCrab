@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use zeroize::Zeroizing;
 
 use crate::error::{CoreError, CoreResult};
@@ -35,7 +35,7 @@ mod rules;
 mod settings;
 mod transfer_pairs;
 
-pub(crate) use bookings::{enrich, sql_int_list, LIVE_BOOKINGS_SQL, PENDING_SQL};
+pub(crate) use bookings::{LIVE_BOOKINGS_SQL, PENDING_SQL, enrich, sql_int_list};
 pub use connections::ConnectionStatus;
 pub use enable_banking_apps::ConnectionEnableBankingApp;
 pub use merge::MergeStats;
@@ -741,7 +741,7 @@ mod index_tests {
 #[cfg(test)]
 mod poison_tests {
     use super::*;
-    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
 
     /// A panic inside an open transaction with a database attached neither
     /// locks the vault for good nor leaves the transaction or the attachment
