@@ -17,7 +17,7 @@ use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 
-use super::{http_client, RemoteAccount, RemoteTransaction};
+use super::{http_client_same_host, RemoteAccount, RemoteTransaction};
 use crate::error::{CoreError, CoreResult};
 use crate::models::AccountKind;
 use crate::money::parse_cents;
@@ -110,7 +110,7 @@ fn error_of(r: &Nvp) -> CoreError {
 impl NvpClient {
     pub fn new(sandbox: bool, creds: NvpCredentials) -> CoreResult<Self> {
         Ok(NvpClient {
-            client: http_client()?,
+            client: http_client_same_host()?,
             endpoint: if sandbox {
                 "https://api-3t.sandbox.paypal.com/nvp".into()
             } else {

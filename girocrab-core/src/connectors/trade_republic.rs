@@ -1069,6 +1069,19 @@ impl TradeRepublicConnector {
         if let Some(c) = &self.client {
             return Ok(c.clone());
         }
+        let c = self.build_client(super::same_host_redirects())?;
+        self.client = Some(c.clone());
+        Ok(c)
+    }
+
+    /// Client for document downloads (GET without credentials in the body). Presigned
+    /// document URLs may redirect to a storage host, so redirects to other hosts are
+    /// followed here; reqwest drops the manual Cookie header on a cross-host redirect.
+    fn document_client(&self) -> CoreResult<reqwest::Client> {
+        self.build_client(reqwest::redirect::Policy::default())
+    }
+
+    fn build_client(&self, redirect: reqwest::redirect::Policy) -> CoreResult<reqwest::Client> {
         let mut h = HeaderMap::new();
         h.insert(USER_AGENT, HeaderValue::from_static(BROWSER_UA));
         h.insert(ORIGIN, HeaderValue::from_static(APP_ORIGIN));
@@ -1085,8 +1098,9 @@ impl TradeRepublicConnector {
             .cookie_provider(self.jar.clone())
             .default_headers(h)
             .timeout(std::time::Duration::from_secs(30))
+            .redirect(redirect)
+            .referer(false)
             .build()?;
-        self.client = Some(c.clone());
         Ok(c)
     }
 
@@ -1309,10 +1323,10 @@ impl BankConnector for TradeRepublicConnector {
         }
         // HTTP 200 with an EMPTY body (or {}) is normal: the session comes as Set-Cookie.
         self.session.cookies = merge_cookies(self.session.cookies.expose(), &set).into();
-        if let Ok(v) = serde_json::from_str::<Value>(&text) {
-            if let Some(t) = v["sessionToken"].as_str() {
-                self.session.session_token = t.into();
-            }
+        if let Ok(v) = serde_json::from_str::<Value>(&text)
+            && let Some(t) = v["sessionToken"].as_str()
+        {
+            self.session.session_token = t.into();
         }
         if self.session.cookies.is_empty() {
             let url: url::Url = API.parse().map_err(|e| CoreError::Protocol {
@@ -1556,7 +1570,7 @@ impl BankConnector for TradeRepublicConnector {
             doc_candidates.clear();
         }
         // --- Beleg-Abruf: timelineDetailV2 -> "Dokumente" section -> PDF download
-        let client = self.client()?;
+        let client = self.document_client()?;
         let mut details: std::collections::HashMap<String, Value> = Default::default();
         // Documents not looked at (more than one pass takes, a failed request): a catch-up goes on.
         let mut docs_incomplete = doc_candidates.len() > 40;
@@ -1764,6 +1778,18 @@ mod tests {
         assert_eq!(saved.doc_items.len(), MAX_DOC_ITEMS);
         assert_eq!(saved.doc_items.first().unwrap(), "1");
         assert_eq!(saved.doc_items.last().unwrap(), &MAX_DOC_ITEMS.to_string());
+    }
+
+    #[tokio::test]
+    async fn login_client_does_not_follow_redirects_to_another_origin() {
+        let client = TradeRepublicConnector::new().client().unwrap();
+        crate::connectors::tests::redirects::assert_no_cross_origin_replay(&client).await;
+    }
+
+    #[tokio::test]
+    async fn document_client_follows_redirects_to_another_origin() {
+        let client = TradeRepublicConnector::new().document_client().unwrap();
+        crate::connectors::tests::redirects::assert_follows_cross_origin_get(&client).await;
     }
 
     fn detail(extra_rows: serde_json::Value) -> Value {

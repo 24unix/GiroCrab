@@ -4424,3 +4424,73 @@ fn deleting_the_last_account_of_a_login_drops_its_portal_cookies() {
     v.delete_account(a2).unwrap();
     assert_eq!(n(&v, &cookies), 0);
 }
+
+fn connection_settings(v: &Vault, c: i64) -> i64 {
+    n(
+        v,
+        &format!(
+            "SELECT count(*) FROM settings WHERE key IN ('pin.conn.{c}', 'pin.conn.{c}.login',
+                 'fints.rah10.private.{c}', 'fints.rah10.counter.{c}', 'fints.rah10.bank_keys.{c}')"
+        ),
+    )
+}
+
+fn store_connection_secrets(v: &Vault, c: i64) {
+    v.set_connection_pin(c, Some("1234".into())).unwrap();
+    let db = v.db().unwrap();
+    for key in [
+        format!("pin.conn.{c}.login"),
+        format!("fints.rah10.private.{c}"),
+        format!("fints.rah10.counter.{c}"),
+        format!("fints.rah10.bank_keys.{c}"),
+    ] {
+        db.execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, 'dummy', 1)",
+            [key],
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn merged_connection_deletion_purges_the_stored_secrets() {
+    let dir = temp_dir("conndel-merge");
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let (ca, ..) = bank_fixture(&a);
+    let (cb, ..) = bank_fixture(&b);
+    store_connection_secrets(&b, cb);
+    assert_eq!(connection_settings(&b, cb), 5);
+
+    a.delete_bank_connection(ca).unwrap();
+    merge(&b, &a);
+
+    assert_eq!(
+        n(
+            &b,
+            &format!("SELECT count(*) FROM bank_connections WHERE id = {cb} AND deleted_ms > 0")
+        ),
+        1
+    );
+    assert_eq!(connection_settings(&b, cb), 0);
+}
+
+#[test]
+fn opening_purges_secrets_of_connections_deleted_earlier() {
+    let dir = temp_dir("conndel-open");
+    let v = open(&dir, "a.db");
+    let (c, ..) = bank_fixture(&v);
+    store_connection_secrets(&v, c);
+    // a deletion merged by an older version: tombstone, secrets still there
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE bank_connections SET deleted_ms = 1 WHERE id = ?1",
+            [c],
+        )
+        .unwrap();
+    assert_eq!(connection_settings(&v, c), 5);
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(connection_settings(&v, c), 0);
+}

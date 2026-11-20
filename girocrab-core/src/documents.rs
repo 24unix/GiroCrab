@@ -975,8 +975,8 @@ impl Vault {
             let db = self.db()?;
             let mut st =
                 db.prepare("SELECT id FROM booking_documents WHERE exported_at IS NULL")?;
-            let ids = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
-            ids
+
+            st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?
         };
         if pending.is_empty() {
             return Ok(0);

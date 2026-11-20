@@ -145,10 +145,10 @@ fn local_date(v: &Value) -> String {
         }
         return s.chars().take(10).collect();
     }
-    if let Some(secs) = v.as_i64() {
-        if let Ok(ts) = jiff::Timestamp::from_second(secs) {
-            return crate::dates::iso(crate::dates::local_date(ts));
-        }
+    if let Some(secs) = v.as_i64()
+        && let Ok(ts) = jiff::Timestamp::from_second(secs)
+    {
+        return crate::dates::iso(crate::dates::local_date(ts));
     }
     String::new()
 }

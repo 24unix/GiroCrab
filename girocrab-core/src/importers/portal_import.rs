@@ -242,10 +242,10 @@ const INDICATOR_KEYS: &[&str] = &[
 
 fn get_ci<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Option<&'a Value> {
     for k in keys {
-        if let Some((_, v)) = obj.iter().find(|(name, _)| name.to_lowercase() == *k) {
-            if !v.is_null() {
-                return Some(v);
-            }
+        if let Some((_, v)) = obj.iter().find(|(name, _)| name.to_lowercase() == *k)
+            && !v.is_null()
+        {
+            return Some(v);
         }
     }
     None
@@ -269,16 +269,16 @@ fn value_text(v: &Value) -> Option<String> {
 }
 
 /// Largest amount accepted from portal JSON: 10 trillion euro in cents.
-const MAX_PORTAL_CENTS: f64 = 1e15;
+const MAX_PORTAL_CENTS: i64 = 1_000_000_000_000_000;
 
 fn value_cents(v: &Value) -> Option<i64> {
     match v {
-        Value::Number(n) => {
-            let cents = (n.as_f64()? * 100.0).round();
-            // no real account holds more than this; beyond it `as i64` would saturate
-            // and the sign handling (`abs`, `-`) downstream would overflow
-            (cents.is_finite() && cents.abs() <= MAX_PORTAL_CENTS).then_some(cents as i64)
-        }
+        // Rounded from the number's text (1.005 -> 101, not 100 as in f64).
+        // No real account holds more than the cap; the sign handling (`abs`,
+        // `-`) downstream would overflow near i64::MAX.
+        Value::Number(_) => crate::money::json_number_to_cents_rounded(v)
+            .ok()
+            .filter(|c| c.abs() <= MAX_PORTAL_CENTS),
         Value::String(s) => parse_amount(s),
         // a single-currency list such as Open Bank's `amounts: [{…}]`
         Value::Array(a) => a.first().and_then(value_cents),
@@ -570,10 +570,9 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
                         ]
                         .iter()
                         .any(|x| kl.contains(x))
+                        && let Some(c) = value_cents(val).filter(|c| *c != 0)
                     {
-                        if let Some(c) = value_cents(val).filter(|c| *c != 0) {
-                            return Some((k.clone(), c));
-                        }
+                        return Some((k.clone(), c));
                     }
                 }
                 o.values().find_map(generic)
@@ -1182,10 +1181,8 @@ fn cards_fetch(
         && (cards.len() == 1
             || stored.is_empty()
             || stored.iter().any(|s| s.account_ref == base_ref));
-    if base_free {
-        if let Some(t) = target.iter_mut().find(|t| t.is_none()) {
-            *t = Some(base_ref.to_string());
-        }
+    if base_free && let Some(t) = target.iter_mut().find(|t| t.is_none()) {
+        *t = Some(base_ref.to_string());
     }
     let adjust_balances = cards.iter().all(|c| c.balance.is_none());
     let mut out = FetchResult {
@@ -2065,6 +2062,16 @@ mod tests {
         assert_eq!(super::value_cents(&json!(1e30)), None);
         assert_eq!(super::value_cents(&json!(-1e30)), None);
         assert_eq!(super::value_cents(&json!(9.3e16)), None);
+    }
+
+    #[test]
+    fn json_amounts_round_from_their_text_not_from_f64() {
+        use serde_json::json;
+        // 1.005 * 100.0 is 100.4999… in f64
+        assert_eq!(super::value_cents(&json!(1.005)), Some(101));
+        assert_eq!(super::value_cents(&json!(-0.285)), Some(-29));
+        assert_eq!(super::value_cents(&json!(42)), Some(4200));
+        assert_eq!(super::value_cents(&json!(1e10)), Some(1_000_000_000_000));
     }
 
     #[test]

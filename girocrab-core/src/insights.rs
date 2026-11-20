@@ -597,10 +597,9 @@ pub(crate) fn purge_untrusted_logos(conn: &rusqlite::Connection) -> rusqlite::Re
     keep.extend(load_overrides(conn)?.into_values());
     let domains: Vec<String> = {
         let mut st = conn.prepare("SELECT domain FROM merchant_logo_cache")?;
-        let r = st
-            .query_map([], |r| r.get(0))?
-            .collect::<Result<Vec<_>, _>>()?;
-        r
+
+        st.query_map([], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?
     };
     let mut n = 0;
     for d in domains {
@@ -616,10 +615,9 @@ pub(crate) fn load_overrides(
     conn: &rusqlite::Connection,
 ) -> rusqlite::Result<HashMap<String, String>> {
     let mut st = conn.prepare("SELECT merchant_key, domain FROM merchant_domain_overrides")?;
-    let r = st
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<Result<HashMap<_, _>, _>>();
-    r
+
+    st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<HashMap<_, _>, _>>()
 }
 
 #[cfg(test)]
@@ -944,15 +942,13 @@ impl Vault {
         const MAX_LOGO_BYTES: usize = 1024 * 1024;
         let mut found: Option<(Vec<u8>, &str)> = None;
         for (name, url) in sources.iter() {
-            if let Ok(resp) = client.get(url).send().await {
-                if resp.status().is_success() {
-                    if let Ok(bytes) = read_body_limited(resp, MAX_LOGO_BYTES).await {
-                        if good_logo(&bytes) {
-                            found = Some((bytes, name));
-                            break;
-                        }
-                    }
-                }
+            if let Ok(resp) = client.get(url).send().await
+                && resp.status().is_success()
+                && let Ok(bytes) = read_body_limited(resp, MAX_LOGO_BYTES).await
+                && good_logo(&bytes)
+            {
+                found = Some((bytes, name));
+                break;
             }
         }
         let db = self.db()?;
@@ -1005,12 +1001,11 @@ fn monthly_rate(executions: &[&SecurityTransaction], today: Date) -> (i64, Vec<u
     let Some((latest_month, (latest_sum, latest_days))) = newest.next() else {
         return (0, Vec::new());
     };
-    if let Some((_, (previous_sum, previous_days))) = newest.next() {
-        if *latest_month == today.strftime("%Y-%m").to_string()
-            && latest_days.len() < previous_days.len()
-        {
-            return (*previous_sum, previous_days.clone());
-        }
+    if let Some((_, (previous_sum, previous_days))) = newest.next()
+        && *latest_month == today.strftime("%Y-%m").to_string()
+        && latest_days.len() < previous_days.len()
+    {
+        return (*previous_sum, previous_days.clone());
     }
     (*latest_sum, latest_days.clone())
 }

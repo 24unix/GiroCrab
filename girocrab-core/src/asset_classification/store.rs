@@ -130,13 +130,13 @@ fn invalid() -> CoreError {
     CoreError::invalid(crate::i18n::tr("Ungültiger Klassifizierungsschlüssel."))
 }
 fn validate_key(db: &Connection, key: &str) -> CoreResult<()> {
-    if let Some(isin) = key.strip_prefix("isin:") {
-        if normalized_isin(isin).as_deref() == Some(isin) {
-            return Ok(());
-        }
+    if let Some(isin) = key.strip_prefix("isin:")
+        && normalized_isin(isin).as_deref() == Some(isin)
+    {
+        return Ok(());
     }
-    if let Some(t) = key.strip_prefix("crypto:") {
-        if crypto_ticker(
+    if let Some(t) = key.strip_prefix("crypto:")
+        && crypto_ticker(
             &Holding {
                 wkn: t.into(),
                 ..Default::default()
@@ -145,9 +145,8 @@ fn validate_key(db: &Connection, key: &str) -> CoreResult<()> {
         )
         .as_deref()
             == Some(t)
-        {
-            return Ok(());
-        }
+    {
+        return Ok(());
     }
     if let Some(uuid) = key.strip_prefix("asset:") {
         let exists: bool = db.query_row(

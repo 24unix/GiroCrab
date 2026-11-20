@@ -364,6 +364,12 @@ impl Vault {
 
     /// Best-effort repairs after opening (or restoring) a vault.
     fn repair(conn: &Connection) {
+        // triggers/views the app never creates (e.g. restored by older versions
+        // from a crafted backup) could rewrite device settings on later writes
+        let _ = backup::drop_triggers_and_views(conn, "main");
+        // stored secrets of logins whose deletion an older version merged in
+        // from another device
+        let _ = Self::purge_deleted_connection_secrets(conn);
         // categories/rules without a sync key (rows written outside the app's own
         // paths); used to happen as part of the per-open schema probes
         let _ = crate::sync_merge::fill_missing_uuids(conn);
@@ -372,10 +378,23 @@ impl Vault {
         // fold MoneyMoney accounts a merge added next to the bank account
         // that took them over (keeps bookings)
         let _ = crate::sync_merge::twins::fold_twins(conn);
+        // card holds an older „Abrufweg umstellen“ turned into bookings (#1134)
+        let _ = connections::drop_switched_holds(conn);
         // repair "MÃ¼ller" -> "Müller" stored by older versions
         let _ = crate::text::repair_stored_text(conn);
         // one-time purge of favicons that don't belong to a known brand
         let _ = crate::insights::purge_untrusted_logos(conn);
+    }
+
+    fn purge_deleted_connection_secrets(conn: &Connection) -> CoreResult<()> {
+        let ids: Vec<i64> = conn
+            .prepare("SELECT id FROM bank_connections WHERE deleted_ms IS NOT NULL")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for id in ids {
+            Self::purge_connection_secrets(conn, id)?;
+        }
+        Ok(())
     }
 
     fn migrate(conn: &mut Connection) -> CoreResult<()> {
@@ -387,6 +406,8 @@ impl Vault {
         crate::schema::check_not_too_new(conn)?;
         // Connection settings first: neither pragma takes effect inside a transaction.
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+        // Drop untrusted triggers/views before schema steps or marker writes can fire them.
+        let _ = backup::drop_triggers_and_views(conn, "main");
         // All pending steps in one transaction (SQLite DDL is transactional): an
         // aborted run leaves the old schema and `user_version`, never half of it.
         crate::schema::migrate(conn)
@@ -616,12 +637,11 @@ mod upgrade_tests {
             let mut st = c
                 .prepare("SELECT name FROM pragma_table_info('transactions')")
                 .unwrap();
-            let names = st
-                .query_map([], |r| r.get(0))
+
+            st.query_map([], |r| r.get(0))
                 .unwrap()
                 .collect::<Result<_, _>>()
-                .unwrap();
-            names
+                .unwrap()
         };
         for col in ["purpose_code", "gvc", "salary_flag"] {
             assert!(cols.iter().any(|c| c == col), "{col} missing");

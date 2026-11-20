@@ -636,11 +636,11 @@ pub(crate) fn store_fetch(
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
-                    if let Some(id) = archived_ids.get(&t.account_ref) {
-                        if !deleted_refs.contains(&t.account_ref) {
-                            let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
-                            skipped_archived += u32::from(!known);
-                        }
+                    if let Some(id) = archived_ids.get(&t.account_ref)
+                        && !deleted_refs.contains(&t.account_ref)
+                    {
+                        let known = Stored::read(&tx, *id, &t.external_id)?.is_some();
+                        skipped_archived += u32::from(!known);
                     }
                     continue;
                 };
@@ -1164,7 +1164,12 @@ impl Vault {
 
     /// Like [`begin_sync`](Self::begin_sync) for one account of its login
     /// ("<Konto> abrufen", #1124): only its balance and bookings are fetched
-    /// and stored; the login's other accounts stay as they are. Documents
+    /// and stored; the login's other accounts stay as they are. An account
+    /// still under a MoneyMoney ref (imported and not yet taken over, or
+    /// marked by „Abrufweg umstellen“) is not known to the bank under it, so
+    /// it gets a sync of the whole login, documents included (see
+    /// `single_account_ref`, #1417).
+    /// Documents
     /// wait for the next full sync: connectors remember what they downloaded,
     /// and a document of another account would be remembered but not stored.
     pub fn begin_account_sync(
@@ -1174,7 +1179,10 @@ impl Vault {
         demo: bool,
     ) -> Result<Arc<SyncSession>, CoreError> {
         let (conn_id, ext) = self.account_login(account_id)?;
-        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, Some(ext))
+        let only = single_account_ref(ext, || {
+            super::account_selection::skipped_refs(&*self.db()?, conn_id)
+        })?;
+        self.begin_sync_inner(conn_id, secret, demo, None, PostboxMode::Off, only)
     }
 
     /// Turns the PostBox fetch through comdirect's REST API on or off for a
@@ -1515,6 +1523,17 @@ impl Vault {
                 let k = format!("fints.url.{blz}");
                 match Vault::setting_inner(&db, &k)? {
                     Some(v) if !v.is_empty() => {
+                        // stored before the directory fix: move to the bank's current endpoint
+                        let v = match fints_directory::replacement_for_retired_url(blz, &v) {
+                            Some(url) => {
+                                db.execute(
+                                    "UPDATE settings SET value = ?1 WHERE key = ?2",
+                                    params![url, k],
+                                )?;
+                                url.to_string()
+                            }
+                            None => v,
+                        };
                         settings.insert(k, SecretString::new(v));
                     }
                     // e.g. a MoneyMoney import created the login without a URL
@@ -1552,10 +1571,10 @@ impl Vault {
                 );
             }
             let tm_key = format!("fints.tan_medium.{connection_id}");
-            if let Some(v) = Vault::setting_inner(&db, &tm_key)? {
-                if !v.trim().is_empty() {
-                    settings.insert(tm_key, SecretString::new(v));
-                }
+            if let Some(v) = Vault::setting_inner(&db, &tm_key)?
+                && !v.trim().is_empty()
+            {
+                settings.insert(tm_key, SecretString::new(v));
             }
             // this login's own Enable Banking application, if it has one (#824)
             crate::vault::enable_banking_apps::overlay(&db, connection_id, &mut settings)?;
@@ -1623,15 +1642,16 @@ impl Vault {
                     connector, since,
                 ));
             }
-        } else if !demo && is_consorsbank_fints(&key_str) {
-            if let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)? {
-                let known = self.consorsbank_known_documents(connection_id)?;
-                connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
-                    connector,
-                    Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
-                    since,
-                ));
-            }
+        } else if !demo
+            && is_consorsbank_fints(&key_str)
+            && let Some(since) = self.postbox_since(connection_id, &ctx, postbox, false)?
+        {
+            let known = self.consorsbank_known_documents(connection_id)?;
+            connector = Box::new(super::comdirect_postbox::FintsWithPostbox::with_source(
+                connector,
+                Box::new(super::consorsbank_archive::ConsorsbankArchive::new(known)),
+                since,
+            ));
         }
         Ok(Arc::new(SyncSession::new(
             self.clone(),
@@ -1753,6 +1773,11 @@ impl Vault {
         if request.amount_cents <= 0 {
             return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
         }
+        if request.amount_cents > sepa::MAX_AMOUNT_CENTS {
+            return Err(CoreError::invalid(tr(
+                "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+            )));
+        }
         if !validate_iban(&request.recipient_iban) {
             return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
         }
@@ -1760,10 +1785,9 @@ impl Vault {
             .recipient_bic
             .as_deref()
             .filter(|b| !b.trim().is_empty())
+            && !sepa::validate_bic(b)
         {
-            if !sepa::validate_bic(b) {
-                return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
-            }
+            return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
         }
         if request.recipient_name.trim().is_empty() {
             return Err(CoreError::invalid(tr("Der Empfängername fehlt.")));
@@ -1964,6 +1988,11 @@ impl Vault {
                 }
                 if request.amount_cents <= 0 {
                     return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
+                }
+                if request.amount_cents > crate::connectors::fints::sepa::MAX_AMOUNT_CENTS {
+                    return Err(CoreError::invalid(tr(
+                        "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+                    )));
                 }
                 let today = crate::dates::today();
                 let date = |d: &str| jiff::civil::Date::strptime("%Y-%m-%d", d.trim()).ok();
@@ -2616,4 +2645,26 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
         None => 0,
     };
     Some(rows[start..].iter().map(|r| r.1).sum())
+}
+
+/// The ref a single-account sync filters on (#1417). An account still under
+/// a MoneyMoney ref – imported and not yet taken over, or marked by
+/// "Abrufweg umstellen" (`moneymoney-db:switch:…`) – is not known to the bank
+/// under it: filtering on it would drop everything and report success with 0
+/// bookings. Only a sync of the whole login takes such an account over, so
+/// it gets one (`None`). An archived or excluded account is refused as for a
+/// single-account sync, before it would turn into a full one.
+pub(super) fn single_account_ref(
+    ext: String,
+    skipped: impl FnOnce() -> CoreResult<Vec<String>>,
+) -> CoreResult<Option<String>> {
+    if !ext.starts_with("moneymoney-db:") {
+        return Ok(Some(ext));
+    }
+    if skipped()?.contains(&ext) {
+        return Err(CoreError::invalid(tr(
+            "Dieses Konto ist archiviert oder vom Abruf ausgenommen.",
+        )));
+    }
+    Ok(None)
 }

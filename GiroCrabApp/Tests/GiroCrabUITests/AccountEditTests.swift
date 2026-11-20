@@ -38,4 +38,31 @@ final class AccountEditTests: XCTestCase {
         XCTAssertEqual(saved.note, "Vom iPad")
         XCTAssertEqual(saved.owner, "Anna")
     }
+
+    func testUntrimmedSnapshotDoesNotOverwriteSyncedFields() throws {
+        let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        let base = try XCTUnwrap(model.allAccounts.first)
+        var original = base
+        original.name = "  \(base.name)  "
+        original.owner = "  \(base.owner)  "
+        original.note = "  Alt\n"
+
+        let vault = try XCTUnwrap(model.vault)
+        try vault.renameAccount(accountId: base.id, name: "Neu per Sync")
+        try vault.setAccountNote(accountId: base.id, note: "Vom iPhone")
+        model.reloadAccounts()
+
+        // The form submits trimmed versions of the untouched fields while changing only owner.
+        model.saveAccountEdits(
+            original,
+            name: original.name.trimmingCharacters(in: .whitespaces),
+            owner: "Anna",
+            kind: original.kind,
+            note: original.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        let saved = try XCTUnwrap(model.account(for: base.id))
+        XCTAssertEqual(saved.name, "Neu per Sync")
+        XCTAssertEqual(saved.note, "Vom iPhone")
+        XCTAssertEqual(saved.owner, "Anna")
+    }
 }

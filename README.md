@@ -50,7 +50,7 @@
 ## 🇩🇪 Deutsch
 
 **Open-Source-Online-Banking für Mac (Apple Silicon) und iPhone/iPad – lokal, verschlüsselt, Daten bleiben auf deinem Gerät.**
-Native SwiftUI-App auf einem Rust-Kern: verschlüsselter **SQLCipher-Banking-Tresor** (XChaCha20-Poly1305 & Argon2id), Kategorienbaum,
+Native SwiftUI-App auf einem Rust-Kern: verschlüsselter **SQLCipher-Banking-Tresor** (AES-256, zufälliger 256-Bit-Schlüssel), Kategorienbaum,
 Regeln, Händler-Erkennung, Sparplan-Ansicht, Darlehens-Tilgungsbalken und direkte Verbindungen
 zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne Server, ohne Tracking.
 
@@ -145,9 +145,9 @@ nur um Kategorie und Notiz ergänzt.
 
 *Alle Screenshots zeigen ausschließlich erfundene Demo-Daten (`GIROCRAB_DEMO_SEED=1`).*
 
-- 🔒 **Local-First:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (XChaCha20-Poly1305), geschützt durch Schlüsselbund / Touch ID bzw. Face ID. Es gibt keinen Entwickler-Server.
+- 🔒 **Local-First:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (SQLCipher, AES-256), geschützt durch Schlüsselbund / Touch ID bzw. Face ID. Es gibt keinen Entwickler-Server.
 - 📱 **macOS + iOS (iPhone / iPad):** Eine gemeinsame SwiftUI-Codebasis auf dem Rust-Kern. Voraussetzungen: **macOS 14+ (Apple Silicon, `arm64`)** bzw. **iOS 17+**. Für iPhone und iPad steht die App direkt über **[Apple TestFlight](https://testflight.apple.com/join/KBmvKVpT)** bereit (oder kann optional mit Xcode selbst aus dem Quellcode gebaut werden).
-- ☁️ **Optionale iCloud-Drive-Synchronisation:** Wer möchte, gleicht Tresor-Daten zwischen Macs und iOS-Geräten über den eigenen iCloud-Drive-Ordner (`iCloud Drive/GiroCrab/`) ab. In die Cloud wandert der Tresor nur als **verschlüsselter SQLCipher-Snapshot** (`wal_checkpoint(TRUNCATE)`); der Abgleich erfolgt deterministisch per `ATTACH DATABASE`-Merge. Eine **laufende SQLite-Datenbank mit WAL-Dateien wird nie direkt im Cloud-Speicher geöffnet.** Die Synchronisation ist **standardmäßig ausgeschaltet** und wird erst in den Einstellungen aktiviert; danach läuft der Abgleich beim Entsperren des Tresors. Der Ordner `iCloud Drive/GiroCrab/` wird erst angelegt, wenn Sie die Synchronisation aktivieren. 🔑 **Schlüssel:** Der Tresor-Schlüssel liegt **nicht** im iCloud-Ordner (die frühere Datei `tresor.key` aus v0.4.0 wird beim nächsten Abgleich automatisch gelöscht). Stattdessen teilt GiroCrab ihn standardmäßig über den **iCloud-Schlüsselbund** (`kSecAttrSynchronizable`, abschaltbar in den Einstellungen). Alternativ kopieren Sie den Schlüssel auf dem ersten Gerät („Tresor-Schlüssel kopieren“, Zwischenablage wird nach 60 s geleert) und fügen ihn einmalig auf dem zweiten Gerät ein („Schlüssel einfügen …“). ⚠️ Wer bereits v0.4.0 mit aktivem Sync genutzt hat: Die alte `tresor.key` kann noch in iCloud-Versionen/Papierkorb liegen; eine Schlüsselrotation ist für ein späteres Update geplant.
+- ☁️ **Optionale iCloud-Drive-Synchronisation:** Wer möchte, gleicht Tresor-Daten zwischen Macs und iOS-Geräten über den eigenen iCloud-Drive-Ordner (`iCloud Drive/GiroCrab/`) ab. In die Cloud wandert der Tresor nur als **verschlüsselter SQLCipher-Snapshot** (`wal_checkpoint(TRUNCATE)`); der Abgleich erfolgt deterministisch per `ATTACH DATABASE`-Merge. Eine **laufende SQLite-Datenbank mit WAL-Dateien wird nie direkt im Cloud-Speicher geöffnet.** Die Synchronisation ist **standardmäßig ausgeschaltet** und wird erst in den Einstellungen aktiviert; danach läuft der Abgleich beim Entsperren des Tresors. Der Ordner `iCloud Drive/GiroCrab/` wird erst angelegt, wenn Sie die Synchronisation aktivieren. 🔑 **Schlüssel:** Der Tresor-Schlüssel liegt **nicht** im iCloud-Ordner (die frühere Datei `tresor.key` aus v0.4.0 wird beim nächsten Abgleich automatisch gelöscht). Auf Wunsch teilt GiroCrab ihn über den **iCloud-Schlüsselbund** (`kSecAttrSynchronizable`); das ist standardmäßig ausgeschaltet und wird in den Einstellungen aktiviert. Alternativ kopieren Sie den Schlüssel auf dem ersten Gerät („Tresor-Schlüssel kopieren“, Zwischenablage wird nach 60 s geleert) und fügen ihn einmalig auf dem zweiten Gerät ein („Schlüssel einfügen …“). ⚠️ Wer bereits v0.4.0 mit aktivem Sync genutzt hat: Die alte `tresor.key` kann noch in iCloud-Versionen/Papierkorb liegen; eine Schlüsselrotation ist für ein späteres Update geplant.
 - 🗄️ **Datenbank-Import:** lesender Import einer verschlüsselten `.sqlite`-Datei inkl. Konten, Kategorien, Hierarchie und Buchungshistorie (siehe „Vorhandene Daten übernehmen“).
 - 🏦 **FinTS 3.0 / HBCI-Client & PSD2 für macOS und iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisung & Echtzeitüberweisung via FinTS 3.0 / HKCCS** inkl. Verification of Payee (VoP), inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
@@ -190,7 +190,7 @@ nur um Kategorie und Notiz ergänzt.
 ```
 ┌──────────────────────────┐   UniFFI    ┌────────────────────────────────────┐
 │ GiroCrabApp (SwiftUI)    │ ◄─────────► │ girocrab-core (Rust)               │
-│ macOS 14+ (arm64) · iOS  │  Swift-API  │  vault.rs      XChaCha20-Tresor    │
+│ macOS 14+ (arm64) · iOS  │  Swift-API  │  vault.rs      SQLCipher-Tresor    │
 │ 17+ · Face/Touch ID      │             │  rules.rs      Kategorien-Regeln   │
 └──────────────────────────┘             │  merchants.rs  Händler-Erkennung   │
    ▲ optional: iCloud Drive              │  connectors/   FinTS · REST · PSD2 │
@@ -287,7 +287,7 @@ und wird auch nicht als solcher angeboten.
 - **Rein lokal:** Alle Verbindungen laufen ausschließlich direkt zwischen **Ihrem Gerät** und **Ihrer Bank** – mit **Ihren** Zugangsdaten,
   **Ihrer** FinTS-Produktregistrierung und **Ihren** API-Schlüsseln. Die Entwickler betreiben **keinen** Server; Konto-, Buchungs- oder
   Zugangsdaten gelangen **zu keinem Zeitpunkt** an die Entwickler. Die optionale iCloud-Synchronisation nutzt ausschließlich Ihren
-  eigenen iCloud-Drive-Speicher (verschlüsselter Snapshot; der Schlüssel läuft über den iCloud-Schlüsselbund, siehe oben).
+  eigenen iCloud-Drive-Speicher (verschlüsselter Snapshot; den Schlüssel teilen Sie per Zwischenablage oder auf Wunsch über den iCloud-Schlüsselbund, siehe oben).
 - **Nutzung auf eigenes Risiko, ohne Gewährleistung** (siehe GPLv3). Das gilt insbesondere für **SEPA-Überweisungen** – prüfen Sie
   Empfänger, IBAN und Betrag vor jeder Freigabe selbst – sowie für **inoffizielle Schnittstellen** (z. B. Trade Republic), die
   jederzeit ausfallen können und gegen Nutzungsbedingungen des Anbieters verstoßen können.
@@ -301,7 +301,7 @@ und wird auch nicht als solcher angeboten.
 ## 🇬🇧 English
 
 **Open-source online banking for Mac (Apple Silicon) and iPhone/iPad – local-first, encrypted, your data stays on your device.**
-A native SwiftUI app on a Rust core: encrypted **SQLCipher banking vault** (XChaCha20-Poly1305 & Argon2id), category tree, rules, merchant
+A native SwiftUI app on a Rust core: encrypted **SQLCipher banking vault** (AES-256, random 256-bit key), category tree, rules, merchant
 recognition, savings-plan view, loan repayment progress and direct connections to your banks via
 **FinTS 3.0 / HBCI** and **PSD2 (Enable Banking)** – no server, no tracking. Money is always `i64` cents, never floats.
 
@@ -393,9 +393,9 @@ fetched later via FinTS are recognised as duplicates and not created twice – e
 
 *All screenshots show purely fictional demo data (`GIROCRAB_DEMO_SEED=1`).*
 
-- 🔒 **Local-first:** all banking data lives on your device in an encrypted vault (XChaCha20-Poly1305) protected by the Keychain / Touch ID or Face ID. There is no developer server.
+- 🔒 **Local-first:** all banking data lives on your device in an encrypted vault (SQLCipher, AES-256) protected by the Keychain / Touch ID or Face ID. There is no developer server.
 - 📱 **macOS + iOS (iPhone / iPad):** one SwiftUI codebase on the shared Rust core. Requires **macOS 14+ (Apple Silicon, `arm64`)** or **iOS 17+**. On iPhone and iPad the app is available via **[Apple TestFlight](https://testflight.apple.com/join/KBmvKVpT)** (or optionally built from source with Xcode).
-- ☁️ **Optional iCloud Drive sync:** if you want, sync vault data between Macs and iOS devices through your own iCloud Drive folder (`iCloud Drive/GiroCrab/`). The vault goes to the cloud only as an **encrypted SQLCipher snapshot** (`wal_checkpoint(TRUNCATE)`), and devices are reconciled with a deterministic `ATTACH DATABASE` merge. **A live SQLite database with WAL files is never opened directly in cloud storage.** Sync is **off by default** and has to be enabled in Settings; once on, it runs when the vault is unlocked. The folder `iCloud Drive/GiroCrab/` is only created once you enable sync. 🔑 **Key handling:** the vault key is **not** stored in the iCloud folder (the `tresor.key` file from v0.4.0 is deleted automatically on the next sync). By default GiroCrab shares it through **iCloud Keychain** (`kSecAttrSynchronizable`, can be turned off in Settings). Alternatively, copy the key on the first device (“Copy vault key”, clipboard is cleared after 60 s) and paste it once on the second device (“Paste key …”). ⚠️ If you used v0.4.0 with sync enabled, the old `tresor.key` may still exist in iCloud versions/trash; key rotation is planned for a later release.
+- ☁️ **Optional iCloud Drive sync:** if you want, sync vault data between Macs and iOS devices through your own iCloud Drive folder (`iCloud Drive/GiroCrab/`). The vault goes to the cloud only as an **encrypted SQLCipher snapshot** (`wal_checkpoint(TRUNCATE)`), and devices are reconciled with a deterministic `ATTACH DATABASE` merge. **A live SQLite database with WAL files is never opened directly in cloud storage.** Sync is **off by default** and has to be enabled in Settings; once on, it runs when the vault is unlocked. The folder `iCloud Drive/GiroCrab/` is only created once you enable sync. 🔑 **Key handling:** the vault key is **not** stored in the iCloud folder (the `tresor.key` file from v0.4.0 is deleted automatically on the next sync). If you want, GiroCrab shares it through **iCloud Keychain** (`kSecAttrSynchronizable`); this is off by default and is turned on in Settings. Alternatively, copy the key on the first device (“Copy vault key”, clipboard is cleared after 60 s) and paste it once on the second device (“Paste key …”). ⚠️ If you used v0.4.0 with sync enabled, the old `tresor.key` may still exist in iCloud versions/trash; key rotation is planned for a later release.
 - 🗄️ **Database import:** read-only import of an encrypted `.sqlite` file incl. accounts, categories, hierarchy and booking history (see “Importing existing data”).
 - 🏦 **FinTS 3.0 / HBCI client & PSD2 for macOS and iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
@@ -523,7 +523,7 @@ It is **not a payment initiation service and not an account information service 
 
 - **Strictly local:** all connections run directly between **your device** and **your bank**, using **your** credentials,
   **your** FinTS product registration and **your** API keys. The authors operate **no** server, and no account, booking or
-  credential data **ever** reaches the authors. Optional iCloud sync uses only your own iCloud Drive storage (encrypted snapshot; the key goes through iCloud Keychain, see above).
+  credential data **ever** reaches the authors. Optional iCloud sync uses only your own iCloud Drive storage (encrypted snapshot; you share the key via the clipboard or, if you turn it on, through iCloud Keychain, see above).
 - **Use at your own risk, without warranty** (see GPLv3). This applies in particular to **SEPA transfers** – always verify
   recipient, IBAN and amount yourself before authorising – and to **unofficial interfaces** (e.g. Trade Republic), which can
   break at any time and may violate the provider's terms of service.
@@ -552,8 +552,11 @@ include it: they use only an ID you enter yourself, or, for development, one set
 
 ## Security / Sicherheit
 
-XChaCha20-Poly1305 + Argon2id encrypted vault, key in the Keychain (`ThisDeviceOnly`), PINs/TANs only in memory
-(`zeroize`), no telemetry. Merchant logos are **opt-in** (off by default, Settings → Merchant logos); without it, no network
+SQLCipher vault (AES-256 with a per-page HMAC-SHA512, random 256-bit key). On Apple devices the key stays in the Keychain
+(`ThisDeviceOnly`) unless you turn on key sync via iCloud Keychain; Linux and Windows keep it in the system keyring /
+Credential Manager. TANs live only in memory (`zeroize`); a bank PIN is
+kept only if you choose to save it, then inside the encrypted vault (and so also in its encrypted iCloud sync file and
+backups). No telemetry. Merchant logos are **opt-in** (off by default, Settings → Merchant logos); without it, no network
 request is made for logos and everything stays 100 % local. **Never attach real bank data or credentials to issues.**
 
 DE: Händler-Logos sind **standardmäßig deaktiviert** (Opt-in in den Einstellungen) – ohne Zustimmung werden keine Logos aus dem Netz geladen, alles bleibt zu 100 % lokal.
@@ -596,7 +599,7 @@ GiroCrab betreibt **kein eigenes Cloud-Backend** und nutzt kein Headless-Browser
 
 * **Natives FinTS 3.0 / HBCI:** Klassische Banken werden direkt aus dem Rust-Kern (`girocrab-core`) über die offiziellen FinTS-3.0-HTTPS-Endpunkte angesprochen (inkl. starker Kundenauthentifizierung nach TAN-Prozess 996/997, Decoupled-TAN, PushTAN & PhotoTAN sowie Abruf von MT940 / CAMT.052 / CAMT.053 und SEPA-Überweisungen via HKCCS).
 * **Direkte Mobile-/Web-API-Clients in Rust:** Für Banken und Broker ohne FinTS-Schnittstelle (wie Trade Republic oder Scalable Capital) nutzt GiroCrab keine fragilen Browser-Scraper, sondern spricht über `reqwest` + `rustls` direkt die nativen JSON-, GraphQL- und WebSocket-Endpunkte der Banken an (z. B. lokales ECDSA-P256-Device-Pairing und signierte Requests bei Trade Republic).
-* **Zero-Knowledge Datenhaltung & iCloud-Sync (macOS & iOS):** Alle Zugangsdaten, Session-Tokens und Umsätze liegen ausschließlich lokal in deinem mit **XChaCha20-Poly1305 & Argon2id** verschlüsselten SQLCipher-Tresor (geschützt durch Touch ID / Face ID). Über den optionalen **Zero-Knowledge iCloud-Sync** lassen sich Tresore zwischen Mac und iPhone/iPad konfliktfrei auf Buchungs-Fingerprint-Ebene zusammenführen, ohne dass Klartextdaten jemals dein Gerät verlassen.
+* **Zero-Knowledge Datenhaltung & iCloud-Sync (macOS & iOS):** Alle Zugangsdaten, Session-Tokens und Umsätze liegen ausschließlich lokal in deinem verschlüsselten SQLCipher-Tresor (AES-256; geschützt durch Touch ID / Face ID). Über den optionalen **Zero-Knowledge iCloud-Sync** lassen sich Tresore zwischen Mac und iPhone/iPad konfliktfrei auf Buchungs-Fingerprint-Ebene zusammenführen, ohne dass Klartextdaten jemals dein Gerät verlassen.
 
 
 ## 🤝 Contributors / Mitwirkende

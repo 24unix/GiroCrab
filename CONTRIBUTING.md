@@ -135,6 +135,16 @@ New issue authors get this hint once as a comment (`.github/workflows/issue-ai-i
 
 **From an anonymized browser capture (HAR) to your own bank connector (#42).** `@zcarsten` built a connector without prior Rust experience: record the bank portal in the browser DevTools (Network tab, export `.har`), anonymize names, IBANs, balances and credentials in the file *before* sharing it, then let Claude Code / Codex build the connector against `girocrab-core/src/connectors/template.rs` and `CLAUDE.md`. If you don't feel ready for a pull request yet, attach the generated `.patch` / `git diff` to the GitHub issue (as in #42 / PR #642) and we'll take it from there.
 
+## Größere Vorhaben & Vorab-Spezifikation / Larger features & architecture alignment
+
+**DE**
+- **Erst abstimmen, dann Code & Tokens einsetzen:** Bei größeren Themen (Plattform-Parität wie Android/Windows/Linux, übergreifende Architektur-Änderungen oder mehrstufige Features) bitte **vor** dem ersten Code-PR ein Architektur-/Tracking-Issue eröffnen: Ist-Stand, vorgeschlagener Stufen-Schnitt, offene Designfragen und geplante Teil-PRs kurz skizzieren. Das spart allen Beteiligten unnötige Review-Schleifen und Agenten-Tokens.
+- **Ablageort für Spezifikationen:** Architektur-Vorschläge und Meilenstein-Pläne werden im **GitHub-Issue** abgestimmt; dauerhafte Architektur-Dokumentation gehört unter `docs/`. Bitte keine externen Planungs- oder Agenten-Verzeichnisse (wie `.cursor/`, `.claude/` oder Top-Level-Spec-Frameworks ohne Code) als PR einreichen – unsere Triage-Pipeline ist auf lauffähige, testbare Teil-PRs ausgelegt und hält oder schließt reine Planungs-Bäume automatisch.
+
+**EN**
+- **Align before writing code or spending agent tokens:** For larger efforts (platform parity across Android/Windows/Linux, cross-cutting refactors, or multi-stage features), open an architecture/tracking issue **before** sending code PRs: outline the current gap, proposed stages, open design questions, and small PR slices.
+- **Where specs live:** Discuss proposals and task breakdowns in **GitHub Issues**; lasting architecture docs belong in `docs/`. Do not open PRs that add standalone planning or agent framework trees without runnable changes – our automated triage pipeline expects small, testable slices and closes tool-specific planning trees automatically.
+
 ## Picking up an issue
 
 To avoid two people building the same thing (it has happened, e.g. account groups in #31):

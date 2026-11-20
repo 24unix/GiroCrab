@@ -129,11 +129,12 @@ pub(crate) fn merge_connections(conn: &Connection) -> CoreResult<HashMap<i64, i6
                     by_key.insert(key, (id, joined.0, joined.1));
                 }
                 if joined.1.is_some() {
-                    // a deleted connection keeps no bank session
+                    // a deleted connection keeps no bank session and no stored secrets
                     conn.execute(
                         "UPDATE bank_connections SET state_json = '{}' WHERE id = ?1 AND state_json <> '{}'",
                         [id],
                     )?;
+                    crate::vault::Vault::purge_connection_secrets(conn, id)?;
                 }
                 id
             }

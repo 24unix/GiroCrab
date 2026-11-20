@@ -636,7 +636,7 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertTrue(orphan.accounts.contains(where: { $0.name == "Autokredit" }), "manual loan has no bank name")
 
         let giro = try account(.checking)
-        model.interactiveSidebarSelection = .bank(muster.id)
+        model.sidebarSelection = .bank(muster.id) // synchronous: the title follows the loaded data (#1396)
         XCTAssertEqual(model.sidebarSelection, .bank("Musterbank"))
         XCTAssertEqual(Set(model.selectionAccountIDs), Set(muster.accounts.map(\.id)))
         XCTAssertEqual(model.title, "Musterbank")

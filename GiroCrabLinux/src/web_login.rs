@@ -21,7 +21,7 @@ use zeroize::Zeroizing;
 
 type R = Result<Value, String>;
 
-extern "C" {
+unsafe extern "C" {
     fn girocrab_web_attach() -> bool;
     fn girocrab_web_cookies_json() -> *mut std::os::raw::c_char;
     fn girocrab_web_free(s: *mut std::os::raw::c_char);
