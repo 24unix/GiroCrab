@@ -874,22 +874,28 @@ impl Vault {
     }
 
     /// `flow_other_currencies` for the plain selection of `selection_flow`: accounts and period.
+    /// `respect_in_total`: in a totals context (#337) only the effective total
+    /// set contributes — the same rule as the EUR sums this figure supplements.
+    #[uniffi::method(default(respect_in_total = false))]
     pub fn selection_flow_other_currencies(
         &self,
         account_ids: Vec<i64>,
         date_from: Option<String>,
         date_to: Option<String>,
+        respect_in_total: bool,
     ) -> Result<Vec<CurrencyFlow>, CoreError> {
         self.flow_other_currencies(BookingFilter {
             account_ids,
             date_from,
             date_to,
+            respect_in_total,
             ..Default::default()
         })
     }
 
     /// The KPI tiles of the currencies other than EUR (#1049) for the same filter: what the page
     /// sums leave out. Empty for a single account; no scan when no booking has another currency.
+    /// In a totals context (#337) only the effective total set contributes.
     pub fn flow_other_currencies(
         &self,
         filter: BookingFilter,
@@ -897,13 +903,23 @@ impl Vault {
         if filter.account_ids.len() == 1 {
             return Ok(Vec::new());
         }
+        // one guard for both reads, so eligibility and bookings stay consistent
         let db = self.db()?;
         if !crate::planning::has_other_currencies(&db)? {
             return Ok(Vec::new());
         }
+        let allowed = if filter.respect_in_total {
+            Some(crate::user_groups::total_account_ids(&db)?)
+        } else {
+            None
+        };
         let mut per: std::collections::BTreeMap<String, SelectionFlow> = Default::default();
         self.visit_bookings(&db, &filter, |share, t| {
-            if !crate::planning::counts_in_sums(filter.account_ids.len(), &t.currency) {
+            if !crate::planning::counts_in_sums(filter.account_ids.len(), &t.currency)
+                && allowed
+                    .as_ref()
+                    .is_none_or(|set| set.contains(&t.account_id))
+            {
                 per.entry(t.currency.to_uppercase())
                     .or_default()
                     .add(t.flow, share);

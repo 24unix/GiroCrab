@@ -448,8 +448,10 @@ pub(crate) fn cashflow_for(
     // of the effective total set (own switch, group, archiving) contribute —
     // a directly requested selection (single account) is a proof view and
     // keeps its sums.
+    // one guard for both reads, so a merge committing in between can never
+    // combine old eligibility with new booking amounts
+    let db = v.db()?;
     let allowed: Option<std::collections::HashSet<i64>> = if respect_in_total {
-        let db = v.db()?;
         Some(crate::user_groups::total_account_ids(&db)?)
     } else {
         None
@@ -460,7 +462,7 @@ pub(crate) fn cashflow_for(
         ..Default::default()
     };
     let mut acc: HashMap<String, (i64, i64)> = HashMap::new();
-    v.visit_bookings(&*v.db()?, &filter, |_, b| {
+    v.visit_bookings(&db, &filter, |_, b| {
         // other currencies are never added to the sums, unless one account is
         // selected (#1049); in a totals context only the effective total set
         // contributes (#337) — a directly requested account is a proof view

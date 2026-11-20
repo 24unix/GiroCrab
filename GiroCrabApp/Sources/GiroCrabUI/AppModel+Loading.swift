@@ -37,6 +37,9 @@ extension AppModel {
     /// background and replaces the shown data in one go.
     func reloadAllInBackground() {
         guard isUnlocked else { return }
+        // a sync can change the effective total set: supersede edit snapshots
+        // that still carry the pre-sync totals (#337), like `reloadAll` does
+        invalidateTotals()
         assetClassificationVersion += 1
         reloadAccounts()
         refreshSidebarCounts()
@@ -644,7 +647,7 @@ extension AppModel {
                 let loaded = try await self.vaultOffMain { vault -> ([CurrencyFlow], [CategoryCurrencyAmount]) in
                     let flows = followsList && !filter.listHasFlow
                         ? try vault.flowOtherCurrencies(filter: filter)
-                        : try vault.selectionFlowOtherCurrencies(accountIds: filter.accountIds, dateFrom: from, dateTo: to)
+                        : try vault.selectionFlowOtherCurrencies(accountIds: filter.accountIds, dateFrom: from, dateTo: to, respectInTotal: filter.respectInTotal)
                     let totals = try vault.categoryOtherCurrencyTotals(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction, amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents)
                     return (flows, totals)
                 }

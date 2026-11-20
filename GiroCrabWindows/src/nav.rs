@@ -408,9 +408,11 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
                 1
             };
             let is_folded = head.fold == 2;
+            // group figures are overall money sums (#337): only effectively
+            // included accounts count; every account row stays visible
             let eur: Vec<i64> = members
                 .iter()
-                .filter(|a| a.currency == "EUR")
+                .filter(|a| a.currency == "EUR" && a.in_total)
                 .map(|a| a.balance_cents)
                 .collect();
             if !eur.is_empty() {

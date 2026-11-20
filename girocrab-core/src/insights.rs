@@ -111,14 +111,19 @@ impl Vault {
         date_from: Option<String>,
         date_to: Option<String>,
     ) -> Result<SelectionFlow, CoreError> {
+        // rows-free path like `selection_flow`: only the flow is used, so no
+        // booking is enriched or kept
         Ok(self
-            .list_transactions(BookingFilter {
-                account_ids,
-                date_from,
-                date_to,
-                respect_in_total: true,
-                ..Default::default()
-            })?
+            .list_page(
+                BookingFilter {
+                    account_ids,
+                    date_from,
+                    date_to,
+                    respect_in_total: true,
+                    ..Default::default()
+                },
+                false,
+            )?
             .flow)
     }
 

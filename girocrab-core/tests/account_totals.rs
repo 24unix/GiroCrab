@@ -773,9 +773,10 @@ fn merge_inserts_account_with_flag_and_stamp() {
 #[test]
 fn old_vault_merge_keeps_newer_user_decision() {
     let (a, ta, b, _tb, x_a, x_b) = sync_pair("totals-old");
-    // A: explicit user decision, newer stamp
-    a.set_account_include_in_total(x_a, true).unwrap();
+    // A: explicit user decision against the default, with a newer stamp
+    a.set_account_include_in_total(x_a, false).unwrap();
     let (_, stamp_a) = flag_of(&ta.conn("v.girocrab"), x_a);
+    assert!(stamp_a > 0, "the explicit decision carries a stamp");
     // B: old build without the columns (default on, stamp 0 after migration)
     let path_b = b.file_path();
     drop(b);
@@ -790,8 +791,8 @@ fn old_vault_merge_keeps_newer_user_decision() {
     a.merge_other_vault(path_b, KEY.to_vec()).unwrap();
     assert_eq!(
         flag_of(&ta.conn("v.girocrab"), x_a),
-        (true, stamp_a),
-        "stamp-0 default does not beat the user's newer decision"
+        (false, stamp_a),
+        "the migrated stamp-0 default (true) does not beat the user's newer decision (false)"
     );
     let name: String = ta
         .conn("v.girocrab")

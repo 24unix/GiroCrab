@@ -397,9 +397,12 @@ struct CashflowCard: View {
         }
         .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: collapsed))
         // Follows the sidebar: overview = all accounts, account/group = its accounts (#731).
-        // totalsVersion: an account/group switch changes the effective set
-        // without moving the (proof) booking count (#337).
-        .task(id: "\(granularity)#\(model.bookings.count)#\(accountIds)#\(model.totalsVersion)") {
+        // The calculation context is part of the key: switching between a single
+        // account and a group of only that account keeps ids and booking count,
+        // but changes proof (#337) vs. totals sums. `totalsVersion` catches the
+        // account/group switches that change the effective set without moving
+        // the (proof) booking count (invalidateTotals in afterGroupChange/reloadAll).
+        .task(id: "\(granularity)#\(model.bookings.count)#\(accountIds)#\(model.sidebarSelection?.usesTotalsContext ?? true)#\(model.totalsVersion)") {
             // calculation context like `currentFilter` (#337): overview, group,
             // kind / bank = overall money figure; a directly requested single
             // account is a proof view and keeps its sums
