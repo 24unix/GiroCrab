@@ -1041,7 +1041,7 @@ fn card_account(
     (account, transactions)
 }
 
-fn account_ref(kind: ConnectorKind, connection_id: i64) -> String {
+pub(crate) fn account_ref(kind: ConnectorKind, connection_id: i64) -> String {
     format!(
         "portal-{}-{}",
         kind.as_str().replace(':', "-"),

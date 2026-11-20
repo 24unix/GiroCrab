@@ -85,6 +85,27 @@ extension AppModel {
         }
     }
 
+    /// Amex: statement PDFs of the card the portal shows, the ones not stored yet, downloaded
+    /// in the signed-in page: at most 24 from the last two years, or with `all` every one the
+    /// portal offers. Returns how many were added.
+    func importAmexStatements(_ c: BankConnection, browser: PortalBrowser, all: Bool = false) async -> Int {
+        let id = c.id
+        let since = all ? "" : DateText.iso(Calendar.current.date(byAdding: .month, value: -24, to: Date()) ?? Date())
+        // closing dates the card has already: the portal's statement ids change with every login
+        let known: (String) async -> Set<String>? = { [self] card in
+            (try? await vaultOffMain { try $0.portalStatementDates(connectionId: id, cardKey: card) }).flatMap { $0.map(Set.init) }
+        }
+        let fetched = await browser.amexStatements(known: known, since: since, limit: all ? Int.max : 24)
+        AppModel.debugLog("portal statements: listed=\(fetched.listed) new=\(fetched.statements.count) failed=\(fetched.failed)")
+        guard !fetched.statements.isEmpty else { return 0 }
+        let card = fetched.card, statements = fetched.statements
+        let added = (try? await vaultOffMain {
+            try $0.importPortalStatements(connectionId: id, cardKey: card, statements: statements)
+        }) ?? nil
+        if let added, added > 0 { documentsVersion += 1 }
+        return Int(added ?? 0)
+    }
+
     /// Number of bookings currently recognised in the captured JSON / visible table (nothing stored).
     /// Runs off the main thread: the browser polls this every 1.5 s while the user types.
     func previewPortalCapture(_ c: BankConnection, bodies: [String], domRowsJSON: String) async -> Int {
@@ -403,7 +424,14 @@ final class PortalBrowser {
         return SHA256.hash(data: Data(token.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Amex: the latest statement list (`documents/info/statements`) and the card token of
+    /// its request; kept in memory only, for `amexStatements`.
+    @ObservationIgnored private(set) var statementList: (body: String, token: String)?
+
     func captured(_ body: String, url: String, card: String = "") {
+        if url.lowercased().contains("documents/info/statements") {
+            statementList = (body, card)
+        }
         let path = Self.maskedPath(url)
         seenPaths.append(path)
         if seenPaths.count > 200 { seenPaths.removeFirst(seenPaths.count - 200) }
@@ -527,6 +555,72 @@ final class PortalBrowser {
     """
 
     /// Host + path without query, digits masked – no ids or card numbers.
+    /// Amex: the statement PDFs of the card shown, newest first, whose closing date is not
+    /// among `known(card)` and on or after `since` (ISO date), at most `limit`. The portal opens a
+    /// statement as `<url>?account_key=…&client_id=OneAmex`, `account_key` being a parameter
+    /// of its own page; the list is loaded by its statements page.
+    func amexStatements(known: (String) async -> Set<String>?, since: String, limit: Int)
+        async -> (card: String, statements: [PortalStatement], listed: Int, failed: Int) {
+        guard onPortal, !onLoginPage else { return ("", [], 0, 0) }
+        if statementList == nil {
+            // the statements page of the card shown loads the list
+            _ = try? await webView.callAsyncJavaScript(
+                "location.href = location.origin + '/activity/statements' + location.search; return true;",
+                contentWorld: .page)
+            for _ in 0..<40 where statementList == nil { try? await Task.sleep(nanoseconds: 500_000_000) }
+        }
+        guard let list = statementList,
+              let items = (try? JSONSerialization.jsonObject(with: Data(list.body.utf8))) as? [[String: Any]] else {
+            return ("", [], 0, 0)
+        }
+        let card = Self.cardKey(list.token)
+        guard let knownDates = await known(card) else { return (card, [], items.count, 0) }
+        let wanted: [(id: String, date: String, path: String)] = items.compactMap { i in
+            guard (i["available"] as? Bool) != false, (i["archived"] as? Bool) != true,
+                  let id = i["id"] as? String,
+                  let date = i["end_date"] as? String, date.count == 10, date >= since, !knownDates.contains(date),
+                  let path = ((i["available_formats"] as? [[String: Any]])?
+                    .first { ($0["format"] as? String)?.uppercased() == "PDF" }?["url"] as? String) else { return nil }
+            return (id, date, path)
+        }
+        .sorted { $0.date > $1.date }
+        let todo = Array(wanted.prefix(limit))
+        guard !todo.isEmpty else { return (card, [], items.count, 0) }
+        let key = (try? await webView.callAsyncJavaScript(
+            "var k = new URLSearchParams(location.search).get('account_key');"
+                + " if (!k && window.qsp) k = window.qsp.account_key; return k || '';",
+            contentWorld: .page) as? String) ?? ""
+        guard !key.isEmpty else { return (card, [], items.count, todo.count) }
+        // The PDF as base64; "" when the portal answers with something else.
+        let download = """
+        try {
+          var u = new URL(path, location.origin);
+          u.searchParams.set('account_key', key); u.searchParams.set('client_id', 'OneAmex');
+          var r = await fetch(u.toString(), {credentials: 'include'});
+          if (!r.ok) return '';
+          var blob = await r.blob();
+          return await new Promise(function(done) {
+            var f = new FileReader();
+            f.onload = function() { done(String(f.result).split(',')[1] || ''); };
+            f.onerror = function() { done(''); };
+            f.readAsDataURL(blob);
+          });
+        } catch (e) { return ''; }
+        """
+        var out: [PortalStatement] = []
+        var failed = 0
+        for s in todo {
+            let b64 = (try? await webView.callAsyncJavaScript(download, arguments: ["path": s.path, "key": key],
+                                                             contentWorld: .page) as? String) ?? ""
+            guard let data = Data(base64Encoded: b64), data.starts(with: Array("%PDF".utf8)) else {
+                failed += 1
+                continue
+            }
+            out.append(PortalStatement(date: s.date, bytes: data))
+        }
+        return (card, out, items.count, failed)
+    }
+
     static func maskedPath(_ url: String) -> String {
         let u = URL(string: url)
         let s = u.map { ($0.host ?? "") + $0.path } ?? String(url.prefix(120))
@@ -664,6 +758,8 @@ struct PortalWebSheet: View {
     @State private var cardsSince: Date?
     /// Amex: the stored login was filled in (or there is none): not tried again.
     @State private var loginFilled = false
+    /// Amex: statement PDFs are being downloaded before the sheet closes.
+    @State private var loadingStatements = false
 
     /// Amex: not every card of the switcher has been opened yet. Importing now would
     /// take only the cards loaded so far and close the sheet, so it waits (#243).
@@ -711,6 +807,7 @@ struct PortalWebSheet: View {
         if importedCount > 0 && olderOffered {
             return String(localized: "\(importedCount) Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter.")
         }
+        if loadingStatements { return String(localized: "Kontoauszüge werden geladen …") }
         if let card = loadingCard { return String(localized: "Umsätze der Karte „\(card)“ werden geladen …") }
         if importedCount > 0 { return String(localized: "\(importedCount) Umsätze übernommen – weitere werden geladen …") }
         if recognized == 0 { return String(localized: "Angemeldet – öffnen Sie die Umsatzübersicht, damit das Portal die Buchungen lädt.") }
@@ -761,6 +858,13 @@ struct PortalWebSheet: View {
                     .help("Lässt dieses Fenster offen, damit Sie im Portal frühere Abrechnungszeiträume öffnen können.")
                 }
                 Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
+                if connection.connector == .americanExpress, !browser.onLoginPage, browser.onPortal {
+                    Button { Task { await loadStatements(all: true) } } label: {
+                        Label("Alle Kontoauszüge laden", systemImage: "doc.on.doc")
+                    }
+                    .help("Lädt alle Kontoauszüge, die das Portal anbietet und die noch nicht im Tresor sind.")
+                    .disabled(busy || loadingStatements)
+                }
                 // Developer tool, hidden from everyday use (--developer). Also offered on
                 // the login page: the dump records `on_login_page` itself.
                 if model.options.developer && recognized == 0 {
@@ -889,13 +993,35 @@ struct PortalWebSheet: View {
             if fromButton { confirmDiscard = true }
             return true
         }
-        if closing { close() }
+        if closing {
+            await loadStatements()
+            close()
+        }
         return true
+    }
+
+    /// Amex: downloads the new statement PDFs while the portal session is open; `all`
+    /// without the two-year limit (button), else the recent ones before closing.
+    private func loadStatements(all: Bool = false) async {
+        guard connection.connector == .americanExpress, !loadingStatements else { return }
+        loadingStatements = true
+        defer { loadingStatements = false }
+        let n = await model.importAmexStatements(connection, browser: browser, all: all)
+        if n > 0 {
+            model.toast = (all ? "" : model.toast.map { $0 + " · " } ?? "") + String(localized: "\(n) neue Kontoauszüge")
+        } else if all {
+            model.toast = String(localized: "Keine neuen Kontoauszüge")
+        }
     }
 
     /// Closing with unresolved pending charges asks first: they would be discarded.
     private func requestClose() {
-        if openHolds.isEmpty { close() } else { confirmDiscard = true }
+        guard openHolds.isEmpty else { confirmDiscard = true; return }
+        if importedCount > 0, connection.connector == .americanExpress {
+            Task { await loadStatements(); close() }
+        } else {
+            close()
+        }
     }
 
     /// Alert text (alerts are never part of a bug report picture).

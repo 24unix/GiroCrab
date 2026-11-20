@@ -1436,6 +1436,17 @@
         }
       }
     },
+    "%lld neue Kontoauszüge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld new statements"
+          }
+        }
+      }
+    },
     "%lld neue PostBox-Dokumente" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3829,6 +3840,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All accounts are in groups."
+          }
+        }
+      }
+    },
+    "Alle Kontoauszüge laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load all statements"
           }
         }
       }
@@ -18710,6 +18732,17 @@
         }
       }
     },
+    "Keine neuen Kontoauszüge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No new statements"
+          }
+        }
+      }
+    },
     "Keine neuen Umsätze" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19614,6 +19647,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Statements and documents (%1$u, %2$@)"
+          }
+        }
+      }
+    },
+    "Kontoauszüge werden geladen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading statements …"
           }
         }
       }
@@ -20549,6 +20593,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete local session?"
+          }
+        }
+      }
+    },
+    "Lädt alle Kontoauszüge, die das Portal anbietet und die noch nicht im Tresor sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loads every statement the portal offers that is not in the vault yet."
           }
         }
       }
