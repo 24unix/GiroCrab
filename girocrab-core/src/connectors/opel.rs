@@ -37,8 +37,9 @@ use zeroize::Zeroize;
 
 use super::uberspace::{attr, attrs, parse_date, text, INPUT};
 use super::{
-    http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    ContentIds, Documents, FetchResult, KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
+    http_client_same_host, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
+    ConnectContext, ContentIds, Documents, FetchResult, KnownDocuments, Phase, RemoteAccount,
+    RemoteTransaction,
 };
 use crate::documents::RemoteDocument;
 use crate::error::{CoreError, CoreResult};
@@ -930,7 +931,7 @@ impl BankConnector for OpelDirektbankConnector {
                 message: tr("Opel Direktbank: Benutzerkennung und Passwort erforderlich.").into(),
             });
         }
-        self.client = Some(http_client()?);
+        self.client = Some(http_client_same_host()?);
         let resp = self.http()?.get(Self::target(LOGIN)?).send().await?;
         let page = self.read(resp).await?;
         let form = form_by_id(&page.html(), "loginForm").ok_or_else(page_changed)?;

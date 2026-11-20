@@ -25,8 +25,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{
-    http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, KnownDocuments,
-    Phase, RemoteAccount, RemoteTransaction,
+    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, FetchResult,
+    KnownDocuments, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -759,7 +759,7 @@ impl BankConnector for Fin4uConnector {
                 message: tr("Benutzername (E-Mail) und Passwort für fin4u erforderlich").into(),
             });
         }
-        let client = http_client()?;
+        let client = http_client_same_host()?;
         let username = ctx.login_name.trim();
         let v = login(&client, username, ctx.secret.expose()).await?;
         self.access_token =

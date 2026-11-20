@@ -1584,6 +1584,7 @@ mod direct_debit;
 mod import_takeover;
 mod payment_method;
 mod postbox;
+pub(crate) mod redirects;
 mod standing_order;
 mod statements_auto;
 mod transfer_cancel;

@@ -16,7 +16,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 
 use super::{
-    http_client, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
+    http_client_same_host, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
     ConnectContext, FetchResult, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
@@ -54,7 +54,7 @@ impl ComdirectConnector {
 
     fn client(&mut self) -> CoreResult<reqwest::Client> {
         if self.client.is_none() {
-            self.client = Some(http_client()?);
+            self.client = Some(http_client_same_host()?);
         }
         Ok(self.client.clone().unwrap())
     }

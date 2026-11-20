@@ -661,6 +661,7 @@ fn client() -> CoreResult<reqwest::Client> {
         ))
         .timeout(std::time::Duration::from_secs(60))
         .cookie_provider(jar)
+        .redirect(super::same_host_redirects())
         .build()?)
 }
 
@@ -1118,6 +1119,12 @@ impl BankConnector for FordMoneyConnector {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
+
+    #[tokio::test]
+    async fn login_client_does_not_follow_redirects_to_another_origin() {
+        let client = client().unwrap();
+        crate::connectors::tests::redirects::assert_no_cross_origin_replay(&client).await;
+    }
 
     // Invented pages in the shape of the Ford Money online banking; no real data.
     const LOGIN_PAGE: &str = r#"<html><body>

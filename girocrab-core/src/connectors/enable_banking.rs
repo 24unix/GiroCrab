@@ -30,7 +30,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use super::{
-    http_client, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
+    http_client_same_host, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
     ConnectContext, FetchResult, Paged, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
@@ -1178,7 +1178,7 @@ impl BankConnector for EnableBankingConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
         crate::depot_debug::log("enable_banking begin: entered");
         self.jwt = Self::make_jwt(ctx)?;
-        self.client = Some(http_client()?);
+        self.client = Some(http_client_same_host()?);
         if let Ok(st) = ctx.state.decode::<PsdState>() {
             self.st = st;
         }
@@ -1841,7 +1841,7 @@ impl Vault {
         redirect_url: String,
     ) -> Result<EnableBankingAppCheck, CoreError> {
         let jwt = EnableBankingConnector::make_jwt_for(application_id.trim(), &private_key_pem)?;
-        let resp = http_client()?
+        let resp = http_client_same_host()?
             .get(format!("{API}/application"))
             .bearer_auth(jwt)
             .header("Accept", "application/json")
