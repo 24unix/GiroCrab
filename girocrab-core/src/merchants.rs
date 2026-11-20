@@ -887,12 +887,15 @@ pub fn clean_name(s: &str) -> String {
         " sagt Danke",
         " SAGT DANKE",
     ] {
-        // Whole words only: " SE" must not cut "SPARKASSE SEELAND" (#1410).
+        // Whole words only: " SE" must not cut "SPARKASSE SEELAND" (#1410). A suffix
+        // ending in a dot is its own boundary (" S.A." also cuts "S.A.R.L.").
+        let ends_word = suffix.ends_with(char::is_alphanumeric);
         if let Some((p, _)) = t.match_indices(suffix).find(|(p, _)| {
-            t[p + suffix.len()..]
-                .chars()
-                .next()
-                .is_none_or(|c| !c.is_alphanumeric())
+            !ends_word
+                || t[p + suffix.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !c.is_alphanumeric())
         }) {
             t.truncate(p);
         }
@@ -1631,6 +1634,8 @@ mod tests {
         );
         assert_eq!(clean_name("Muster AG, Berlin"), "Muster");
         assert_eq!(clean_name("Muster AG"), "Muster");
+        assert_eq!(clean_name("MUSTER S.A.R.L."), "Muster");
+        assert_eq!(clean_name("MUSTER S.A.S."), "Muster");
         assert_eq!(clean_name("Muster SE & Co. KGaA"), "Muster");
         assert_eq!(clean_name("VR-BANK NORD"), "VR-Bank Nord");
         let key = |cp: &str| resolve_merchant(cp.into(), String::new()).key;
