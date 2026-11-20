@@ -44,7 +44,7 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
         "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.",
         "FinTS 3.0",
         false,
-        "https://banking-hs5.s-fints-pt-hs.de/fints30",
+        "https://banking-hs6.s-fints-pt-hs.de/fints30",
     ),
     (
         "comdirect.client_id",

@@ -66,7 +66,7 @@ pub fn fints_presets() -> Vec<FinTsPreset> {
             "1822direkt",
             "1822direkt",
             "50050201",
-            "https://banking-hs5.s-fints-pt-hs.de/fints30",
+            "https://banking-hs6.s-fints-pt-hs.de/fints30",
             "",
         ),
         p(
@@ -249,6 +249,7 @@ mod tests {
             "apobank",
             "ethikbank",
             "dkb",
+            "1822direkt",
         ] {
             let pr = fints_presets().into_iter().find(|p| p.id == id).unwrap();
             let d = crate::connectors::fints_directory::lookup(&pr.blz).unwrap();
