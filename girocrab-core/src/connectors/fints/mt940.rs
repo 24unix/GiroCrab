@@ -49,19 +49,19 @@ fn fields(text: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for line in text.split(['\n']) {
         let line = line.trim_end_matches('\r');
-        if let Some(rest) = line.strip_prefix(':') {
-            if let Some(end) = rest.find(':') {
-                let tag = rest[..end].to_string();
-                if tag.len() <= 3
-                    && tag
-                        .chars()
-                        .next()
-                        .map(|c| c.is_ascii_digit())
-                        .unwrap_or(false)
-                {
-                    out.push((tag, line[end + 2..].to_string()));
-                    continue;
-                }
+        if let Some(rest) = line.strip_prefix(':')
+            && let Some(end) = rest.find(':')
+        {
+            let tag = rest[..end].to_string();
+            if tag.len() <= 3
+                && tag
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+            {
+                out.push((tag, line[end + 2..].to_string()));
+                continue;
             }
         }
         if line == "-" || line.is_empty() {

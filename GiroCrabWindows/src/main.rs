@@ -791,7 +791,7 @@ impl DialogBridge {
         self.drain();
         self.show(
             "pin",
-            "Passwort der MoneyMoney-Datenbank".into(),
+            "Passwort der Datenbank".into(),
             "Das Passwort wird nur für diesen Import im Speicher gehalten.".into(),
             None,
         );
@@ -1275,7 +1275,7 @@ fn import_file(
                 .import_moneymoney_database(location, pw.to_string(), options)
                 .map_err(e)?;
             Ok(format!(
-                "MoneyMoney-Import: {} neue Umsätze, {} Duplikate, {} Konten neu, {} zusammengeführt.",
+                "Datenimport: {} neue Umsätze, {} Duplikate, {} Konten neu, {} zusammengeführt.",
                 r.bookings_new, r.bookings_duplicates, r.accounts_created, r.accounts_merged
             ))
         }
@@ -1288,7 +1288,7 @@ fn pick_import_file() -> Option<PathBuf> {
     rfd::FileDialog::new()
         .set_title("Umsätze importieren")
         .add_filter(
-            "MoneyMoney, CSV, CAMT",
+            "Datenbank, CSV, CAMT",
             &["moneymoney", "csv", "xml", "sta", "mt940", "txt"],
         )
         .pick_file()
@@ -1530,7 +1530,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let screenshot = screenshot_path_from_args(std::env::args().skip(1));
     if screenshot.is_some() && std::env::var_os("SLINT_BACKEND").is_none() {
         // Software rendering: the isolated window texture is capturable (Metal is not).
-        std::env::set_var("SLINT_BACKEND", "winit-software");
+        // SAFETY: before the window exists, no other thread has been started yet.
+        unsafe { std::env::set_var("SLINT_BACKEND", "winit-software") };
     }
     let win = MainWindow::new()?;
     let demo_title = std::env::var_os("GIROCRAB_DEMO_SEED").is_some() || screenshot.is_some();
@@ -1631,7 +1632,7 @@ fn main() -> Result<(), slint::PlatformError> {
         // "Demo-Modus" button: same as GIROCRAB_DEMO_SEED=1, but without touching the key store.
         let open = open.clone();
         win.on_demo(move || {
-            std::env::set_var("GIROCRAB_DEMO_SEED", "1");
+            vault_key::set_demo(true);
             open(true)
         });
     }
@@ -1640,11 +1641,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let (open, demo_active) = (open.clone(), demo_active.clone());
         win.on_demo_switch(move || {
             let to_demo = !*demo_active.lock().unwrap();
-            if to_demo {
-                std::env::set_var("GIROCRAB_DEMO_SEED", "1");
-            } else {
-                std::env::remove_var("GIROCRAB_DEMO_SEED");
-            }
+            vault_key::set_demo(to_demo);
             open(to_demo)
         });
     }

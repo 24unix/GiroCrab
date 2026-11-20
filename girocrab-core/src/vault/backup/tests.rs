@@ -271,3 +271,68 @@ fn backup_file_is_owner_only() {
     let mode = std::fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
 }
+
+fn triggers_and_views(v: &Vault) -> Vec<String> {
+    v.db()
+        .unwrap()
+        .prepare("SELECT name FROM sqlite_master WHERE type IN ('trigger', 'view') ORDER BY name")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+#[test]
+fn restore_drops_triggers_and_views_from_the_backup() {
+    let (src, _) = filled(1);
+    src.db()
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER repoint AFTER INSERT ON settings BEGIN
+                 UPDATE settings SET value = 'https://evil.example/fints'
+                 WHERE key LIKE 'fints.url.%';
+             END;
+             CREATE TRIGGER repoint_on_sync AFTER UPDATE ON bank_connections BEGIN
+                 UPDATE settings SET value = 'https://evil.example/fints'
+                 WHERE key LIKE 'fints.url.%';
+             END;
+             CREATE VIEW extra AS SELECT 1;",
+        )
+        .unwrap();
+    let backup = temp_path("bak");
+    src.write_backup(path(&backup), PASSWORD.into()).unwrap();
+
+    let (dst, dst_path) = filled(2);
+    dst.set_setting(
+        "fints.url.12345678".into(),
+        "https://bank.example/fints".into(),
+    )
+    .unwrap();
+    dst.restore_backup(path(&backup), PASSWORD.into()).unwrap();
+    assert!(triggers_and_views(&dst).is_empty());
+
+    // a later settings write keeps this device's endpoint
+    dst.set_setting("ui.note".into(), "x".into()).unwrap();
+    assert_eq!(
+        dst.get_setting("fints.url.12345678".into())
+            .unwrap()
+            .as_deref(),
+        Some("https://bank.example/fints")
+    );
+    drop(dst);
+    let reopened = Vault::open(path(&dst_path), vec![2; 32]).unwrap();
+    assert!(triggers_and_views(&reopened).is_empty());
+}
+
+#[test]
+fn reopen_drops_triggers_left_in_the_vault() {
+    let (v, p) = filled(3);
+    v.db()
+        .unwrap()
+        .execute_batch("CREATE TRIGGER stray AFTER INSERT ON settings BEGIN SELECT 1; END;")
+        .unwrap();
+    drop(v);
+    let reopened = Vault::open(path(&p), vec![3; 32]).unwrap();
+    assert!(triggers_and_views(&reopened).is_empty());
+}

@@ -285,7 +285,9 @@ impl Rah10 {
         }
         let ranges = segment_ranges(&plain)?;
         let inner = syntax::parse(&plain)?;
+        // Every returned segment must lie inside the span the signature check uses.
         if inner.len() < 3
+            || inner.len() != ranges.len()
             || inner[0].id() != "HNSHK"
             || inner.last().map(|s| s.id()) != Some("HNSHA")
         {
@@ -320,10 +322,15 @@ impl Rah10 {
 }
 
 // Exact segment ranges, skipping escaped bytes and length-delimited binary values.
+// Uses the framing rules of `syntax::parse`: '@len@' starts a binary value only at the
+// start of a component, and line breaks before a segment are ignored. The signed span
+// and the returned segments must come from the same framing.
 fn segment_ranges(data: &[u8]) -> CoreResult<Vec<(usize, usize)>> {
     let mut result = Vec::new();
     let mut start = 0;
     let mut offset = 0;
+    let mut component_start = true;
+    let mut segment_start = true;
     while offset < data.len() {
         match data[offset] {
             b'?' => {
@@ -331,8 +338,10 @@ fn segment_ranges(data: &[u8]) -> CoreResult<Vec<(usize, usize)>> {
                 if offset > data.len() {
                     return Err(error());
                 }
+                component_start = false;
+                segment_start = false;
             }
-            b'@' => {
+            b'@' if component_start => {
                 let length_start = offset + 1;
                 let end = data[length_start..]
                     .iter()
@@ -347,13 +356,27 @@ fn segment_ranges(data: &[u8]) -> CoreResult<Vec<(usize, usize)>> {
                     .checked_add(length)
                     .filter(|&n| n <= data.len())
                     .ok_or_else(error)?;
+                component_start = false;
+                segment_start = false;
+            }
+            b':' | b'+' => {
+                offset += 1;
+                component_start = true;
+                segment_start = false;
             }
             b'\'' => {
                 offset += 1;
                 result.push((start, offset));
                 start = offset;
+                component_start = true;
+                segment_start = true;
             }
-            _ => offset += 1,
+            b'\r' | b'\n' if segment_start => offset += 1,
+            _ => {
+                offset += 1;
+                component_start = false;
+                segment_start = false;
+            }
         }
     }
     if start != data.len() {

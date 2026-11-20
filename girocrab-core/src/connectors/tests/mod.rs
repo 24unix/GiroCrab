@@ -131,6 +131,65 @@ fn unread_depot_keeps_its_positions_and_value() {
 }
 
 #[test]
+fn fetch_warnings_name_accounts_by_their_stored_name() {
+    // #1083: a FinTS failure names the account by its IBAN; the summary uses
+    // the name the account carries here (renamed by the user), never the IBAN.
+    let p_dir = crate::test_support::TempDir::new("girocrab-fetch-warnings");
+    let p = p_dir.join("v.db");
+    let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
+    let conn = v
+        .add_bank_connection(
+            ConnectorKind::FinTsGeneric,
+            "fints:50010517".into(),
+            "login".into(),
+        )
+        .unwrap();
+    let iban = "DE02120300000000202051";
+    let account = |balance_cents: i64| RemoteAccount {
+        external_ref: iban.into(),
+        name: "Verrechnungskonto".into(),
+        owner: String::new(),
+        iban: iban.into(),
+        account_number: String::new(),
+        currency: "EUR".into(),
+        kind: AccountKind::Checking,
+        balance_cents,
+        balance_date: "2026-11-10".into(),
+    };
+    let first = FetchResult {
+        accounts: vec![account(250_00)],
+        ..Default::default()
+    };
+    let s = store_fetch(&v, ConnectorKind::FinTsGeneric, conn, first).unwrap();
+    assert!(s.warnings.is_empty());
+    let id = v.list_accounts().unwrap().pop().unwrap().id;
+    v.rename_account(id, "Cash".into()).unwrap();
+
+    let failed = FetchResult {
+        accounts: vec![account(0)],
+        balances_unknown: vec![iban.into()],
+        warnings: vec![
+            format!("{iban}: Umsätze (HKCAZ/camt.052) – TAN verlangt"),
+            "Kontenliste (HKSPA) – abgelehnt".into(),
+        ],
+        ..Default::default()
+    };
+    let s = store_fetch(&v, ConnectorKind::FinTsGeneric, conn, failed).unwrap();
+    assert_eq!(
+        s.warnings,
+        vec![
+            "Cash: Umsätze (HKCAZ/camt.052) – TAN verlangt".to_string(),
+            "Kontenliste (HKSPA) – abgelehnt".to_string(),
+        ]
+    );
+    // the balance that was not read stays
+    assert_eq!(
+        v.list_accounts().unwrap().pop().unwrap().balance_cents,
+        250_00
+    );
+}
+
+#[test]
 fn depot_value_points_follow_what_a_fetch_confirms() {
     // total without positions, unknown balance, unconfirmed 0, confirmed 0
     let p_dir = crate::test_support::TempDir::new("girocrab-depot-points");
@@ -1200,6 +1259,79 @@ async fn account_sync_stores_only_that_account() {
 }
 
 #[test]
+fn single_account_sync_of_a_moneymoney_ref_syncs_the_whole_login() {
+    use super::persist::single_account_ref;
+    let none = || -> CoreResult<Vec<String>> { Ok(vec![]) };
+    assert_eq!(
+        single_account_ref("DE02120300000000202051".into(), none).unwrap(),
+        Some("DE02120300000000202051".into())
+    );
+    // marked by "Abrufweg umstellen", or imported and not yet taken over (#1417)
+    for r in [
+        "moneymoney-db:switch:DE02120300000000202051",
+        "moneymoney-db:A1B2C3",
+    ] {
+        assert_eq!(single_account_ref(r.into(), none).unwrap(), None, "{r}");
+        let skipped = || -> CoreResult<Vec<String>> { Ok(vec![r.to_string()]) };
+        assert!(matches!(
+            single_account_ref(r.into(), skipped),
+            Err(CoreError::InvalidInput { .. })
+        ));
+    }
+}
+
+#[tokio::test]
+async fn account_sync_after_switching_takes_the_account_over() {
+    let (v, path) = demo_vault();
+    let conn = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.connector == ConnectorKind::VolksbankKasselGoettingen)
+        .unwrap();
+    let giro = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.connection_id == Some(conn.id) && a.name == "Musterbank Girokonto")
+        .unwrap();
+    let ext = |v: &Arc<Vault>| -> String {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                [giro.id],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let old = ext(&v);
+    // as "Abrufweg umstellen" leaves it: the account under the marked ref
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET external_ref = ?1 WHERE id = ?2",
+            params![format!("moneymoney-db:switch:{old}"), giro.id],
+        )
+        .unwrap();
+    let s = v
+        .clone()
+        .begin_account_sync(giro.id, "pin".into(), true)
+        .unwrap();
+    let mut step = s.start().await.unwrap();
+    let summary = loop {
+        match step {
+            SyncStep::Finished { summary } => break summary,
+            _ => step = s.poll().await.unwrap(),
+        }
+    };
+    // the whole login was synced: the account is taken over and gets its booking
+    assert_eq!(ext(&v), old);
+    assert_eq!(summary.transactions_imported, 1);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn only_among_names_the_account_of_a_single_account_sync() {
     let refs = vec!["a".to_string(), "b".to_string()];
     let mut ctx = ConnectContext::default();
@@ -1290,6 +1422,77 @@ async fn demo_code_and_redirect_flows() {
     assert!(matches!(
         v.clone().begin_sync(pp.id, String::new(), false),
         Err(CoreError::MissingSetting { .. })
+    ));
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn amounts_above_the_sepa_limit_are_rejected_before_the_tan() {
+    use crate::connectors::fints::sepa::MAX_AMOUNT_CENTS;
+    use crate::models::{StandingOrderAction, StandingOrderRequest};
+    let (v, path) = demo_vault();
+    let acc = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == "Musterbank Girokonto" && a.connection_id.is_some())
+        .unwrap();
+    let transfer =
+        |amount: i64, instant: bool, execution_date: Option<String>| SepaTransferRequest {
+            account_id: acc.id,
+            recipient_name: "Müller GmbH".into(),
+            recipient_iban: "DE89370400440532013000".into(),
+            recipient_bic: None,
+            amount_cents: amount,
+            purpose: "Rechnung 42".into(),
+            instant,
+            execution_date,
+        };
+    let later = crate::dates::iso(crate::dates::today() + crate::dates::days(10));
+    for (instant, date) in [(false, None), (true, None), (false, Some(later.clone()))] {
+        assert!(v
+            .clone()
+            .begin_transfer(
+                transfer(MAX_AMOUNT_CENTS, instant, date.clone()),
+                "pin".into(),
+                true
+            )
+            .is_ok());
+        assert!(matches!(
+            v.clone().begin_transfer(
+                transfer(MAX_AMOUNT_CENTS + 1, instant, date),
+                "pin".into(),
+                true
+            ),
+            Err(CoreError::InvalidInput { .. })
+        ));
+    }
+    // A valid monthly schedule (first date on the execution day), so only the
+    // amount decides.
+    let first_of_month = (crate::dates::today() + crate::dates::days(40)).first_of_month();
+    let order = |amount: i64| StandingOrderRequest {
+        account_id: acc.id,
+        action: StandingOrderAction::Create,
+        order_row_id: None,
+        recipient_name: "Vermieter".into(),
+        recipient_iban: "DE89370400440532013000".into(),
+        recipient_bic: None,
+        amount_cents: amount,
+        purpose: "Miete".into(),
+        first_date: crate::dates::iso(first_of_month),
+        last_date: None,
+        time_unit: "M".into(),
+        interval: 1,
+        exec_day: 1,
+    };
+    assert!(v
+        .clone()
+        .begin_standing_order(order(MAX_AMOUNT_CENTS), "pin".into(), true)
+        .is_ok());
+    assert!(matches!(
+        v.clone()
+            .begin_standing_order(order(MAX_AMOUNT_CENTS + 1), "pin".into(), true),
+        Err(CoreError::InvalidInput { .. })
     ));
     let _ = std::fs::remove_file(path);
 }
@@ -1522,8 +1725,10 @@ mod batch_transfer;
 mod body_limit;
 mod content_id;
 mod direct_debit;
+mod import_takeover;
 mod payment_method;
 mod postbox;
+pub(crate) mod redirects;
 mod standing_order;
 mod statements_auto;
 mod transfer_cancel;
@@ -1890,4 +2095,23 @@ fn managed_hold_prefix_survives_same_amount_payment_until_removed_from_list() {
     };
     store_fetch(&v, ConnectorKind::PayPal, conn, f2).unwrap();
     assert!(active_holds().is_empty());
+}
+
+#[test]
+fn sync_moves_a_retired_fints_url_to_the_current_endpoint() {
+    let (v, _path) = demo_vault();
+    let id = v
+        .add_fints_connection(
+            "30060601".into(),
+            "https://fints1.atruvia.de/cgi-bin/hbciservlet".into(),
+            "apoBank".into(),
+            "nutzer".into(),
+            String::new(),
+        )
+        .unwrap();
+    let _ = v.clone().begin_sync(id, "12345".into(), true);
+    assert_eq!(
+        v.get_setting("fints.url.30060601".into()).unwrap(),
+        Some("https://fints.apobank.de/FinTs30PinTanHttpGate".into())
+    );
 }

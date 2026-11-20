@@ -48,6 +48,7 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 
 | Crate | Version | License | Repository |
 |---|---|---|---|
+| **`roxmltree`** (dev-dependency of `girocrab-core`: independent XML parser for the payment invariant tests, #947) | `0.20.0` | `MIT OR Apache-2.0` | [https://github.com/RazrFalcon/roxmltree](https://github.com/RazrFalcon/roxmltree) |
 | **`uniffi`** (`uniffi-bindgen`, feature `cli`) | `0.32.2` | `MPL-2.0` | [https://github.com/mozilla/uniffi-rs](https://github.com/mozilla/uniffi-rs) |
 
 ## Linux Direct Dependencies (`GiroCrabLinux`)

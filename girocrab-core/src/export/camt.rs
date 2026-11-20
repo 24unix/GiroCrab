@@ -511,11 +511,11 @@ fn detect_return_reason(gvc: &str, purpose: &str, booking_text: &str) -> Option<
     {
         if token.len() == 4 {
             let upper = token.to_ascii_uppercase();
-            if let Some(&found) = CODES.iter().find(|&&c| c == upper) {
-                if is_return_context || matches!(found, "AC04" | "MD01" | "MD06" | "MS03" | "AM04")
-                {
-                    return Some(found);
-                }
+            if let Some(&found) = CODES.iter().find(|&&c| c == upper)
+                && (is_return_context
+                    || matches!(found, "AC04" | "MD01" | "MD06" | "MS03" | "AM04"))
+            {
+                return Some(found);
             }
         }
     }

@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::syntax::{Segment, SegmentBuilder};
-use super::{sepa, FinTsConnector, PreparedOrder, Vop};
+use super::{sepa, FinTsConnector, PreparedOrder, SepaAccount, Vop};
 use crate::connectors::{ConnectContext, Phase, StandingOrderJob};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -249,43 +249,56 @@ impl FinTsConnector {
             check_schedule(&rules, job, crate::dates::today())?;
         }
         let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
-        let header = sepa::PainHeader::new(&job.source_owner);
-        let xml = sepa::build_pain001(&sepa::Pain001 {
-            message_id: &header.message_id,
-            created: &header.created,
-            execution_date: PAIN_PLACEHOLDER_DATE,
-            debtor_name: header.owner,
-            debtor_iban: &acc.iban,
-            debtor_bic: &acc.bic,
-            creditor_name: &job.recipient_name,
-            creditor_iban: &job.recipient_iban,
-            creditor_bic: job.recipient_bic.as_deref(),
-            amount_cents: job.amount_cents,
-            purpose: &job.purpose,
-            version,
-            end_to_end_id: "",
-            instant: false,
-        })?;
         let with_time = seg_id == "HKCDL" && self.version(seg_id) >= 2;
-        self.order = Some(PreparedOrder {
-            seg_id,
-            kti: Self::kti(&acc),
-            descriptor: version.descriptor(),
-            xml,
-            instant: false,
-            recipient_name: job.recipient_name.clone(),
-            recipient_iban: job.recipient_iban.clone(),
-            batch: None,
-            debit_layout: None,
-            standing: Some(StandingTail {
-                order_id: (job.action != StandingOrderAction::Create)
-                    .then(|| job.order_id.trim().to_string()),
-                schedule: schedule_components(job, with_time),
-            }),
-        });
+        self.order = Some(standing_order(job, &acc, seg_id, version, with_time)?);
         let reply = self.send_order(ctx, Vop::None).await?;
         self.finish_submit(&reply)
     }
+}
+
+/// The standing order (HKCDE/HKCDN/HKCDL) as it is sent: the pain.001 from the
+/// job and the source account, then order id and schedule. Pure, so
+/// `invariant_tests` can follow the values from the job to the segment bytes.
+pub(super) fn standing_order(
+    job: &StandingOrderJob,
+    acc: &SepaAccount,
+    seg_id: &'static str,
+    version: sepa::PainVersion,
+    with_time: bool,
+) -> CoreResult<PreparedOrder> {
+    let header = sepa::PainHeader::new(&job.source_owner);
+    let xml = sepa::build_pain001(&sepa::Pain001 {
+        message_id: &header.message_id,
+        created: &header.created,
+        execution_date: PAIN_PLACEHOLDER_DATE,
+        debtor_name: header.owner,
+        debtor_iban: &acc.iban,
+        debtor_bic: &acc.bic,
+        creditor_name: &job.recipient_name,
+        creditor_iban: &job.recipient_iban,
+        creditor_bic: job.recipient_bic.as_deref(),
+        amount_cents: job.amount_cents,
+        purpose: &job.purpose,
+        version,
+        end_to_end_id: "",
+        instant: false,
+    })?;
+    Ok(PreparedOrder {
+        seg_id,
+        kti: FinTsConnector::kti(acc),
+        descriptor: version.descriptor(),
+        xml,
+        instant: false,
+        recipient_name: job.recipient_name.clone(),
+        recipient_iban: job.recipient_iban.clone(),
+        batch: None,
+        debit_layout: None,
+        standing: Some(StandingTail {
+            order_id: (job.action != StandingOrderAction::Create)
+                .then(|| job.order_id.trim().to_string()),
+            schedule: schedule_components(job, with_time),
+        }),
+    })
 }
 
 #[cfg(test)]

@@ -123,6 +123,7 @@ extension AppModel {
     func settlePendingSelectionLoad() {
         guard selectionLoadTask != nil else { return }
         endSelectionLoad()
+        showSelection()
         if streamTopPending { scrollStreamTop() }
         refreshSalaryCycle()
         refreshRecurring()
@@ -157,15 +158,22 @@ extension AppModel {
         streamTopRequest &+= 1
     }
 
-    /// The load is slow: empty list and chart, so nothing of the previous
-    /// selection stays under the new title.
+    /// The load is slow: the column switches to the new selection with an empty
+    /// list and chart, so nothing of the previous selection stays under its title.
     private func showSelectionPlaceholder() {
         isLoadingSelection = true
+        showSelectionWithoutData()
+    }
+
+    /// The column switches to the new selection with nothing of the previous one in it.
+    private func showSelectionWithoutData() {
+        showSelection()
         page = nil
         bookings = []
         listBalances = ListBalances()
         history = []
         categoryHistory = []
+        categoryOtherCurrencies = []
     }
 
     /// Everything a selection change needs, loaded off the main thread and
@@ -230,12 +238,16 @@ extension AppModel {
                     let categoryHistory = try categoryChart.map {
                         try vault.categoryHistoryByUnit(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to, keyLength: $0.keyLength)
                     } ?? []
-                    return (page: page, flow: flow, recurring: recurring, categories: categories, uncategorized: uncategorized, history: history, categoryHistory: categoryHistory)
+                    let otherCurrencies = try categoryChart.map {
+                        try vault.categoryOtherCurrencies(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to)
+                    } ?? []
+                    return (page: page, flow: flow, recurring: recurring, categories: categories, uncategorized: uncategorized, history: history, categoryHistory: categoryHistory, otherCurrencies: otherCurrencies)
                 }
                 // A newer selection or a synchronous reload cancelled this request.
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
+                self.showSelection()
                 if self.streamTopPending { self.scrollStreamTop() }
                 let publish = Perf.signposter.beginInterval("publishSelection")
                 self.publish(loaded.page)
@@ -248,15 +260,23 @@ extension AppModel {
                 self.categoryTree = Self.buildTree(loaded.categories)
                 self.history = Self.trimmedHistory(loaded.history, from: from, to: to)
                 self.categoryHistory = loaded.categoryHistory
+                self.categoryOtherCurrencies = loaded.otherCurrencies
                 Perf.signposter.endInterval("publishSelection", publish)
             } catch {
                 guard !Task.isCancelled, let self else { return }
-                self.selectionLoadTask = nil
-                self.endSelectionLoad()
-                self.errorMessage = describe(error)
+                self.failSelectionLoad(error)
             }
         }
         selectionLoadTask = task
+    }
+
+    /// The selection load threw. A failed refresh keeps what the column shows; a new
+    /// selection must not show the previous one's data under its title.
+    func failSelectionLoad(_ error: Error) {
+        selectionLoadTask = nil
+        endSelectionLoad()
+        if shownSelection != sidebarSelection { showSelectionWithoutData() }
+        errorMessage = describe(error)
     }
 
     // MARK: - Merchant list (GitHub #495)

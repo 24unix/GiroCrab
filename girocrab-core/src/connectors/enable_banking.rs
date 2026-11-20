@@ -30,7 +30,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use super::{
-    http_client, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
+    http_client_same_host, paginate, BankConnector, Challenge, ChallengeKind, ChallengeResponse,
     ConnectContext, FetchResult, Paged, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
@@ -514,10 +514,10 @@ fn auth_diagnostics(list: &Value, name: &str, body: &Value) -> String {
         })
         .unwrap_or(Value::Null);
     let mut req = body.clone();
-    if let Some(o) = req.as_object_mut() {
-        if o.contains_key("state") {
-            o.insert("state".into(), json!("<redacted>"));
-        }
+    if let Some(o) = req.as_object_mut()
+        && o.contains_key("state")
+    {
+        o.insert("state".into(), json!("<redacted>"));
     }
     format!("aspsp={entry} auth_request={req}")
 }
@@ -1178,7 +1178,7 @@ impl BankConnector for EnableBankingConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
         crate::depot_debug::log("enable_banking begin: entered");
         self.jwt = Self::make_jwt(ctx)?;
-        self.client = Some(http_client()?);
+        self.client = Some(http_client_same_host()?);
         if let Ok(st) = ctx.state.decode::<PsdState>() {
             self.st = st;
         }
@@ -1217,22 +1217,21 @@ impl BankConnector for EnableBankingConnector {
         let mut aspsp_list = Value::Null;
         // Generic banks come from our built-in catalog, whose names are
         // best-effort: ask the live ASPSP list for the exact spelling first.
-        if !self.card_mode() {
-            if let Ok(list) = self
+        if !self.card_mode()
+            && let Ok(list) = self
                 .call(
                     reqwest::Method::GET,
                     &format!("/aspsps?country={country}"),
                     None,
                 )
                 .await
+        {
+            if let Some(exact) = resolve_generic_aspsp(&list, &configured, &country)?
+                && exact != configured
             {
-                if let Some(exact) = resolve_generic_aspsp(&list, &configured, &country)? {
-                    if exact != configured {
-                        names.insert(0, exact);
-                    }
-                }
-                aspsp_list = list;
+                names.insert(0, exact);
             }
+            aspsp_list = list;
         }
         for alt in ["Open Bank", "Zinia"] {
             if self.aspsp_setting.ends_with("amazonvisa")
@@ -1456,11 +1455,10 @@ impl BankConnector for EnableBankingConnector {
         // The vault uses the fetched name when inserting a new account.
         if let Some(label) =
             paypal_account_label(&self.aspsp_default, self.st.accounts.len(), &ctx.login_name)
+            && let [account] = out.accounts.as_mut_slice()
         {
-            if let [account] = out.accounts.as_mut_slice() {
-                account.name = label.to_owned();
-                out.name_updates.clear();
-            }
+            account.name = label.to_owned();
+            out.name_updates.clear();
         }
         // Every account of the consent was looked at: the vault may mark the
         // connection's other accounts as no longer accessible.
@@ -1841,7 +1839,7 @@ impl Vault {
         redirect_url: String,
     ) -> Result<EnableBankingAppCheck, CoreError> {
         let jwt = EnableBankingConnector::make_jwt_for(application_id.trim(), &private_key_pem)?;
-        let resp = http_client()?
+        let resp = http_client_same_host()?
             .get(format!("{API}/application"))
             .bearer_auth(jwt)
             .header("Accept", "application/json")

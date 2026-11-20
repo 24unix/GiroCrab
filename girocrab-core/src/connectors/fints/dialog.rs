@@ -27,6 +27,12 @@ pub(super) fn approval_pending(reply: &BankReply) -> bool {
         && (reply.has("3956") || !reply.codes.iter().any(|c| c.0.starts_with('0')))
 }
 
+/// `request` failed because the bank wanted a TAN (0030) or an app approval
+/// that was not given in time (3956): asking again sends the next one (#1083).
+pub(super) fn tan_demanded(e: &CoreError) -> bool {
+    matches!(e, CoreError::Bank { code, .. } if matches!(code.as_str(), "0030" | "3956"))
+}
+
 /// Whether a TAN medium name already carries the "SO:" (security object) prefix.
 pub(super) fn has_so_prefix(medium: &str) -> bool {
     medium
@@ -478,8 +484,8 @@ impl FinTsConnector {
         self.learn_bpd(&reply);
         // Optional: TAN media list (needed by some banks for HKTAN).
         let tab_v = self.version("HKTAB");
-        if self.bank_supports("HKTAB") {
-            if let Ok(r) = self
+        if self.bank_supports("HKTAB")
+            && let Ok(r) = self
                 .send(
                     ctx,
                     vec![SegmentBuilder::new("HKTAB", 3, tab_v)
@@ -490,9 +496,8 @@ impl FinTsConnector {
                     None,
                 )
                 .await
-            {
-                self.learn_bpd(&r);
-            }
+        {
+            self.learn_bpd(&r);
         }
         self.end_dialog(ctx, "999").await;
         if self.st.system_id.is_empty() {

@@ -29,11 +29,11 @@ pub fn merge_empty(current: &Fields, found: &PaymentDetails) -> (Fields, usize) 
     let mut out = current.clone();
     let mut filled = 0;
     let mut fill = |field: &mut String, value: Option<String>| {
-        if field.trim().is_empty() {
-            if let Some(v) = value.filter(|v| !v.trim().is_empty()) {
-                *field = v;
-                filled += 1;
-            }
+        if field.trim().is_empty()
+            && let Some(v) = value.filter(|v| !v.trim().is_empty())
+        {
+            *field = v;
+            filled += 1;
         }
     };
     fill(&mut out.name, found.name.clone());

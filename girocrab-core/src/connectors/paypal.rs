@@ -19,7 +19,7 @@ use serde_json::Value;
 
 use super::paypal_nvp::{NvpClient, NvpCredentials};
 use super::{
-    http_client, BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase,
+    http_client_same_host, BankConnector, ChallengeResponse, ConnectContext, FetchResult, Phase,
     RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
@@ -114,7 +114,7 @@ impl BankConnector for PayPalConnector {
         } else {
             "https://api-m.paypal.com".into()
         };
-        let client = http_client()?;
+        let client = http_client_same_host()?;
         let resp = client
             .post(format!("{}/v1/oauth2/token", self.base))
             .basic_auth(

@@ -104,6 +104,20 @@ pub fn url_for_blz(blz: &str) -> Option<&'static str> {
     find(blz).map(|e| e.2)
 }
 
+/// Endpoints earlier directory versions handed out that the bank no longer serves
+/// (apoBank left Atruvia in 2020, #1385).
+const RETIRED_URLS: &[(&str, &str)] =
+    &[("30060601", "https://fints1.atruvia.de/cgi-bin/hbciservlet")];
+
+/// Current directory URL when a connection stored a retired endpoint for `blz`.
+pub fn replacement_for_retired_url(blz: &str, url: &str) -> Option<&'static str> {
+    RETIRED_URLS
+        .iter()
+        .any(|e| e.0 == blz && e.1 == url.trim())
+        .then(|| url_for_blz(blz))
+        .flatten()
+}
+
 /// Lower-cases and folds German umlauts / ß so "Münchner" matches "muenchner".
 pub(crate) fn fold(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -295,7 +309,7 @@ mod tests {
             ("76030080", "https://brokerage-hbci.consorsbank.de/hbci"),
             ("10077777", "https://fints.norisbank.de/"),
             ("66090800", ATRUVIA),
-            ("30060601", ATRUVIA),
+            ("30060601", "https://fints.apobank.de/FinTs30PinTanHttpGate"),
             ("83094495", ATRUVIA),
             ("10070000", "https://fints.deutsche-bank.de/"),
             ("70020270", "https://hbci.hypovereinsbank.de/hbci/hbci.do"),
@@ -310,6 +324,25 @@ mod tests {
         }
         assert_eq!(lookup("50010517").unwrap().name, "ING");
         assert_eq!(url_for_blz("43060967"), Some(ATRUVIA));
+    }
+
+    #[test]
+    fn retired_urls_are_replaced_only_for_their_bank() {
+        const ATRUVIA: &str = "https://fints1.atruvia.de/cgi-bin/hbciservlet";
+        assert_eq!(
+            replacement_for_retired_url("30060601", ATRUVIA),
+            url_for_blz("30060601")
+        );
+        assert_ne!(url_for_blz("30060601"), Some(ATRUVIA));
+        // Atruvia still serves the other banks; a URL set by hand stays.
+        assert_eq!(replacement_for_retired_url("66090800", ATRUVIA), None);
+        assert_eq!(
+            replacement_for_retired_url("30060601", "https://x.example/fints"),
+            None
+        );
+        for (blz, url) in RETIRED_URLS {
+            assert!(url_for_blz(blz).is_some_and(|u| u != *url), "{blz}");
+        }
     }
 
     #[test]

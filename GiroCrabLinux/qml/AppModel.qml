@@ -692,7 +692,7 @@ QtObject {
     /// The list page carries the selection's sums when no list-only filter narrows it.
     function listHasFlow(f) {
         return f.search === null && f.checked === null && f.direction === "All" && f.scope === "All"
-            && f.category_id === null && !f.uncategorized_only
+            && f.category_id === null && !f.uncategorized_only && !(f.tag_ids || []).length && !f.untagged_only
     }
     function selectionFlowCall(f) {
         const r = periodRange()
@@ -1194,7 +1194,7 @@ QtObject {
             return { account_ids: [], category_id: null, include_subcategories: true, uncategorized_only: false,
                      search: null, date_from: null, date_to: null, limit: listLimit, offset: 0, scope: "All",
                      merchant_key: null, direction: "All", checked: false, whole_days: true }
-        return {
+        return TagFilter.applyTo({   // + the tag filter (#228)
             // AppModel+Loading.swift › currentFilter: the category views follow the account menu (#406)
             account_ids: showsCategoryAccountFilter ? categoryAccountIDs : selectionAccountIDs(),
             category_id: sel.startsWith("category:") ? Number(sel.slice(9)) : null,
@@ -1208,7 +1208,7 @@ QtObject {
             direction: directionFilter,
             checked: statusFilter === "all" ? null : statusFilter === "checked",
             whole_days: true
-        }
+        })
     }
 
     // MARK: user groups (AccountGroupsModel.swift)
@@ -2692,6 +2692,10 @@ QtObject {
     function setAccountOwner(id, owner) {
         if (run(() => { core("set_account_owner", { account_id: id, owner: owner }); return true })) reloadAccounts()
     }
+    /// AppModel.swift › setAccountNote: empty clears it; synced like the name (#980).
+    function setAccountNote(id, note) {
+        if (run(() => { core("set_account_note", { account_id: id, note: note }); return true })) reloadAccounts()
+    }
     /// AccountGroupsModel.swift › setAccountKind ("Kontoart ändern …").
     function setAccountKind(id, kind) {
         if (run(() => { core("set_account_kind", { account_id: id, kind: kind }); return true })) { reloadAccounts(); reloadDashboard() }
@@ -3131,6 +3135,9 @@ QtObject {
             // The list's own income/expense filter is named in the printout header.
             const notes = directionFilter === "Income" ? [PrintReport.directionTitle("income")]
                         : directionFilter === "Expense" ? [PrintReport.directionTitle("expenses")] : []
+            // and the tag filter (#228), as far as this list applies it
+            const tagNote = TagFilter.noteFor(filter)
+            if (tagNote !== "") notes.push(tagNote)
             return { title: title, period_label: periodTitle, rows: rows, accounts: accounts, daily_balances: ({}),
                      generated_at: new Date(), filter_notes: notes }
         } catch (e) {
@@ -3217,7 +3224,7 @@ QtObject {
                 existing_account_id: o.existing ? o.existing.id : null, existing_account_name: o.existing ? o.existing.name : null,
                 booking_count: o.count, pending_count: o.pending || 0, holding_count: o.portfolio ? 3 : 0, notes_count: 0,
                 first_date: o.from || null, last_date: o.to || null, statement_count: o.kind === "Checking" ? 48 : 0,
-                computed_balance_cents: o.balance, balance_source: "Anfangssaldo laut MoneyMoney-Saldenverlauf + Umsätze"
+                computed_balance_cents: o.balance, balance_source: "Anfangssaldo laut Saldenverlauf der Datenbank + Umsätze"
             }
         }
         const accounts = [
@@ -3261,7 +3268,7 @@ QtObject {
             total_bookings: accounts.reduce((s, a) => s + a.booking_count, 0),
             pending_bookings: 5, notes_count: 312, split_parts: 14,
             date_range_start: "2009-04-01", date_range_end: "2026-11-09", replaces_starter_categories: true,
-            database_path: "MoneyMoney.sqlite", statement_count: statements, statements_dir: "Statements",
+            database_path: "Finanzdaten.sqlite", statement_count: statements, statements_dir: "Statements",
             statements_found: statements, statements_bytes: 38400000, transfer_template_count: 4
         }
     }
@@ -3890,7 +3897,7 @@ QtObject {
     /// Selects a booking in the list, widening the filters if it is not loaded.
     function revealBooking(id) {
         if (!bookings.some(b => b.id === id)) {
-            sidebarSelection = "all"; period = "all"; directionFilter = "All"; statusFilter = "all"; searchText = ""
+            sidebarSelection = "all"; period = "all"; directionFilter = "All"; statusFilter = "all"; TagFilter.clear(); searchText = ""
         }
         revealTimer.bookingID = id
         revealTimer.restart()
@@ -4036,7 +4043,13 @@ QtObject {
         }
         case "category": if (top) newCategoryRequest = { parent: top.id }; break
         // Konten › Tags verwalten … (#228)
-        case "tags": TagManager.open(); break
+        // `tags-accounts`: the first tag's bookings per account (TagManagerSheet.qml)
+        case "tags": case "tags-accounts": TagManager.open(); break
+        // the header's tag filter (#228, part 3) with the first tag ticked
+        case "tag-filter":
+            if (TagsModel.tags.length) TagFilter.set([TagsModel.tags[0].id], false)
+            TagFilter.shown = true
+            break
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
             period = previousMonthPeriod()
@@ -4054,7 +4067,7 @@ QtObject {
                 total_rows: 4820, new_bookings: 4820, duplicates_skipped_or_enriched: 0, notes_count: 312,
                 date_range_start: "2012-01-03", date_range_end: "2026-10-30",
                 detected_categories: ["Haushalt > Lebensmittel", "Gehalt", "Steuern", "Wohnen > Miete", "Mobilität > Tanken", "Freizeit > Restaurants", "Versicherungen", "Reisen"],
-                sample_bookings: [], suggested_account_name: "MoneyMoney-Archiv", suggested_account_id: null
+                sample_bookings: [], suggested_account_name: "Import-Archiv", suggested_account_id: null
             }
             showMoneyMoneyImport = true
             break

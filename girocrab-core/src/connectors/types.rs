@@ -63,6 +63,9 @@ pub struct SyncSummary {
     /// New documents from the comdirect PostBox when this sync fetched it
     /// next to FinTS (#838); `None` = not fetched (not due, off or failed).
     pub postbox_documents: Option<u32>,
+    /// Parts of this sync that failed while the rest was stored (#1083), one
+    /// text each, accounts by name: e.g. bookings the bank wanted a TAN for.
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Enum)]
@@ -617,6 +620,10 @@ pub struct FetchResult {
     /// Cut down to one account ([`keep_only`](Self::keep_only)): the login's
     /// last sync time and its documents catch-up stay as they are.
     pub single_account: bool,
+    /// Requests that failed while others worked (#1083): the sync still counts
+    /// as done and reports them. An account's external ref in a text is
+    /// replaced by the account's name when storing.
+    pub warnings: Vec<String>,
 }
 
 impl FetchResult {

@@ -33,6 +33,17 @@ Funktionsumfang der Oberfläche.
 - **Eigene Registrierung eintragen …** stellt erst auf die eigene Registrierung um, wenn eine
   gespeichert ist, und setzt den Cursor in das Feld unter Einstellungen › Banken.
 
+### Tags
+
+- **Buchungen nach Tags filtern und auswerten:** In der Filterzeile über der Buchungsliste
+  öffnet der Knopf **„Tags“** das Fenster „Nach Tags filtern“. Mehrere angekreuzte Tags zeigen
+  nur Buchungen, die alle tragen; „Ohne Tag“ zeigt Buchungen ohne Tag. Je Tag stehen Anzahl und
+  Summe für den Zeitraum und die übrigen Filter der Liste. Der Knopf nennt nur die Zahl der Tags,
+  der Druck nennt den Filter in der Kopfzeile.
+- **Tags verwalten:** Die Buchungszahl eines Tags zeigt beim Darüberfahren oder per Klick die
+  **Buchungen nach Konten**; ein Klick auf ein Konto zeigt dessen Buchungen mit diesem Tag in der
+  Liste.
+
 ### Privatmodus (#719)
 
 - **Darstellung › Privatmodus** (Strg+Umschalt+H) und das **Auge in der Symbolleiste** blenden

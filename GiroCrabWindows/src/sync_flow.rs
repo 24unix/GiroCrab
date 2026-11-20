@@ -214,6 +214,7 @@ mod tests {
             new_accounts: vec![],
             revoked_accounts: vec![],
             postbox_documents: None,
+            warnings: vec![],
         }
     }
 

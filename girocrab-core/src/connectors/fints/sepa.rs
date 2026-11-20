@@ -199,6 +199,11 @@ pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     if p.amount_cents <= 0 {
         return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
     }
+    if p.amount_cents > MAX_AMOUNT_CENTS {
+        return Err(CoreError::invalid(tr(
+            "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+        )));
+    }
     if !validate_iban(p.creditor_iban) {
         return Err(CoreError::invalid(tr("Die Empfänger-IBAN ist ungültig.")));
     }
@@ -435,6 +440,19 @@ mod tests {
             end_to_end_id: "",
             instant: false,
         }
+    }
+
+    #[test]
+    fn pain001_rejects_amounts_above_the_sepa_limit() {
+        let mut p = sample("A", "x");
+        p.amount_cents = MAX_AMOUNT_CENTS;
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<InstdAmt Ccy=\"EUR\">999999999.99</InstdAmt>"));
+        p.amount_cents = MAX_AMOUNT_CENTS + 1;
+        assert!(matches!(
+            build_pain001(&p),
+            Err(CoreError::InvalidInput { .. })
+        ));
     }
 
     #[test]

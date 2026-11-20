@@ -3804,11 +3804,20 @@ fn moneymoney_twin_of_a_bank_account_is_folded_on_open() {
         &v,
         &format!("UPDATE transactions SET note = 'Miete', note_ms = 9 WHERE account_id = {twin} AND external_id = 'mm-2'"),
     );
+    exec(
+        &v,
+        &format!("UPDATE accounts SET note = 'Haushalt', note_ms = 7 WHERE id = {twin}"),
+    );
     drop(v);
     let v = open(&dir, "a.db");
     assert_eq!(
         n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
         1
+    );
+    assert_eq!(
+        text(&v, &format!("SELECT note FROM accounts WHERE id = {bank}")),
+        "Haushalt",
+        "the account note goes with the twin's bookings"
     );
     assert_eq!(
         n(
@@ -4050,6 +4059,31 @@ fn folded_twin_tombstone_does_not_delete_the_other_devices_account() {
     for v in [&a, &b] {
         assert_eq!(live_bookings(v), "b1::0 mm-1::0 mm-2::0 mm-4::0");
     }
+}
+
+/// #980 review: a note edited on the twin by a device that hadn't folded it
+/// yet reaches the bank account the twin was folded into here.
+#[test]
+fn note_on_an_already_folded_twin_reaches_the_bank_account() {
+    let dir = temp_dir("twin-note");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let ca = comdirect(&a);
+    let cb = comdirect(&b);
+    giro(&a, ca, MM_GIRO, &["mm-1", "mm-2"]);
+    let bank = giro(&a, ca, "API1", &["mm-1", "mm-2", "b1"]);
+    let twin = giro(&b, cb, MM_GIRO, &["mm-1", "mm-2"]);
+    for v in [&a, &b] {
+        exec(v, "UPDATE bank_connections SET created_ms = 1");
+        exec(v, "UPDATE accounts SET created_ms = 1");
+    }
+    drop(a);
+    let a = open(&dir, "a.db");
+    b.set_account_note(twin, "Haushalt".into()).unwrap();
+    merge(&a, &b);
+    assert_eq!(
+        text(&a, &format!("SELECT note FROM accounts WHERE id = {bank}")),
+        "Haushalt"
+    );
 }
 
 /// Issue #94: a closed MoneyMoney account and its successor share the
@@ -4368,4 +4402,95 @@ fn category_role_merge_converges_in_every_order() {
             }
         }
     }
+}
+
+#[test]
+fn deleting_the_last_account_of_a_login_drops_its_portal_cookies() {
+    let v = open(&temp_dir("cookiedel"), "a.db");
+    let (c, a1, a2, _) = bank_fixture(&v);
+    let key = format!("web.secret_cookies.{c}");
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, '[]', 1)",
+            [&key],
+        )
+        .unwrap();
+    let cookies = format!("SELECT count(*) FROM settings WHERE key = '{key}'");
+    v.set_account_archived(a1, true).unwrap();
+    v.set_account_archived(a2, true).unwrap();
+    v.delete_account(a1).unwrap();
+    assert_eq!(n(&v, &cookies), 1, "login still has an account");
+    v.delete_account(a2).unwrap();
+    assert_eq!(n(&v, &cookies), 0);
+}
+
+fn connection_settings(v: &Vault, c: i64) -> i64 {
+    n(
+        v,
+        &format!(
+            "SELECT count(*) FROM settings WHERE key IN ('pin.conn.{c}', 'pin.conn.{c}.login',
+                 'fints.rah10.private.{c}', 'fints.rah10.counter.{c}', 'fints.rah10.bank_keys.{c}')"
+        ),
+    )
+}
+
+fn store_connection_secrets(v: &Vault, c: i64) {
+    v.set_connection_pin(c, Some("1234".into())).unwrap();
+    let db = v.db().unwrap();
+    for key in [
+        format!("pin.conn.{c}.login"),
+        format!("fints.rah10.private.{c}"),
+        format!("fints.rah10.counter.{c}"),
+        format!("fints.rah10.bank_keys.{c}"),
+    ] {
+        db.execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, 'dummy', 1)",
+            [key],
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn merged_connection_deletion_purges_the_stored_secrets() {
+    let dir = temp_dir("conndel-merge");
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let (ca, ..) = bank_fixture(&a);
+    let (cb, ..) = bank_fixture(&b);
+    store_connection_secrets(&b, cb);
+    assert_eq!(connection_settings(&b, cb), 5);
+
+    a.delete_bank_connection(ca).unwrap();
+    merge(&b, &a);
+
+    assert_eq!(
+        n(
+            &b,
+            &format!("SELECT count(*) FROM bank_connections WHERE id = {cb} AND deleted_ms > 0")
+        ),
+        1
+    );
+    assert_eq!(connection_settings(&b, cb), 0);
+}
+
+#[test]
+fn opening_purges_secrets_of_connections_deleted_earlier() {
+    let dir = temp_dir("conndel-open");
+    let v = open(&dir, "a.db");
+    let (c, ..) = bank_fixture(&v);
+    store_connection_secrets(&v, c);
+    // a deletion merged by an older version: tombstone, secrets still there
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE bank_connections SET deleted_ms = 1 WHERE id = ?1",
+            [c],
+        )
+        .unwrap();
+    assert_eq!(connection_settings(&v, c), 5);
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(connection_settings(&v, c), 0);
 }

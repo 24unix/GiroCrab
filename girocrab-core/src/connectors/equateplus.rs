@@ -43,10 +43,9 @@ fn money(v: &Value, currency: &str) -> CoreResult<f64> {
         .as_str()
         .or(v["currency"]["code"].as_str())
         .or(v["currency"].as_str())
+        && unit != currency
     {
-        if unit != currency {
-            return Err(invalid());
-        }
+        return Err(invalid());
     }
     amount(v)
 }

@@ -199,6 +199,49 @@ final class SyncBatchTests: XCTestCase {
         XCTAssertEqual(model.syncBatchProgress?.current, 2)
     }
 
+    /// Trade Republic with an expired session and no stored PIN (#1128): the core asks
+    /// for the PIN, so the PIN sheet opens (with its browser login) instead of an alert
+    /// whose "Erneut versuchen" fails the same way. In a batch it waits for the sheet.
+    func testExpiredTradeRepublicSessionWithoutStoredPinOpensThePinSheet() async throws {
+        let logins = batch
+        let i = try XCTUnwrap(logins.dropLast().firstIndex { $0.connector == .tradeRepublic },
+                              "demo vault needs a Trade Republic login that is not the last one")
+        XCTAssertFalse(model.connectionStatus(logins[i].id)?.hasPin ?? false)
+        model.requestSyncAll()
+        for l in logins[..<i] {
+            try await waitForChallenge(of: l)
+            model.skipCurrentSync()
+        }
+        try await waitForChallenge(of: logins[i])
+        model.failedSyncSecret = ""
+        model.finishSync(error: CoreError.Authentication(message: "Sitzung abgelaufen"))
+        XCTAssertEqual(model.pendingLogin?.connection.id, logins[i].id)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNotNil(model.syncBatchProgress, "the batch waits for the PIN sheet")
+
+        model.cancelPendingLogin()
+        try await waitForChallenge(of: logins[i + 1])
+        XCTAssertNil(model.errorMessage)
+    }
+
+    /// A PIN typed in the sheet (or a stored one) that Trade Republic refuses stays an error.
+    func testRefusedTradeRepublicPinStaysAnError() async throws {
+        let tr = try XCTUnwrap(model.connections.first { $0.connector == .tradeRepublic })
+        model.syncingConnectionID = tr.id
+        model.failedSyncSecret = "1234"
+        model.finishSync(error: CoreError.Authentication(message: "PIN falsch"))
+        XCTAssertNil(model.pendingLogin)
+        XCTAssertNotNil(model.errorMessage)
+        model.errorMessage = nil
+
+        model.setConnectionPin(tr.id, "1234")
+        defer { model.setConnectionPin(tr.id, nil) }
+        model.syncingConnectionID = tr.id
+        model.finishSync(error: CoreError.Authentication(message: "Sitzung abgelaufen"))
+        XCTAssertNil(model.pendingLogin)
+        XCTAssertNotNil(model.errorMessage)
+    }
+
     /// Errors answered with a prompt are no failure of the batch: the prompt decides.
     func testErrorsWithAPromptAreNotCountedAsFailures() {
         XCTAssertTrue(AppModel.errorOpensPrompt(CoreError.BrowserLoginRequired(message: "")))
