@@ -80,6 +80,17 @@
         }
       }
     },
+    "%@ (vom Bankzugang)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (from the bank login)"
+          }
+        }
+      }
+    },
     "%@ / %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -890,6 +901,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld accounts"
+          }
+        }
+      }
+    },
+    "%lld Konten dieses Zugangs zeigen in der Seitenleiste einen eigenen Banknamen oder keinen (Kontoeinstellungen)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld accounts of this login show their own bank name or none in the sidebar (Account Settings)."
           }
         }
       }
@@ -6312,6 +6334,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add Bank…"
+          }
+        }
+      }
+    },
+    "Bank in der Seitenleiste" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank in Sidebar"
           }
         }
       }
@@ -12506,6 +12539,17 @@
         }
       }
     },
+    "Eigener Name" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Name"
+          }
+        }
+      }
+    },
     "Eigener Tresor" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12568,6 +12612,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Select a document from the list to open its preview."
+          }
+        }
+      }
+    },
+    "Ein Konto dieses Zugangs zeigt in der Seitenleiste einen eigenen Banknamen oder keinen (Kontoeinstellungen)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One account of this login shows its own bank name or none in the sidebar (Account Settings)."
           }
         }
       }
@@ -34490,6 +34545,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "e.g. Gold bar 100 g"
+          }
+        }
+      }
+    },
+    "z. B. Haushalt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. Household"
           }
         }
       }

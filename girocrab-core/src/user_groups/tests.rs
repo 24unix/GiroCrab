@@ -1579,6 +1579,78 @@ fn account_notes_sync_both_ways() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+fn bank_label(v: &Vault, name: &str) -> Option<String> {
+    account(v, name).bank_label
+}
+
+/// #1467: what the sidebar shows instead of the bank name – `None` the bank
+/// name, `Some("")` nothing, else the user's own text.
+#[test]
+fn bank_label_is_set_trimmed_and_cleared() {
+    let dir = temp_dir("bank-label");
+    let a = open(&dir, "a.db");
+    let ia = seed(&a);
+    assert!(a.set_account_bank_label(999, None).is_err());
+    assert_eq!(bank_label(&a, "Giro"), None);
+    a.set_account_bank_label(ia[0], Some("  Haushalt \n".into()))
+        .unwrap();
+    assert_eq!(bank_label(&a, "Giro").as_deref(), Some("Haushalt"));
+    // the same choice again is no edit (nothing to sync)
+    let before = a.change_count();
+    a.set_account_bank_label(ia[0], Some("Haushalt".into()))
+        .unwrap();
+    assert_eq!(a.change_count(), before);
+    // only blanks: no own name, so nothing is shown
+    a.set_account_bank_label(ia[0], Some("  ".into())).unwrap();
+    assert_eq!(bank_label(&a, "Giro").as_deref(), Some(""));
+    a.set_account_bank_label(ia[0], None).unwrap();
+    assert_eq!(bank_label(&a, "Giro"), None);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// #1467: the choice syncs like the note: the newer edit wins, back to the
+/// bank name included, and a new device gets it with the account.
+#[test]
+fn bank_label_syncs_both_ways() {
+    let dir = temp_dir("bank-label-sync");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    let ib = seed(&b);
+    a.set_account_bank_label(ia[0], Some("Haushalt".into()))
+        .unwrap();
+    tick();
+    let st = b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert!(
+        st.groups_updated > 0,
+        "a merge that only brings it reloads the app"
+    );
+    assert_eq!(bank_label(&b, "Giro").as_deref(), Some("Haushalt"));
+
+    b.set_account_bank_label(ib[0], Some(String::new()))
+        .unwrap();
+    tick();
+    a.set_account_bank_label(ia[1], Some("Broker".into()))
+        .unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(bank_label(v, "Giro").as_deref(), Some(""));
+        assert_eq!(bank_label(v, "Depot").as_deref(), Some("Broker"));
+    }
+
+    a.set_account_bank_label(ia[0], None).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    assert_eq!(bank_label(&b, "Giro"), None);
+
+    let c = open(&dir, "c.db");
+    c.merge_other_vault(a.file_path(), key).unwrap();
+    assert_eq!(bank_label(&c, "Depot").as_deref(), Some("Broker"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// #980: notes moved out of the settings on two devices have no edit time:
 /// neither text is lost, every device ends up with the same one, further
 /// merges change nothing, and the first edit after that wins as usual.

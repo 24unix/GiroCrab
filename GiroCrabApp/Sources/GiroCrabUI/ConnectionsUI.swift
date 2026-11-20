@@ -292,6 +292,16 @@ struct ConnectionEditSheet: View {
             Form {
                 Section {
                     TextField("Anzeigename", text: $name)
+                    // why a new name may not show in the sidebar (#1467)
+                    switch model.accountsWithOwnBankLabel(connectionID: connection.id) {
+                    case 0: EmptyView()
+                    case 1:
+                        Text("Ein Konto dieses Zugangs zeigt in der Seitenleiste einen eigenen Banknamen oder keinen (Kontoeinstellungen).")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                    case let n:
+                        Text("\(n) Konten dieses Zugangs zeigen in der Seitenleiste einen eigenen Banknamen oder keinen (Kontoeinstellungen).")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                    }
                     TextField(descriptor?.loginLabel ?? String(localized: "Benutzerkennung"), text: $login)
                         .disabled(isRah10)
                         .autocorrectionDisabled()

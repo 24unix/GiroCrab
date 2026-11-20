@@ -94,3 +94,35 @@ fn accounts_follow_the_name_when_a_login_is_added_again() {
     assert_eq!(add("Musterbank"), conn, "same login: no second connection");
     assert_eq!(bank_name(&v), "Musterbank");
 }
+
+/// #1467: the user's choice for the bank name in the sidebar is the user's;
+/// neither a fetch nor renaming the login changes it, while `bank_name`
+/// itself still follows the bank.
+#[test]
+fn fetch_and_rename_keep_the_bank_label() {
+    let p_dir = crate::test_support::TempDir::new("girocrab-banklabel");
+    let v = Vault::open(
+        p_dir.join("v.db").to_string_lossy().to_string(),
+        vec![6u8; 32],
+    )
+    .unwrap();
+    let conn = {
+        let db = v.db().unwrap();
+        db.execute(
+            "INSERT INTO bank_connections(connector, display_name, login_name) VALUES ('fints:12345678', 'Sparkasse Musterstadt', 'x')",
+            [],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    };
+    store_fetch(&v, ConnectorKind::FinTsGeneric, conn, fetch()).unwrap();
+    let id = v.list_accounts().unwrap()[0].id;
+    v.set_account_bank_label(id, Some("Haushalt".into()))
+        .unwrap();
+    store_fetch(&v, ConnectorKind::FinTsGeneric, conn, fetch()).unwrap();
+    v.update_bank_connection(conn, "Meine Sparkasse".into(), "x".into())
+        .unwrap();
+    let acc = &v.list_accounts().unwrap()[0];
+    assert_eq!(acc.bank_name, "Meine Sparkasse");
+    assert_eq!(acc.bank_label.as_deref(), Some("Haushalt"));
+}

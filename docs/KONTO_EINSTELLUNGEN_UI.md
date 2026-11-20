@@ -26,6 +26,7 @@ Die Felder von oben nach unten:
 | Kontoart | Auswahl; nicht bei Offline-Konten, die sind immer Bargeld |
 | Startsaldo | Betrag mit Währung; nur wenn der Kontostand aus den Buchungen berechnet wird und das Konto nicht aufgelöst ist. Darunter „Stichtag und Kalibrierung …“ |
 | Kontonummer, IBAN, Bank | Je eine Zeile mit Beschriftung links, nur Anzeige, nur wenn vorhanden (kommen von der Bank bzw. vom Import); jeder Wert lässt sich einzeln markieren und kopieren |
+| Bank in der Seitenleiste | Auswahl „Standard“ (Bankname), „Eigener Name“ (darunter ein Textfeld, Platzhalter der Bankname) oder „Ausblenden“; bestimmt nur die Zeile unter dem Kontonamen in der Seitenleiste, Abrufe ändern sie nicht; wird per iCloud abgeglichen, die neuere Änderung gilt (#1467). Die Zeile „Bank“ trägt bei Konten mit Bankzugang den Zusatz „(vom Bankzugang)“, Einstellungen › Banken nennt unter „Anzeigename“, wie viele Konten des Zugangs eine eigene Wahl haben |
 | Advanzia-Benutzername | Nur bei Advanzia-Konten, samt Zugangsfeldern |
 | Konto-Notiz | Beschriftung in der linken Spalte, Editor rechts. Erscheint unter dem Kontonamen in der Kontoansicht; wird per iCloud mit den anderen Geräten abgeglichen, die neuere Änderung gilt (#980) |
 | Das Konto wurde aufgelöst (archivieren) | Archiviert bzw. reaktiviert das Konto. Ist das Toggle an (auch ungesichert), erscheint die Schaltfläche **Konto löschen …** (rote Schrift) unten links, auf Höhe von Abbrechen und Sichern |

@@ -555,27 +555,27 @@ pub(crate) fn merge_attached(
     let rows: Vec<(
         (i64, Option<String>, i64, i64, String, i64, Option<String>, i64),
         (Option<i64>, i64, String, i64, String, i64),
-        (bool, i64),
+        (bool, i64, Option<String>, i64),
     )> = tx
         .prepare(
             // includes soft-deleted rows (vault merge)
             "SELECT id, user_group_uuid, user_sort_order, placement_ms, name, name_ms, color_hex, color_ms,
                     archived_unix, archived_ms, sf_symbol, symbol_ms, note, note_ms,
-                    include_in_total != 0, total_ms
+                    include_in_total != 0, total_ms, bank_label, bank_label_ms
              FROM other.accounts",
         )?
         .query_map([], |r| {
             Ok((
                 (r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?),
                 (r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?),
-                (r.get(14)?, r.get(15)?),
+                (r.get(14)?, r.get(15)?, r.get(16)?, r.get(17)?),
             ))
         })?
         .collect::<Result<_, _>>()?;
     for (
         (oid, uuid, order, placed, name, named, color, colored),
         (archived, archived_ms, symbol, symbol_ms, note, noted),
-        (in_total, total_ms),
+        (in_total, total_ms, label, label_ms),
     ) in rows
     {
         let Some(&id) = acc_map.get(&oid) else {
@@ -607,6 +607,12 @@ pub(crate) fn merge_attached(
             "UPDATE accounts SET include_in_total = ?2, total_ms = ?3
               WHERE id = ?1 AND (?4 OR total_ms < ?3 OR (total_ms = ?3 AND include_in_total < ?2))",
             params![id, in_total, total_ms, fresh],
+        )? as u32;
+        // the sidebar's bank label (#1467): like the name, the newer edit wins
+        changed += tx.execute(
+            "UPDATE accounts SET bank_label = ?2, bank_label_ms = ?3
+              WHERE id = ?1 AND (?4 OR bank_label_ms < ?3)",
+            params![id, label, label_ms, fresh],
         )? as u32;
         // only a user's choice travels; the type's default stays local
         changed += tx.execute(

@@ -310,6 +310,41 @@ func accountDetail(_ a: Account) -> String {
     return a.isArchived ? String(localized: "Archiviert · \(id)") : id
 }
 
+/// What the sidebar shows in place of the bank name (#1467), as picked in Kontoeinstellungen.
+enum BankLabelChoice: Hashable, CaseIterable {
+    case standard, custom, hidden
+
+    init(_ label: String?) {
+        switch label {
+        case nil: self = .standard
+        case ""?: self = .hidden
+        default: self = .custom
+        }
+    }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .standard: "Standard"
+        case .custom: "Eigener Name"
+        case .hidden: "Ausblenden"
+        }
+    }
+
+    /// The stored label: `nil` the bank name, `""` none, else the trimmed text (blank = none).
+    func label(custom text: String) -> String? {
+        switch self {
+        case .standard: nil
+        case .hidden: ""
+        case .custom: text.trimmingCharacters(in: .whitespaces)
+        }
+    }
+}
+
+extension Account {
+    /// The bank in the sidebar row (#1467): the user's label, else the bank name.
+    var sidebarBankName: String { bankLabel ?? bankName }
+}
+
 /// IBAN, else account number, else bank.
 func accountIdentity(_ a: Account) -> String {
     if !a.iban.isEmpty { return formatIBAN(a.iban) }
@@ -555,9 +590,15 @@ extension AppModel {
         }
     }
 
+    /// Accounts of a bank login whose sidebar shows a label of their own or none (#1467),
+    /// so the login's settings can say why a new display name doesn't show there.
+    func accountsWithOwnBankLabel(connectionID: Int64) -> Int {
+        allAccounts.filter { $0.connectionId == connectionID && $0.bankLabel != nil }.count
+    }
+
     /// „Sichern“ in Kontoeinstellungen: writes the fields that differ from `original`, the account
     /// when the sheet opened, so a value a sync brought in meanwhile is no edit (#980). One reload.
-    func saveAccountEdits(_ original: Account, name: String, owner: String, kind: AccountKind, note: String) {
+    func saveAccountEdits(_ original: Account, name: String, owner: String, kind: AccountKind, note: String, bankLabel: String?) {
         guard let vault else { return }
         let id = original.id
         let kindChanged = kind != original.kind && !isOffline(id)
@@ -566,6 +607,7 @@ extension AppModel {
             if owner != original.owner.trimmingCharacters(in: .whitespaces) { try vault.setAccountOwner(accountId: id, owner: owner) }
             if kindChanged { try vault.setAccountKind(accountId: id, kind: kind) }
             if note != original.note.trimmingCharacters(in: .whitespacesAndNewlines) { try vault.setAccountNote(accountId: id, note: note) }
+            if bankLabel != original.bankLabel { try vault.setAccountBankLabel(accountId: id, label: bankLabel) }
         } catch {
             errorMessage = describe(error)
         }

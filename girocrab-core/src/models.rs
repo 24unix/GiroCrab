@@ -402,6 +402,12 @@ pub struct Account {
     /// The user's note on the account (#512), `""` = none. Syncs like the
     /// name: the newer edit wins (#980).
     pub note: String,
+    /// What the sidebar shows in place of `bank_name` (#1467): `None` the
+    /// bank name, `Some("")` nothing, else the user's own text. Fetches
+    /// never change it; syncs like the note.
+    #[uniffi(default = None)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub bank_label: Option<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

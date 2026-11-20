@@ -637,6 +637,7 @@ pub(crate) mod testing {
             opening_balance_date: String::new(),
             balance_derived: false,
             note: String::new(),
+            bank_label: None,
         }
     }
 }

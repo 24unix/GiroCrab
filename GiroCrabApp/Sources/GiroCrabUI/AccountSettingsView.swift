@@ -17,6 +17,8 @@ struct AccountSettingsView: View {
     @State private var owner = ""
     @State private var kind: AccountKind = .checking
     @State private var note = ""
+    @State private var bankChoice: BankLabelChoice = .standard
+    @State private var bankLabel = ""
     @State private var openingText = ""
     @State private var archived = false
     @State private var login = ""
@@ -94,7 +96,17 @@ struct AccountSettingsView: View {
                     }
                     readOnlyRow("Kontonummer", account.accountNumber)
                     readOnlyRow("IBAN", account.iban)
-                    readOnlyRow("Bank", account.bankName)
+                    // a login's name follows its display name in Einstellungen › Banken (#1467)
+                    readOnlyRow("Bank", account.connectionId == nil || account.bankName.isEmpty
+                        ? account.bankName
+                        : String(localized: "\(account.bankName) (vom Bankzugang)"))
+                    Picker("Bank in der Seitenleiste", selection: $bankChoice) {
+                        ForEach(BankLabelChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    if bankChoice == .custom {
+                        TextField("Eigener Name", text: $bankLabel, prompt: Text(verbatim: account.bankName.isEmpty ? String(localized: "z. B. Haushalt") : account.bankName))
+                            .sensitive()
+                    }
                     if advanziaConnection != nil {
                         TextField("Advanzia-Benutzername", text: $login).autocorrectionDisabled().sensitive()
                         AdvanziaConnectionFields(state: advanziaSettings)
@@ -165,6 +177,8 @@ struct AccountSettingsView: View {
         owner = a.owner
         kind = a.kind
         note = a.note
+        bankChoice = BankLabelChoice(a.bankLabel)
+        bankLabel = a.bankLabel ?? ""
         archived = a.isArchived
         openingText = a.openingBalanceCents.map(Money.plain) ?? ""
     }
@@ -209,7 +223,8 @@ struct AccountSettingsView: View {
             name: name.trimmingCharacters(in: .whitespaces),
             owner: owner.trimmingCharacters(in: .whitespaces),
             kind: kind,
-            note: note.trimmingCharacters(in: .whitespacesAndNewlines))
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+            bankLabel: bankChoice.label(custom: bankLabel))
         if showsOpeningBalance {
             let text = openingText.trimmingCharacters(in: .whitespaces)
             do {
