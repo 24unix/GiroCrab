@@ -54,9 +54,6 @@ struct StreamHeaderCard: View {
     #endif
     @State private var showDocuments = false
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
-    private var isOverviewSelection: Bool {
-        model.sidebarRowSelection(for: .allAccounts).isSelected
-    }
     /// Where the tag button sits in the filter row: the tag popover points at it (#228).
     @State private var tagButtonFrame: CGRect = .zero
     @State private var showAmountFilter = false
@@ -68,7 +65,7 @@ struct StreamHeaderCard: View {
     @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
     private var account: Account? {
-        if case .account(let id) = model.sidebarSelection { return model.account(for: id) }
+        if case .account(let id) = model.shownSelection { return model.account(for: id) }
         return nil
     }
 
@@ -150,7 +147,7 @@ struct StreamHeaderCard: View {
                                     .help(fetch.help ?? "")
                             }
                         }
-                        if case .category = model.sidebarSelection, !model.categoryOtherCurrencies.isEmpty {
+                        if case .category = model.shownSelection, !model.categoryOtherCurrencies.isEmpty {
                             Text("Zusätzlich: \(model.categoryOtherCurrencies.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
                                 .sensitive(.amounts)
                                 .appFont(.caption, monospacedDigit: true)
@@ -216,7 +213,7 @@ struct StreamHeaderCard: View {
     }
 
     private var isCategory: Bool {
-        if case .category = model.sidebarSelection { return true }
+        if case .category = model.shownSelection { return true }
         return false
     }
 
@@ -240,7 +237,7 @@ struct StreamHeaderCard: View {
     private var headerChart: some View {
         if chartStyle == .pie {
             Group {
-                if case .category(let id) = model.sidebarSelection {
+                if case .category(let id) = model.shownSelection {
                     HeaderPieChart(
                         slices: HeaderPieSlices.fold(HeaderPieSlices.subcategories(of: id, in: model.categories), limit: HeaderPieSlices.limit),
                         emptyText: "Keine Buchungen im Zeitraum"
@@ -252,7 +249,7 @@ struct StreamHeaderCard: View {
                 }
             }
             .contextMenu { ChartStyleInlinePicker() }
-        } else if case .category = model.sidebarSelection {
+        } else if case .category = model.shownSelection {
             CategorySumChart(sums: model.categoryHistory, style: chartStyle)
         } else {
             BalanceChart(points: model.history) { model.jumpToDay($0) }
@@ -496,7 +493,7 @@ struct StreamHeaderCard: View {
                     .buttonStyle(.borderless)
                     .capturableSheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
                 }
-                if showStatistics, !isOverviewSelection, model.scope != .investments, !model.allAccounts.isEmpty {
+                if showStatistics, !model.showsOverview, model.scope != .investments, !model.allAccounts.isEmpty {
                     Button {
                         withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { showAnalytics.toggle() }
                     } label: {

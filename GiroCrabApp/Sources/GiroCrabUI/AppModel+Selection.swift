@@ -123,6 +123,7 @@ extension AppModel {
     func settlePendingSelectionLoad() {
         guard selectionLoadTask != nil else { return }
         endSelectionLoad()
+        showSelection()
         if streamTopPending { scrollStreamTop() }
         refreshSalaryCycle()
         refreshRecurring()
@@ -157,9 +158,10 @@ extension AppModel {
         streamTopRequest &+= 1
     }
 
-    /// The load is slow: empty list and chart, so nothing of the previous
-    /// selection stays under the new title.
+    /// The load is slow: the column switches to the new selection with an empty
+    /// list and chart, so nothing of the previous selection stays under its title.
     private func showSelectionPlaceholder() {
+        showSelection()
         isLoadingSelection = true
         page = nil
         bookings = []
@@ -240,6 +242,7 @@ extension AppModel {
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
+                self.showSelection()
                 if self.streamTopPending { self.scrollStreamTop() }
                 let publish = Perf.signposter.beginInterval("publishSelection")
                 self.publish(loaded.page)
@@ -258,6 +261,7 @@ extension AppModel {
                 guard !Task.isCancelled, let self else { return }
                 self.selectionLoadTask = nil
                 self.endSelectionLoad()
+                self.showSelection()
                 self.errorMessage = describe(error)
             }
         }

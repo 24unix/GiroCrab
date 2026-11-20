@@ -131,7 +131,8 @@ public final class AppModel {
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts {
         didSet {
-            mainColumn = MainColumn(sidebarSelection)
+            // Without a background load the column follows at once; otherwise when the load publishes.
+            defer { if selectionLoadTask == nil { showSelection() } }
             if oldValue != sidebarSelection {
                 oldValue.flatMap { sidebarRowSelections[$0] }?.isSelected = false
                 sidebarSelection.flatMap { sidebarRowSelections[$0] }?.isSelected = true
@@ -147,14 +148,41 @@ public final class AppModel {
                 return
             }
             guard !resetsSelectionBeforeReloadAll else { return }
+            // Geplant, Lastschriften, Belege and Vermögen show no booking list: loading it for
+            // all accounts only replaced the list the column shows next (#1396).
+            guard MainColumn(sidebarSelection) == .bookings else {
+                if selectionLoadTask != nil { endSelectionLoad() }
+                // the sidebar sums no longer follow the category view's account filter (#406)
+                switch oldValue {
+                case .category?, .uncategorized?: if !categoryAccountFilter.isEmpty { reloadCategories() }
+                default: break
+                }
+                return
+            }
             reloadSelection(periodChanged: false)
         }
     }
-    /// The kind of view the booking column shows; follows `sidebarSelection`. The split view
+    /// The selection the booking column shows: `sidebarSelection` once its data is in, so a new
+    /// title never stands over the old figures (#1396). Views read this; loads `sidebarSelection`.
+    private(set) var shownSelection: SidebarItem? = .allAccounts {
+        didSet {
+            mainColumn = MainColumn(shownSelection)
+            showsOverview = shownSelection == .allAccounts
+            showsNewBookings = shownSelection == .newBookings
+            refreshAccountMarkerVisibility()
+        }
+    }
+    /// The kind of view the booking column shows; follows `shownSelection`. The split view
     /// and other window-level views read this instead of the selection: assigning an equal
     /// value does not notify, so a switch between accounts or categories leaves them alone
     /// (re-running them re-created and re-laid out every column of the window).
     private(set) var mainColumn: MainColumn = .bookings
+    /// The column shows „Alle Konten“ / „Neue Umsätze“: flags instead of `shownSelection`, so a
+    /// switch between categories leaves the views reading them alone.
+    private(set) var showsOverview = true
+    private(set) var showsNewBookings = false
+    /// The column now shows `sidebarSelection` (its data is in, or the placeholder stands in).
+    func showSelection() { shownSelection = sidebarSelection }
     /// Per sidebar row: is it the selected one (`sidebarRowSelection(for:)`), kept in step by
     /// `sidebarSelection`.
     @ObservationIgnored var sidebarRowSelections: [SidebarItem: SidebarRowSelection] = [:]
@@ -343,7 +371,7 @@ public final class AppModel {
     /// empty = all accounts. Kept while the app runs.
     var categoryAccountFilter: Set<Int64> = [] {
         didSet {
-            guard categoryAccountFilter != oldValue, showsAccountFilter, !suspendsFilterReloads else { return }
+            guard categoryAccountFilter != oldValue, Self.offersAccountFilter(sidebarSelection), !suspendsFilterReloads else { return }
             listLimit = Self.defaultListLimit
             reloadSelection(periodChanged: true) // also the sidebar sums (#621)
         }
