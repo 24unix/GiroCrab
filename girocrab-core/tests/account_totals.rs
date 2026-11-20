@@ -425,7 +425,8 @@ fn same_id_single_account_vs_one_account_group() {
 }
 
 /// Effective flag: an excluded group wins over the account's own switch; the
-/// group itself sums to 0 money but keeps its members and bookings (E2).
+/// group's header keeps showing its own sum (review point 1 on #1100) while
+/// the overview figures leave it out.
 #[test]
 fn excluded_group_beats_the_account_switch() {
     let (v, tmp) = vault("totals-precedence");
@@ -447,7 +448,10 @@ fn excluded_group_beats_the_account_switch() {
 
     let groups = v.list_user_groups().unwrap();
     let g = groups.iter().find(|g| g.uuid == uuid).unwrap();
-    assert_eq!(g.balance_cents, 0, "excluded group sums to 0");
+    assert_eq!(
+        g.balance_cents, 70_000,
+        "an excluded group keeps showing its own sum (review point 1 on #1100)"
+    );
     assert_eq!(g.accounts.len(), 1, "members stay listed");
 
     let totals = v.list_transactions(totals_filter()).unwrap();
@@ -873,4 +877,53 @@ fn amazon_default_and_opt_in_match_the_bank_double_counting_contract() {
             .total_count,
         4
     );
+}
+
+/// Review point 2 on #1100: an older partner snapshot (schema 24 — the step-33
+/// columns are missing) is migrated by step 33 inside merge_other_vault BEFORE
+/// the merge SQL touches include_in_total/total_ms. The merge succeeds and the
+/// migrated defaults arrive with the inserted accounts.
+#[test]
+fn merge_migrates_older_snapshot_before_the_column_merge() {
+    let (a, _ta, b, _tb, _x_a, _x_b) = sync_pair("totals-migrate-older");
+    // rewind B's snapshot file to schema 24: a snapshot written by an older
+    // build, without the step-33 columns and with user_version still 24.
+    // closing B's vault releases its connection; the rewind then edits the
+    // snapshot file itself (Tmp stays alive for the path).
+    let other_path = b.file_path();
+    drop(b);
+    rewind_to_v24(&other_path);
+
+    a.merge_other_vault(other_path.clone(), KEY.to_vec())
+        .unwrap();
+
+    // B's accounts arrived with the step-33 defaults (checking accounts start
+    // included, stamp 0) — the merge SQL found the migrated columns.
+    let arrived = a
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .filter(|x| x.name == "Nur B")
+        .collect::<Vec<_>>();
+    assert_eq!(arrived.len(), 1, "B's extra account arrived");
+    assert!(arrived[0].include_in_total, "step-33 default on migration");
+
+    // the other snapshot file itself sits on the current schema afterwards
+    let c_other = Connection::open(&other_path).unwrap();
+    c_other
+        .execute_batch(&format!("PRAGMA key = \"x'{}'\";", hex::encode(KEY)))
+        .unwrap();
+    let has_cols: i64 = c_other
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('accounts')
+              WHERE name IN ('include_in_total', 'total_ms')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(has_cols, 2, "both step-33 columns exist on the snapshot");
+    let version: i64 = c_other
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap();
+    assert!(version >= 33, "snapshot migrated to at least schema 33");
 }

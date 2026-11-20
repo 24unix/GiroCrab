@@ -843,10 +843,18 @@ impl Vault {
         };
         // Archived and switched-out accounts stay listed but don't count
         // (GiroCrab/GiroCrab#208, #337); `in_total` is the effective flag
-        // (own switch, group, archiving).
+        // (own switch, group, archiving). Review point on #1100: an excluded
+        // group's header keeps showing its own balance — the exclusion only
+        // pulls it out of the overview figures, never zeroes its own sum.
         let sum = |v: &[Account]| {
             v.iter()
                 .filter(|a| a.currency == "EUR" && a.in_total)
+                .map(|a| a.balance_cents)
+                .sum()
+        };
+        let sum_own = |v: &[Account]| {
+            v.iter()
+                .filter(|a| a.currency == "EUR" && a.include_in_total && a.archived_unix.is_none())
                 .map(|a| a.balance_cents)
                 .sum()
         };
@@ -873,7 +881,11 @@ impl Vault {
                 stack.extend(kids.iter().rev().map(|k| (*k, depth + 1)));
             }
             out.push(UserGroup {
-                balance_cents: sum(&accs),
+                balance_cents: if excluded.contains(uuid) {
+                    sum_own(&accs)
+                } else {
+                    sum(&accs)
+                },
                 uuid: uuid.clone(),
                 name: name.clone(),
                 sf_symbol: sf_symbol.clone(),
