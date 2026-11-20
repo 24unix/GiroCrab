@@ -781,6 +781,9 @@ struct PortalWebSheet: View {
     @State private var loginFilled = false
     /// Amex: statement PDFs are being downloaded before the sheet closes.
     @State private var loadingStatements = false
+    /// Amex: statements were loaded with the button: the automatic import still stores
+    /// recognised bookings but leaves the sheet open, the user closes it.
+    @State private var statementsLoadedByHand = false
 
     /// Amex: not every card of the switcher has been opened yet. Importing now would
     /// take only the cards loaded so far and close the sheet, so it waits (#243).
@@ -880,7 +883,10 @@ struct PortalWebSheet: View {
                 }
                 Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
                 if connection.connector == .americanExpress, !browser.onLoginPage, browser.onPortal {
-                    Button { Task { await loadStatements(all: true) } } label: {
+                    Button {
+                        statementsLoadedByHand = true
+                        Task { await loadStatements(all: true) }
+                    } label: {
                         Label("Alle Kontoauszüge laden", systemImage: "doc.on.doc")
                     }
                     .help("Lädt alle Kontoauszüge, die das Portal anbietet und die noch nicht im Tresor sind.")
@@ -969,7 +975,7 @@ struct PortalWebSheet: View {
                     // First sync with older history on offer: store what is there, but keep
                     // the sheet open so the user can unlock the rest (SMS code).
                     let firstSync = importedCount == 0 && !AppDefaults.store.bool(forKey: historyOfferedKey)
-                    let keepOpen = pager.older && firstSync
+                    let keepOpen = pager.older && firstSync || statementsLoadedByHand
                     if await attempt(closing: !keepOpen) {
                         if !keepOpen && openHolds.isEmpty { return }
                         importedCount = n
@@ -1027,7 +1033,10 @@ struct PortalWebSheet: View {
     private func loadStatements(all: Bool = false) async {
         guard connection.connector == .americanExpress else { return }
         guard !loadingStatements else {
-            while loadingStatements { try? await Task.sleep(nanoseconds: 200_000_000) }
+            while loadingStatements {
+                // the sheet went away: stop waiting
+                do { try await Task.sleep(nanoseconds: 200_000_000) } catch { return }
+            }
             return
         }
         loadingStatements = true
