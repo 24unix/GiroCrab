@@ -221,7 +221,17 @@ final class SelectionLoadTests: XCTestCase {
     /// Category view with an account filter → account (still loading) → Geplant: the cancelled
     /// account load would have dropped the filter from the sums, so Geplant does it.
     func testNonBookingColumnDropsFilterOfCategoryStillShown() throws {
-        model.selectionPlaceholderDelay = .seconds(30)
+        try assertGeplantDropsFilterAfterAccountClick(placeholderDelay: .seconds(30))
+    }
+
+    /// The same once the placeholder is up: the column already shows the account, the sums
+    /// are still the category's.
+    func testNonBookingColumnDropsFilterBehindThePlaceholder() throws {
+        try assertGeplantDropsFilterAfterAccountClick(placeholderDelay: .zero)
+    }
+
+    private func assertGeplantDropsFilterAfterAccountClick(placeholderDelay: Duration) throws {
+        model.selectionPlaceholderDelay = placeholderDelay
         let category = try XCTUnwrap(model.categories.first)
         let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
         model.sidebarSelection = .category(category.id)
@@ -229,7 +239,7 @@ final class SelectionLoadTests: XCTestCase {
         let filtered = model.categories.map(\.totalCents)
 
         model.interactiveSidebarSelection = .account(account.id)
-        XCTAssertEqual(model.shownSelection, .category(category.id))
+        XCTAssertNotNil(model.selectionLoadTask)
         model.interactiveSidebarSelection = .planned
         let shown = model.categories.map(\.totalCents)
         XCTAssertNotEqual(shown, filtered)

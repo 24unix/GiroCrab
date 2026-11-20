@@ -151,12 +151,16 @@ public final class AppModel {
             // Geplant, Lastschriften, Belege and Vermögen show no booking list: loading it for
             // all accounts only replaced the list the column shows next (#1396).
             guard MainColumn(sidebarSelection) == .bookings else {
-                if selectionLoadTask != nil { endSelectionLoad() }
-                // the sidebar sums no longer follow the account filter of the category view shown (#406)
+                let cancelsLoad = selectionLoadTask != nil
+                if cancelsLoad { endSelectionLoad() }
+                // The sidebar sums drop the account filter of a category view (#406): one shown, or one
+                // whose sums are still in because the cancelled load would have replaced them.
+                let sumsMayBeFiltered: Bool
                 switch shownSelection {
-                case .category?, .uncategorized?: if !categoryAccountFilter.isEmpty { reloadCategories() }
-                default: break
+                case .category?, .uncategorized?: sumsMayBeFiltered = true
+                default: sumsMayBeFiltered = cancelsLoad
                 }
+                if sumsMayBeFiltered, !categoryAccountFilter.isEmpty { reloadCategories() }
                 return
             }
             reloadSelection(periodChanged: false)
