@@ -1190,6 +1190,9 @@ fn english(de: &str) -> Option<&'static str> {
             "BHW: The session has ended. Please start the sync again."
         }
         "BHW: Die Anfrage wurde abgelehnt." => "BHW: The request was rejected.",
+        "BHW: Nicht alle Dokumente konnten geladen werden. Sie folgen mit dem nächsten Abruf." => {
+            "BHW: Not all documents could be downloaded. They follow with the next fetch."
+        }
         "BHW: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen." => {
             "BHW: Unexpected redirect to another address – aborted."
         }

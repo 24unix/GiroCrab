@@ -139,9 +139,10 @@ extension AppModel {
         let placed = try? await pin.run { vault -> Int in
             var placed = 0
             for id in try vault.bhwUnplacedDocuments() {
-                let data = try vault.getDocumentBytes(docId: id)
-                guard let text = PDFDocument(data: data)?.string, !text.isEmpty else { continue }
-                if try vault.placeBhwDocument(docId: id, text: text) != nil { placed += 1 }
+                // A document deleted or moved meanwhile is skipped; the others still go.
+                guard let data = try? vault.getDocumentBytes(docId: id),
+                      let text = PDFDocument(data: data)?.string, !text.isEmpty else { continue }
+                if (try? vault.placeBhwDocument(docId: id, text: text)) != nil { placed += 1 }
             }
             return placed
         }

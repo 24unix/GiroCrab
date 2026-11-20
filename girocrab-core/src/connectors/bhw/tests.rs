@@ -35,6 +35,9 @@ fn incomplete_login_data_is_refused_before_anything_is_sent() {
     assert!(auth(identity("1234567890", "Erika;31.12.70;12345")));
     assert!(auth(identity("1234567890", "Erika;31.02.1970;12345")));
     assert!(auth(identity("1234567890", "Erika;31.12.1970;")));
+    // ten characters, but no number
+    assert!(auth(identity("ABCDEFGHIJ", "Erika;31.12.1970;12345")));
+    assert!(auth(identity("12345-67890", "Erika;31.12.1970;12345")));
 }
 
 #[test]
@@ -530,6 +533,22 @@ fn unplaced_mailbox_pdfs_move_to_the_contract_their_text_names() {
         None
     );
     assert_eq!(v.bhw_unplaced_documents().unwrap(), vec![unplaced[1]]);
+    // an account the user gave it first stays
+    let savings: i64 = v
+        .db()
+        .unwrap()
+        .query_row(
+            "SELECT id FROM accounts WHERE external_ref = 'bhw-1000000001'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    v.set_document_account(unplaced[1], Some(savings)).unwrap();
+    assert_eq!(
+        v.place_bhw_document(unplaced[1], "Vertrags-Nr. 20 0000 0002".into())
+            .unwrap(),
+        None
+    );
     // a placed document is never moved again
     assert_eq!(
         v.place_bhw_document(unplaced[0], "Vertrags-Nr. 1000000001".into())
@@ -660,6 +679,9 @@ fn a_contract_number_reaches_its_part_by_the_stem() {
     assert_eq!(contract_by_number("1234567800", &two_savings, &whole), None);
     // a stem with one part needs no login
     assert_eq!(by("9999999900", &[]).as_deref(), Some("9999999901"));
+    // another part's number is no number of the whole contract
+    assert_eq!(by("1234567852", &login), None);
+    assert_eq!(by("1234567852", &[]), None);
     // other stems and other lengths never match by the stem
     assert_eq!(by("5555555500", &login), None);
     assert_eq!(by("12345678", &login), None);
@@ -687,4 +709,61 @@ fn a_contract_number_reaches_its_part_by_the_stem() {
         message_account(&m, &contracts, &whole).as_deref(),
         Some("bhw-1234567801")
     );
+}
+
+#[test]
+fn a_number_matches_only_as_a_number_of_its_own() {
+    let contracts = parse_contracts(&json!({ "contracts": [
+        { "id": "1234567801", "productLongName": "WohnBausparen", "accountBalance": 1 },
+        { "id": "1234567851", "productLongName": "BauDarlehen", "accountBalance": -1 }
+    ]}))
+    .unwrap();
+    let place = |t: &str| contract_in_text(t, &contracts, &[]);
+    // part of a longer number: no match
+    assert_eq!(place("Kundennummer: 91234567801"), (None, TextMatch::None));
+    assert_eq!(place("Referenz 12345678011"), (None, TextMatch::None));
+    // followed by a date or written in groups: a match
+    assert_eq!(
+        place("Vertragsnummer 1234567801 19.01.2024"),
+        (Some("bhw-1234567801".into()), TextMatch::Label)
+    );
+    assert_eq!(
+        place("Ihr Darlehen 12 3456 7851."),
+        (Some("bhw-1234567851".into()), TextMatch::Unique)
+    );
+    assert_eq!(
+        place("Vertrags-/Kontonummer 1 234 567 8 00 19.01.2024"),
+        (Some("bhw-1234567801".into()), TextMatch::Label)
+    );
+}
+
+#[test]
+fn a_number_several_contracts_carry_is_no_match() {
+    let mut contracts = parse_contracts(&json!({ "contracts": [
+        { "id": "1000000001", "productLongName": "Bausparvertrag", "accountBalance": 1 },
+        { "id": "2000000002", "productLongName": "Bausparvertrag", "accountBalance": 1 }
+    ]}))
+    .unwrap();
+    // a detail value of the first contract equals the second's number
+    contracts[0].keys.push(contract_key("2000000002"));
+    assert_eq!(contract_by_number("2000000002", &contracts, &[]), None);
+    assert_eq!(
+        contract_by_number("1000000001", &contracts, &[]).map(|c| c.id.as_str()),
+        Some("1000000001")
+    );
+}
+
+#[test]
+fn a_contract_row_without_id_keeps_the_list_incomplete() {
+    let full = json!({ "contracts": [
+        { "id": "1000000001", "productLongName": "Bausparvertrag", "accountBalance": 1 },
+        { "contractId": "2000000002", "productLongName": "Darlehen", "accountBalance": -1 }
+    ]});
+    assert!(contracts_complete(&full));
+    let partial = json!({ "contracts": [
+        { "id": "1000000001", "productLongName": "Bausparvertrag", "accountBalance": 1 },
+        { "productLongName": "Darlehen", "accountBalance": -1 }
+    ]});
+    assert!(!contracts_complete(&partial));
+    assert_eq!(parse_contracts(&partial).unwrap().len(), 1);
 }

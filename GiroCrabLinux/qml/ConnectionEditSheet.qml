@@ -233,7 +233,7 @@ Sheet {
                     }
                     CheckBox {
                         visible: sheet.usesPin
-                        text: sheet.isRah10 ? qsTr("Passwort im Tresor speichern") : sheet.kind === "Bunq" ? qsTr("API-Schlüssel im Tresor speichern") : sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID im Tresor speichern") : sheet.usesPassword ? qsTr("Passwort im Tresor speichern") : qsTr("PIN im Tresor speichern")
+                        text: sheet.isRah10 ? qsTr("Passwort im Tresor speichern") : sheet.kind === "Bunq" ? qsTr("API-Schlüssel im Tresor speichern") : sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID im Tresor speichern") : sheet.kind === "Bhw" ? qsTr("Anmeldedaten im Tresor speichern") : sheet.usesPassword ? qsTr("Passwort im Tresor speichern") : qsTr("PIN im Tresor speichern")
                         checked: sheet.storePin
                         onToggled: sheet.storePin = checked
                     }
@@ -242,7 +242,7 @@ Sheet {
                         Layout.fillWidth: true
                         echoMode: TextInput.Password
                         text: sheet.pin; onTextEdited: sheet.pin = text
-                        placeholderText: sheet.isRah10 ? qsTr("Passwort der Schlüsseldatei (leer = unverändert)") : sheet.status && sheet.status.has_pin ? qsTr("Gespeicherte PIN (leer = unverändert)") : (sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID") : sheet.usesPassword ? qsTr("Passwort") : qsTr("PIN"))
+                        placeholderText: sheet.isRah10 ? qsTr("Passwort der Schlüsseldatei (leer = unverändert)") : sheet.kind === "Bhw" ? (sheet.status && sheet.status.has_pin ? qsTr("Gespeicherte Anmeldedaten (leer = unverändert)") : qsTr("Vorname;TT.MM.JJJJ;PLZ")) : sheet.status && sheet.status.has_pin ? qsTr("Gespeicherte PIN (leer = unverändert)") : (sheet.kind === "Ibkr" ? qsTr("Flex-Query-ID") : sheet.usesPassword ? qsTr("Passwort") : qsTr("PIN"))
                     }
                 }
                 SettingsFormSection {

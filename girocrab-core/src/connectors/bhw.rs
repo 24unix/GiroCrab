@@ -231,6 +231,10 @@ impl Drop for Identity {
 
 fn identity(login: &str, secret: &str) -> CoreResult<Identity> {
     let id: String = login.chars().filter(|c| !c.is_whitespace()).collect();
+    // Checked before any personal data is sent.
+    if !id.chars().all(|c| c.is_ascii_digit()) {
+        return Err(missing_id());
+    }
     let id_type = match id.chars().count() {
         10 => "ContractId",
         11 => "BhwId",
@@ -368,6 +372,21 @@ fn contract_key(s: &str) -> String {
             trimmed.into()
         }
     }
+}
+
+/// Every row of the contract list carries an id: only then does the list
+/// show all contracts of the login, and a missing one counts as gone.
+fn contracts_complete(v: &Value) -> bool {
+    list_of(v, "contracts").is_some_and(|list| {
+        list.iter()
+            .all(|c| !id_of(c, "id").is_empty() || !id_of(c, "contractId").is_empty())
+    })
+}
+
+/// Some PDFs of the mailbox could not be downloaded.
+fn documents_missing() -> String {
+    tr("BHW: Nicht alle Dokumente konnten geladen werden. Sie folgen mit dem nächsten Abruf.")
+        .into()
 }
 
 fn parse_contracts(v: &Value) -> CoreResult<Vec<Contract>> {
@@ -529,11 +548,12 @@ fn bhw_number(s: &str) -> Option<String> {
     (digits.len() == 10).then_some(digits)
 }
 
-/// The listed contract a number belongs to: the contract with exactly this
-/// number, else the only contract with the same eight-digit stem, else, when
-/// several share it (the letters name the contract as a whole, "…00"), the
-/// one the login names, else the Bausparvertrag (the only part that is not a
-/// loan): the contract the Darlehen grew out of.
+/// The listed contract a number belongs to: the one contract with exactly
+/// this number (a number several contracts carry is no match). A number for
+/// the contract as a whole ("…00") goes to the only part with its eight-digit
+/// stem, else, when several share it, to the one the login names, else to the
+/// Bausparvertrag (the only part that is not a loan): the contract the
+/// Darlehen grew out of. Another part's number ("…52") never matches by stem.
 fn contract_by_number<'a>(
     number: &str,
     contracts: &'a [Contract],
@@ -543,10 +563,18 @@ fn contract_by_number<'a>(
     if key.is_empty() {
         return None;
     }
-    if let Some(c) = contracts.iter().find(|c| c.keys.contains(&key)) {
-        return Some(c);
+    match contracts
+        .iter()
+        .filter(|c| c.keys.contains(&key))
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        [c] => return Some(c),
+        [] => {}
+        _ => return None,
     }
-    let stem = bhw_number(number)?[..8].to_string();
+    let whole = bhw_number(number).filter(|d| d.ends_with("00"))?;
+    let stem = whole[..8].to_string();
     let same_stem: Vec<&Contract> = contracts
         .iter()
         .filter(|c| bhw_number(&c.id).is_some_and(|d| d.starts_with(&stem)))
@@ -616,10 +644,26 @@ enum TextMatch {
     None,
 }
 
+/// Where `digits` stand in `hay` as a number of their own: written with or
+/// without single spaces or dots between the digits ("12 3456 7801"), but not
+/// as part of a longer number ("Kundennummer 91234567801").
+fn number_at(hay: &str, digits: &str) -> Option<usize> {
+    let body = digits
+        .chars()
+        .map(String::from)
+        .collect::<Vec<_>>()
+        .join("[ .\u{a0}]?");
+    regex::Regex::new(&format!("(?:^|[^0-9]){body}(?:[^0-9]|$)"))
+        .ok()?
+        .find(hay)
+        .map(|m| m.start())
+}
+
 /// The contract a mailbox PDF is about, read from its text: the BHW prints
 /// the contract number ("Vertrags-Nr.") on every letter, while the mailbox
 /// field `contractId` can name another number. Only the listed contracts'
-/// own numbers (at least six digits) count, written with or without spaces.
+/// own numbers (at least six digits) and the numbers of their contracts as a
+/// whole ("…00") count, each as a number of its own.
 fn contract_in_text(
     text: &str,
     contracts: &[Contract],
@@ -637,65 +681,56 @@ fn contract_in_text(
         })
         .filter(|(digits, _)| digits.len() >= 6)
         .collect();
-    let compact = |s: &str| -> String {
-        s.chars()
-            .filter(|c| !c.is_whitespace() && !matches!(c, '.' | '-' | '/' | ':'))
-            .collect()
-    };
-    let found_in = |s: &str| -> Vec<&Contract> {
-        let s = compact(s);
-        numbers
-            .iter()
-            .filter(|(digits, _)| s.contains(digits.as_str()))
-            .map(|(_, c)| *c)
-            .collect()
-    };
-    // The number right after a label: the first listed one that follows it.
+    // The windows right after a label ("Vertragsnummer", "Vertrags-/Kontonummer").
     let lower = text.to_lowercase();
-    for (pos, _) in lower.match_indices("vertrag") {
-        let after = compact(
-            &text
-                .get(pos..)
-                .unwrap_or("")
-                .chars()
-                .take(80)
-                .collect::<String>(),
-        );
+    let windows: Vec<String> = lower
+        .match_indices("vertrag")
+        .map(|(pos, _)| text.get(pos..).unwrap_or("").chars().take(80).collect())
+        .collect();
+    // The number right after a label: the first listed one that follows it.
+    for after in &windows {
         let first = numbers
             .iter()
-            .filter_map(|(digits, c)| after.find(digits.as_str()).map(|at| (at, *c)))
+            .filter_map(|(digits, c)| number_at(after, digits).map(|at| (at, *c)))
             .min_by_key(|(at, _)| *at);
         if let Some((_, c)) = first {
             return (Some(account_ref(c)), TextMatch::Label);
         }
     }
-    match found_in(text).as_slice() {
+    let found: Vec<&Contract> = numbers
+        .iter()
+        .filter(|(digits, _)| number_at(text, digits).is_some())
+        .map(|(_, c)| *c)
+        .collect();
+    match found.as_slice() {
         [c] => return (Some(account_ref(c)), TextMatch::Unique),
         [] => {}
         _ => return (None, TextMatch::Ambiguous),
     }
-    // No listed number written out: a contract number of the BHW form whose
-    // stem is a listed contract's ("6 727 751 7 00" for the contract as a
-    // whole), first after a label, then anywhere in the text.
-    let runs = |s: &str| -> Vec<String> {
-        compact(s)
-            .split(|c: char| !c.is_ascii_digit())
-            .filter(|run| run.len() == 10)
-            .map(str::to_string)
-            .collect()
-    };
-    for (pos, _) in lower.match_indices("vertrag") {
-        let after: String = text.get(pos..).unwrap_or("").chars().take(80).collect();
-        if let Some(c) = runs(&after)
+    // No listed number written out: the number of a listed contract as a
+    // whole ("6 727 751 7 00"), first after a label, then anywhere in the text.
+    let mut wholes: Vec<String> = contracts
+        .iter()
+        .filter_map(|c| bhw_number(&c.id))
+        .map(|d| format!("{}00", &d[..8]))
+        .filter(|w| numbers.iter().all(|(digits, _)| digits != w))
+        .collect();
+    wholes.sort();
+    wholes.dedup();
+    for after in &windows {
+        let first = wholes
             .iter()
-            .find_map(|n| contract_by_number(n, contracts, logins))
-        {
+            .filter_map(|w| number_at(after, w).map(|at| (at, w)))
+            .min_by_key(|(at, _)| *at)
+            .and_then(|(_, w)| contract_by_number(w, contracts, logins));
+        if let Some(c) = first {
             return (Some(account_ref(c)), TextMatch::Label);
         }
     }
-    let mut found: Vec<&Contract> = runs(text)
+    let mut found: Vec<&Contract> = wholes
         .iter()
-        .filter_map(|n| contract_by_number(n, contracts, logins))
+        .filter(|w| number_at(text, w).is_some())
+        .filter_map(|w| contract_by_number(w, contracts, logins))
         .collect();
     found.sort_by(|a, b| a.id.cmp(&b.id));
     found.dedup_by(|a, b| a.id == b.id);
@@ -923,14 +958,18 @@ impl BhwConnector {
     }
 
     /// PDFs of the mailbox messages of the accounts in `wanted` (external
-    /// refs) that are not in `known`.
+    /// refs) that are not in `known`, and whether some could not be
+    /// downloaded (they stay unknown and come with a later fetch). A PDF
+    /// that turns out to belong to another account, or to one in `skipped`,
+    /// is left for that account's fetch and not remembered.
     async fn documents(
         &self,
         contracts: &[Contract],
         wanted: &HashSet<String>,
+        skipped: &HashSet<String>,
         known: &mut KnownDocuments,
         logins: &[String],
-    ) -> CoreResult<Vec<RemoteDocument>> {
+    ) -> CoreResult<(Vec<RemoteDocument>, bool)> {
         let raw = self.get_json("messages", "messages").await?;
         crate::depot_debug::log(&format!(
             "bhw mailbox: contracts={} wanted={} answer={}",
@@ -951,6 +990,7 @@ impl BhwConnector {
             contracts
         };
         let mut out = Vec::new();
+        let mut incomplete = false;
         for (n, m) in messages.into_iter().enumerate() {
             let account = message_account(&m, contracts, logins);
             let source = format!("bhw:message:{}", m.id);
@@ -967,7 +1007,10 @@ impl BhwConnector {
                 }
             ));
             // Another account's document waits for that account's fetch.
-            if account.as_ref().is_some_and(|r| !wanted.contains(r)) {
+            if account
+                .as_ref()
+                .is_some_and(|r| !wanted.contains(r) || skipped.contains(r))
+            {
                 continue;
             }
             if known.contains(&source) {
@@ -1000,7 +1043,13 @@ impl BhwConnector {
             if let Some(id) = &self.request_id {
                 req = req.header("x-request-id", id.as_str());
             }
-            let resp = req.send().await?;
+            // A failed download leaves the rest for a later fetch; the ones
+            // already downloaded are kept.
+            let Ok(resp) = req.send().await else {
+                crate::depot_debug::log(&format!("bhw document #{n}: request failed"));
+                incomplete = true;
+                break;
+            };
             ensure_host(resp.url())?;
             let status = resp.status();
             let content_type = resp
@@ -1017,9 +1066,14 @@ impl BhwConnector {
                     "bhw document #{n}: status={} type={content_type}",
                     status.as_u16()
                 ));
+                incomplete = true;
                 continue;
             }
-            let bytes = super::read_body_limited(resp, super::MAX_DOC_BYTES).await?;
+            let Ok(bytes) = super::read_body_limited(resp, super::MAX_DOC_BYTES).await else {
+                crate::depot_debug::log(&format!("bhw document #{n}: body failed"));
+                incomplete = true;
+                continue;
+            };
             crate::depot_debug::log(&format!(
                 "bhw document #{n}: status={} type={content_type} bytes={} pdf={}",
                 status.as_u16(),
@@ -1043,6 +1097,12 @@ impl BhwConnector {
                     found.unwrap_or_default()
                 }
             };
+            // The letter names another account than the one asked for.
+            if !account_ref.is_empty()
+                && (!wanted.contains(&account_ref) || skipped.contains(&account_ref))
+            {
+                continue;
+            }
             known.insert(source.clone());
             out.push(RemoteDocument {
                 account_ref,
@@ -1056,7 +1116,7 @@ impl BhwConnector {
                 date: m.date.clone(),
             });
         }
-        Ok(out)
+        Ok((out, incomplete))
     }
 }
 
@@ -1168,23 +1228,44 @@ impl BankConnector for BhwConnector {
         if let Documents::StatementsOnly(only) = &ctx.documents {
             let wanted = HashSet::from([only.clone()]);
             let logins = [ctx.login_name.clone()];
-            let documents = self
-                .documents(&contracts, &wanted, &mut known, &logins)
+            let (documents, incomplete) = self
+                .documents(
+                    &contracts,
+                    &wanted,
+                    &ctx.skipped_accounts,
+                    &mut known,
+                    &logins,
+                )
                 .await?;
             return Ok(FetchResult {
                 documents,
+                documents_incomplete: incomplete,
+                warnings: if incomplete {
+                    vec![documents_missing()]
+                } else {
+                    Vec::new()
+                },
                 state: known.to_state(),
+                // No bookings were fetched: the login's sync time stays.
+                single_account: true,
                 ..Default::default()
             });
         }
 
         let mut out = FetchResult {
             bank_name: Some("BHW Bausparkasse".into()),
-            accounts_complete: true,
+            // A row the list could not be read for must not mark a stored
+            // contract as gone.
+            accounts_complete: contracts_complete(&raw_contracts),
             ..Default::default()
         };
         for contract in &contracts {
             let account_ref = account_ref(contract);
+            // One account's sync (#1124) asks only for its bookings: another
+            // contract's failing request must not stop it.
+            if ctx.only_account.as_ref().is_some_and(|o| *o != account_ref) {
+                continue;
+            }
             let since = ctx.since_for(&account_ref).to_string();
             let path = format!(
                 "contracts/{}/transactions",
@@ -1207,13 +1288,28 @@ impl BankConnector for BhwConnector {
             // Optional: a failed download never fails the sync.
             let mut fetched = known.clone();
             let logins = [ctx.login_name.clone()];
-            if let Ok(documents) = self
-                .documents(&contracts, &wanted, &mut fetched, &logins)
+            match self
+                .documents(
+                    &contracts,
+                    &wanted,
+                    &ctx.skipped_accounts,
+                    &mut fetched,
+                    &logins,
+                )
                 .await
             {
-                out.documents = documents;
-                out.statements_fetched = due.to_vec();
-                known = fetched;
+                // Statements stay due until every PDF came.
+                Ok((documents, false)) => {
+                    out.documents = documents;
+                    out.statements_fetched = due.to_vec();
+                    known = fetched;
+                }
+                Ok((documents, true)) => {
+                    out.documents = documents;
+                    out.documents_incomplete = true;
+                    known = fetched;
+                }
+                Err(_) => out.documents_incomplete = true,
             }
         }
         out.state = known.to_state();
@@ -1349,8 +1445,16 @@ impl Vault {
         }) else {
             return Ok(None);
         };
-        self.set_document_account(doc_id, Some(account))?;
-        Ok(Some(account))
+        // Only while it is still unplaced: an account or booking the user
+        // gave it in the meantime stays.
+        let moved = self.db()?.execute(
+            &format!(
+                "UPDATE booking_documents SET account_id = ?1
+                  WHERE id = ?2 AND booking_id IS NULL AND {UNPLACED}"
+            ),
+            rusqlite::params![account, doc_id],
+        )?;
+        Ok((moved == 1).then_some(account))
     }
 }
 
