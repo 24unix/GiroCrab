@@ -224,6 +224,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | 🧪 Test gesucht |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Ford Money | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Test gesucht |
+| Hanseatic Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Test gesucht |
 | Opel Direktbank | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Test gesucht |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | – | ✓ | ✅ Verifiziert |
 | Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Test gesucht [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |
@@ -473,6 +474,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | 🧪 Testing wanted |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Ford Money | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Testing wanted |
+| Hanseatic Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Testing wanted |
 | Opel Direktbank | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Testing wanted |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | – | ✓ | ✅ Verified |
 | Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | – | ✓ | 🧪 Testing wanted [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |

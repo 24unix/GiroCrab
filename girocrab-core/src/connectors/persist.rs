@@ -1382,6 +1382,7 @@ impl Vault {
                     | ConnectorKind::FordMoney
                     | ConnectorKind::OpelDirektbank
                     | ConnectorKind::Bhw
+                    | ConnectorKind::HanseaticBank
                     | ConnectorKind::Ffb
             )
         });

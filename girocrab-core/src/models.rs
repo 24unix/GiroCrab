@@ -70,6 +70,9 @@ pub enum ConnectorKind {
     /// Kontist business account via the official GraphQL API (own OAuth2
     /// client, approval in the Kontist app).
     Kontist,
+    /// Hanseatic Bank credit cards, savings products and Postbox PDFs via the online banking's
+    /// JSON API (approval in the bank's app).
+    HanseaticBank,
 }
 
 impl ConnectorKind {
@@ -103,6 +106,7 @@ impl ConnectorKind {
             ConnectorKind::Bhw => "bhw",
             ConnectorKind::Finpension => "finpension",
             ConnectorKind::Kontist => "kontist",
+            ConnectorKind::HanseaticBank => "hanseatic",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
