@@ -29,6 +29,10 @@ unsafe extern "C" {
         count: usize,
         out: *const std::os::raw::c_char,
     ) -> bool;
+    fn girocrab_compose_capture(
+        spec: *const std::os::raw::c_char,
+        out: *const std::os::raw::c_char,
+    ) -> bool;
     fn girocrab_copy_image(path: *const std::os::raw::c_char) -> bool;
     fn girocrab_show_in_file_manager(path: *const std::os::raw::c_char) -> bool;
 }
@@ -542,6 +546,16 @@ fn call(method: &str, a: &Value) -> R {
             ok(unsafe {
                 girocrab_compose_report(base.as_ptr(), flat.as_ptr(), masks.len(), out.as_ptr())
             })
+        }
+        "bug_report_compose_capture" => {
+            // BugReport.snapshot (#384): the main window and the dialogs over it on one
+            // canvas (cpp/prepare.cpp › girocrab_compose_capture describes `spec`).
+            let spec = std::ffi::CString::new(arg::<Value>(a, "spec")?.to_string())
+                .map_err(|e| e.to_string())?;
+            let out =
+                std::ffi::CString::new(arg::<String>(a, "path")?).map_err(|e| e.to_string())?;
+            // SAFETY: GUI thread (Core.call); both strings outlive the call.
+            ok(unsafe { girocrab_compose_capture(spec.as_ptr(), out.as_ptr()) })
         }
         "copy_image" => {
             let path =
@@ -2748,6 +2762,62 @@ mod tests {
         assert_eq!(refund["booking_text"], json!("Amazon-Erstattung"));
         assert_eq!(refund["account_id"], order["account_id"]);
         call_ok("lock", json!({}));
+    }
+
+    /// Problem melden (#384): the main window and a dialog over it on one canvas, which grows
+    /// to hold a dialog that stands out of the window; an unreadable layer leaves no picture.
+    #[test]
+    fn bug_report_compose_capture() {
+        let dir = std::env::temp_dir().join(format!("girocrab-compose-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = |n: &str| dir.join(n).display().to_string();
+        let png_size = |p: &str| {
+            let b = std::fs::read(p).unwrap();
+            assert_eq!(&b[1..4], b"PNG");
+            let be = |i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+            (be(16), be(20))
+        };
+        // a "window" and a "dialog" picture to compose
+        let window = path("window.png");
+        let spec = json!({ "width": 40, "height": 30, "background": "#ffffffff",
+                           "layers": [{ "fill": "#ff336699", "x": 0, "y": 0, "width": 40, "height": 30, "radius": 0 }] });
+        assert_eq!(
+            call_ok(
+                "bug_report_compose_capture",
+                json!({ "spec": spec, "path": window })
+            ),
+            json!(true)
+        );
+        assert_eq!(png_size(&window), (40, 30));
+        let out = path("capture.png");
+        let spec = json!({ "width": 50, "height": 40, "background": "#00000000", "layers": [
+            { "image": window, "x": 0, "y": 10, "width": 40, "height": 30 },
+            { "fill": "#20000000", "x": 0, "y": 10, "width": 40, "height": 30, "radius": 0 },
+            { "image": window, "x": 20, "y": 0, "width": 30, "height": 20, "radius": 6 },
+            { "fill": "#ff8e8e93", "x": 24, "y": 4, "width": 10, "height": 6, "radius": 3 } ] });
+        assert_eq!(
+            call_ok(
+                "bug_report_compose_capture",
+                json!({ "spec": spec, "path": out })
+            ),
+            json!(true)
+        );
+        assert_eq!(png_size(&out), (50, 40));
+        // fail closed: a missing layer picture, a bad colour or no size
+        for spec in [
+            json!({ "width": 10, "height": 10, "layers": [{ "image": path("missing.png"), "x": 0, "y": 0, "width": 5, "height": 5 }] }),
+            json!({ "width": 10, "height": 10, "layers": [{ "fill": "nope", "x": 0, "y": 0, "width": 5, "height": 5 }] }),
+            json!({ "width": 0, "height": 10, "layers": [] }),
+        ] {
+            assert_eq!(
+                call_ok(
+                    "bug_report_compose_capture",
+                    json!({ "spec": spec, "path": path("x.png") })
+                ),
+                json!(false)
+            );
+        }
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// Problem melden (#301): the sanitizer through the bridge, the vault's payee names and

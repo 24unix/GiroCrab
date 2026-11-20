@@ -8,6 +8,9 @@ import QtQuick.Layouts
 // colour, so only accounts ("Standardfarbe") and groups ("Keine Farbe") can clear it.
 Popup {
     id: pop
+    // ReportDialogs.swift › capturablePopover (#384): drawn into the bug report picture
+    onOpened: ReportDialogs.track(pop)
+    Component.onDestruction: ReportDialogs.untrack(pop)
     readonly property var category: host === "sidebar" ? AppModel.categoryByID(AppModel.iconColorCategoryID) : null
     /// Which instance shows an account/group target: "sidebar" or "manager" (`iconColorTarget.host`).
     property string host: "sidebar"
@@ -18,7 +21,7 @@ Popup {
     readonly property string colorHex: item ? item.color_hex.toUpperCase() : ""
     readonly property color tint: account ? AppModel.accountColor(account.id) : colorHex === "" ? Theme.accent : Theme.readable(colorHex)
     visible: (host === "sidebar" && AppModel.iconColorCategoryID !== null) || target !== null
-    onClosed: { if (host === "sidebar") AppModel.iconColorCategoryID = null; if (target !== null) AppModel.iconColorTarget = null }
+    onClosed: { if (host === "sidebar") AppModel.iconColorCategoryID = null; if (target !== null) AppModel.iconColorTarget = null; ReportDialogs.untrack(pop) }
     padding: 14
     width: 360
     background: Rectangle { color: Theme.card; radius: 10; border.color: Theme.border }

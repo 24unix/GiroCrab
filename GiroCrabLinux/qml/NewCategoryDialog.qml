@@ -53,6 +53,10 @@ Sheet {
                 Accessible.name: qsTr("Symbol wählen")
                 Popup {
                     id: symbolPopup
+                    // ReportDialogs.swift › capturablePopover (#384): drawn into the bug report picture
+                    onOpened: ReportDialogs.track(symbolPopup)
+                    onClosed: ReportDialogs.untrack(symbolPopup)
+                    Component.onDestruction: ReportDialogs.untrack(symbolPopup)
                     x: symbolButton.width + 6; y: -40
                     padding: 0
                     background: Rectangle { color: Theme.card; radius: 10; border.color: Theme.border }
@@ -76,6 +80,7 @@ Sheet {
             visible: path !== null
             text: path !== null ? qsTr("Wird angelegt unter „%1“.").arg(path) : ""
             font.pixelSize: Theme.caption; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true
+            Sensitive { labels: true }
         }
         RowLayout {
             Layout.fillWidth: true

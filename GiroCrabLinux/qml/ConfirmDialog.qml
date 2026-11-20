@@ -6,6 +6,8 @@ import QtQuick.Layouts
 // HIG: "Abbrechen" stays the default; the destructive action is never triggered by Return.
 Sheet {
     id: dlg
+    // an alert on the Mac: never in the bug report picture (ReportDialogs.qml)
+    reportCapturable: false
     property string heading
     property string message
     property string actionTitle

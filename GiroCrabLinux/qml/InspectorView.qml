@@ -237,6 +237,10 @@ Rectangle {
                     onClicked: { nameField.text = rc.booking.counterparty; purposeField.text = rc.booking.purpose; editPopup.open() }
                     Popup {
                         id: editPopup
+                        // ReportDialogs.swift › capturablePopover (#384): drawn into the bug report picture
+                        onOpened: ReportDialogs.track(editPopup)
+                        onClosed: ReportDialogs.untrack(editPopup)
+                        Component.onDestruction: ReportDialogs.untrack(editPopup)
                         y: parent.height; x: parent.width - width
                         width: 340; padding: 14
                         ColumnLayout {

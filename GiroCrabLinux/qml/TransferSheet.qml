@@ -829,6 +829,7 @@ Sheet {
     // .alert("Vorlage speichern") { TextField("Name der Vorlage") }
     Sheet {
         id: templateName
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         sheetWidth: 340
         ColumnLayout {
             width: templateName.availableWidth
@@ -850,6 +851,7 @@ Sheet {
     // .confirmationDialog("Vorlage „…“ löschen?")
     Sheet {
         id: deleteConfirm
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         property var template: null
         sheetWidth: 340
         ColumnLayout {

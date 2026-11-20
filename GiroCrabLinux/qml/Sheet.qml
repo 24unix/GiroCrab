@@ -2,9 +2,17 @@ import QtQuick
 import QtQuick.Controls
 
 // .sheet(…) on macOS: a modal panel centred over the window, card-styled.
+// ReportDialogs.swift › capturableSheet (#384): while open it is drawn into the bug report
+// screenshot over its window (ReportDialogs.qml); mark personal data in it with `Sensitive {}`.
 Dialog {
     id: sheet
     default property alias body: content.data
+    /// false: an alert or confirmation dialog (`.alert` / `.confirmationDialog` on the Mac,
+    /// which the system draws): never in the bug report picture, which then says so.
+    property bool reportCapturable: true
+    onOpened: if (reportCapturable) ReportDialogs.track(sheet)
+    onClosed: ReportDialogs.untrack(sheet)
+    Component.onDestruction: ReportDialogs.untrack(sheet)
     property int sheetWidth: 440
     /// Height left for the body inside the window (small windows such as Settings):
     /// sheets with a fixed-height list or scroll area clamp it to this.

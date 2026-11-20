@@ -325,6 +325,7 @@ Sheet {
     // RootView: .alert("Status des Dauerauftrags unklar")
     Sheet {
         id: unknownDialog
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         sheetWidth: 440
         visible: Payments.standingUnknown !== null
         onClosed: Payments.standingUnknown = null

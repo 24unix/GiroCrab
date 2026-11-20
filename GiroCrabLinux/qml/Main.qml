@@ -201,7 +201,8 @@ ApplicationWindow {
             Action { text: qsTr("Mitteilungen …"); onTriggered: Announcements.showWindow = true }
             AppMenuSeparator {}
             // #301: redacted screenshot + scrubbed diagnostics, then a prefilled issue.
-            Action { text: qsTr("Problem melden …"); shortcut: "Ctrl+Alt+B"; onTriggered: AppModel.showBugReport = true }
+            // greyed out while the report is open: its „Neu aufnehmen“ refreshes the picture (#384)
+            Action { text: qsTr("Problem melden …"); shortcut: "Ctrl+Alt+B"; enabled: !AppModel.showBugReport; onTriggered: AppModel.showBugReport = true }
             AppMenuSeparator {}
             Action { text: qsTr("Webseite && Dokumentation (girocrab.de)"); onTriggered: Qt.openUrlExternally("https://girocrab.de") }
             Action { text: qsTr("Fehler melden / Issue erstellen (GitHub)"); onTriggered: Qt.openUrlExternally("https://github.com/GiroCrab/GiroCrab/issues") }
@@ -397,7 +398,7 @@ ApplicationWindow {
     CustomPeriodForm {}
     // Separate windows, created when opened (built eagerly they cost start-up time
     // and memory, the help window carries the whole help text).
-    Loader { active: AppModel.showSettings; sourceComponent: Component { SettingsWindow {} }
+    Loader { id: settingsLoader; active: AppModel.showSettings; sourceComponent: Component { SettingsWindow {} }
              onLoaded: { item.requestActivate(); item.raise() } }
     Loader { active: AppModel.showSyncLog; sourceComponent: Component { SyncLogWindow {} }
              onLoaded: { item.reload(); item.requestActivate(); item.raise() } }
@@ -406,7 +407,7 @@ ApplicationWindow {
     Loader { active: Announcements.showWindow; sourceComponent: Component { AnnouncementsWindow {} } }
     // BugReportView: its own window, so the main window stays free to be captured.
     Loader { active: AppModel.showBugReport
-             sourceComponent: Component { BugReportWindow { mainWindow: window; captureItem: rootLayout } }
+             sourceComponent: Component { BugReportWindow { mainWindow: window; captureItem: rootLayout; settingsWindow: settingsLoader.item } }
              onLoaded: { item.requestActivate(); item.raise() } }
     TwoFactorSheet {}
     BankSetupSheet {}
@@ -580,6 +581,7 @@ ApplicationWindow {
     // .alert("Stornierung nicht bestätigt") (RootView.swift)
     Sheet {
         id: transferCancelDialog
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         sheetWidth: 460
         visible: AppModel.transferCancelNotice !== null
         onClosed: AppModel.transferCancelNotice = null
@@ -605,6 +607,7 @@ ApplicationWindow {
     // .alert("Status der Überweisung unklar")
     Sheet {
         id: transferUnknownDialog
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         sheetWidth: 440
         visible: AppModel.transferUnknown !== null
         onClosed: AppModel.transferUnknown = null
@@ -627,6 +630,7 @@ ApplicationWindow {
     // .alert(errorTitle, errorMessage) with "Erneut versuchen"
     Sheet {
         id: errorDialog
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         sheetWidth: 420
         visible: AppModel.errorMessage !== ""
         onClosed: { AppModel.errorMessage = ""; AppModel.errorTitle = ""; AppModel.errorRetry = null; AppModel.errorAlternatives = [] }
@@ -654,7 +658,8 @@ ApplicationWindow {
     Timer {
         running: AppModel.screenshotMode && AppModel.vaultState !== "starting" && AppModel.vaultState !== "unlocking"
         // `--demo-sync`: long enough for the simulated PIN / TAN sheet to appear
-        interval: AppModel.optionDemoSync ? 4000 : 1500
+        // `--demo-sheet report:…`: the report opens 1.2 s after the sheet and then captures
+        interval: AppModel.optionDemoSync ? 4000 : AppModel.demoSheetOpensReport ? 4500 : 1500
         onTriggered: { AppModel.core("grab_window", { path: AppModel.screenshotPath, title: AppModel.screenshotWindow }); Qt.quit() }
     }
 }

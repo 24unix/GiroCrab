@@ -661,6 +661,7 @@ Sheet {
     // .alert("Export fehlgeschlagen", isPresented: failure != nil)
     Sheet {
         id: failureDialog
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         sheetWidth: 420
         visible: sheet.failure !== ""
         onClosed: sheet.failure = ""
