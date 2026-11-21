@@ -543,7 +543,8 @@ impl Vault {
                     let n = args.len();
                     let mut alt = format!(
                         "(t.counterparty LIKE ?{n} ESCAPE '\\' OR t.purpose LIKE ?{n} ESCAPE '\\' OR t.booking_text LIKE ?{n} ESCAPE '\\' \
-                         OR t.counterparty_iban LIKE ?{n} ESCAPE '\\' OR cat.name LIKE ?{n} ESCAPE '\\' OR a.name LIKE ?{n} ESCAPE '\\'"
+                         OR t.counterparty_iban LIKE ?{n} ESCAPE '\\' OR cat.name LIKE ?{n} ESCAPE '\\' OR a.name LIKE ?{n} ESCAPE '\\' \
+                         OR t.note LIKE ?{n} ESCAPE '\\'"
                     );
                     let compact: String = term
                         .chars()
@@ -1934,6 +1935,37 @@ mod paging_tests {
                 .iter()
                 .all(|b| b.account_id == giro.id)
         );
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn search_finds_the_note() {
+        let (v, p) = demo();
+        let search = |q: &str| {
+            v.list_transactions(BookingFilter {
+                search: Some(q.into()),
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        assert_eq!(search("Zebrapinguin").total_count, 0);
+        let b = v
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions[0]
+            .clone();
+        v.update_transaction_note(b.id, "Zebrapinguin für Anna".into())
+            .unwrap();
+        let hits = search("zebrapinguin");
+        assert_eq!(hits.total_count, 1);
+        assert_eq!(hits.transactions[0].id, b.id);
+        // several terms must all match, each in any field: note + counterparty
+        let both = search(&format!(
+            "Anna {}",
+            b.counterparty.split_whitespace().next().unwrap()
+        ));
+        assert!(both.transactions.iter().any(|t| t.id == b.id));
+        assert_eq!(search("Anna Nirgendwo").total_count, 0);
         let _ = std::fs::remove_file(p);
     }
 
