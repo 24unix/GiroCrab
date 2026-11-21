@@ -525,9 +525,11 @@ Sheet {
                                                 ColumnLayout {
                                                     spacing: 1; Layout.fillWidth: true
                                                     Text { text: accRow.modelData.name; color: accRow.usable ? Theme.text : Theme.secondary
-                                                           font.pixelSize: Theme.body; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                           font.pixelSize: Theme.body; elide: Text.ElideRight; Layout.fillWidth: true
+                                                           Sensitive {} }
                                                     Text { visible: accRow.sub !== ""; text: accRow.sub; color: Theme.secondary; font.pixelSize: Theme.caption
-                                                           elide: Text.ElideRight; Layout.fillWidth: true }
+                                                           elide: Text.ElideRight; Layout.fillWidth: true
+                                                           Sensitive { when: accRow.usable } }
                                                 }
                                             }
                                             function toggle() {
@@ -651,6 +653,7 @@ Sheet {
                             wrapMode: TextEdit.WrapAnywhere
                             horizontalAlignment: Text.AlignRight
                             font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.secondary
+                            Sensitive {}   // the name carries the account name
                         }
                     }
                 }

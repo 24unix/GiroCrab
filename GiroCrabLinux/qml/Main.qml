@@ -435,6 +435,7 @@ ApplicationWindow {
     // SystemLanguageChangedAlert: the system language moved away from the chosen app language.
     Sheet {
         id: systemLanguageChanged
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         readonly property string newCode: window.languageQuestion.startsWith("changed:") ? window.languageQuestion.slice(8) : ""
         readonly property string newName: ({ de: "Deutsch", en: "English" })[newCode] || newCode
         readonly property string currentName: ({ de: "Deutsch", en: "English" })[(AppModel.run(() => AppModel.core("language_state")) || { running: "de" }).running] || ""

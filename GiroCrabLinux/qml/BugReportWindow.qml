@@ -132,6 +132,14 @@ ApplicationWindow {
         return Qt.rect(x, y, Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x),
                        Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y))
     }
+    /// The same rectangles in the same order: the geometry did not change between two looks.
+    function sameRects(a, b) {
+        if (a.length !== b.length) return false
+        for (let i = 0; i < a.length; ++i)
+            if (a[i].x !== b[i].x || a[i].y !== b[i].y || a[i].width !== b[i].width || a[i].height !== b[i].height)
+                return false
+        return true
+    }
     function unite(a, b) {
         const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y)
         return Qt.rect(x, y, Math.max(a.x + a.width, b.x + b.width) - x, Math.max(a.y + a.height, b.y + b.height) - y)
@@ -185,6 +193,7 @@ ApplicationWindow {
                 // the card's rounded corners (the grab has no alpha outside them)
                 const bg = popup.background
                 return { kind: "dialog", item: c, rect: rectIn(c, ref, offset), inputs: inputRects(c, ref, offset),
+                         measure: () => [rectIn(c, ref, offset)].concat(inputRects(c, ref, offset)),
                          radius: bg && bg.radius !== undefined ? bg.radius : 0 }
             }
             // the overlay's dimmer under a modal popup: a plain coloured rectangle over all of it
@@ -208,7 +217,9 @@ ApplicationWindow {
             ? Qt.point((item.width - s.width) / 2, (item.height - s.height) / 2)
             : Qt.point(s.x - main.x - origin.x, s.y - main.y - origin.y)
         return [{ kind: "window", item: content, rect: rectIn(content, content, offset), radius: 0,
-                  inputs: inputRects(content, content, offset) }].concat(overlayLayers(s, content, offset))
+                  inputs: inputRects(content, content, offset),
+                  measure: () => [rectIn(content, content, offset)].concat(inputRects(content, content, offset)) }]
+            .concat(overlayLayers(s, content, offset))
     }
 
     /// Captures the main window and, bottom up, the dialogs over it; the first one that cannot
@@ -259,9 +270,15 @@ ApplicationWindow {
         }
         for (const g of grabs) {
             const target = Qt.size(Math.max(1, Math.round(g.item.width * dpr)), Math.max(1, Math.round(g.item.height * dpr)))
+            // The covers are measured before the grab, which renders later: a field that moved in
+            // between (a list scrolled) could leave its cover. Measured again once the layer is
+            // rendered, any change drops the picture (fail closed) instead of showing it uncovered.
+            const before = g.measure ? [g.rect].concat(g.inputs) : []
             const started = g.item.grabToImage(result => {
                 const path = tempDir + "/layer-" + (++shot) + ".png"
-                if (result.saveToFile(path)) g.path = path; else failed = true
+                if (g.measure && !sameRects(before, g.measure())) failed = true
+                else if (result.saveToFile(path)) g.path = path
+                else failed = true
                 done()
             }, target)
             if (!started) { failed = true; done() }

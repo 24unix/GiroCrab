@@ -777,6 +777,7 @@ Rectangle {
         FolderDialog { id: exportFolder; title: qsTr("Ordner für die exportierten Belege wählen"); acceptLabel: qsTr("Exportieren")
                        onAccepted: AppModel.exportAllDocuments(AppModel.localPath(selectedFolder)) }
         Sheet {
+            reportCapturable: false   // a confirmation dialog on the Mac (ReportDialogs.qml)
             visible: dc.docToDelete !== null
             onClosed: dc.docToDelete = null
             sheetWidth: 380
