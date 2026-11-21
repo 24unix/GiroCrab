@@ -122,7 +122,7 @@ extension AppModel {
                         page: page,
                         flow: flow,
                         categories: try vault.listCategoriesFilteredAmount(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction, amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents),
-                        uncategorized: try uncategorizedQuery.map { Int(try vault.countTransactions(filter: $0)) },
+                        uncategorized: Int(try vault.countTransactions(filter: uncategorizedQuery)),
                         groups: try vault.listAccountGroups(),
                         userGroups: try vault.listUserGroups()
                     )

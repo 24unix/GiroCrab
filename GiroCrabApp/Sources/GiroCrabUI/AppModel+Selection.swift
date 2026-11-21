@@ -244,7 +244,7 @@ extension AppModel {
                     try Task.checkCancellation()
                     let recurring = try vault.recurringSnapshot(accountIds: ids, year: Int32(month.year ?? 2026), month: UInt32(month.month ?? 1))
                     let categories = try vault.listCategoriesFilteredAmount(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction, amountMinCents: sums.amount.minCents, amountMaxCents: sums.amount.maxCents)
-                    let uncategorized = try uncategorizedQuery.map { Int(try vault.countTransactions(filter: $0)) }
+                    let uncategorized = Int(try vault.countTransactions(filter: uncategorizedQuery))
                     try Task.checkCancellation()
                     let history = try vault.balanceHistory(accountIds: chart.ids, days: chart.days)
                     let categoryHistory = try categoryChart.map {

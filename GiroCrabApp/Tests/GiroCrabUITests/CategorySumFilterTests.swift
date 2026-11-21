@@ -103,38 +103,89 @@ final class CategorySumFilterTests: XCTestCase {
         XCTAssertNotEqual(topLevelCount, all)
     }
 
-    /// #357: the badge of „Ohne Kategorie“ counts what the filters leave.
+    /// What the „Ohne Kategorie“ list shows for the current period and filters (`total_count` of its first page).
+    private func uncategorizedListTotal() throws -> Int {
+        let vault = try XCTUnwrap(model.vault)
+        model.sidebarSelection = .uncategorized
+        return Int(try vault.listTransactions(filter: model.currentFilter).totalCount)
+    }
+
+    /// #357 / #1439: the badge of „Ohne Kategorie“ counts what the period and the filters leave.
     func testUncategorizedBadgeFollowsTheFilters() throws {
         let vault = try XCTUnwrap(model.vault)
+        model.period = .all
+        model.reloadCategories()
         let plain = model.uncategorizedCount
         XCTAssertGreaterThan(plain, 0)
-        XCTAssertNil(model.uncategorizedFilteredCount)
+        XCTAssertNotNil(model.uncategorizedFilteredCount)
 
         func expected() throws -> Int {
-            let q = try XCTUnwrap(model.uncategorizedCountFilter(model.categorySumFilter))
-            return Int(try vault.countTransactions(filter: q))
+            Int(try vault.countTransactions(filter: model.uncategorizedCountFilter(model.categorySumFilter)))
         }
         model.amountFilter = AmountFilter(minCents: 5_000, maxCents: nil)
+        model.reloadCategories()
         XCTAssertLessThan(model.uncategorizedCount, plain)
         XCTAssertEqual(model.uncategorizedCount, try expected())
         model.amountFilter = AmountFilter()
+        model.reloadCategories()
         XCTAssertEqual(model.uncategorizedCount, plain)
 
         model.directionFilter = .income
+        model.reloadCategories()
         XCTAssertEqual(model.uncategorizedCount, try expected())
         model.directionFilter = .expense
+        model.reloadCategories()
         let expense = model.uncategorizedCount
         model.directionFilter = .income
+        model.reloadCategories()
         XCTAssertEqual(model.uncategorizedCount + expense, plain)
         model.directionFilter = .all
 
         let account = try XCTUnwrap(model.allAccounts.first { $0.kind != .loan && $0.uncategorizedCount > 0 })
         model.sidebarSelection = .allAccounts
         model.toggleCategoryAccount(account.id)
+        model.reloadCategories()
         XCTAssertEqual(model.uncategorizedCount, plain) // the account filter belongs to the category views
         model.sidebarSelection = .uncategorized
         model.reloadCategories() // a synchronous selection change keeps the sums; the interactive one reloads them
         XCTAssertEqual(model.uncategorizedCount, try expected())
         XCTAssertLessThan(model.uncategorizedCount, plain)
+    }
+
+    /// #1439: a narrower period narrows the badge, and it equals the list's row count for the same period,
+    /// with and without list filters (own transfers, #302, are left out in every branch).
+    func testUncategorizedBadgeFollowsThePeriodAndEqualsTheList() throws {
+        model.period = .all
+        model.reloadCategories()
+        let all = model.uncategorizedCount
+        XCTAssertGreaterThan(all, 0)
+        XCTAssertEqual(all, try uncategorizedListTotal())
+
+        model.period = .days(30)
+        model.reloadCategories()
+        XCTAssertLessThan(model.uncategorizedCount, all)
+        XCTAssertEqual(model.uncategorizedCount, try uncategorizedListTotal())
+
+        // The same number whether or not a list filter is active (it used to jump).
+        let unfiltered = model.uncategorizedCount
+        model.statusFilter = .all
+        model.directionFilter = .expense
+        model.reloadCategories()
+        XCTAssertEqual(model.uncategorizedCount, try uncategorizedListTotal())
+        model.directionFilter = .all
+        model.reloadCategories()
+        XCTAssertEqual(model.uncategorizedCount, unfiltered)
+    }
+
+    /// #1439: the badge is loaded for the period of the selection, so a period change reloads it.
+    func testUncategorizedBadgeReloadsWithThePeriod() async throws {
+        model.period = .all
+        model.reloadCategories()
+        let all = model.uncategorizedCount
+        model.interactivePeriod = .days(30)
+        let want = try XCTUnwrap(model.vault).countTransactions(filter: model.uncategorizedCountFilter(model.categorySumFilter))
+        for _ in 0..<300 where model.uncategorizedCount != Int(want) { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(model.uncategorizedCount, Int(want))
+        XCTAssertLessThan(model.uncategorizedCount, all)
     }
 }
