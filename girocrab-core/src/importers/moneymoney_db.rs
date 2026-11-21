@@ -2450,59 +2450,62 @@ pub(crate) fn adopt_account(
                 .collect::<Result<_, _>>()?;
             (ids.len() == 1).then(|| ids[0])
         };
+        // goes through the update below like any other match: the marker
+        // is replaced, so no second account of this fetch finds it again
         if let Some(id) = marked {
-            return Ok(Some(id));
-        }
-        let (exact, any) = if card {
-            (matching(true), matching(false))
+            Some(id)
         } else {
-            (Vec::new(), Vec::new())
-        };
-        let by_number = match (exact.as_slice(), any.as_slice()) {
-            ([id], _) | ([], [id]) => Some(*id),
-            _ => None,
-        };
-        // an imported card that several fetched cards fit (`**** 1234` for two
-        // cards ending in 1234) is not handed to whichever comes first
-        let contested = by_number.is_some_and(|id| {
-            rows.iter().any(|(row, number, _, _)| {
-                *row == id
-                    && fetched_cards
-                        .iter()
-                        .filter(|fetched| same_card_number(number, fetched))
-                        .count()
-                        > 1
-            })
-        });
-        // a number that fits several imported cards, or a contested one: no
-        // guess at all, the fallback below would hand over an unrelated card
-        if contested || (by_number.is_none() && !any.is_empty()) {
-            return Ok(None);
+            let (exact, any) = if card {
+                (matching(true), matching(false))
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            let by_number = match (exact.as_slice(), any.as_slice()) {
+                ([id], _) | ([], [id]) => Some(*id),
+                _ => None,
+            };
+            // an imported card that several fetched cards fit (`**** 1234` for two
+            // cards ending in 1234) is not handed to whichever comes first
+            let contested = by_number.is_some_and(|id| {
+                rows.iter().any(|(row, number, _, _)| {
+                    *row == id
+                        && fetched_cards
+                            .iter()
+                            .filter(|fetched| same_card_number(number, fetched))
+                            .count()
+                            > 1
+                })
+            });
+            // a number that fits several imported cards, or a contested one: no
+            // guess at all, the fallback below would hand over an unrelated card
+            if contested || (by_number.is_none() && !any.is_empty()) {
+                return Ok(None);
+            }
+            // else the only one of its kind (also a replacement card with a new
+            // number), preferring those without an IBAN; widened: the only one in
+            // that currency, with or without an IBAN. A card that another card of
+            // this fetch matches by number waits for that one, whatever the order.
+            let taken_by_number = |number: &str| {
+                card && fetched_cards
+                    .iter()
+                    .any(|fetched| same_card_number(number, fetched))
+            };
+            let single = |widened: bool| {
+                unique(rows.iter().filter(|(_, number, has_iban, cur)| {
+                    if taken_by_number(number) {
+                        false
+                    } else if widened {
+                        currency.is_empty() || cur.is_empty() || *cur == currency
+                    } else {
+                        !has_iban
+                    }
+                }))
+                .map(|(id, _, _, _)| *id)
+            };
+            by_number
+                .or_else(|| single(false))
+                .or_else(|| if widen { single(true) } else { None })
         }
-        // else the only one of its kind (also a replacement card with a new
-        // number), preferring those without an IBAN; widened: the only one in
-        // that currency, with or without an IBAN. A card that another card of
-        // this fetch matches by number waits for that one, whatever the order.
-        let taken_by_number = |number: &str| {
-            card && fetched_cards
-                .iter()
-                .any(|fetched| same_card_number(number, fetched))
-        };
-        let single = |widened: bool| {
-            unique(rows.iter().filter(|(_, number, has_iban, cur)| {
-                if taken_by_number(number) {
-                    false
-                } else if widened {
-                    currency.is_empty() || cur.is_empty() || *cur == currency
-                } else {
-                    !has_iban
-                }
-            }))
-            .map(|(id, _, _, _)| *id)
-        };
-        by_number
-            .or_else(|| single(false))
-            .or_else(|| if widen { single(true) } else { None })
     } else {
         // Wallets in several currencies can share one IBAN (Finom EUR/USD):
         // never take over one in another currency, prefer the exact currency.

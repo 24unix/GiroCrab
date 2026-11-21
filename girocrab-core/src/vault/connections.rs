@@ -1727,11 +1727,35 @@ mod tests {
             c,
             "123456700-Depot",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, Some(depot));
+        // the takeover replaced the marker: a second depot of the same fetch
+        // does not land in the same account
+        let external_ref: String = db
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                [depot],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(external_ref, "123456700-Depot");
+        let second = crate::importers::moneymoney_db::adopt_account(
+            &db,
+            c,
+            "987654300-Depot",
+            "",
+            "",
+            "EUR",
+            crate::models::AccountKind::Brokerage,
+            &[],
+        )
+        .unwrap();
+        assert_ne!(second, Some(depot));
     }
 
     /// Two marked depots on the login: which one is which is unknown, so
@@ -1748,8 +1772,10 @@ mod tests {
             c,
             "123456700-Depot",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, None);
@@ -1775,8 +1801,10 @@ mod tests {
             c,
             "123456700-Depot",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_ne!(adopted, Some(depot));
