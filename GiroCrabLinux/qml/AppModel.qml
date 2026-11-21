@@ -213,6 +213,12 @@ QtObject {
     property string directionFilter: "All"     // BookingDirection
     onDirectionFilterChanged: { listLimit = defaultListLimit; reloadBookings() }
     property string searchText: ""
+    /// AppModel+Selection.swift › coreSearchText: the typed text with German plurals cut back to
+    /// the stem („kredite“ → „kredit“), so the substring search also finds the singular. Always a
+    /// superset of the literal search; the field keeps showing what was typed.
+    function coreSearchText() {
+        try { return core("literal_search_term", { text: searchText }) } catch (e) { return searchText }
+    }
     property Timer searchTimer: Timer { interval: 250; onTriggered: model.reloadBookings() }
     onSearchTextChanged: searchTimer.restart()
     /// AccountSidebarMode (byGroup | byBank | byKind): the explicit choice, else "Nach Gruppe" once a group exists.
@@ -1200,7 +1206,7 @@ QtObject {
             category_id: sel.startsWith("category:") ? Number(sel.slice(9)) : null,
             include_subcategories: true,
             uncategorized_only: sel === "uncategorized",
-            search: searchText === "" ? null : searchText,
+            search: searchText === "" ? null : coreSearchText(),
             date_from: r[0], date_to: r[1],
             limit: listLimit, offset: 0,
             scope: scope,
@@ -1676,7 +1682,9 @@ QtObject {
     /// Returns true when a retry should follow.
     function recoverFromMissingProductID() {
         if (!fintsBuiltinAvailable || fintsProductIDMode === "builtin") return false
-        run(() => core("set_fints_product_id_mode", { mode: "builtin" }))
+        // only a stored switch is worth a retry; a failed write stays visible as the error (null)
+        try { core("set_fints_product_id_mode", { mode: "builtin" }) }
+        catch (e) { errorMessage = e.message; return null }
         reloadSettings()
         reloadProductIDState()
         return true
@@ -1907,9 +1915,16 @@ QtObject {
             quietSyncConnectionID = null
             const s = activeSession
             activeSession = null
-            syncingConnectionID = null
-            if (s !== null) coreAsync("session_cancel", { session: s }, null, () => {})
-            syncNextInQueue()   // never leave a queued login waiting behind a skipped automatic fetch
+            // The next login may be the same bank: go on only once this bank dialog has ended
+            // (as skipCurrentSync); a newer sync meanwhile owns the state.
+            const gen = ++syncGeneration
+            const next = () => {
+                if (gen !== syncGeneration) return
+                syncingConnectionID = null
+                syncNextInQueue()   // never leave a queued login waiting behind a skipped automatic fetch
+            }
+            if (s !== null) coreAsync("session_cancel", { session: s }, next, next)
+            else next()
             return
         }
         if (step.NeedsChallenge) {
@@ -2088,10 +2103,17 @@ QtObject {
         activeSession = null; activeChallenge = null; syncingConnectionID = null
         const missingID = isMissingProductID(e)
         // Fall back to GiroCrab's registration (once) and retry with the same login; the batch stays
-        if (missingID && recoverFromMissingProductID()) {
+        const recovered = missingID ? recoverFromMissingProductID() : false
+        if (recovered === true) {
             const c = connections.find(x => x.id === connection.id)
             if (c) { statementsAccountID = retryStatements; startSync(c, retrySecret) }
             else syncNextInQueue()
+            return
+        }
+        // the switch could not be stored: its error stays the message, no retry
+        if (recovered === null) {
+            resetSyncBatch()
+            errorTitle = qsTr("Abruf von „%1“ fehlgeschlagen").arg(connection.display_name)
             return
         }
         resetSyncBatch()

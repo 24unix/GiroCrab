@@ -1100,6 +1100,19 @@ pub(crate) fn suggest_account(
     Ok((named.len() == 1).then(|| named[0].0))
 }
 
+/// The bank name older versions gave the offline account of an import: a
+/// software name, shown in the sidebar (#1467).
+const OLD_IMPORT_BANK_NAME: &str = "MoneyMoney-Import";
+
+/// Clears that bank name on offline accounts; run on every open.
+pub(crate) fn clear_old_import_bank_name(conn: &Connection) -> CoreResult<()> {
+    conn.execute(
+        "UPDATE accounts SET bank_name = '' WHERE connection_id IS NULL AND bank_name = ?1",
+        [OLD_IMPORT_BANK_NAME],
+    )?;
+    Ok(())
+}
+
 fn account_name_from_file(file_name: &str) -> String {
     let stem = file_name
         .rsplit('/')
@@ -1152,7 +1165,7 @@ fn run(
             conn.execute(
                 "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, currency, kind,
                                       balance_cents, balance_date, sf_symbol, sort_order, created_ms)
-                 VALUES (NULL, ?1, ?2, ?3, 'MoneyMoney-Import', ?4, 'checking', 0, '', 'archivebox',
+                 VALUES (NULL, ?1, ?2, ?3, '', ?4, 'checking', 0, '', 'archivebox',
                          (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?5)",
                 params![
                     gid,
@@ -2128,6 +2141,47 @@ Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;
             .find(|a| a.id == res.account_id)
             .unwrap();
         assert_eq!(acc.balance_cents, 76_544);
+        // no software name as the bank (#1467)
+        assert_eq!(acc.bank_name, "");
+    }
+
+    /// Offline accounts older versions created carry a software name as
+    /// their bank; opening clears it, a bank name of its own stays (#1467).
+    #[test]
+    fn opening_clears_the_old_import_bank_name() {
+        let (_dir, v) = vault();
+        let res = v
+            .import_moneymoney_data(
+                CSV.as_bytes().to_vec(),
+                "Giro alt.csv".into(),
+                None,
+                true,
+                true,
+            )
+            .unwrap();
+        let db = v.db().unwrap();
+        db.execute(
+            "UPDATE accounts SET bank_name = ?1 WHERE id = ?2",
+            params![OLD_IMPORT_BANK_NAME, res.account_id],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name, bank_name)
+             VALUES ((SELECT group_id FROM accounts WHERE id = ?1), 'other', 'Sparbuch', 'Sparkasse')",
+            [res.account_id],
+        )
+        .unwrap();
+        clear_old_import_bank_name(&db).unwrap();
+        let bank = |filter: &str| -> String {
+            db.query_row(
+                &format!("SELECT bank_name FROM accounts WHERE {filter}"),
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(bank(&format!("id = {}", res.account_id)), "");
+        assert_eq!(bank("name = 'Sparbuch'"), "Sparkasse");
     }
 
     /// MoneyMoney's exports append the SEPA references to the purpose, the

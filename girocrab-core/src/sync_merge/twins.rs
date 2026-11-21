@@ -214,6 +214,9 @@ fn bank_twin(conn: &Connection, mm: &Ident, connection_id: Option<i64>) -> CoreR
         ))?
         .query_map(params![connection_id, mm.kind], ident)?
         .collect::<Result<_, _>>()?;
+    if let Some(id) = switched_depot_twin(conn, mm, &banks)? {
+        return Ok(Some(id));
+    }
     if unlinked_depot {
         let bank_name = |id: i64| -> CoreResult<String> {
             Ok(conn.query_row(
@@ -239,6 +242,40 @@ fn bank_twin(conn: &Connection, mm: &Ident, connection_id: Option<i64>) -> CoreR
     }
     best(banks.iter().filter(|b| same_account(mm, b)), |bank| {
         twin_score(conn, "main", mm, "main", bank)
+    })
+}
+
+/// A depot „Abrufweg umstellen“ marked that the other way did not take over
+/// (another reference, no IBAN): the only bank depot without IBAN whose
+/// number is the marked one's or that plus the sub-account `00` (comdirect:
+/// REST `1234567`, FinTS `123456700`) and that `twin_score` accepts: most
+/// bookings shared or, for an empty depot, the same name. The name is not
+/// required otherwise; the two ways may name the depot differently.
+fn switched_depot_twin(conn: &Connection, mm: &Ident, banks: &[Ident]) -> CoreResult<Option<i64>> {
+    if mm.kind != "brokerage" || !mm.iban.is_empty() || mm.number.is_empty() {
+        return Ok(None);
+    }
+    let marked: bool = conn.query_row(
+        "SELECT IFNULL(external_ref LIKE ?2 || '%', 0) FROM main.accounts WHERE id = ?1",
+        params![mm.id, crate::vault::connections::SWITCH_MARK],
+        |r| r.get(0),
+    )?;
+    if !marked {
+        return Ok(None);
+    }
+    let mut found = Vec::new();
+    for bank in banks.iter().filter(|b| {
+        b.kind == mm.kind
+            && b.iban.is_empty()
+            && (b.number == mm.number || b.number == format!("{}00", mm.number))
+    }) {
+        if twin_score(conn, "main", mm, "main", bank)?.is_some() {
+            found.push(bank.id);
+        }
+    }
+    Ok(match found.as_slice() {
+        [only] => Some(*only),
+        _ => None,
     })
 }
 

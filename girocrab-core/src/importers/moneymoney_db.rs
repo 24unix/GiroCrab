@@ -2425,6 +2425,34 @@ pub(crate) fn adopt_account(
                 .map(|(id, _, _, _)| *id)
                 .collect()
         };
+        // the other way reports a marked account under another reference
+        // (FinTS `<number>-Depot`, REST its depot id): the only live one of
+        // its kind and currency is it, deleted leftovers and archived ones
+        // (the switch marks those too) don't count
+        let marked = {
+            let mut st = conn.prepare(
+                "SELECT id FROM accounts WHERE connection_id = ?1 AND kind = ?2
+                   AND external_ref LIKE ?4 || '%' AND deleted_ms IS NULL
+                   AND archived_unix IS NULL
+                   AND replace(IFNULL(iban, ''), ' ', '') = ''
+                   AND (?3 = '' OR upper(IFNULL(currency, '')) IN ('', ?3)) LIMIT 2",
+            )?;
+            let ids: Vec<i64> = st
+                .query_map(
+                    params![
+                        connection_id,
+                        kind.as_str(),
+                        currency,
+                        crate::vault::connections::SWITCH_MARK
+                    ],
+                    |r| r.get(0),
+                )?
+                .collect::<Result<_, _>>()?;
+            (ids.len() == 1).then(|| ids[0])
+        };
+        if let Some(id) = marked {
+            return Ok(Some(id));
+        }
         let (exact, any) = if card {
             (matching(true), matching(false))
         } else {

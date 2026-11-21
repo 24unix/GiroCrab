@@ -179,6 +179,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("BHW Bausparkasse: Bausparverträge und Darlehen mit Saldo und Umsätzen. Anmeldung mit der 10-stelligen Vertragsnummer oder der 11-stelligen BHW-ID; statt eines Passworts kommen Vorname, Geburtsdatum und Postleitzahl getrennt durch Semikolon in das zweite Feld (z. B. „Erika;31.12.1970;12345“). Jede Anmeldung wird mit einem Einmal-Code per E-Mail oder SMS bestätigt. Dokumente aus dem myBHW-Postfach lassen sich abrufen. Inoffiziell: nutzt die Schnittstelle des myBHW-Portals, Änderungen sind möglich.").into(),
         },
+        ConnectorKind::HanseaticBank => BankDescriptor {
+            kind,
+            name: "Hanseatic Bank".into(),
+            protocol: tr("Online-Banking (Direkt-Login, Freigabe in der App)").into(),
+            bank_code: "20120700".into(),
+            sf_symbol: "creditcard".into(),
+            login_label: tr("Kundennummer").into(),
+            secret_label: tr("Passwort").into(),
+            required_settings: vec![],
+            note: tr("Hanseatic Bank: Kreditkarten mit vorgemerkten Umsätzen sowie SparBriefe, Tages- und Festgeld mit Saldo und Umsätzen. Ältere Umsätze, für die die Bank eine zusätzliche Freigabe verlangt, werden nicht abgerufen. Die erste Anmeldung wird in der App der Hanseatic Bank (oder per smsTAN) bestätigt; danach merkt sich GiroCrab das Gerät. Kontoauszüge und weitere Dokumente aus der Postbox lassen sich abrufen; ungelesene Dokumente gelten danach bei der Bank als gelesen. Inoffiziell: nutzt die Schnittstelle des Online-Bankings, Änderungen sind möglich.").into(),
+        },
         ConnectorKind::Kontist => BankDescriptor {
             kind,
             name: "Kontist".into(),
@@ -564,6 +575,33 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "Bank Norwegian",
+        kind: None,
+        interface: Interface::EnableBanking,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "C24",
+        kind: None,
+        interface: Interface::EnableBanking,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "N26",
+        kind: None,
+        interface: Interface::EnableBanking,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Revolut",
         kind: None,
         interface: Interface::EnableBanking,
@@ -785,6 +823,19 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         status: Status::TestingWanted,
         issues: &[],
     },
+    MatrixEntry {
+        name: "Hanseatic Bank",
+        kind: Some(ConnectorKind::HanseaticBank),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Documents,
+        ],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
 ];
 
 pub fn make_connector(kind: ConnectorKind, demo: bool) -> Box<dyn BankConnector> {
@@ -831,6 +882,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Ffb => Box::new(ffb::FfbConnector::new()),
         ConnectorKind::FordMoney => Box::new(fordmoney::FordMoneyConnector::new()),
         ConnectorKind::OpelDirektbank => Box::new(opel::OpelDirektbankConnector::new()),
+        ConnectorKind::HanseaticBank => Box::new(hanseatic::HanseaticConnector::new()),
         ConnectorKind::Bhw => Box::new(bhw::BhwConnector::new()),
         ConnectorKind::Finpension => Box::new(finpension::FinpensionConnector),
         ConnectorKind::Kontist => Box::new(kontist::KontistConnector::new()),
@@ -847,6 +899,32 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
 #[cfg(test)]
 mod matrix_tests {
     use super::*;
+
+    /// The other direction: a connector in the matrix that `ConnectorKind::all()`
+    /// misses has no descriptor in `bank_catalog()` (the add form stays empty)
+    /// and its stored connections are not recognised (`from_str`).
+    #[test]
+    fn every_matrix_connector_is_listed_in_all_kinds() {
+        for e in BANK_MATRIX {
+            let Some(kind) = e.kind else { continue };
+            assert!(
+                ConnectorKind::all().contains(&kind),
+                "{}: {kind:?} missing in ConnectorKind::all()",
+                e.name
+            );
+            assert_eq!(
+                ConnectorKind::from_str(kind.as_str()),
+                Some(kind),
+                "{}",
+                e.name
+            );
+            assert!(
+                bank_catalog().iter().any(|d| d.kind == kind),
+                "{}: no catalog entry",
+                e.name
+            );
+        }
+    }
 
     #[test]
     fn every_connector_kind_has_a_matrix_row() {

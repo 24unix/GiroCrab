@@ -614,6 +614,10 @@ fn call(method: &str, a: &Value) -> R {
         }
         "batch" => batch(a),
         "reset_app" => reset_app(),
+        // the search field's text as the core searches it (plural stems, #54f83952)
+        "literal_search_term" => ok(crate::search_terms::literal_search_term(&arg::<String>(
+            a, "text",
+        )?)),
         "set_connection_account_choices" => set_connection_account_choices(&vault()?, a),
         // catalog / directory (free functions of the core)
         "bank_catalog" => ok(girocrab_core::bank_catalog()),
@@ -1458,8 +1462,23 @@ fn dispatch_vault(v: &Vault, method: &str, a: &Value) -> Option<R> {
         // a refusal (`InvalidInput`: loan/depot, gap in the marked bookings) as its plain
         // message, without the „Ungültige Eingabe:“ prefix of other errors.
         "camt053_export" => Some(camt053_export(v, a)),
+        // The Linux cashflow card is the overview: an overall money figure
+        // (#337) — only the effective total set contributes, like the Windows
+        // overview card. Not in the macro below because it carries no
+        // `respect_in_total` from QML.
+        "cashflow_by_period" => Some(cashflow_by_period_totals(v, a)),
         _ => dispatch_vault_methods(v, method, a),
     }
+}
+
+fn cashflow_by_period_totals(v: &Vault, a: &Value) -> R {
+    ok(v.cashflow_by_period(
+        arg(a, "granularity")?,
+        arg(a, "count")?,
+        arg::<Option<Vec<i64>>>(a, "account_ids")?,
+        true,
+    )
+    .map_err(|e| e.to_string())?)
 }
 
 fn camt053_export(v: &Vault, a: &Value) -> R {
@@ -1556,7 +1575,6 @@ vault_methods! {
     // insights / planning / recurring
     merchant_stats(merchant_key) merchant_history(merchant_key, account_id)
     selection_flow(account_ids, date_from, date_to)
-    cashflow_by_period(granularity, count, account_ids)
     list_category_budget_progress(year, month)
     list_recurring(account_ids) recurring_month(account_ids, year, month)
     // settings

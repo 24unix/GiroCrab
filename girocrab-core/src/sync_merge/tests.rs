@@ -1581,7 +1581,7 @@ fn soft_deleted_rows_appear_in_no_public_api() {
         PeriodGranularity::Year,
     ] {
         both!(format!("cashflow_by_period({g:?})"), |v| v
-            .cashflow_by_period(g, 6, None));
+            .cashflow_by_period(g, 6, None, true));
     }
     both!("suggest_recipients", |v| v
         .suggest_recipients(String::new(), 20));
@@ -3909,6 +3909,100 @@ fn empty_depot_twin_is_folded() {
             "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL"
         ),
         "depot:E5AA"
+    );
+}
+
+/// A depot „Abrufweg umstellen“ marked (REST, number without sub-account)
+/// next to the one the first FinTS fetch added (number + `00`).
+fn switched_depot_pair(v: &Vault, bank_number: &str) {
+    let c = comdirect(v);
+    exec(v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+    for (ext, number) in [
+        ("moneymoney-db:switch:E5AA", "1022110"),
+        ("102211000-Depot", bank_number),
+    ] {
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, currency, kind)
+                 VALUES (?1, 1, ?2, 'Depot', ?3, 'EUR', 'brokerage')",
+                params![c, ext, number],
+            )
+            .unwrap();
+    }
+}
+
+#[test]
+fn switched_depot_is_folded_into_the_fints_depot() {
+    let dir = temp_dir("twin-switched-depot");
+    let v = open(&dir, "a.db");
+    switched_depot_pair(&v, "102211000");
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        text(
+            &v,
+            "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL"
+        ),
+        "102211000-Depot"
+    );
+}
+
+/// The two ways may name the depot differently: with most bookings shared
+/// it is still folded.
+#[test]
+fn switched_depot_with_another_name_and_shared_bookings_is_folded() {
+    let dir = temp_dir("twin-switched-depot-name");
+    let v = open(&dir, "a.db");
+    switched_depot_pair(&v, "102211000");
+    exec(
+        &v,
+        "UPDATE accounts SET name = 'Depot 102211000' WHERE external_ref = '102211000-Depot'",
+    );
+    exec(
+        &v,
+        "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+         SELECT id, 'div-1', '2026-11-01', 1200, 'X', 'Dividende' FROM accounts",
+    );
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        text(
+            &v,
+            "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL"
+        ),
+        "102211000-Depot"
+    );
+}
+
+/// Without bookings only the name tells: another name stays apart.
+#[test]
+fn empty_switched_depot_with_another_name_stays() {
+    let dir = temp_dir("twin-switched-depot-empty-name");
+    let v = open(&dir, "a.db");
+    switched_depot_pair(&v, "102211000");
+    exec(
+        &v,
+        "UPDATE accounts SET name = 'Depot 102211000' WHERE external_ref = '102211000-Depot'",
+    );
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        2
+    );
+}
+
+#[test]
+fn switched_depot_with_another_number_stays() {
+    let dir = temp_dir("twin-switched-depot-other");
+    let v = open(&dir, "a.db");
+    switched_depot_pair(&v, "102211100");
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        2
     );
 }
 

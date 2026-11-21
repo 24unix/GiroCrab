@@ -2,8 +2,10 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// SidebarView.swift › AccountRow: signet with the unread count on its corner, the name over
-// the whole width (owner as tooltip), then bank / loan progress and the balance (#624, #667).
+// SidebarView.swift › AccountRow: signet, the name (owner as tooltip) with the unread count at the
+// end of its line, then bank / loan progress and the balance (#624, #667). Linux deviation: the Mac
+// pins a small count to the signet's corner; here it is a larger pill in the strong blue, readable
+// in both modes and with three digits.
 SidebarRow {
     id: row
     required property var modelData
@@ -45,19 +47,6 @@ SidebarRow {
         // tinted like the account's marker in the booking list
         AccountSignet {
             account: row.account; size: 20; tintColor: AppModel.accountColor(row.account.id); onSelection: row.selected
-            // unread count pinned to the icon's corner, so the subtitle stays untruncated
-            Rectangle {
-                readonly property string label: row.account.new_count <= 0 ? "" : row.account.new_count > 999 ? "999+" : String(row.account.new_count)
-                visible: label !== ""
-                x: parent.width - width + 5; y: -4
-                width: Math.max(14, newText.implicitWidth + 8); height: 14
-                radius: height / 2
-                color: Theme.accent
-                border.width: 1.5; border.color: Theme.sidebar
-                Accessible.name: qsTr("%1 neue Buchungen").arg(row.account.new_count)
-                Text { id: newText; anchors.centerIn: parent; text: parent.label; color: "white"
-                       font.pixelSize: Theme.caption2; font.weight: Font.Bold; font.features: { "tnum": 1 } }
-            }
         }
         ColumnLayout {
             spacing: 1
@@ -80,6 +69,17 @@ SidebarRow {
                          ToolTip.visible: revokedHover.hovered; ToolTip.delay: 600
                          ToolTip.text: qsTr("Zugriff entzogen: Die Bank liefert dieses Konto nicht mehr. Buchungen bleiben erhalten.") }
                 Item { Layout.fillWidth: true; Layout.preferredWidth: 0 }
+                // unread count at the end of the name line, readable at a glance
+                Rectangle {
+                    readonly property string label: row.account.new_count <= 0 ? "" : row.account.new_count > 999 ? "999+" : String(row.account.new_count)
+                    visible: label !== ""
+                    implicitWidth: Math.max(20, newText.implicitWidth + 12); implicitHeight: 18
+                    radius: height / 2
+                    color: Theme.dark ? "#2563EB" : Theme.accent
+                    Accessible.name: qsTr("%1 neue Buchungen").arg(row.account.new_count)
+                    Text { id: newText; anchors.centerIn: parent; text: parent.label; color: "white"
+                           font.pixelSize: Theme.caption + 1; font.weight: Font.Bold; font.features: { "tnum": 1 } }
+                }
                 BusyIndicator { visible: row.syncing; running: row.syncing; implicitWidth: 12; implicitHeight: 12; padding: 0
                                 Accessible.name: qsTr("Wird synchronisiert") }
             }

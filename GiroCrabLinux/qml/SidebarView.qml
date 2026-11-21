@@ -180,7 +180,23 @@ Rectangle {
             clip: true
             topMargin: accountsHeader.height
             bottomMargin: 10
-            model: sidebar.rows
+            // set by hand, not bound: a new array resets the view to its top, and the sidebar is
+            // rebuilt on every count, balance or fold change – the scroll position stays
+            /// Scrolled to the very top (accounts header in view): stays there when the header grows.
+            property bool pinnedTop: true
+            onContentYChanged: pinnedTop = contentY <= -topMargin + 1
+            onTopMarginChanged: if (pinnedTop) contentY = -topMargin
+            function applyRows() {
+                const y = contentY
+                const atTop = pinnedTop
+                model = sidebar.rows
+                if (atTop) { contentY = -topMargin; return }
+                forceLayout()
+                const max = Math.max(-topMargin, contentHeight - height + bottomMargin)
+                contentY = Math.max(-topMargin, Math.min(y, max))
+            }
+            Component.onCompleted: model = sidebar.rows
+            Connections { target: sidebar; function onRowsChanged() { list.applyRows() } }
             boundsBehavior: Flickable.StopAtBounds
             interactive: false
             WheelHandler { acceptedDevices: PointerDevice.AllDevices; onWheel: e => keyNav.scrollBy(e) }
