@@ -417,6 +417,15 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         ),
         params![twin, bank],
     )?;
+    // so do securities transactions paid from one of its bookings (#1463 review)
+    conn.execute(
+        &format!(
+            "UPDATE security_transactions SET cash_transaction_id = IFNULL({}, cash_transaction_id)
+              WHERE cash_transaction_id IN (SELECT id FROM transactions WHERE account_id = ?1)",
+            counterpart.replace("{col}", "security_transactions.cash_transaction_id")
+        ),
+        params![twin, bank],
+    )?;
     // asked before the history moves: the twin's may hold fetches too
     move_depot_data(conn, twin, bank)?;
     // the imported depot history belongs to the bank's account from now on (#578)

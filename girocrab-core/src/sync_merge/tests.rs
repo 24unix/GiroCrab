@@ -3787,6 +3787,39 @@ fn giro(v: &Vault, c: i64, ext: &str, bookings: &[&str]) -> i64 {
     id
 }
 
+/// #1463 review: a securities transaction paid from the twin's booking
+/// points at the bank account's copy once the settlement account is folded.
+#[test]
+fn folding_a_settlement_twin_moves_the_cash_links() {
+    let dir = temp_dir("twin-cash-link");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    let twin = giro(&v, c, MM_GIRO, &["mm-1", "mm-2"]);
+    let bank = giro(&v, c, "API1", &["mm-1", "mm-2", "b1"]);
+    let paid = n(
+        &v,
+        &format!("SELECT id FROM transactions WHERE account_id = {twin} AND external_id = 'mm-1'"),
+    );
+    exec(
+        &v,
+        &format!(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, currency, kind)
+             VALUES ({c}, 1, 'depot:1', 'Depot', 'EUR', 'brokerage');
+             INSERT INTO security_transactions(account_id, external_id, booking_date, cash_transaction_id)
+             VALUES (last_insert_rowid(), 'st-1', '2026-01-01', {paid})"
+        ),
+    );
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(
+            &v,
+            "SELECT t.account_id FROM security_transactions s JOIN transactions t ON t.id = s.cash_transaction_id"
+        ),
+        bank
+    );
+}
+
 fn comdirect(v: &Vault) -> i64 {
     v.add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
         .unwrap()
