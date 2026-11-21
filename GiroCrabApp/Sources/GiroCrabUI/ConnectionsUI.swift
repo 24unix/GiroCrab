@@ -269,9 +269,9 @@ struct ConnectionEditSheet: View {
 
     private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .ffb, .fordMoney, .opelDirektbank, .hanseaticBank, .bhw, .kontist].contains(connection.connector) }
     private var isTR: Bool { connection.connector == .tradeRepublic }
-    /// Amex: user name and password for the portal login, kept in the vault and
+    /// Amex and Amazon Visa: portal credentials are kept as vault secrets and
     /// filled into the login form of the portal window.
-    private var savesPortalLogin: Bool { connection.connector == .americanExpress }
+    private var savesPortalLogin: Bool { AppModel.supportsStoredPortalLogin(connection.connector) }
     @State private var storePortalLogin = false
     @State private var portalUser = ""
     @State private var initialPortalUser = ""
@@ -376,9 +376,11 @@ struct ConnectionEditSheet: View {
                         if savesPortalLogin {
                             Toggle("Anmeldedaten im Tresor speichern", isOn: $storePortalLogin)
                             if storePortalLogin {
-                                TextField("Benutzername", text: $portalUser)
-                                    .autocorrectionDisabled()
-                                    .textContentType(.username)
+                                if connection.connector == .americanExpress {
+                                    TextField("Benutzername", text: $portalUser)
+                                        .autocorrectionDisabled()
+                                        .textContentType(.username)
+                                }
                                 SecureField(status?.hasPin == true ? "Gespeichertes Passwort (leer = unverändert)" : "Passwort", text: $pin)
                                     .textContentType(.password)
                                 Text("GiroCrab trägt beide verschlüsselt gespeichert ins Anmeldeformular ein. „Anmelden“ und den Bestätigungscode bestätigen Sie selbst.")
@@ -738,8 +740,10 @@ struct ConnectionEditSheet: View {
         initialDocumentsFetch = documentsFetch
         if isFinTs { tanMedium = model.revealSetting(tanMediumKey) }
         if savesPortalLogin {
-            portalUser = model.revealSetting(AppModel.portalLoginKey(connection.id))
-            storePortalLogin = status?.hasPin == true || !portalUser.isEmpty
+            let storedUser = model.revealSetting(AppModel.portalLoginKey(connection.id))
+            portalUser = connection.connector == .amazonVisa ? login : storedUser
+            storePortalLogin = !AppDefaults.store.bool(forKey: AppModel.portalLoginAutofillDisabledKey(connection.id))
+                && (status?.hasPin == true || !storedUser.isEmpty)
             initialPortalUser = portalUser
             initialStorePortalLogin = storePortalLogin
         }
@@ -772,6 +776,11 @@ struct ConnectionEditSheet: View {
         }
     }
 
+    /// Stores or clears the portal password without disturbing an existing alert.
+    private func savePortalPin(_ value: String?) -> Bool {
+        model.setConnectionPin(connection.id, value)
+    }
+
     private func save() {
         if documentsSupported, documentsFetch != initialDocumentsFetch {
             model.setDocumentsFetch(connection.id, documentsFetch)
@@ -788,13 +797,26 @@ struct ConnectionEditSheet: View {
         }
         if savesPortalLogin {
             let key = AppModel.portalLoginKey(connection.id)
-            let user = portalUser.trimmingCharacters(in: .whitespaces)
+            let user = connection.connector == .amazonVisa
+                ? l : portalUser.trimmingCharacters(in: .whitespaces)
+            let disabledKey = AppModel.portalLoginAutofillDisabledKey(connection.id)
             if !storePortalLogin {
-                model.setConnectionPin(connection.id, nil)
-                model.saveSetting(key, "")
+                if savePortalPin(nil) {
+                    model.saveSetting(key, "")
+                    AppDefaults.store.removeObject(forKey: disabledKey)
+                } else {
+                    // The old vault password may still exist: suppress autofill even
+                    // though the username secret must remain until the clear succeeds.
+                    AppDefaults.store.set(true, forKey: disabledKey)
+                }
             } else {
-                if user != model.revealSetting(key) { model.saveSetting(key, user) }
-                if !pin.isEmpty { model.setConnectionPin(connection.id, pin) }
+                let passwordReady = pin.isEmpty || savePortalPin(pin)
+                if passwordReady {
+                    AppDefaults.store.removeObject(forKey: disabledKey)
+                    if user != model.revealSetting(key) { model.saveSetting(key, user) }
+                } else {
+                    AppDefaults.store.set(true, forKey: disabledKey)
+                }
             }
         }
         saveSettings(keys + advancedKeys + postboxKeys)
@@ -814,6 +836,7 @@ struct ConnectionEditSheet: View {
         // the sheet can stay open (Speichern): what was saved is the new "unchanged"
         initialValues = values
         initialTanMedium = tanMedium.trimmingCharacters(in: .whitespaces)
+        if connection.connector == .amazonVisa { portalUser = l }
         initialPortalUser = portalUser.trimmingCharacters(in: .whitespaces)
         initialStorePortalLogin = storePortalLogin
     }

@@ -67,4 +67,10 @@ final class PortalCardsTests: XCTestCase {
         XCTAssertEqual(AppModel.portalLoginKey(7), "pin.conn.7.login")
         XCTAssertTrue(AppModel.portalLoginKey(7).hasPrefix("pin."))
     }
+
+    func testBothCardPortalsSupportStoredLogin() {
+        XCTAssertTrue(AppModel.supportsStoredPortalLogin(.americanExpress))
+        XCTAssertTrue(AppModel.supportsStoredPortalLogin(.amazonVisa))
+        XCTAssertFalse(AppModel.supportsStoredPortalLogin(.tradeRepublic))
+    }
 }
