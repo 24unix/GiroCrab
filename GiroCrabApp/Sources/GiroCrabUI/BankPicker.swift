@@ -11,6 +11,11 @@ import GiroCrabCore
         self.action = action
         if canSubmit != ok { canSubmit = ok }
     }
+
+    /// Forgets the form shown before: switching to another way to connect must
+    /// never leave its "Hinzufügen" behind (it added the PSD2 login instead of
+    /// the direct one when the new form did not report itself).
+    func reset() { update(false, {}) }
 }
 
 /// Add form for a bank with a dedicated connector (bunq, comdirect, Trade
@@ -25,6 +30,7 @@ struct KindAddForm: View {
     @State private var login = ""
 
     private var canAdd: Bool { !(loginRequired && login.trimmingCharacters(in: .whitespaces).isEmpty) }
+    private var loginRequired: Bool { Self.loginRequired(kind) }
 
     private func commit() {
         model.addConnection(kind, login: kind == .tradeRepublic ? normalizePhoneNumber(input: login) : login)
@@ -34,8 +40,10 @@ struct KindAddForm: View {
 
     /// Banks that need the login to sign in. For the others (Amazon, Amex,
     /// PayPal, bunq …) the field is only an optional display name.
-    private var loginRequired: Bool {
-        [.comdirect, .tradeRepublic, .advanzia, .volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .alteLeipziger].contains(kind)
+    static func loginRequired(_ kind: ConnectorKind) -> Bool {
+        [.comdirect, .tradeRepublic, .advanzia, .volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .alteLeipziger,
+         // their connectors refuse to sign in without it (customer number, user name, token)
+         .hanseaticBank, .easybank, .ibkr, .kontist, .volkswagenBank, .uberspace, .fordMoney, .opelDirektbank, .bhw].contains(kind)
     }
 
     /// Page where the bank hands out the API credentials GiroCrab asks for.
