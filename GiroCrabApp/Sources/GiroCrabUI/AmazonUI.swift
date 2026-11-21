@@ -189,12 +189,15 @@ enum AmazonReread: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// Per Amazon login.
-    static func key(_ connectionID: Int64) -> String { "amazon.reread.\(connectionID)" }
+    /// Per Amazon login of a vault: connection ids are row ids, so the demo
+    /// vault can have one with the same id as the own vault.
+    static func key(_ connectionID: Int64, demo: Bool) -> String {
+        "amazon.reread.\(demo ? "demo." : "")\(connectionID)"
+    }
 
-    static func stored(for connectionID: Int64, in defaults: UserDefaults = .standard) -> AmazonReread {
-        defaults.object(forKey: key(connectionID)) == nil
-            ? standard : AmazonReread(rawValue: defaults.integer(forKey: key(connectionID))) ?? standard
+    static func stored(for connectionID: Int64, demo: Bool, in defaults: UserDefaults = .standard) -> AmazonReread {
+        let key = key(connectionID, demo: demo)
+        return defaults.object(forKey: key) == nil ? standard : AmazonReread(rawValue: defaults.integer(forKey: key)) ?? standard
     }
 
     /// `codes` without the ones to `skip`, and how many were skipped.
@@ -372,7 +375,7 @@ struct AmazonWebSheet: View {
                 .disabled(running)
                 .help("Ältere, schon übernommene Bestellungen werden übersprungen; jüngere werden wegen späterer Erstattungen erneut gelesen.")
                 .onChange(of: reread) { _, new in
-                    UserDefaults.standard.set(new.rawValue, forKey: AmazonReread.key(connection.id))
+                    UserDefaults.standard.set(new.rawValue, forKey: AmazonReread.key(connection.id, demo: model.isDemo))
                 }
                 Spacer()
                 Button("Bestellungen abrufen") { start() }
@@ -384,7 +387,7 @@ struct AmazonWebSheet: View {
         }
         .webPageDialogs(uiDelegate)
         .task {
-            reread = AmazonReread.stored(for: connection.id)
+            reread = AmazonReread.stored(for: connection.id, demo: model.isDemo)
             browser.webView.uiDelegate = uiDelegate
             while !Task.isCancelled {
                 let ok = browser.onPortal

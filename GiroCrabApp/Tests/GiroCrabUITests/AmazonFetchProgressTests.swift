@@ -80,4 +80,9 @@ final class AmazonFetchProgressTests: XCTestCase {
         XCTAssertTrue(p.detail.contains("866 bereits übernommen"), p.detail)
         XCTAssertEqual(p.fraction, 1)
     }
+
+    /// The demo vault's login with the same id keeps its own choice.
+    func testRereadKeySeparatesTheDemoVault() {
+        XCTAssertNotEqual(AmazonReread.key(6, demo: false), AmazonReread.key(6, demo: true))
+    }
 }
