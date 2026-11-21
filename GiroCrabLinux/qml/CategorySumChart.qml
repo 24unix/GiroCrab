@@ -1,25 +1,52 @@
 import QtQuick
 
-// CategorySumChart.swift: monthly sums of the selected category (incl. subcategories)
-// above its bookings (GitHub #502). Pure expense categories are drawn upwards
-// (magnitude), mixed ones signed. Hovering a month shows its name and sum.
+// CategorySumChart.swift: day, month, quarter or year sums of the selected category (incl.
+// subcategories) above its bookings (GitHub #502, #557, #634). Pure expense categories are
+// drawn upwards (magnitude), mixed ones signed. Bars or a line, following the header's chart
+// type; the bar width comes from „Balken je“ below the chart or the right-click menu
+// (BalanceChartPrefs.effectiveCategoryBarUnit). Hovering a bar shows its period and sum.
 Item {
     id: chart
-    /// [CategoryPeriodSum] from `category_history_by_unit` (key_length 7: `yyyy-MM`)
+    /// [CategoryPeriodSum] from `category_history_by_unit` (`yyyy`, `yyyy-MM` or `yyyy-MM-dd`)
     property var sums: []
     property int hovered: -1
 
-    /// CategorySumChart.bars: one entry per month with bookings; `slot` counts months
-    /// from the first one, so months without bookings stay empty on the time axis.
-    readonly property var bars: {
+    readonly property string unit: BalanceChartPrefs.effectiveCategoryBarUnit
+    readonly property bool line: BalanceChartPrefs.style === "line"
+
+    /// Position of a period on the time axis in units of one bar.
+    function slotOf(period) {
+        const y = Number(period.slice(0, 4))
+        if (period.length === 4) return y
+        const m = Number(period.slice(5, 7))
+        if (period.length === 7) return unit === "quarter" ? y * 4 + Math.floor((m - 1) / 3) : y * 12 + m - 1
+        return Math.round(Date.UTC(y, m - 1, Number(period.slice(8, 10))) / 86400000)
+    }
+    /// CategorySumChart.quarters: month sums (`yyyy-MM`, oldest first) added up per quarter,
+    /// keyed by its first month.
+    function quarters(months) {
         const out = []
-        let first = -1
-        for (const s of sums) {
-            const y = Number(s.period.slice(0, 4)), m = Number(s.period.slice(5, 7))
-            if (!y || !m) continue
-            const index = y * 12 + m - 1
-            if (first < 0) first = index
-            out.push({ year: y, month: m, slot: index - first, cents: s.cents })
+        for (const s of months) {
+            if (s.period.length !== 7) continue
+            const month = Number(s.period.slice(5, 7))
+            if (month < 1 || month > 12) continue
+            const key = s.period.slice(0, 4) + "-" + String(Math.floor((month - 1) / 3) * 3 + 1).padStart(2, "0")
+            if (out.length && out[out.length - 1].period === key) out[out.length - 1].cents += s.cents
+            else out.push({ period: key, cents: s.cents })
+        }
+        return out
+    }
+    /// CategorySumChart.bars: one entry per period with bookings; `slot` counts bars from the
+    /// first one, so periods without bookings stay empty on the time axis.
+    readonly property var bars: {
+        const list = unit === "quarter" ? quarters(sums) : sums
+        const out = []
+        let first = null
+        for (const s of list) {
+            if (!Number(s.period.slice(0, 4))) continue
+            const index = slotOf(s.period)
+            if (first === null) first = index
+            out.push({ period: s.period, slot: index - first, cents: s.cents })
         }
         return out
     }
@@ -55,7 +82,59 @@ Item {
     function tickText(v) { return Number(v).toLocaleCurrencyString(Fmt.locale, Fmt.currencySymbol("EUR")).replace(/[.,]00(?=\D*$)/, "") }
     FontMetrics { id: metrics; font.pixelSize: Theme.caption2 }
 
+    /// The first day of a period as a Date.
+    function startDate(period) {
+        return Fmt.date(period.length === 4 ? period + "-01-01" : period.length === 7 ? period + "-01" : period)
+    }
+    /// CategorySumChart.tooltipFormat: "2026", "Q1 2026", "März 2026", "3. März 2026".
+    function tooltipText(period) {
+        const d = startDate(period)
+        if (!d) return period
+        switch (unit) {
+        case "year": return String(d.getFullYear())
+        case "quarter": return "Q" + (Math.floor(d.getMonth() / 3) + 1) + " " + d.getFullYear()
+        case "day": return d.toLocaleDateString(Fmt.locale, Fmt.pattern("d. MMM yyyy"))
+        default: return d.toLocaleDateString(Fmt.locale, "MMMM yyyy")
+        }
+    }
+    /// CategorySumChart.axisFormat: "2026", "Q1 26", "Mär. 26", "3. März".
+    function axisText(period) {
+        const d = startDate(period)
+        if (!d) return period
+        switch (unit) {
+        case "year": return String(d.getFullYear())
+        case "quarter": return "Q" + (Math.floor(d.getMonth() / 3) + 1) + " " + String(d.getFullYear() % 100).padStart(2, "0")
+        case "day": return Fmt.shortDay(d)
+        default: return Fmt.monthLabel(period.slice(0, 7))
+        }
+    }
+    /// Monotone cubic curve through `pts` (BalanceChart.qml, .interpolationMethod(.monotone)).
+    function traceMonotone(ctx, pts) {
+        const n = pts.length
+        ctx.moveTo(pts[0].x, pts[0].y)
+        if (n === 1) return
+        if (n === 2) { ctx.lineTo(pts[1].x, pts[1].y); return }
+        const d = [], m = []
+        for (let i = 0; i < n - 1; i++) {
+            const dx = pts[i + 1].x - pts[i].x
+            d.push(dx === 0 ? 0 : (pts[i + 1].y - pts[i].y) / dx)
+        }
+        m.push(d[0])
+        for (let i = 1; i < n - 1; i++) m.push(d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2)
+        m.push(d[n - 2])
+        for (let i = 0; i < n - 1; i++) {
+            if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue }
+            const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b
+            if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i] }
+        }
+        for (let i = 0; i < n - 1; i++) {
+            const dx = (pts[i + 1].x - pts[i].x) / 3
+            ctx.bezierCurveTo(pts[i].x + dx, pts[i].y + m[i] * dx, pts[i + 1].x - dx, pts[i + 1].y - m[i + 1] * dx, pts[i + 1].x, pts[i + 1].y)
+        }
+    }
+
     onBarsChanged: { hovered = -1; canvas.requestPaint() }
+    onLineChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
     onHoveredChanged: canvas.requestPaint()
@@ -78,7 +157,25 @@ Item {
             }
             ctx.restore()
             const slotWidth = chart.plotWidth / chart.slots
-            const barWidth = Math.max(1, Math.min(slotWidth * 0.62, 40))
+            if (chart.line) {
+                // LineMark through the middle of each period, PointMark per period (larger when hovered)
+                const pts = chart.bars.map(b => ({ x: chart.slotX(b.slot + 0.5), y: chart.yAt(chart.value(b)) }))
+                if (chart.hovered >= 0) {
+                    const x = pts[chart.hovered].x
+                    ctx.strokeStyle = Theme.withAlpha(Theme.secondary, 0.45); ctx.lineWidth = 1
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, chart.height - chart.axisHeight); ctx.stroke()
+                }
+                ctx.beginPath()
+                chart.traceMonotone(ctx, pts)
+                ctx.strokeStyle = Theme.withAlpha(Theme.accent, 0.8); ctx.lineWidth = 1.5; ctx.stroke()
+                chart.bars.forEach((b, i) => {
+                    ctx.fillStyle = b.cents < 0 && !chart.flip ? Theme.outflow : Theme.accent
+                    ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, chart.hovered === i ? 3.4 : 1.8, 0, 2 * Math.PI); ctx.fill()
+                })
+                return
+            }
+            // RectangleMark with a gap of 12 % of the period on each side
+            const barWidth = Math.max(1, slotWidth * 0.76)
             const zero = chart.yAt(0)
             chart.bars.forEach((b, i) => {
                 const v = chart.value(b)
@@ -114,17 +211,15 @@ Item {
             Sensitive { amounts: true }
         }
     }
-    // chartXAxis: about six month labels ("MMM yy"), centred under their month
+    // chartXAxis: CategorySumChart.axisDates – at most six labels, one per shown bar,
+    // centred under it
     Repeater {
         model: {
-            if (!chart.slots) return []
-            const every = Math.max(1, Math.ceil(chart.slots / 6))
+            const n = chart.bars.length
+            if (!n) return []
+            const every = Math.max(1, Math.ceil(n / 6))
             const out = []
-            const first = chart.bars[0].year * 12 + chart.bars[0].month - 1
-            for (let s = 0; s < chart.slots; s += every) {
-                const i = first + s
-                out.push({ slot: s, text: Fmt.monthLabel(Math.floor(i / 12) + "-" + String(i % 12 + 1).padStart(2, "0")) })
-            }
+            for (let i = 0; i < n; i += every) out.push({ slot: chart.bars[i].slot, text: chart.axisText(chart.bars[i].period) })
             return out
         }
         Text {
@@ -135,7 +230,7 @@ Item {
             x: Math.max(0, Math.min(chart.plotWidth - width, chart.slotX(modelData.slot + 0.5) - width / 2))
         }
     }
-    // Annotation of the hovered month: month and year, the sum
+    // Annotation of the hovered bar: its period, the sum
     Rectangle {
         visible: chart.hovered >= 0
         readonly property var bar: chart.hovered >= 0 ? chart.bars[chart.hovered] : null
@@ -148,21 +243,56 @@ Item {
             anchors.centerIn: parent
             spacing: 1
             Text { anchors.horizontalCenter: parent.horizontalCenter; font.pixelSize: Theme.caption2; color: Theme.secondary
-                   text: parent.parent.bar ? new Date(parent.parent.bar.year, parent.parent.bar.month - 1, 1).toLocaleDateString(Fmt.locale, "MMMM yyyy") : "" }
+                   text: parent.parent.bar ? chart.tooltipText(parent.parent.bar.period) : "" }
             Text { anchors.horizontalCenter: parent.horizontalCenter; font.pixelSize: Theme.caption; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                    color: parent.parent.bar && parent.parent.bar.cents < 0 ? Theme.outflow : Theme.text
                    text: parent.parent.bar ? Fmt.money(parent.parent.bar.cents) : ""
                    Sensitive { amounts: true } }
         }
     }
+    // CategorySumChart.swift › Descriptor (#571, #674): title, a whole sentence per unit as the
+    // summary (flipped bars = expenses), and the hovered bar like the tooltip (no amount while hidden).
+    readonly property string accessibleSummary: {
+        switch (unit) {
+        case "day": return flip ? qsTr("Ausgaben je Tag") : qsTr("Summe je Tag")
+        case "quarter": return flip ? qsTr("Ausgaben je Quartal") : qsTr("Summe je Quartal")
+        case "year": return flip ? qsTr("Ausgaben je Jahr") : qsTr("Summe je Jahr")
+        default: return flip ? qsTr("Ausgaben je Monat") : qsTr("Summe je Monat")
+        }
+    }
+    Accessible.role: Accessible.Chart
+    Accessible.name: qsTr("Summen der Kategorie")
+    Accessible.description: hovered < 0 || hovered >= bars.length || (AppModel.effectiveRedaction & AppModel.redactAmounts) !== 0
+        ? accessibleSummary
+        : accessibleSummary + ". " + tooltipText(bars[hovered].period) + ": " + Fmt.money(flip ? -bars[hovered].cents : bars[hovered].cents)
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true
+        acceptedButtons: Qt.RightButton
         onPositionChanged: m => {
             if (!chart.slots || m.x > chart.plotWidth) { chart.hovered = -1; return }
             const slot = Math.floor(m.x / chart.plotWidth * chart.slots)
             chart.hovered = chart.bars.findIndex(b => b.slot === slot)
         }
         onExited: chart.hovered = -1
+        // .contextMenu { ChartStyleInlinePicker(); unitPicker }
+        onClicked: styleMenu.popup()
+    }
+    AppMenu {
+        id: styleMenu
+        Repeater {
+            model: BalanceChartPrefs.styles
+            AppMenuItem { required property var modelData; text: modelData.title; checkable: true
+                          checked: BalanceChartPrefs.style === modelData.id
+                          onTriggered: { checked = Qt.binding(() => BalanceChartPrefs.style === modelData.id); BalanceChartPrefs.setStyle(modelData.id) } }
+        }
+        AppMenuSeparator {}
+        // unitPicker: day / month / quarter / year per bar, right on the chart (#557, #634)
+        Repeater {
+            model: BalanceChartPrefs.categoryUnits
+            AppMenuItem { required property var modelData; text: modelData.title; checkable: true
+                          checked: chart.unit === modelData.id
+                          onTriggered: { checked = Qt.binding(() => chart.unit === modelData.id); BalanceChartPrefs.setCategoryBarUnit(modelData.id) } }
+        }
     }
 }

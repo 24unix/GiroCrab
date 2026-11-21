@@ -96,6 +96,19 @@ ApplicationWindow {
             Action { text: qsTr("Budgets anzeigen"); checkable: true; checked: AppModel.showBudgets; enabled: AppModel.isUnlocked; onToggled: AppModel.showBudgets = checked }
             // RootView.swift › Toggle("Kopfbereich minimieren") (#358)
             Action { text: qsTr("Kopfbereich minimieren"); checkable: true; checked: AppModel.compactHeader; enabled: AppModel.isUnlocked; onToggled: AppModel.compactHeader = checked }
+            // the header chart (#634): same switches as the row below it
+            Action { text: qsTr("Diagramm anzeigen"); checkable: true; checked: !BalanceChartPrefs.collapsed; enabled: AppModel.isUnlocked
+                     onToggled: { BalanceChartPrefs.setCollapsed(!checked); checked = Qt.binding(() => !BalanceChartPrefs.collapsed) } }
+            AppMenu {
+                title: qsTr("Diagramm")
+                enabled: AppModel.isUnlocked
+                Repeater {
+                    model: BalanceChartPrefs.styles
+                    AppMenuItem { required property var modelData; text: modelData.title; checkable: true
+                                  checked: BalanceChartPrefs.style === modelData.id
+                                  onTriggered: { checked = Qt.binding(() => BalanceChartPrefs.style === modelData.id); BalanceChartPrefs.setStyle(modelData.id) } }
+                }
+            }
             // RootView.swift › Toggle("Privatmodus") ⇧⌘H (#719): hides amounts (or all personal data, Einstellungen › Allgemein)
             Action { text: qsTr("Privatmodus"); shortcut: "Ctrl+Shift+H"; checkable: true; checked: PrivacyMode.enabled; onToggled: PrivacyMode.setEnabled(checked) }
             AppMenuSeparator {}

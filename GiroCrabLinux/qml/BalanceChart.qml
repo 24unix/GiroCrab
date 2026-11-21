@@ -3,17 +3,23 @@ import QtQuick.Controls
 
 // BalanceHeaderView.swift › BalanceChart: balance over the selected period as a line
 // (every day, soft area fill) or as bars (BalanceBars.swift: average balance per day,
-// month or year, GitHub #203), chosen in Einstellungen › Allgemein › Saldoverlauf or by
-// right-clicking the chart. Dashed rules mark each turn of the year, a slim trailing
+// month or year, GitHub #203), chosen below the chart (HeaderChartControls.qml, #634) or by
+// right-clicking it. Dashed rules mark each turn of the year, a slim trailing
 // axis shows zero, maximum and minimum; hovering shows a readout, a click jumps to the
 // day (bars: the last day of the bar). Bars are drawn on a Canvas like CategorySumChart.qml.
+// While the booking list scrolls, a marker with the readout follows the day at its top
+// edge (#593, StreamFollow); hovering takes precedence and highlights that day in the list.
 Item {
     id: chart
     property var points: []
     signal selectDay(string day)
     /// Hovered day (line) or bar (bars), -1 = none.
     property int hovered: -1
+    /// Follows the booking list (#593); off for a Sachwert's own history.
+    property bool follows: true
 
+    /// What this chart draws: the header shows the pie and hides the chart itself (#634),
+    /// so everything but bars is the line here (also for Sachwerte, which have no pie).
     readonly property bool isBars: BalanceChartPrefs.style === "bars"
     /// BalanceBarUnit.resolved(dayCount:)
     readonly property string unit: BalanceChartPrefs.resolvedUnit(points.length)
@@ -129,14 +135,42 @@ Item {
     /// The ISO date that starts element i (day or bar).
     function dateAt(i) { return isBars ? bars[i].start : points[i].date }
 
+    /// followedPoint / followedBar (#593): the day at the top of the scrolled booking list –
+    /// that day's closing balance (or the latest earlier one, else the first), the bar that
+    /// contains it (else the nearest). -1 = none.
+    readonly property int followed: {
+        const day = follows ? StreamFollow.scrollFocusDay : ""
+        if (!day || !count) return -1
+        if (isBars) {
+            const len = unit === "year" ? 4 : unit === "month" ? 7 : 10
+            const key = day.slice(0, len)
+            const exact = bars.findIndex(b => b.start.slice(0, len) === key)
+            if (exact >= 0) return exact
+            const t = Fmt.date(day).getTime()
+            let best = 0
+            for (let i = 1; i < bars.length; i++)
+                if (Math.abs(Fmt.date(bars[i].start).getTime() - t) < Math.abs(Fmt.date(bars[best].start).getTime() - t)) best = i
+            return best
+        }
+        for (let i = points.length - 1; i >= 0; i--) if (points[i].date <= day) return i
+        return 0
+    }
+    /// Marker, readout and highlighted bar: the hovered element, else the followed one.
+    readonly property int active: hovered >= 0 ? hovered : followed
+
     // .onChange(of: points / style / barUnit) { clearHover() }
     onPointsChanged: hovered = -1
     onIsBarsChanged: hovered = -1
     onUnitChanged: hovered = -1
+    // the booking list highlights the day under the pointer (#593)
+    onHoveredChanged: StreamFollow.chartHoverDay = hovered < 0 || hovered >= count ? ""
+                                                   : isBars ? bars[hovered].last : points[hovered].date
+    onVisibleChanged: if (!visible) hovered = -1
+    Component.onDestruction: StreamFollow.chartHoverDay = ""
+    onActiveChanged: canvas.requestPaint()
     onDrawnChanged: canvas.requestPaint()
     onBarsChanged: canvas.requestPaint()
     onStatsChanged: canvas.requestPaint()
-    onHoveredChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
     Connections { target: Theme; function onDarkChanged() { canvas.requestPaint() } }
@@ -174,12 +208,12 @@ Item {
                 ctx.restore()
             }
             if (chart.isBars) {
-                // BarMark: accent, outflow below zero; the hovered bar stands out
+                // BarMark: accent, outflow below zero; the hovered (or followed) bar stands out
                 const w = Math.max(1, chart.slot * 0.7)
                 const zero = chart.yAt(0)
                 chart.bars.forEach((b, i) => {
                     const tint = b.average < 0 ? Theme.outflow : Theme.accent
-                    ctx.fillStyle = Theme.withAlpha(tint, chart.hovered < 0 || chart.hovered === i ? 0.85 : 0.35)
+                    ctx.fillStyle = Theme.withAlpha(tint, chart.active < 0 || chart.active === i ? 0.85 : 0.35)
                     const x = chart.xAt(i) + (chart.slot - w) / 2
                     const y = chart.yAt(b.average)
                     const top = Math.min(y, zero), h = Math.max(1, Math.abs(zero - y))
@@ -207,12 +241,13 @@ Item {
             ctx.beginPath()
             chart.traceMonotone(ctx, line)
             ctx.strokeStyle = Theme.withAlpha(Theme.accent, 0.8); ctx.lineWidth = 1.5; ctx.stroke()
-            if (chart.hovered >= 0 && chart.hovered < chart.points.length) {
-                const x = chart.xAt(chart.hovered)
+            // marker(in:proxy:geo:): the hovered day, else the day at the top of the list
+            if (chart.active >= 0 && chart.active < chart.points.length) {
+                const x = chart.xAt(chart.active)
                 ctx.strokeStyle = Theme.withAlpha(Theme.secondary, 0.45); ctx.lineWidth = 1
                 ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, base); ctx.stroke()
                 ctx.fillStyle = Theme.accent
-                ctx.beginPath(); ctx.arc(x, chart.yAt(chart.points[chart.hovered].balance_cents), 3.5, 0, 2 * Math.PI); ctx.fill()
+                ctx.beginPath(); ctx.arc(x, chart.yAt(chart.points[chart.active].balance_cents), 3.5, 0, 2 * Math.PI); ctx.fill()
             }
         }
     }
@@ -292,14 +327,14 @@ Item {
     // left of the pointer in the right half, else right of it.
     Rectangle {
         id: readout
-        visible: chart.hovered >= 0 && chart.hovered < chart.count
-        readonly property int cents: visible ? chart.valueAt(chart.hovered) : 0
+        visible: chart.active >= 0 && chart.active < chart.count
+        readonly property int cents: visible ? chart.valueAt(chart.active) : 0
         color: Theme.card; border.color: Theme.border; radius: 6
         width: tip.implicitWidth + 14; height: tip.implicitHeight + 8
         x: {
             if (!visible) return 0
-            const c = chart.centerX(chart.hovered)
-            const want = chart.hovered * 2 > chart.count ? c - width - 4 : c + 4
+            const c = chart.centerX(chart.active)
+            const want = chart.active * 2 > chart.count ? c - width - 4 : c + 4
             return Math.max(0, Math.min(chart.plotWidth - width, want))
         }
         y: 0
@@ -308,7 +343,7 @@ Item {
             anchors.centerIn: parent
             spacing: 1
             Text { anchors.horizontalCenter: parent.horizontalCenter; font.pixelSize: Theme.caption2; color: Theme.secondary
-                   text: readout.visible ? chart.title(chart.hovered) : "" }
+                   text: readout.visible ? chart.title(chart.active) : "" }
             Text { anchors.horizontalCenter: parent.horizontalCenter; font.pixelSize: Theme.caption; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                    color: readout.cents < 0 ? Theme.outflow : Theme.text
                    text: readout.visible ? (chart.isBars ? "Ø " : "") + Fmt.money(readout.cents) : ""
@@ -317,9 +352,10 @@ Item {
     }
     Accessible.role: Accessible.Chart
     Accessible.name: qsTr("Saldoverlauf")
-    Accessible.description: hovered < 0 || hovered >= count || (AppModel.effectiveRedaction & AppModel.redactAmounts) !== 0 ? ""
-        : isBars ? qsTr("%1: Ø %2, Ende %3").arg(title(hovered)).arg(Fmt.money(bars[hovered].average)).arg(Fmt.money(bars[hovered].closing))
-                 : title(hovered) + ": " + Fmt.money(points[hovered].balance_cents)
+    // the readout's element: the hovered one, else the day the list follows
+    Accessible.description: active < 0 || active >= count || (AppModel.effectiveRedaction & AppModel.redactAmounts) !== 0 ? ""
+        : isBars ? qsTr("%1: Ø %2, Ende %3").arg(title(active)).arg(Fmt.money(bars[active].average)).arg(Fmt.money(bars[active].closing))
+                 : title(active) + ": " + Fmt.money(points[active].balance_cents)
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true

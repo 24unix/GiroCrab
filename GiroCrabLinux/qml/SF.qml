@@ -28,7 +28,7 @@ QtObject {
         "square.and.arrow.down.on.square": "document-import",
         "exclamationmark.triangle": "dialog-warning", "exclamationmark.shield": "security-low", "globe": "globe-symbolic",
         "person": "im-user", "tray": "mail-folder-inbox", "chart.bar.xaxis": "office-chart-bar", "chart.bar": "office-chart-bar",
-        "chart.pie": "office-chart-pie", "arrow.down": "view-financial-category-income",
+        "chart.pie": "office-chart-pie", "chart.xyaxis.line": "office-chart-line", "arrow.down": "view-financial-category-income",
         "arrow.left.arrow.right": "exchange-positions", "cart": "view-financial-category-expense",
         "car": "car", "tram": "car", "fuelpump": "car", "fork.knife": "fork", "takeoutbag.and.cup.and.straw": "fork",
         "bag": "view-financial-category-expense", "shippingbox": "package", "gift": "favorite", "sofa": "go-home",

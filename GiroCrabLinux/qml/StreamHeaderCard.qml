@@ -32,25 +32,54 @@ Card {
     /// `@AppStorage(ViewLayout.compactHeaderKey)`: title, balance and the filter row only (#358).
     readonly property bool compact: AppModel.compactHeader
     readonly property string compactHeaderTitle: compact ? qsTr("Kopfbereich einblenden") : qsTr("Kopfbereich minimieren")
+    readonly property bool isCategory: AppModel.sidebarSelection.startsWith("category:")
+    /// accountHolderLine (#606): the account holder under the bank/IBAN line; "" when empty.
+    readonly property string holder: account ? (account.owner || "").trim() : ""
+
+    // Header chart (#634): chart and HeaderChartControls below it; „Ausgeblendet“ folds only the
+    // chart. Depots and Sachwerte keep their own value chart without the controls (no pie).
+    readonly property bool showsChartArea: !compact && AppModel.showStatistics && AppModel.scope !== "Investments" && (!isDepot || isTangible)
+    readonly property bool hasChartControls: showsChartArea && !isDepot
+    readonly property bool chartShown: showsChartArea && (isDepot || !BalanceChartPrefs.collapsed)
+    readonly property bool pie: !isDepot && BalanceChartPrefs.style === "pie"
+
+    // ViewLayout.cardPadding / cardVerticalPadding(collapsed:) (#603)
+    padding: 12
+    verticalPadding: compact ? 4 : 12
 
     ColumnLayout {
         width: parent.width
-        spacing: 9
+        spacing: 8   // ViewLayout.cardSpacing
         RowLayout {
             Layout.fillWidth: true
+            // Minimise the header: more room for the booking list (GitHub #358); CardChevron (#603).
+            CardChevron {
+                Layout.alignment: card.compact ? Qt.AlignVCenter : Qt.AlignTop
+                collapsed: card.compact; customTitle: card.compactHeaderTitle
+                onToggled: AppModel.compactHeader = !AppModel.compactHeader
+            }
             ColumnLayout {
                 spacing: 3
                 Layout.fillWidth: true
-                Layout.maximumWidth: implicitWidth   // the chevron sits right after the title
-                Layout.alignment: Qt.AlignTop
-                // minimised: .headline (body size, semibold) instead of .title2
-                Text { text: card.headerTitle; font.pixelSize: card.compact ? Theme.body + 2 : Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                Layout.maximumWidth: implicitWidth
+                Layout.alignment: card.compact ? Qt.AlignVCenter : Qt.AlignTop
+                // minimised: .subheadline instead of .title2 (#603)
+                Text { text: card.headerTitle; font.pixelSize: card.compact ? Theme.subheadline + 1 : Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
                        Sensitive { labels: card.account === null } }   // an account name, or a group / category
                 Text {
                     visible: !card.compact
                     text: card.account ? [card.account.bank_name, Fmt.iban(card.account.iban)].filter(s => s).join(" · ") : AppModel.lastSyncText
                     font.pixelSize: Theme.caption; color: Theme.secondary
                     Sensitive { when: card.account !== null }   // IBAN
+                }
+                // BalanceHeaderView.swift: the account holder under the bank/IBAN line (#606)
+                Text {
+                    visible: card.holder !== "" && !card.compact
+                    text: card.holder; font.pixelSize: Theme.caption; color: Theme.secondary
+                    elide: Text.ElideRight; Layout.fillWidth: true
+                    HoverHandler { id: holderHover }
+                    ToolTip.visible: holderHover.hovered; ToolTip.delay: 600; ToolTip.text: AppModel.masking(card.holder)
+                    Sensitive {}
                 }
                 // BalanceHeaderView.swift: the account note (AccountEditSheet, #605)
                 Text {
@@ -81,22 +110,19 @@ Card {
                     AppMenuItem { text: qsTr("Kontostand"); onTriggered: AppModel.copyToClipboard(Fmt.clipboard(card.account.balance_cents)) }
                 }
             }
-            // Minimise the header: more room for the booking list (GitHub #358).
-            Item {
-                Layout.alignment: Qt.AlignTop
-                implicitWidth: compactIcon.width + 8; implicitHeight: compactIcon.height + 8
-                SFIcon { id: compactIcon; anchors.centerIn: parent; symbol: "chevron.down"; size: 10; color: Theme.secondary
-                         rotation: card.compact ? 0 : 180 }   // chevron.down / chevron.up
-                MouseArea { id: compactArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: AppModel.compactHeader = !AppModel.compactHeader }
-                ToolTip.visible: compactArea.containsMouse; ToolTip.delay: 600; ToolTip.text: card.compactHeaderTitle
-                Accessible.role: Accessible.Button; Accessible.name: card.compactHeaderTitle
+            // Folded: period and status filters share the title row (GitHub #603).
+            Loader {
+                active: card.compact && !card.isDepot
+                visible: active
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                sourceComponent: filterRow
             }
-            Item { Layout.fillWidth: true; Layout.preferredWidth: 0 }
+            Item { visible: !card.compact || card.isDepot; Layout.fillWidth: true; Layout.preferredWidth: 0 }
             ColumnLayout {
                 visible: card.balance !== null
                 spacing: 2
-                Layout.alignment: Qt.AlignTop
+                Layout.alignment: card.compact ? Qt.AlignVCenter : Qt.AlignTop
                 // "<Label> kopieren" on the balance
                 TapHandler {
                     acceptedButtons: Qt.RightButton
@@ -110,11 +136,23 @@ Card {
                 Text {
                     Layout.alignment: Qt.AlignRight
                     text: card.balance ? Fmt.money(card.balance.cents) : ""
-                    font.pixelSize: card.compact ? Theme.title3 + 3 : Theme.largeTitle + 4; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                    font.pixelSize: card.compact ? Theme.subheadline + 1 : Theme.largeTitle + 4; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                     color: card.account && card.account.kind === "Loan" ? Theme.loan : Theme.text
                     Sensitive { amounts: true }
                 }
                 Text { visible: !card.compact; Layout.alignment: Qt.AlignRight; text: card.balance ? card.balance.label : ""; font.pixelSize: Theme.caption; color: Theme.secondary }
+                // #569: the total adds up the base currency only, further currencies stand apart
+                Text {
+                    readonly property var split: card.account === null && !card.selectedItem ? AppModel.headerTotalSplit : null
+                    visible: split !== null
+                    Layout.alignment: Qt.AlignRight
+                    text: split ? qsTr("Zusätzlich: %1").arg(split.others.map(o => Fmt.money(o.cents, o.currency)).join(" · ")) : ""
+                    font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary
+                    HoverHandler { id: splitHover }
+                    ToolTip.visible: splitHover.hovered; ToolTip.delay: 600
+                    ToolTip.text: qsTr("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
+                    Sensitive { amounts: true }
+                }
             }
         }
 
@@ -130,22 +168,41 @@ Card {
             account: card.isDepot ? card.account : null
         }
 
-        BalanceChart {
-            visible: !card.compact && (!card.isDepot || card.isTangible) && AppModel.showStatistics && AppModel.scope !== "Investments"
-                     && !AppModel.sidebarSelection.startsWith("category:")
+        // headerChart (#634): the chosen type, then HeaderChartControls below it (also while hidden)
+        ColumnLayout {
+            visible: card.showsChartArea
             Layout.fillWidth: true
-            Layout.preferredHeight: 72
-            points: card.chartPoints
-            onSelectDay: day => AppModel.jumpToDay(day)
-        }
-
-        // A category: its monthly sums instead of the balance (CategorySumChart.swift, #502).
-        CategorySumChart {
-            visible: !card.compact && !card.isDepot && AppModel.showStatistics && AppModel.scope !== "Investments"
-                     && AppModel.sidebarSelection.startsWith("category:")
-            Layout.fillWidth: true
-            Layout.preferredHeight: 72
-            sums: AppModel.categoryHistory
+            spacing: 4
+            BalanceChart {
+                visible: card.chartShown && !card.pie && (card.isDepot || !card.isCategory)
+                Layout.fillWidth: true
+                Layout.preferredHeight: 72
+                points: card.chartPoints
+                follows: !card.isTangible
+                onSelectDay: day => AppModel.jumpToDay(day)
+            }
+            // A category: its sums instead of the balance (CategorySumChart.swift, #502).
+            CategorySumChart {
+                visible: card.chartShown && !card.pie && !card.isDepot && card.isCategory
+                Layout.fillWidth: true
+                Layout.preferredHeight: 72
+                sums: AppModel.categoryHistory
+            }
+            HeaderPieChart {
+                visible: card.chartShown && card.pie
+                Layout.fillWidth: true
+                Layout.preferredHeight: 72
+            }
+            // chartUnitMenu: category sums (line or bars), balance bars
+            HeaderChartControls {
+                visible: card.hasChartControls
+                Layout.fillWidth: true
+                units: card.pie ? [] : card.isCategory ? BalanceChartPrefs.categoryUnits
+                       : BalanceChartPrefs.style === "bars" ? BalanceChartPrefs.units : []
+                unit: card.isCategory ? BalanceChartPrefs.effectiveCategoryBarUnit : BalanceChartPrefs.barUnit
+                resolved: !card.isCategory && BalanceChartPrefs.barUnit === "auto" ? BalanceChartPrefs.resolvedUnit(card.chartPoints.length) : ""
+                onUnitChosen: id => card.isCategory ? BalanceChartPrefs.setCategoryBarUnit(id) : BalanceChartPrefs.setBarUnit(id)
+            }
         }
 
         RowLayout {
@@ -167,10 +224,16 @@ Card {
                   HoverHandler { id: fixedHover } }
         }
 
-        // filterRow
-        RowLayout {
-            visible: !card.isDepot
+        // filterRow: below the KPIs, or in the title row while the header is minimised (#603)
+        Loader {
+            active: !card.isDepot && !card.compact
+            visible: active
             Layout.fillWidth: true
+            sourceComponent: filterRow
+        }
+        Component {
+        id: filterRow
+        RowLayout {
             spacing: 12
             MenuLabel {
                 symbol: "calendar"; text: AppModel.periodTitle
@@ -262,6 +325,7 @@ Card {
                         onClicked: AppModel.openAccountDocuments(card.account) }
             Item { Layout.fillWidth: true }
             Text { text: qsTr("%1 Buchungen").arg(AppModel.bookingCountLabel); font.pixelSize: Theme.caption; color: Theme.secondary }
+        }
         }
         // depotRow
         RowLayout {

@@ -1,10 +1,18 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtCore
 
 // PlanningUI.swift › CashflowCard: income/expense bars per month, quarter or year.
+// Folds to its title row with the net of the latest period (GitHub #603).
 Card {
     id: card
+    // ViewLayout.cardPadding / cardVerticalPadding(collapsed:)
+    padding: 12
+    verticalPadding: collapsed ? 4 : 12
+    /// `@AppStorage(ViewLayout.cashflowCollapsedKey)`
+    readonly property bool collapsed: layout.cashflowCollapsed
+    property Settings layout: Settings { property bool cashflowCollapsed: false }
     property string granularity: "Month"
     /// @AppStorage("chartColorPalette")
     readonly property string paletteName: AppModel.uiDefaults.chartColorPalette
@@ -40,11 +48,22 @@ Card {
 
     ColumnLayout {
         width: parent.width
-        spacing: 8
+        spacing: 8   // ViewLayout.cardSpacing
         RowLayout {
             Layout.fillWidth: true
+            CardChevron { collapsed: card.collapsed; onToggled: card.layout.cashflowCollapsed = !card.collapsed }
             Text { text: qsTr("Cashflow"); font.pixelSize: Theme.subheadline + 1; font.weight: Font.DemiBold; color: Theme.text; Layout.fillWidth: true }
-            IconButton { symbol: "paintpalette"; symbolSize: 14;
+            // folded: the latest period's net
+            Text {
+                readonly property var last: card.rows.length ? card.rows[card.rows.length - 1] : null
+                readonly property real net: last ? last.income_cents - last.expense_cents : 0
+                visible: card.collapsed && last !== null
+                text: last ? card.label(last.key) + ": " + Fmt.money(net) : ""
+                font.pixelSize: Theme.subheadline + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                color: net >= 0 ? Theme.inflow : Theme.outflow
+                Sensitive { amounts: true }
+            }
+            IconButton { visible: !card.collapsed; symbol: "paintpalette"; symbolSize: 14;
                 ToolTip.text: qsTr("Farbschema"); ToolTip.visible: hovered
                 onClicked: paletteMenu.popup()
                 AppMenu {
@@ -57,15 +76,22 @@ Card {
                 }
             }
             Segmented {
+                visible: !card.collapsed
                 Layout.preferredWidth: 220
                 options: [{ id: "Month", title: qsTr("Monat") }, { id: "Quarter", title: qsTr("Quartal") }, { id: "Year", title: qsTr("Jahr") }]
+                Accessible.name: qsTr("Zeitraum")   // Picker("Zeitraum", …).labelsHidden() (ff91866)
                 current: card.granularity
                 onActivated: id => card.granularity = id
             }
         }
         Item {
+            visible: !card.collapsed
             Layout.fillWidth: true
             Layout.preferredHeight: 160
+            // PlanningUI.swift › CashflowCard: .accessibilityLabel("Cashflow") + chart descriptor (#571)
+            Accessible.role: Accessible.Chart
+            Accessible.name: qsTr("Cashflow")
+            Accessible.description: qsTr("Einnahmen und Ausgaben je Zeitraum")
             // y axis + dashed grid
             Repeater {
                 model: 4
@@ -112,6 +138,7 @@ Card {
             }
         }
         RowLayout {
+            visible: !card.collapsed
             spacing: 14
             Repeater {
                 model: [{ c: card.hexes.income[0], t: qsTr("Einnahmen") }, { c: card.hexes.expense[0], t: qsTr("Ausgaben") }]

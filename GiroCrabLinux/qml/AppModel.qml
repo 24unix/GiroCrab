@@ -855,7 +855,7 @@ QtObject {
         if (!sel.startsWith("category:")) return null
         const r = periodRange()
         return ["category_history_by_unit", { category_id: Number(sel.slice(9)), account_ids: categoryAccountIDs,
-                                              date_from: r[0], date_to: r[1], key_length: 7 }]
+                                              date_from: r[0], date_to: r[1], key_length: BalanceChartPrefs.categoryKeyLength }]
     }
     /// AppModel+Loading.swift › reloadCategoryHistory (cheap SQL aggregate, still off the GUI
     /// thread). Callers check `selectionLoadTakes` first: a running selection load brings it.
@@ -1425,7 +1425,34 @@ QtObject {
         if (sel.startsWith("category:")) { const c = categories.find(c => "category:" + c.id === sel); return c ? c.path : qsTr("Kategorie") }
         return ""
     }
+    /// AppModel+Loading.swift › headerTotalAccounts: accounts behind the header total of the
+    /// current selection (null: single account / not a total).
+    readonly property var headerTotalAccounts: {
+        const sel = sidebarSelection
+        if (sel === "all") return liquidAccounts
+        if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.accounts : null }
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.accounts : null }
+        if (sel.startsWith("userGroup:")) { const ids = userGroupAccountIDs(sel.slice(10)); return allAccounts.filter(a => ids.indexOf(a.id) >= 0) }
+        return null
+    }
+    /// headerTotalSplit (#569, AllAccountsRoot.swift › HeaderTotal.split): the header total in the
+    /// base currency (EUR, or the single shared currency when no EUR account is there) plus every
+    /// further currency (alphabetical) – never mixed into one number. null: one currency only.
+    readonly property var headerTotalSplit: {
+        const accounts = headerTotalAccounts
+        if (!accounts) return null
+        const sums = {}
+        for (const a of accounts) { const c = a.currency ? a.currency.toUpperCase() : "EUR"; sums[c] = (sums[c] || 0) + a.balance_cents }
+        const codes = Object.keys(sums)
+        const primary = sums["EUR"] !== undefined || codes.length !== 1 ? "EUR" : codes[0]
+        const others = codes.filter(c => c !== primary).sort().map(c => ({ currency: c, cents: sums[c] }))
+        return others.length ? { currency: primary, cents: sums[primary] || 0, others: others } : null
+    }
     readonly property var headerBalance: {
+        const hb = headerBalanceUnsplit, split = headerTotalSplit
+        return hb && split ? { label: hb.label, cents: split.cents } : hb
+    }
+    readonly property var headerBalanceUnsplit: {
         const sel = sidebarSelection
         if (sel === "all") return { label: qsTr("Verfügbar (Giro, Tagesgeld, Karten)"), cents: liquidBalance }
         if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? { label: isTangible(a.id) ? qsTr("Wert heute") : qsTr("Kontostand"), cents: a.balance_cents } : null }
