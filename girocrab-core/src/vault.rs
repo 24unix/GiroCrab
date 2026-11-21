@@ -389,6 +389,8 @@ impl Vault {
         let _ = crate::text::repair_stored_text(conn);
         // one-time purge of favicons that don't belong to a known brand
         let _ = crate::insights::purge_untrusted_logos(conn);
+        // offline accounts of an import named a software as their bank (#1467)
+        let _ = crate::importers::moneymoney_import::clear_old_import_bank_name(conn);
     }
 
     fn purge_deleted_connection_secrets(conn: &Connection) -> CoreResult<()> {
