@@ -392,6 +392,9 @@ fn english(de: &str) -> Option<&'static str> {
         "EquatePlus: Unvollständige oder nicht unterstützte Bestandsdaten. Es wurden keine Daten übernommen." => {
             "EquatePlus: Incomplete or unsupported inventory data. No data was imported."
         }
+        "EquatePlus: Neue Programmkennungen konnten den bisherigen Depots nicht eindeutig zugeordnet werden. Prüfen und archivieren Sie die alten Depots vor einem erneuten Abruf." => {
+            "EquatePlus: The new program IDs could not be reliably matched to your existing depots. Review and archive the old depots before trying again."
+        }
         "Bitte bei EquatePlus im Browserfenster anmelden und die Bestände abrufen." => {
             "Please sign in to EquatePlus in the browser window and fetch your holdings."
         }

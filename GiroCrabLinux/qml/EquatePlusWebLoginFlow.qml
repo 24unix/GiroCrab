@@ -326,7 +326,10 @@ WebLoginFlow {
         run(guard + collect, {}, gen)
             .then(snapshot => {
                 stage = "import"
-                return AppModel.corePromise("import_equateplus_snapshot", { connection_id: id, snapshot_json: snapshot })
+                const args = { connection_id: id, snapshot_json: snapshot }
+                return new Promise((resolve, reject) => {
+                    app.coreAsync("import_equateplus_snapshot", args, resolve, error => reject(app.parseCoreError(error)))
+                })
             })
             .then(s => {
                 // the import is stored even when the window was closed meanwhile: reload anyway
@@ -342,8 +345,8 @@ WebLoginFlow {
                 if (e !== cancelled) {
                     // never the raw error: it can include token-bearing URLs
                     const status = stage === "portal" ? httpStatus(e && e.message) : ""
-                    const mapping = stage === "import" && e && e.message
-                        ? e.message.split("EQUATEPLUS_PROGRAM_MAPPING ")[1] : ""
+                    const mapping = stage === "import" && e && e.code === "EQUATEPLUS_PROGRAM_MAPPING"
+                        ? e.message : ""
                     notice = mapping || (stage === "import"
                         ? qsTr("EquatePlus: Die gelieferten Bestandsdaten konnten nicht verarbeitet werden. Die bisherigen Bestände bleiben erhalten.")
                         : qsTr("EquatePlus: Der Datenabruf ist fehlgeschlagen. Bitte erneut versuchen."))
