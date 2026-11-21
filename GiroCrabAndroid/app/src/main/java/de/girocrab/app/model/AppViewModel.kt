@@ -66,8 +66,10 @@ class AppViewModel(private val core: CoreBridge = DefaultCoreBridge()) : ViewMod
     fun bootstrap() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
-            val own = withContext(Dispatchers.Default) { runCatching { core.openOwnVault() }.getOrNull() }
-            if (own != null) adoptOwn(own) else showDemo()
+            // No vault is opened here anymore: the own vault needs the device key, and that only
+            // comes back from the biometric gate (#1428, 2.2/2.4). Until then the app starts in
+            // demo mode, which is exactly what it did while `openOwnVault()` returned null.
+            showDemo()
         }
     }
 
