@@ -154,7 +154,7 @@ Item {
                             TapHandler { enabled: entry.selectable; cursorShape: Qt.PointingHandCursor
                                          onTapped: AppModel.sidebarSelection = "category:" + entry.modelData.id }
                             Accessible.role: entry.selectable ? Accessible.Button : Accessible.StaticText
-                            Accessible.name: entry.modelData.label
+                            Accessible.name: AppModel.masking(entry.modelData.label, AppModel.redactLabels)
                         }
                     }
                 }
