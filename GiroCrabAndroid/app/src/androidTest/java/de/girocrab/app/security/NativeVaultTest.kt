@@ -8,7 +8,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,7 +46,7 @@ class NativeVaultTest {
         val path = File(dir, "fresh.sqlcipher").path
         val key = randomKey()
 
-        val created = opener.open(path, key) ?: fail("opener returned no handle (core not linked?)")
+        val created = handle(opener.open(path, key), "opener returned no handle (core not linked?)")
         try {
             assertEquals(0, created.accountCount)
             assertEquals(emptyList<String>(), created.accountNames)
@@ -58,7 +57,7 @@ class NativeVaultTest {
         assertTrue("vault file was not written", File(path).length() > 0)
 
         // Reopening is the real proof: the file must be a vault the core accepts again.
-        val reopened = opener.open(path, key) ?: fail("reopening returned no handle")
+        val reopened = handle(opener.open(path, key), "reopening returned no handle")
         try {
             assertEquals(0, reopened.accountCount)
         } finally {
@@ -69,13 +68,16 @@ class NativeVaultTest {
     @Test
     fun wrongKeyIsRefused() {
         val path = File(dir, "wrong-key.sqlcipher").path
-        (opener.open(path, randomKey()) ?: fail("could not create the test vault")).close()
+        handle(opener.open(path, randomKey()), "could not create the test vault").close()
 
         // SQLCipher may fail at open or at the first query; both must fail.
         assertThrows(Exception::class.java) {
-            val wrong = opener.open(path, randomKey()) ?: fail("open returned no handle")
-            wrong.accountCount
-            wrong.close()
+            val wrong = handle(opener.open(path, randomKey()), "open returned no handle")
+            try {
+                wrong.accountCount
+            } finally {
+                wrong.close()
+            }
         }
     }
 
@@ -94,6 +96,14 @@ class NativeVaultTest {
         assertTrue(path.endsWith("vaults/girocrab.sqlcipher"))
         assertTrue(path.startsWith(context.filesDir.path))
     }
+
+    /**
+     * A missing handle is an assertion failure, not a `NullPointerException`: `open` returns null
+     * both when the core is absent and when reflection lost the constructor, and the message
+     * should say which expectation broke.
+     */
+    private fun handle(vault: OwnVault?, message: String): OwnVault =
+        vault ?: throw AssertionError(message)
 
     private fun randomKey(): ByteArray = ByteArray(NativeVaultOpener.MASTER_KEY_BYTES).also {
         SecureRandom().nextBytes(it)
