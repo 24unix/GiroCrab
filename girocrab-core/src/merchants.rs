@@ -1363,13 +1363,16 @@ impl MerchantRules {
                 .map(|x| x.1.to_string())
                 .unwrap_or_default()
         };
-        let wbehind = after(&t.wcp);
-        // An own search word matched in `wcp`, which `cp` may spell differently
-        // ("paypal  europe" around a dropped legal form, long digit runs cut).
-        let behind = if own {
-            normalise(&wbehind)
+        // An own search word matched as a whole word in `wcp`, which `cp` may spell
+        // differently ("paypal  europe" around a dropped legal form, long digit runs cut).
+        let (behind, wbehind) = if own {
+            let wbehind = word_starts(&t.wcp, needle)
+                .next()
+                .map(|i| t.wcp[i + needle.len()..].to_string())
+                .unwrap_or_default();
+            (normalise(&wbehind), wbehind)
         } else {
-            after(&t.cp)
+            (after(&t.cp), after(&t.wcp))
         };
         let shop_in = |c: &CustomEntry, text: &str| {
             (c.kind() != K::PaymentService)
@@ -2544,6 +2547,9 @@ mod tests {
             "spotify"
         );
         assert_eq!(r.resolve("PayPal GmbH Europe Spotify", "").key, "spotify");
+        // behind the whole-word match, not an earlier embedded one (#1519 review)
+        let cp = "NotPayPal GmbH Europe Spotify PayPal Europe";
+        assert_eq!(r.resolve(cp, "").key, "u:p");
     }
 
     #[test]
