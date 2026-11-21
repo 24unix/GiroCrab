@@ -339,7 +339,7 @@ Sheet {
             Text {
                 visible: !ff.known
                 Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption
-                color: (ff.blz !== "" && !ff.blzValid) || (ff.url !== "" && !ff.urlValid) ? "orange" : Theme.secondary
+                color: (ff.blz !== "" && !ff.blzValid) || (ff.url !== "" && !ff.urlValid) ? Theme.warning : Theme.secondary
                 text: (ff.blz !== "" && !ff.blzValid) || (ff.url !== "" && !ff.urlValid) ? qsTr("Bankleitzahl: genau 8 Ziffern · FinTS-Adresse: beginnt mit https://")
                     : ff.blzValid && ff.found === null ? qsTr("Diese Bankleitzahl steht nicht im Verzeichnis. Tragen Sie die FinTS-Adresse Ihrer Bank selbst ein.") : ""
             }

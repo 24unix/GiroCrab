@@ -60,7 +60,7 @@ ColumnLayout {
                 Text { visible: row.g !== null; Layout.alignment: Qt.AlignRight; font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }
                        readonly property var g: row.g
                        text: g ? qsTr("GuV (berechnet): %1 (%2 %)").arg(Fmt.money(g.cents)).arg(Number(g.percent).toLocaleString(Qt.locale(), "f", 2)) : ""
-                       color: g && g.cents < 0 ? "red" : "green"; Sensitive { amounts: true } } }
+                       color: g && g.cents < 0 ? Theme.negative : Theme.inflow; Sensitive { amounts: true } } }
             TapHandler { acceptedButtons: Qt.RightButton; onTapped: menu.popup() }
             AppMenu { id: menu
                 AppMenuItem { text: qsTr("Klassifizierung bearbeiten"); visible: !!row.c.security_key; height: visible ? implicitHeight : 0

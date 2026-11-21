@@ -22,11 +22,15 @@ Rectangle {
         spacing: 2
         RowLayout {
             spacing: 3
-            Text { text: kpi.title; font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: !kpi.disclosure }
+            // .lineLimit(1).minimumScaleFactor(0.85): one line that shrinks a little before "…"
+            Text { text: kpi.title; font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: !kpi.disclosure
+                   fontSizeMode: Text.HorizontalFit; minimumPixelSize: Math.round(Theme.caption * 0.85) }
             SFIcon { visible: kpi.disclosure; symbol: "chevron.right"; size: 9; color: Theme.tertiary }
             Item { Layout.fillWidth: kpi.disclosure }
         }
-        Text { text: kpi.value; font.pixelSize: Theme.title3; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: kpi.tint; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive { amounts: true } }
+        // .lineLimit(1).minimumScaleFactor(0.75): the amount shrinks at large text sizes instead of being cut (#650)
+        Text { text: kpi.value; font.pixelSize: Theme.title3; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: kpi.tint; elide: Text.ElideRight; Layout.fillWidth: true
+               fontSizeMode: Text.HorizontalFit; minimumPixelSize: Math.round(Theme.title3 * 0.75); Sensitive { amounts: true } }
         Item { Layout.fillHeight: true; implicitHeight: 2 }
         Text { text: kpi.subtitle; font.pixelSize: Theme.caption2; color: Theme.tertiary; wrapMode: Text.WordWrap; maximumLineCount: 2; Layout.fillWidth: true }
     }

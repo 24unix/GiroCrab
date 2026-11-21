@@ -121,7 +121,7 @@ Sheet {
             BusyIndicator { implicitWidth: 18; implicitHeight: 18; running: parent.visible }
             Text { text: qsTr("Freigabe wird übernommen …"); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
         }
-        Text { visible: sheet.active && sheet.active.error !== ""; text: sheet.active ? sheet.active.error : ""; color: "red"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+        Text { visible: sheet.active && sheet.active.error !== ""; text: sheet.active ? sheet.active.error : ""; color: Theme.negative; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         Text { visible: sheet.c && sheet.c.expires_in_seconds !== null; text: sheet.c && sheet.c.expires_in_seconds ? qsTr("Gültig noch etwa %1 Min.").arg(Math.floor(sheet.c.expires_in_seconds / 60)) : ""
                font.pixelSize: Theme.caption; color: Theme.tertiary }
         SyncPromptButtons {

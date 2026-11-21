@@ -21,7 +21,7 @@ Item {
             id: row
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
             spacing: 10
-            SFIcon { symbol: "exclamationmark.shield.fill"; size: 18; color: "red"; Layout.alignment: Qt.AlignTop }
+            SFIcon { symbol: "exclamationmark.shield.fill"; size: 18; color: Theme.negative; Layout.alignment: Qt.AlignTop }
             ColumnLayout {
                 spacing: 8; Layout.fillWidth: true
                 Text { text: banner.gate ? (AppModel.bankingPolicy.title || AppModel.bankingGateTitle(banner.gate)) : ""; font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text }

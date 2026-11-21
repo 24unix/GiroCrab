@@ -69,7 +69,7 @@ Rectangle {
         Text {
             visible: lock.error !== ""
             Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
-            text: lock.error; font.pixelSize: Theme.callout + 1; color: "red"
+            text: lock.error; font.pixelSize: Theme.callout + 1; color: Theme.negative
         }
         Button {
             visible: AppModel.lockPreview && !AppModel.vaultMayHoldRealData() && !lock.unlocking
