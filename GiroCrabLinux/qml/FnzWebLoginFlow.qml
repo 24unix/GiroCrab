@@ -8,7 +8,7 @@ import QtQuick.Layouts
 // `import_fnz_document`).
 WebLoginFlow {
     id: flow
-    title: connection ? qsTr("%1 – FNZ Bank").arg(connection.display_name) : ""
+    title: connection ? qsTr("%1 – FNZ Bank").arg(AppModel.masking(connection.display_name)) : ""
     busy: running
     infoWarning: !running && (notice !== "" || browser.blockedHost !== "")
     info: {

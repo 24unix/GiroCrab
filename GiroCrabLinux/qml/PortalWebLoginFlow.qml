@@ -10,7 +10,7 @@ import QtCore
 // bookings are counted live; the import starts by itself once the count is stable.
 WebLoginFlow {
     id: flow
-    title: connection ? qsTr("%1 – Direkt-Login").arg(connection.display_name) : ""
+    title: connection ? qsTr("%1 – Direkt-Login").arg(AppModel.masking(connection.display_name)) : ""
     captureTraffic: true
     badgeText: qsTr("Erkannte Umsätze: %1").arg(recognized)
     badgeSymbol: recognized > 0 ? "checkmark.circle.fill" : "circle.dashed"

@@ -74,8 +74,8 @@ Item {
                         ColumnLayout {
                             spacing: 1
                             Layout.fillWidth: true
-                            Text { text: row.modelData.display_name; font.pixelSize: Theme.body; font.weight: Font.Medium; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Text { text: (row.d ? row.d.protocol : "") + (row.modelData.login_name === "" ? "" : " · " + row.modelData.login_name)
+                            Text { text: row.modelData.display_name; font.pixelSize: Theme.body; font.weight: Font.Medium; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+                            Text { text: (row.d ? row.d.protocol : "") + (row.modelData.login_name === "" ? "" : " · " + AppModel.masking(row.modelData.login_name))
                                    font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
                             TapHandler { onTapped: editSheet.edit(row.modelData) }
                         }

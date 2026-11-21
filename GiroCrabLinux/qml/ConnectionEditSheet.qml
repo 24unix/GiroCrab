@@ -195,7 +195,7 @@ Sheet {
     }
     ConfirmDialog {
         id: confirmRemove
-        heading: sheet.connection ? qsTr("„%1“ entfernen?").arg(sheet.connection.display_name) : ""
+        heading: sheet.connection ? qsTr("„%1“ entfernen?").arg(AppModel.masking(sheet.connection.display_name)) : ""
         message: qsTr("Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen.")
         actionTitle: qsTr("Entfernen")
         onConfirmed: { const id = sheet.connection.id; sheet.close(); AppModel.removeConnection(id) }
@@ -239,7 +239,7 @@ Sheet {
             spacing: 10
             SymbolTile { symbol: sheet.connection ? sheet.connection.sf_symbol : ""; size: 34; tint: Theme.accent }
             ColumnLayout { spacing: 2; Layout.fillWidth: true
-                Text { text: sheet.connection ? sheet.connection.display_name : ""; font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text }
+                Text { text: sheet.connection ? sheet.connection.display_name : ""; font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text; Sensitive {} }
                 Text { text: sheet.descriptor ? sheet.descriptor.protocol : ""; font.pixelSize: Theme.caption; color: Theme.secondary } }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
@@ -257,10 +257,10 @@ Sheet {
                 SettingsFormSection {
                     title: qsTr("Zugang")
                     SettingsFormRow { label: qsTr("Anzeigename")
-                        TextField { text: sheet.name; onTextEdited: sheet.name = text; Layout.fillWidth: true; Layout.preferredWidth: 300 } }
+                        TextField { text: sheet.name; onTextEdited: sheet.name = text; Layout.fillWidth: true; Layout.preferredWidth: 300; Sensitive {} } }
                     SettingsFormRow { label: sheet.descriptor ? sheet.descriptor.login_label : qsTr("Benutzerkennung")
-                        TextField { text: sheet.login; onTextEdited: sheet.login = text; enabled: !sheet.isRah10; Layout.fillWidth: true; Layout.preferredWidth: 300 } }
-                    SettingsFormRow { visible: sheet.isTR && sheet.login !== ""; label: qsTr("Gespeichert als")
+                        TextField { text: sheet.login; onTextEdited: sheet.login = text; enabled: !sheet.isRah10; Layout.fillWidth: true; Layout.preferredWidth: 300; Sensitive {} } }
+                    SettingsFormRow { visible: sheet.isTR && sheet.login !== ""; label: qsTr("Gespeichert als"); personal: true
                               value: sheet.isTR && sheet.login !== "" ? AppModel.core("normalize_phone_number", { input: sheet.login }) : "" }
                     SettingsFormRow {
                         readonly property string blz: !sheet.connection ? "" : sheet.connection.bank_code !== "" ? sheet.connection.bank_code : (sheet.descriptor ? sheet.descriptor.bank_code : "")

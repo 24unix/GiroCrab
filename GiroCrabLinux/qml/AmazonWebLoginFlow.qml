@@ -8,7 +8,7 @@ import QtQuick.Layouts
 // go to the core (`import_amazon_orders`).
 WebLoginFlow {
     id: flow
-    title: connection ? qsTr("%1 – Amazon-Konto").arg(connection.display_name) : ""
+    title: connection ? qsTr("%1 – Amazon-Konto").arg(AppModel.masking(connection.display_name)) : ""
     symbol: "shippingbox.fill"
     busy: running
     info: {

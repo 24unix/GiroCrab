@@ -110,7 +110,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 4
                     SFIcon { symbol: "exclamationmark.triangle"; size: 11; color: Theme.warning; Layout.alignment: Qt.AlignTop }
-                    Text { text: qsTr("Bereits über „%1“ eingebunden").arg(row.modelData.existing_connection)
+                    Text { text: qsTr("Bereits über „%1“ eingebunden").arg(AppModel.masking(row.modelData.existing_connection))
                            font.pixelSize: Theme.caption; color: Theme.warning; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }

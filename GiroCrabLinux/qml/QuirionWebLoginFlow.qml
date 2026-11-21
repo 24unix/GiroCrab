@@ -9,7 +9,7 @@ import QtQuick.Layouts
 // `pending_quirion_documents`, `import_quirion_document`).
 WebLoginFlow {
     id: flow
-    title: connection ? qsTr("%1 – quirion").arg(connection.display_name) : ""
+    title: connection ? qsTr("%1 – quirion").arg(AppModel.masking(connection.display_name)) : ""
     busy: running
     infoWarning: !running && notice !== ""
     info: running ? progress : notice !== "" ? notice

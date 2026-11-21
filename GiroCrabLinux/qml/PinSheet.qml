@@ -41,7 +41,7 @@ Sheet {
             spacing: 10
             SymbolTile { symbol: sheet.connection ? sheet.connection.sf_symbol : ""; size: 34; tint: Theme.accent }
             ColumnLayout { spacing: 0; Layout.fillWidth: true
-                Text { text: sheet.connection ? qsTr("Anmeldung bei %1").arg(sheet.connection.display_name) : ""; font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text }
+                Text { text: sheet.connection ? qsTr("Anmeldung bei %1").arg(AppModel.masking(sheet.connection.display_name)) : ""; font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text }
                 Text { text: sheet.d ? sheet.d.protocol : ""; font.pixelSize: Theme.caption; color: Theme.secondary } }
             SyncBatchProgressLabel {}
         }
@@ -52,9 +52,9 @@ Sheet {
         }
         ColumnLayout { spacing: 4; Layout.fillWidth: true
             Text { text: sheet.d ? sheet.d.login_label : qsTr("Anmeldung"); font.pixelSize: Theme.caption; color: Theme.secondary }
-            TextField { id: login; Layout.fillWidth: true; placeholderText: sheet.d ? sheet.d.login_label : ""; enabled: !sheet.isRah10 }
+            TextField { id: login; Layout.fillWidth: true; placeholderText: sheet.d ? sheet.d.login_label : ""; enabled: !sheet.isRah10; Sensitive {} }
             Text { visible: sheet.isTR && login.text !== ""; font.pixelSize: Theme.caption2; color: Theme.secondary
-                   text: { const n = sheet.isTR ? AppModel.core("normalize_phone_number", { input: login.text }) : ""; return n === login.text ? qsTr("Format korrekt (E.164)") : qsTr("Wird gesendet als %1").arg(n) } }
+                   text: { const n = sheet.isTR ? AppModel.core("normalize_phone_number", { input: login.text }) : ""; return n === login.text ? qsTr("Format korrekt (E.164)") : qsTr("Wird gesendet als %1").arg(AppModel.masking(n)) } }
         }
         ColumnLayout { spacing: 4; Layout.fillWidth: true
             Text { text: sheet.secretLabel; font.pixelSize: Theme.caption; color: Theme.secondary }

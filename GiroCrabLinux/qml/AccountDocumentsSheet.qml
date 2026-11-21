@@ -41,8 +41,9 @@ Sheet {
         spacing: 12
         RowLayout {
             ColumnLayout { spacing: 2; Layout.fillWidth: true
-                Text { text: sheet.preview ? sheet.preview.title : qsTr("Dokumente / Kontoauszüge"); font.pixelSize: Theme.title3 + 2; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
-                Text { text: sheet.account ? sheet.account.name : ""; font.pixelSize: Theme.caption; color: Theme.secondary } }
+                Text { text: sheet.preview ? sheet.preview.title : qsTr("Dokumente / Kontoauszüge"); font.pixelSize: Theme.title3 + 2; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                       Sensitive { when: sheet.preview !== null } }
+                Text { text: sheet.account ? sheet.account.name : ""; font.pixelSize: Theme.caption; color: Theme.secondary; Sensitive {} } }
             Button { visible: sheet.preview !== null; text: qsTr("Sichern …"); icon.name: SF.icon("square.and.arrow.down"); onClicked: sheet.saveDocument() }
             Button { visible: sheet.preview !== null; text: qsTr("Öffnen …"); onClicked: AppModel.quickLook(sheet.preview) }
             Button { visible: sheet.preview !== null; text: qsTr("Schließen"); onClicked: sheet.preview = null }
@@ -84,7 +85,7 @@ Sheet {
                 contentItem: RowLayout { spacing: 10
                     SFIcon { symbol: AppModel.docSymbol(modelData); size: 16; color: Theme.accent; Layout.preferredWidth: 20 }
                     ColumnLayout { spacing: 1; Layout.fillWidth: true
-                        Text { text: modelData.title; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: modelData.title; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                         Text { text: Fmt.medium(modelData.doc_date) + " · " + AppModel.byteCount(modelData.size_bytes); font.pixelSize: Theme.caption2; color: Theme.secondary } }
                     SFIcon { symbol: "chevron.right"; size: 10 } }
                 onClicked: sheet.preview = modelData

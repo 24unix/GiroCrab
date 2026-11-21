@@ -14,7 +14,7 @@ import QtQuick.Layouts
 // both are identical. Never edit the generated block by hand.
 WebLoginFlow {
     id: flow
-    title: connection ? qsTr("%1 – Schwäbisch Hall").arg(connection.display_name) : ""
+    title: connection ? qsTr("%1 – Schwäbisch Hall").arg(AppModel.masking(connection.display_name)) : ""
     busy: running
     infoWarning: !running && (notice !== "" || browser.blockedHost !== "")
     info: {
