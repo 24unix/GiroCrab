@@ -166,6 +166,7 @@ impl ConnectorKind {
             ConnectorKind::Ffb,
             ConnectorKind::FordMoney,
             ConnectorKind::OpelDirektbank,
+            ConnectorKind::HanseaticBank,
             ConnectorKind::Bhw,
             ConnectorKind::Finpension,
             ConnectorKind::Kontist,

@@ -900,6 +900,32 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
 mod matrix_tests {
     use super::*;
 
+    /// The other direction: a connector in the matrix that `ConnectorKind::all()`
+    /// misses has no descriptor in `bank_catalog()` (the add form stays empty)
+    /// and its stored connections are not recognised (`from_str`).
+    #[test]
+    fn every_matrix_connector_is_listed_in_all_kinds() {
+        for e in BANK_MATRIX {
+            let Some(kind) = e.kind else { continue };
+            assert!(
+                ConnectorKind::all().contains(&kind),
+                "{}: {kind:?} missing in ConnectorKind::all()",
+                e.name
+            );
+            assert_eq!(
+                ConnectorKind::from_str(kind.as_str()),
+                Some(kind),
+                "{}",
+                e.name
+            );
+            assert!(
+                bank_catalog().iter().any(|d| d.kind == kind),
+                "{}: no catalog entry",
+                e.name
+            );
+        }
+    }
+
     #[test]
     fn every_connector_kind_has_a_matrix_row() {
         for kind in ConnectorKind::all() {
