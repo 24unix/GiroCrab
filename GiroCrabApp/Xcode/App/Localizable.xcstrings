@@ -1351,6 +1351,17 @@
         }
       }
     },
+    "%lld bereits übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld already imported"
+          }
+        }
+      }
+    },
     "%lld exportieren …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6926,6 +6937,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Example: %@"
+          }
+        }
+      }
+    },
+    "Bekannte Bestellungen neu lesen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Re-read known orders"
           }
         }
       }
@@ -17247,6 +17269,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "There are no stored activities for the selected period and filter. This is no proof that none took place."
+          }
+        }
+      }
+    },
+    "Immer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Always"
           }
         }
       }
@@ -34688,6 +34721,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Older bookings (included in the opening balance)"
+          }
+        }
+      }
+    },
+    "Ältere, schon übernommene Bestellungen werden übersprungen; jüngere werden wegen späterer Erstattungen erneut gelesen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Older orders that were already imported are skipped; newer ones are read again because refunds show up later."
           }
         }
       }

@@ -338,7 +338,10 @@ impl Vault {
             });
         }
         let parsed = parse_capture(&orders_json);
-        if parsed.is_empty() {
+        // every order found was already known and skipped (#1035): nothing new
+        let none_sent =
+            serde_json::from_str::<Capture>(&orders_json).is_ok_and(|c| c.orders.is_empty());
+        if parsed.is_empty() && !none_sent {
             return Err(CoreError::InvalidInput {
                 message: tr("Keine Bestellungen erkannt.").into(),
             });
@@ -354,6 +357,54 @@ impl Vault {
         let _ = self.checkpoint();
         Ok(summary)
     }
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Codes of this login's orders whose booking is older than `reread_days`
+    /// (#1035): the fetch skips their detail pages. Younger ones are read again,
+    /// refunds and cancellations appear there later. `0` skips nothing ("Immer").
+    pub fn amazon_orders_to_skip(
+        self: Arc<Self>,
+        connection_id: i64,
+        reread_days: u32,
+    ) -> Result<Vec<String>, CoreError> {
+        if reread_days == 0 {
+            return Ok(Vec::new());
+        }
+        let Some(cutoff) = crate::dates::add_days(crate::dates::today(), -i64::from(reread_days))
+        else {
+            return Ok(Vec::new());
+        };
+        let db = self.db()?;
+        known_orders_before(&db, connection_id, &iso(cutoff))
+    }
+}
+
+/// Order codes (from `amazon:{code}` ids, deleted ones too) booked on the
+/// login's order account before `cutoff` (`YYYY-MM-DD`).
+fn known_orders_before(
+    db: &rusqlite::Connection,
+    connection_id: i64,
+    cutoff: &str,
+) -> Result<Vec<String>, CoreError> {
+    let mut st = db.prepare(
+        "SELECT substr(t.external_id, 8) FROM transactions t JOIN accounts a ON a.id = t.account_id
+          WHERE a.connection_id = ?1 AND a.external_ref = ?2
+            AND t.external_id LIKE 'amazon:%' AND t.booking_date < ?3
+          ORDER BY t.booking_date, t.external_id",
+    )?;
+    let codes = st
+        .query_map(
+            rusqlite::params![
+                connection_id,
+                format!("amazon-orders-{connection_id}"),
+                cutoff
+            ],
+            |r| r.get(0),
+        )?
+        .collect::<Result<_, _>>()?;
+    Ok(codes)
 }
 
 impl Vault {
@@ -627,5 +678,104 @@ mod tests {
         assert_eq!((amount, balance), (-132900, -132900));
         drop(db);
         let _ = std::fs::remove_file(p);
+    }
+
+    fn amazon_vault(tag: &str) -> (crate::test_support::TempDir, Arc<Vault>, i64) {
+        let dir = crate::test_support::TempDir::new(tag);
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![6u8; 32],
+        )
+        .unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::AmazonOrders, "Amazon".into(), String::new())
+            .unwrap();
+        (dir, v, conn)
+    }
+
+    fn stored(v: &Vault, conn: i64, bookings: &[(&str, &str)]) {
+        let b = bookings
+            .iter()
+            .map(|(id, date)| Booking {
+                id: (*id).into(),
+                date: (*date).into(),
+                cents: -100,
+                purpose: "x".into(),
+                text: "Amazon-Bestellung",
+                item_refs: String::new(),
+            })
+            .collect();
+        store_fetch(
+            v,
+            ConnectorKind::AmazonOrders,
+            conn,
+            to_fetch(conn, "Amazon", b),
+        )
+        .unwrap();
+    }
+
+    /// #1035: known orders before the cutoff are not read again; younger ones
+    /// are, because refunds and cancellations show up later.
+    #[test]
+    fn known_orders_before_the_cutoff_are_skipped() {
+        let (_dir, v, conn) = amazon_vault("girocrab-amazon-known");
+        stored(
+            &v,
+            conn,
+            &[
+                ("amazon:302-old", "2026-05-01"),
+                ("amazon:302-new", "2026-11-01"),
+                ("amazon-refund:302-old:0:500", "2026-05-01"),
+            ],
+        );
+        let (_dir2, other, other_conn) = amazon_vault("girocrab-amazon-known-other");
+        stored(
+            &other,
+            other_conn,
+            &[("amazon:302-elsewhere", "2026-01-01")],
+        );
+        let db = v.db().unwrap();
+        assert_eq!(
+            known_orders_before(&db, conn, "2026-08-23").unwrap(),
+            vec!["302-old".to_string()]
+        );
+        assert!(
+            known_orders_before(&db, conn + 1, "2026-08-23")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    /// "Immer": every order is read again, as before.
+    #[test]
+    fn reread_always_skips_nothing() {
+        let (_dir, v, conn) = amazon_vault("girocrab-amazon-always");
+        stored(&v, conn, &[("amazon:302-old", "2015-05-01")]);
+        assert!(
+            Arc::clone(&v)
+                .amazon_orders_to_skip(conn, 0)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            Arc::clone(&v).amazon_orders_to_skip(conn, 90).unwrap(),
+            vec!["302-old".to_string()]
+        );
+    }
+
+    /// Every order found was skipped: the fetch ends normally with 0 new bookings.
+    #[test]
+    fn import_without_orders_is_a_normal_result() {
+        let (_dir, v, conn) = amazon_vault("girocrab-amazon-none");
+        let s = Arc::clone(&v)
+            .import_amazon_orders(conn, r#"{"orders":[]}"#.into())
+            .unwrap();
+        assert_eq!(s.transactions_imported, 0);
+        // a capture whose orders cannot be read is still an error
+        assert!(
+            Arc::clone(&v)
+                .import_amazon_orders(conn, r#"{"orders":[{"code":"","date":"bald"}]}"#.into())
+                .is_err()
+        );
     }
 }
