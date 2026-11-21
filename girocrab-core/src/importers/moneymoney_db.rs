@@ -2317,17 +2317,15 @@ fn find_existing_accounts(
             )?
             .collect::<Result<_, _>>()?;
         for a in cards {
-            let found = unique(
-                synced
-                    .iter()
-                    .filter(|(id, _, number)| {
-                        !claimed.contains(id) && same_card_number(number, &a.account)
-                    })
-                    .map(|(id, name, _)| (*id, name.clone())),
-            );
-            if let Some(found) = found {
-                claimed.insert(found.0);
-                out.insert(a.id, found);
+            let free = synced
+                .iter()
+                .enumerate()
+                .filter(|(_, (id, _, _))| !claimed.contains(id))
+                .map(|(i, (_, _, number))| (i, number.as_str()));
+            if let CardMatch::One(i) = card_by_number(free, &a.account) {
+                let (id, name, _) = &synced[i];
+                claimed.insert(*id);
+                out.insert(a.id, (*id, name.clone()));
             }
         }
     }
@@ -2412,19 +2410,6 @@ pub(crate) fn adopt_account(
             .collect();
         let currency = currency.trim().to_uppercase();
         let card = kind == AccountKind::CreditCard;
-        // several cards on one login (main and partner card): the number
-        // decides – two complete numbers first, a masked one by its last four
-        // second; other kinds have no card number to compare
-        let matching = |exact: bool| -> Vec<i64> {
-            rows.iter()
-                .filter(|(_, number, _, _)| {
-                    same_card_number(number, account_number)
-                        && (!exact
-                            || (full_card_number(number) && full_card_number(account_number)))
-                })
-                .map(|(id, _, _, _)| *id)
-                .collect()
-        };
         // the other way reports a marked account under another reference
         // (FinTS `<number>-Depot`, REST its depot id): the only live one of
         // its kind and currency is it, deleted leftovers and archived ones
@@ -2455,13 +2440,19 @@ pub(crate) fn adopt_account(
         if let Some(id) = marked {
             Some(id)
         } else {
-            let (exact, any) = if card {
-                (matching(true), matching(false))
+            // several cards on one login (main and partner card): the number
+            // decides; other kinds have no card number to compare
+            let by_number = if card {
+                card_by_number(
+                    rows.iter().map(|(id, number, _, _)| (*id, number.as_str())),
+                    account_number,
+                )
             } else {
-                (Vec::new(), Vec::new())
+                CardMatch::None
             };
-            let by_number = match (exact.as_slice(), any.as_slice()) {
-                ([id], _) | ([], [id]) => Some(*id),
+            let tie = by_number == CardMatch::Tie;
+            let by_number = match by_number {
+                CardMatch::One(id) => Some(id),
                 _ => None,
             };
             // an imported card that several fetched cards fit (`**** 1234` for two
@@ -2478,7 +2469,7 @@ pub(crate) fn adopt_account(
             });
             // a number that fits several imported cards, or a contested one: no
             // guess at all, the fallback below would hand over an unrelated card
-            if contested || (by_number.is_none() && !any.is_empty()) {
+            if contested || tie {
                 return Ok(None);
             }
             // else the only one of its kind (also a replacement card with a new
@@ -2571,6 +2562,36 @@ fn same_card_number(a: &str, b: &str) -> bool {
         (tail.len() == 4).then_some(tail)
     };
     last_four(a).is_some_and(|x| last_four(b) == Some(x))
+}
+
+/// Which candidate a card number names (`card_by_number`).
+#[derive(Debug, PartialEq, Eq)]
+enum CardMatch<T> {
+    None,
+    One(T),
+    /// several fit: never guessed
+    Tie,
+}
+
+/// The candidate whose card number names the same card: a match between two
+/// complete numbers first, a masked one by its last four second. Used by the
+/// preview and the first sync, so both decide alike.
+fn card_by_number<'a, T: Copy>(
+    candidates: impl Iterator<Item = (T, &'a str)>,
+    number: &str,
+) -> CardMatch<T> {
+    let (mut exact, mut any) = (Vec::new(), Vec::new());
+    for (item, candidate) in candidates.filter(|(_, c)| same_card_number(c, number)) {
+        if full_card_number(candidate) && full_card_number(number) {
+            exact.push(item);
+        }
+        any.push(item);
+    }
+    match (exact.as_slice(), any.as_slice()) {
+        ([one], _) | ([], [one]) => CardMatch::One(*one),
+        (_, []) => CardMatch::None,
+        _ => CardMatch::Tie,
+    }
 }
 
 /// The only item, `None` for none or several.

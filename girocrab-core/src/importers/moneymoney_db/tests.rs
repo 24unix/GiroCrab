@@ -3357,6 +3357,61 @@ fn same_card_number_needs_the_same_digits_or_a_masked_side() {
 }
 
 #[test]
+fn preview_prefers_the_synced_card_with_the_complete_number() {
+    let v = vault();
+    let synced = {
+        let db = v.db().unwrap();
+        let (login, _) = Vault::add_bank_connection_keyed(
+            &db,
+            ConnectorKind::FinTsGeneric,
+            "fints:50070439",
+            Some("50070439"),
+            "Miles & More Kreditkarte (Deutsche Bank)".into(),
+            "db-id".into(),
+        )
+        .unwrap();
+        let gid = Vault::ensure_group(&db, "Karten", "creditcard", 1).unwrap();
+        let card = |name: &str, number: &str| -> i64 {
+            db.execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, currency, kind)
+                 VALUES (?1, ?2, ?3, ?3, ?4, 'EUR', 'credit_card')",
+                params![login, gid, name, number],
+            )
+            .unwrap();
+            db.last_insert_rowid()
+        };
+        card("Maskiert", "**** **** **** 1234");
+        card("Voll", "5232123456781234")
+    };
+    let path = fake_db_with(
+        false,
+        "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage) VALUES
+           (50, 'DE', 'Miles & More Credit Card', 'db-id', '', 'X', 'Deutsche Bank', 'SYS', 'LS');
+         INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, currency, name, owner, kind, type, sort, initial_balance, group_key, cred) VALUES
+           (50, 50, '5232123456781234', '', 0, '', 'EUR', 'Miles & More Blue Credit Card', 'Max', 0, 0, 50, 0, 0, 'X');",
+    );
+    let p = v
+        .preview_moneymoney_database(path, PW.into(), None)
+        .unwrap();
+    let card = p.accounts.iter().find(|a| a.mm_id == 50).unwrap();
+    // the masked one ends alike, the complete number decides
+    assert_eq!(card.existing_account_id, Some(synced));
+}
+
+#[test]
+fn card_number_ties_are_never_guessed() {
+    let candidates = [
+        (1, "**** 1234"),
+        (2, "XXXX XXXX XXXX 1234"),
+        (3, "5232000000009999"),
+    ];
+    let pick = |number: &str| card_by_number(candidates.iter().copied(), number);
+    assert_eq!(pick("5232000000001234"), CardMatch::Tie);
+    assert_eq!(pick("5232000000009999"), CardMatch::One(3));
+    assert_eq!(pick("5232000000005555"), CardMatch::None);
+}
+
+#[test]
 fn card_synced_before_the_import_is_found_by_its_number() {
     let v = vault();
     let (login, synced) = {
