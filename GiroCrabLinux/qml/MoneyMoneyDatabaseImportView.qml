@@ -465,10 +465,10 @@ ColumnLayout {
                             anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 14; spacing: 8
                             Item { Layout.preferredWidth: 22 }
                             Text { text: qsTr("Konto"); Layout.fillWidth: true; font.pixelSize: Theme.caption; color: Theme.secondary }
-                            Text { text: qsTr("Buchungen"); Layout.preferredWidth: 80; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
-                            Text { text: qsTr("Saldo"); Layout.preferredWidth: 110; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
-                            Text { text: qsTr("Kontoart"); Layout.preferredWidth: 150; font.pixelSize: Theme.caption; color: Theme.secondary }
-                            Text { visible: accountTable.showTarget; text: qsTr("Ziel"); Layout.preferredWidth: 170; font.pixelSize: Theme.caption; color: Theme.secondary }
+                            Text { text: qsTr("Buchungen"); Layout.preferredWidth: 80 * Theme.textScale; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
+                            Text { text: qsTr("Saldo"); Layout.preferredWidth: 110 * Theme.textScale; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
+                            Text { text: qsTr("Kontoart"); Layout.preferredWidth: 150 * Theme.textScale; font.pixelSize: Theme.caption; color: Theme.secondary }
+                            Text { visible: accountTable.showTarget; text: qsTr("Ziel"); Layout.preferredWidth: 170 * Theme.textScale; font.pixelSize: Theme.caption; color: Theme.secondary }
                         }
                     }
                     delegate: Rectangle {
@@ -489,7 +489,7 @@ ColumnLayout {
                                 Layout.preferredWidth: 22
                                 checked: rowItem.c.selected
                                 onToggled: v.setChoice(rowItem.modelData, { selected: checked })
-                                Accessible.name: qsTr("„%1“ importieren").arg(rowItem.modelData.name)
+                                Accessible.name: qsTr("„%1“ importieren").arg(AppModel.masking(rowItem.modelData.name))
                             }
                             ColumnLayout {
                                 spacing: 1; Layout.fillWidth: true
@@ -498,20 +498,21 @@ ColumnLayout {
                                 Text { text: v.accountSubtitle(rowItem.modelData); elide: Text.ElideRight; Layout.fillWidth: true; color: Theme.secondary; font.pixelSize: Theme.caption }
                             }
                             Text {
-                                Layout.preferredWidth: 80; horizontalAlignment: Text.AlignRight
+                                Layout.preferredWidth: 80 * Theme.textScale; horizontalAlignment: Text.AlignRight
                                 text: Fmt.count(rowItem.modelData.booking_count); color: Theme.text; font.pixelSize: Theme.body; font.features: { "tnum": 1 }
                                 HoverHandler { id: bookingsHover }
                                 ToolTip.visible: bookingsHover.hovered && ToolTip.text !== ""; ToolTip.text: v.bookingSummary(rowItem.modelData); ToolTip.delay: 600
                             }
                             Text {
-                                Layout.preferredWidth: 110; horizontalAlignment: Text.AlignRight
+                                Layout.preferredWidth: 110 * Theme.textScale; horizontalAlignment: Text.AlignRight
                                 text: Fmt.money(rowItem.modelData.computed_balance_cents, rowItem.modelData.currency); color: Theme.text; font.pixelSize: Theme.body; font.features: { "tnum": 1 }
                                 Sensitive { amounts: true }
                                 HoverHandler { id: balanceHover }
                                 ToolTip.visible: balanceHover.hovered; ToolTip.text: rowItem.modelData.balance_source; ToolTip.delay: 600
                             }
                             AppComboBox {
-                                Layout.preferredWidth: 150
+                                Layout.preferredWidth: 150 * Theme.textScale   // .width(150 * textScale) (#650)
+                                Accessible.name: qsTr("Kontoart")   // Picker("Kontoart", …).labelsHidden() (ff91866)
                                 textRole: "text"
                                 model: v.kindChoices
                                 currentIndex: Math.max(0, v.kindChoices.findIndex(k => k.id === rowItem.c.kind))
@@ -520,7 +521,8 @@ ColumnLayout {
                             AppComboBox {
                                 id: targetBox
                                 visible: accountTable.showTarget
-                                Layout.preferredWidth: 170
+                                Layout.preferredWidth: 170 * Theme.textScale
+                                Accessible.name: qsTr("Ziel")
                                 textRole: "text"
                                 readonly property var a: rowItem.modelData
                                 model: {

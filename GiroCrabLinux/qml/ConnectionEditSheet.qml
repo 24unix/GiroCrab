@@ -450,6 +450,7 @@ Sheet {
                 echoMode: kf.secret && !kf.isRevealed ? TextInput.Password : TextInput.Normal
                 text: sheet.values[kf.key] || ""
                 placeholderText: kf.label
+                Accessible.name: kf.label   // TextField(label, …).labelsHidden() (ff91866)
                 onTextEdited: sheet.setValue(kf.key, text)
             }
             IconButton {

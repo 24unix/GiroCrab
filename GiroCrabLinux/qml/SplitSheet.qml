@@ -75,6 +75,7 @@ Sheet {
                 spacing: 8
                 AppComboBox {
                     Layout.preferredWidth: 190
+                    Accessible.name: qsTr("Kategorie")   // Picker("Kategorie", …) (ff91866)
                     model: sheet.categoryOptions
                     textRole: "title"
                     currentIndex: Math.max(0, sheet.categoryOptions.findIndex(o => o.id === row.modelData.categoryID))

@@ -13,6 +13,7 @@ ColumnLayout {
     TextArea {
         visible: f.key.indexOf("private_key") >= 0
         Layout.fillWidth: true; Layout.preferredHeight: 80
+        Accessible.name: f.entry ? f.entry.label : f.key   // SecureField(label, …).labelsHidden() (ff91866)
         font.family: "monospace"; font.pixelSize: Theme.caption
         onTextChanged: if (visible) f.edited(text)
     }
@@ -22,6 +23,7 @@ ColumnLayout {
         echoMode: (f.entry ? f.entry.is_secret : f.key.indexOf("secret") >= 0) ? TextInput.Password : TextInput.Normal
         placeholderText: f.entry && f.entry.value && !f.entry.is_secret ? f.entry.value : qsTr("Erforderlich")
         onTextChanged: if (visible) f.edited(text)
+        Accessible.name: f.entry ? f.entry.label : f.key   // TextField(label, …).labelsHidden() (ff91866)
     }
     Text { visible: f.entry && f.entry.help !== ""; text: f.entry ? f.entry.help : ""; font.pixelSize: Theme.caption; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true }
     Text {

@@ -150,6 +150,11 @@ Rectangle {
                                     ToolTip.text: cell.modelData.name
                                     // only emit: the owner updates `selection` (assigning it here would cut its binding)
                                     TapHandler { onTapped: picker.picked(cell.modelData.symbol) }
+                                    // GroupDetailEditor: German symbol names instead of SF identifiers (ff91866)
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: cell.modelData.name
+                                    Accessible.selected: cell.isSelected
+                                    Accessible.onPressAction: picker.picked(cell.modelData.symbol)
                                 }
                             }
                         }

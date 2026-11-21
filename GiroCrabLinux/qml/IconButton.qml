@@ -23,6 +23,9 @@ ToolButton {
             Text { visible: b.text !== ""; text: b.text; font.pixelSize: b.font.pixelSize > 0 ? b.font.pixelSize : Theme.body; color: b.enabled ? b.textColor : Theme.tertiary }
         }
     }
+    // Label("…", systemImage:).labelStyle(.iconOnly) + .help (#571, ff91866): a symbol-only button
+    // is read by its tooltip text instead of nothing; an explicit Accessible.name still wins.
+    Accessible.name: text !== "" ? text : ToolTip.text
     ToolTip.visible: hovered && ToolTip.text !== ""
     ToolTip.delay: 600
 }

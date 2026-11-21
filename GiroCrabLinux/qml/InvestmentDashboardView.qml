@@ -155,6 +155,10 @@ ColumnLayout {
             Item {
                 id: chart
                 Layout.fillWidth: true; Layout.preferredHeight: 140
+                // FlowChartCard: .accessibilityLabel("Konsum vs. Investition") + chart descriptor (#571)
+                Accessible.role: Accessible.Chart
+                Accessible.name: qsTr("Konsum vs. Investition")
+                Accessible.description: qsTr("Monatliche Ausgaben für Konsum und Investitionen")
                 readonly property real plotTop: 6
                 readonly property real plotBottom: height - 18
                 readonly property real axisWidth: { let w = 0; for (let i = 0; i < flowCard.tickCount; ++i) w = Math.max(w, axisMetrics.advanceWidth(Fmt.count(flowCard.tickValue(i)))); return Math.ceil(w) + 6 }

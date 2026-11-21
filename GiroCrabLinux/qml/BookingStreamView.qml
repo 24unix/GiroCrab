@@ -834,6 +834,10 @@ Rectangle {
                             HoverHandler { id: chevronHover }
                             ToolTip.visible: chevronHover.hovered; ToolTip.delay: 600
                             ToolTip.text: br.expanded ? qsTr("Artikel einklappen") : qsTr("Alle Artikel anzeigen")
+                            // BookingRow: .accessibilityLabel(amazonExpanded ? … : …) (#571)
+                            Accessible.role: Accessible.Button
+                            Accessible.name: ToolTip.text
+                            Accessible.onPressAction: stream.toggleAmazonExpanded(br.booking.id)
                         }
                         Item { Layout.fillWidth: true }
                     }

@@ -47,6 +47,10 @@ Flow {
         ToolTip.delay: 600
         ToolTip.text: sw.noneTip
         TapHandler { onTapped: sw.chosen("") }
+        // IconColorPopover: .accessibilityLabel(account != nil ? "Standardfarbe" : "Keine Farbe") (#571)
+        Accessible.role: Accessible.Button
+        Accessible.name: sw.noneTip
+        Accessible.onPressAction: sw.chosen("")
     }
     // any other colour: the system colour dialog
     Rectangle {

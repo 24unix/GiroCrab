@@ -243,7 +243,7 @@ Rectangle {
                     selectionKey: "userGroup:" + g.uuid
                     // taller hit area for the drop zones (.padding(.vertical, 3))
                     topGap: g.depth === 0 ? 10 : 4
-                    rowHeight: 30
+                    rowHeight: Math.max(30, Math.ceil(userGroupName.implicitHeight) + 10)   // a second line instead of "…" (#650)
                     TapHandler { acceptedButtons: Qt.RightButton; onTapped: sidebar.openGroupMenu(groupRow.g, groupRow) }
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: SidebarModel.rowLeading + g.depth * SidebarModel.iconInset; anchors.rightMargin: SidebarModel.rowTrailing
@@ -253,7 +253,8 @@ Rectangle {
                         // the group's colour, like an account's icon
                         SFIcon { symbol: g.sf_symbol; size: 15; Layout.preferredWidth: 20
                                  color: selected || !g.color_hex ? Theme.secondary : Theme.readable(g.color_hex) }
-                        Text { text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                        Text { id: userGroupName; text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                               wrapMode: Text.Wrap; maximumLineCount: 2
                                Sensitive { labels: true } }
                         SFIcon { visible: !g.in_total; symbol: "eye.slash"; size: 10
                                  Accessible.name: qsTr("Nicht in der Gesamtsumme")
@@ -289,14 +290,17 @@ Rectangle {
                     readonly property bool isLoanGroup: g.accounts.length > 0 && g.accounts.every(a => a.kind === "Loan")
                     selectionKey: modelData.bank ? "bank:" + g.id : "group:" + g.id
                     topGap: 10
+                    rowHeight: Math.max(30, Math.ceil(kindGroupName.implicitHeight) + 10)   // SectionHeader: .lineLimit(2) (#650)
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: SidebarModel.rowLeading; anchors.rightMargin: SidebarModel.rowTrailing
                         spacing: SidebarModel.gap
                         SidebarChevron { open: modelData.open
                                          onToggled: modelData.bank ? AppModel.toggleCollapsedBank(g.id) : AppModel.toggleCollapsedGroup(g.id)
-                                         accessibleName: open ? qsTr("„%1“ einklappen").arg(g.name) : qsTr("„%1“ ausklappen").arg(g.name) }
+                                         readonly property string spokenName: modelData.bank ? g.name : AppModel.masking(g.name, AppModel.redactLabels)
+                                         accessibleName: open ? qsTr("„%1“ einklappen").arg(spokenName) : qsTr("„%1“ ausklappen").arg(spokenName) }
                         SFIcon { symbol: g.sf_symbol; size: 15; Layout.preferredWidth: 20 }
-                        Text { text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                        Text { id: kindGroupName; text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                               wrapMode: Text.Wrap; maximumLineCount: 2
                                Sensitive { labels: true; when: !modelData.bank } }   // bank names stay visible
                         Text { text: Fmt.money(g.balance_cents); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                                color: selected ? Theme.text : (g.balance_cents < 0 && isLoanGroup ? Theme.loan : (g.balance_cents < 0 ? Theme.negative : Theme.secondary))
@@ -385,7 +389,7 @@ Rectangle {
                         anchors.fill: parent; anchors.leftMargin: SidebarModel.rowLeading + modelData.depth * SidebarModel.iconInset; anchors.rightMargin: SidebarModel.rowTrailing
                         spacing: SidebarModel.gap
                         SidebarChevron { visible: modelData.hasChildren; open: modelData.open; onToggled: AppModel.toggleExpandedCategory(c.id)
-                                         accessibleName: open ? qsTr("„%1“ einklappen").arg(c.name) : qsTr("„%1“ ausklappen").arg(c.name) }
+                                         accessibleName: open ? qsTr("„%1“ einklappen").arg(AppModel.masking(c.name, AppModel.redactLabels)) : qsTr("„%1“ ausklappen").arg(AppModel.masking(c.name, AppModel.redactLabels)) }
                         Item { visible: !modelData.hasChildren; implicitWidth: SidebarModel.slot }
                         // CategoryRow: HStack(spacing: 8)
                         RowLayout {

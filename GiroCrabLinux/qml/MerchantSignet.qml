@@ -13,6 +13,11 @@ Item {
     /// Drawn size: grows with the text size like on the Mac (#343).
     readonly property int px: Theme.scaled(size)
     width: px; height: px
+    // .accessibilityLabel(showNewDot ? "\(name), neu" : name) (ff91866): the blue dot is the only
+    // "new" signal on screen, so it is said too; the name follows the redaction.
+    readonly property string spokenName: !merchant ? "" : merchant.is_person || !merchant.known ? AppModel.masking(merchant.name || "") : (merchant.name || "")
+    Accessible.role: Accessible.Graphic
+    Accessible.name: showNewDot && spokenName !== "" ? qsTr("%1, neu").arg(spokenName) : spokenName
 
     readonly property bool person: merchant && merchant.is_person
     readonly property bool hasSvg: merchant && merchant.svg_path !== ""

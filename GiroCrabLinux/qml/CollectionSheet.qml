@@ -83,7 +83,7 @@ Sheet {
                     anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                     anchors.leftMargin: 20; anchors.rightMargin: 20
                     spacing: 10
-                    CheckBox { checked: line.included; onToggled: DirectDebits.setLine(line.index, { included: checked }); Accessible.name: line.name }
+                    CheckBox { checked: line.included; onToggled: DirectDebits.setLine(line.index, { included: checked }); Accessible.name: AppModel.masking(line.name) }
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2

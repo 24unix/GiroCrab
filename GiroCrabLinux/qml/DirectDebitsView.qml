@@ -346,6 +346,6 @@ Rectangle {
             onDoubleClicked: m => { if (m.button === Qt.LeftButton) DirectDebits.editMandate(mr.mandate) }
         }
         Accessible.role: Accessible.Button
-        Accessible.name: mandate ? mandate.debtor_name + ", " + mandate.reference : ""
+        Accessible.name: mandate ? AppModel.masking(mandate.debtor_name) + ", " + AppModel.masking(mandate.reference) : ""
     }
 }
