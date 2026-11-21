@@ -72,4 +72,12 @@ final class AmazonFetchProgressTests: XCTestCase {
         XCTAssertEqual(read, ["302-1", "302-3"])
         XCTAssertEqual(skipped, 1)
     }
+
+    /// Every order found was already known: the panel says so instead of "Bestellung 1 von 0".
+    func testAllKnownSaysNothingNewAndHowManyWereSkipped() {
+        let p = AmazonFetchProgress.allKnown(skipped: 866)
+        XCTAssertFalse(p.title.contains("von 0"), p.title)
+        XCTAssertTrue(p.detail.contains("866 bereits übernommen"), p.detail)
+        XCTAssertEqual(p.fraction, 1)
+    }
 }

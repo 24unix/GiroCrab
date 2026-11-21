@@ -214,12 +214,15 @@ enum AmazonFetchProgress: Equatable {
     /// Reading the details of order `index` (from 0) of `total`, placed in `year`;
     /// `skipped` known older orders are not read again (#1035).
     case orderDetails(index: Int, total: Int, year: Int?, skipped: Int)
+    /// Every order found was already known (#1035): nothing to read.
+    case allKnown(skipped: Int)
 
     /// Short text for the header line (and VoiceOver).
     var caption: String {
         switch self {
         case let .orderLists(year, _, _, _): String(localized: "Bestellliste \(String(year)) …")
         case let .orderDetails(index, total, _, _): String(localized: "Bestellung \(index + 1) von \(total) …")
+        case .allKnown: String(localized: "Keine neuen Bestellungen")
         }
     }
 
@@ -227,6 +230,7 @@ enum AmazonFetchProgress: Equatable {
         switch self {
         case let .orderLists(year, _, _, _): String(localized: "Jahr \(String(year))")
         case let .orderDetails(index, total, _, _): String(localized: "Bestellung \(index + 1) von \(total)")
+        case .allKnown: String(localized: "Keine neuen Bestellungen")
         }
     }
 
@@ -241,6 +245,8 @@ enum AmazonFetchProgress: Equatable {
             let step = year.map { String(localized: "Bestelldetails aus \(String($0))") } ?? String(localized: "Bestelldetails")
             if skipped == 0 { return step }
             return "\(step) · " + String(localized: "\(skipped) bereits übernommen")
+        case let .allKnown(skipped):
+            return String(localized: "\(skipped) bereits übernommen")
         }
     }
 
@@ -249,6 +255,7 @@ enum AmazonFetchProgress: Equatable {
         let (done, all) = switch self {
         case let .orderLists(_, index, count, _): (index, count)
         case let .orderDetails(index, total, _, _): (index, total)
+        case .allKnown: (1, 1)
         }
         guard all > 0 else { return 0 }
         return min(max(Double(done) / Double(all), 0), 1)
@@ -454,6 +461,7 @@ struct AmazonWebSheet: View {
         let days = UInt32(reread.rawValue)
         let known = try await pin.run { try $0.amazonOrdersToSkip(connectionId: connectionID, rereadDays: days) }
         let (toRead, skipped) = AmazonReread.split(codes, skip: Set(known))
+        if toRead.isEmpty { progress = .allKnown(skipped: skipped) }
         var orders: [[String: Any]] = []
         for (i, code) in toRead.enumerated() {
             try Task.checkCancellation()

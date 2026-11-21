@@ -19315,6 +19315,17 @@
         }
       }
     },
+    "Keine neuen Bestellungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No new orders"
+          }
+        }
+      }
+    },
     "Keine neuen Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
