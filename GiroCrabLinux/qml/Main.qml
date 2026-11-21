@@ -351,7 +351,9 @@ ApplicationWindow {
                 symbol: PrivacyMode.enabled ? "eye.slash" : "eye"
                 checkable: true; checked: PrivacyMode.enabled
                 onToggled: PrivacyMode.setEnabled(checked)
-                ToolTip.text: PrivacyMode.enabled ? qsTr("Privatmodus beenden (Strg+Umschalt+H)") : qsTr("Privatmodus: Beträge ausblenden (Strg+Umschalt+H)")
+                ToolTip.text: PrivacyMode.enabled ? qsTr("Privatmodus beenden (Strg+Umschalt+H)")
+                    : PrivacyMode.scope === "personal" ? qsTr("Privatmodus: Beträge und persönliche Angaben ausblenden (Strg+Umschalt+H)")
+                    : qsTr("Privatmodus: Beträge ausblenden (Strg+Umschalt+H)")
                 ToolTip.visible: hovered
             }
             TextField {

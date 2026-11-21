@@ -11,6 +11,7 @@ mod dispatch;
 mod i18n;
 mod ocr;
 mod qr_scan;
+mod search_terms;
 mod sessions;
 mod vault_key;
 mod web_login;

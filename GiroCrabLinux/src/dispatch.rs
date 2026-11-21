@@ -614,6 +614,10 @@ fn call(method: &str, a: &Value) -> R {
         }
         "batch" => batch(a),
         "reset_app" => reset_app(),
+        // the search field's text as the core searches it (plural stems, #54f83952)
+        "literal_search_term" => ok(crate::search_terms::literal_search_term(&arg::<String>(
+            a, "text",
+        )?)),
         "set_connection_account_choices" => set_connection_account_choices(&vault()?, a),
         // catalog / directory (free functions of the core)
         "bank_catalog" => ok(girocrab_core::bank_catalog()),

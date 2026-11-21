@@ -213,6 +213,12 @@ QtObject {
     property string directionFilter: "All"     // BookingDirection
     onDirectionFilterChanged: { listLimit = defaultListLimit; reloadBookings() }
     property string searchText: ""
+    /// AppModel+Selection.swift › coreSearchText: the typed text with German plurals cut back to
+    /// the stem („kredite“ → „kredit“), so the substring search also finds the singular. Always a
+    /// superset of the literal search; the field keeps showing what was typed.
+    function coreSearchText() {
+        try { return core("literal_search_term", { text: searchText }) } catch (e) { return searchText }
+    }
     property Timer searchTimer: Timer { interval: 250; onTriggered: model.reloadBookings() }
     onSearchTextChanged: searchTimer.restart()
     /// AccountSidebarMode (byGroup | byBank | byKind): the explicit choice, else "Nach Gruppe" once a group exists.
@@ -1200,7 +1206,7 @@ QtObject {
             category_id: sel.startsWith("category:") ? Number(sel.slice(9)) : null,
             include_subcategories: true,
             uncategorized_only: sel === "uncategorized",
-            search: searchText === "" ? null : searchText,
+            search: searchText === "" ? null : coreSearchText(),
             date_from: r[0], date_to: r[1],
             limit: listLimit, offset: 0,
             scope: scope,
