@@ -3679,6 +3679,17 @@
         }
       }
     },
+    "Alle Buchungsfilter zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset all transaction filters"
+          }
+        }
+      }
+    },
     "Alle Dokumente" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8432,6 +8443,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Print Bookings"
+          }
+        }
+      }
+    },
+    "Buchungen filtern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter transactions"
           }
         }
       }
@@ -21884,17 +21906,6 @@
         }
       }
     },
-    "Nach Status oder nach Einnahmen und Ausgaben filtern" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Filter by status or by income and expenses"
-          }
-        }
-      }
-    },
     "Nach Tags filtern" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28010,17 +28021,6 @@
         }
       }
     },
-    "Status, Buchungsart, Tags, Konten, Betrag und Suche zurücksetzen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reset status, type, tags, accounts, amount and search"
-          }
-        }
-      }
-    },
     "Status: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -30019,6 +30019,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Save as…"
+          }
+        }
+      }
+    },
+    "Unterkategorien einbeziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Include subcategories"
           }
         }
       }

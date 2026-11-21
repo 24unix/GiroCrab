@@ -424,7 +424,7 @@ extension AppModel {
         return BookingFilter(
             accountIds: accountIDs,
             categoryId: category,
-            includeSubcategories: true,
+            includeSubcategories: category == nil || includeSubcategories,
             uncategorizedOnly: uncategorized,
             search: coreSearchText.isEmpty ? nil : coreSearchText,
             dateFrom: from,

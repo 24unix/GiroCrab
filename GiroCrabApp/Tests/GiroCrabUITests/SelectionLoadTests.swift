@@ -65,6 +65,41 @@ final class SelectionLoadTests: XCTestCase {
         XCTAssertTrue(model.selectionSettled)
     }
 
+    func testCategoryFilterCanExcludeSubcategoriesAcrossSelections() async throws {
+        let child = try XCTUnwrap(model.categories.first { $0.sfSymbol == "cart" && $0.parentId != nil })
+        let parentID = try XCTUnwrap(child.parentId)
+        model.sidebarSelection = .category(parentID)
+        model.period = .all
+        let childRows = model.bookings.filter { $0.categoryId == child.id }
+        let childBooking = try XCTUnwrap(childRows.first)
+        let directBooking = try XCTUnwrap(childRows.dropFirst().first)
+        try XCTUnwrap(model.vault).setTransactionCategory(transactionId: directBooking.id, categoryId: parentID)
+        model.reloadBookings()
+
+        XCTAssertTrue(model.includeSubcategories)
+        XCTAssertTrue(model.bookings.contains { $0.id == childBooking.id })
+        XCTAssertTrue(model.bookings.contains { $0.id == directBooking.id })
+
+        model.interactiveIncludeSubcategories = false
+        try await awaitBookings(try expectedIDs())
+        XCTAssertFalse(model.bookings.contains { $0.id == childBooking.id })
+        XCTAssertTrue(model.bookings.contains { $0.id == directBooking.id })
+        XCTAssertTrue(model.hasActiveListFilters)
+
+        model.sidebarSelection = .category(child.id)
+        XCTAssertFalse(model.currentFilter.includeSubcategories)
+        model.sidebarSelection = .allAccounts
+        XCTAssertFalse(model.showsSubcategoryFilter)
+        XCTAssertTrue(model.currentFilter.includeSubcategories)
+        model.sidebarSelection = .category(parentID)
+        XCTAssertFalse(model.currentFilter.includeSubcategories)
+        XCTAssertFalse(model.bookings.contains { $0.id == childBooking.id })
+
+        model.resetListFilters()
+        XCTAssertTrue(model.currentFilter.includeSubcategories)
+        XCTAssertTrue(model.bookings.contains { $0.id == childBooking.id })
+    }
+
     func testInteractiveAccountSwitchLoadsInBackground() async throws {
         let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
         XCTAssertFalse(model.bookings.isEmpty)
