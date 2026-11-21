@@ -27,12 +27,12 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     /// Language code for the Rust core's texts. An app bundle resolves it itself; a plain
     /// executable (`swift run`) has no localizations and would always report "en", so the
-    /// system's preferred language is used there.
+    /// first supported system language (bare code, German as fallback) is used there.
     static var coreCode: String {
         if Bundle.main.bundleURL.pathExtension == "app" {
             return Bundle.main.preferredLocalizations.first ?? "de"
         }
-        return Locale.preferredLanguages.first ?? "de"
+        return LanguagePreference.standard.systemLanguage
     }
 
     /// Language names are shown in their own language, as in System Settings.
