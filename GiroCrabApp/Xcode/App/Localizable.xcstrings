@@ -14167,13 +14167,13 @@
         }
       }
     },
-    "Fehlende Angaben ergänzen (z. B. FinTS-Produkt-ID, API-Schlüssel) – das Formular öffnet sich automatisch" : {
+    "Fehlende Angaben ergänzen (z. B. API-Schlüssel) – das Formular öffnet sich automatisch" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fill in missing details (e.g. FinTS product ID, API keys) – the form opens automatically"
+            "value" : "Fill in missing details (e.g. API keys) – the form opens automatically"
           }
         }
       }

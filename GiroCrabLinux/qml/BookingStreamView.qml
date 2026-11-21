@@ -1003,7 +1003,7 @@ Rectangle {
                    font.pixelSize: Theme.callout + 1; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             Repeater {
                 model: [qsTr("Bank wählen und Anmeldenamen eingeben"),
-                        qsTr("Fehlende Angaben ergänzen (z. B. FinTS-Produkt-ID, API-Schlüssel) – das Formular öffnet sich automatisch"),
+                        qsTr("Fehlende Angaben ergänzen (z. B. API-Schlüssel) – das Formular öffnet sich automatisch"),
                         qsTr("PIN eingeben und in der Banking-App freigeben")]
                 RowLayout {
                     required property string modelData

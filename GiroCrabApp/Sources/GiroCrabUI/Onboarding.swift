@@ -115,7 +115,7 @@ struct EmptyVaultCard: View {
             Text("Ihr Tresor ist eingerichtet, enthält aber noch keine Konten. So geht es weiter:")
                 .appFont(.callout).foregroundStyle(Theme.secondary)
             step(1, "Bank wählen und Anmeldenamen eingeben")
-            step(2, "Fehlende Angaben ergänzen (z. B. FinTS-Produkt-ID, API-Schlüssel) – das Formular öffnet sich automatisch")
+            step(2, "Fehlende Angaben ergänzen (z. B. API-Schlüssel) – das Formular öffnet sich automatisch")
             step(3, "PIN eingeben und in der Banking-App freigeben")
             Button { showAddBank = true } label: {
                 Label("Bank suchen und hinzufügen …", systemImage: "magnifyingglass")
