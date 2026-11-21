@@ -965,14 +965,16 @@ fn english(de: &str) -> Option<&'static str> {
             "Scalable Capital: could not start the login ({0}: {1})."
         }
         "Bei Scalable Capital im Browser anmelden" => "Sign in to Scalable Capital in the browser",
-        "Öffnen Sie {0} und bestätigen Sie dort den Code {1}. Danach wartet GiroCrab automatisch auf die Freigabe." => {
-            "Open {0} and confirm the code {1} there. GiroCrab then waits for the approval automatically."
+        "Öffnen Sie {0} und bestätigen Sie dort den Code {1}. Danach wartet GiroCrab automatisch auf die Freigabe. Erscheint dort „Aktivierung abgelehnt – Wir können Ihr Gerät nicht aktivieren“, schalten Sie zuerst auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ den Zugriff ein und starten Sie die Anmeldung neu." => {
+            "Open {0} and confirm the code {1} there. GiroCrab then waits for the approval automatically. If it shows “Activation denied – We are not able to activate your device”, first switch on access under Profile → Security → “Agentic Investing” on scalable.capital and start the login again."
         }
         "Browser-Anmeldung" => "Browser login",
         "Die Browser-Anmeldung ist abgelaufen – bitte erneut starten." => {
             "The browser login expired – please start again."
         }
-        "Die Anmeldung wurde im Browser abgelehnt." => "The login was declined in the browser.",
+        "Die Anmeldung wurde im Browser abgelehnt. Prüfen Sie, ob auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ der Zugriff eingeschaltet ist, und starten Sie die Anmeldung neu." => {
+            "The login was declined in the browser. Check that access is switched on under Profile → Security → “Agentic Investing” on scalable.capital, and start the login again."
+        }
         "Anmeldung in der Scalable-App freigeben" => "Approve the login in the Scalable app",
         "Scalable Capital hat eine Freigabe-Anfrage an Ihr verknüpftes Gerät gesendet. Bitte dort bestätigen." => {
             "Scalable Capital sent an approval request to your linked device. Please confirm it there."
