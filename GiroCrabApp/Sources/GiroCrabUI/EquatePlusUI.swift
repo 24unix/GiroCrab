@@ -200,10 +200,14 @@ enum EquatePlusScripts {
             seen.add(String(plan.id));
             const details = await get('planDetails/get',{$type:'EntityIdentifier',id:plan.id});
             if (!Array.isArray(details.entries)) throw new Error('EquatePlus: Unvollständige Programmdetails.');
-            plans.push({id:plan.id,name:clean(plan.name),details:clean(details)});
+            const module = plan.planModuleId;
+            if (!['string','number'].includes(typeof module) || !String(module).trim() ||
+                !['string','number'].includes(typeof details.planModuleId) || String(module) !== String(details.planModuleId))
+              throw new Error('EquatePlus: Programm ohne bestätigte dauerhafte Kennung.');
+            plans.push({id:plan.id,moduleId:module,name:clean(plan.name),details:clean(details)});
           }
           const now = new Date();
-          return JSON.stringify({version:1,date:new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10),
+          return JSON.stringify({version:2,date:new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10),
             user:{participant:{userId:user.participant?.userId},reportingCurrency:{code:user.reportingCurrency?.code}},plans});
         }
       };
@@ -293,10 +297,15 @@ struct EquatePlusWebSheet: View {
                 let native = error as NSError
                 let exception = native.userInfo["WKJavaScriptExceptionMessage"] as? String ?? ""
                 let status = exception.range(of: "HTTP [0-9]{3}", options: .regularExpression).map { String(exception[$0]) }
-                notice = stage == "import"
-                    ? String(localized: "EquatePlus: Die gelieferten Bestandsdaten konnten nicht verarbeitet werden. Die bisherigen Bestände bleiben erhalten.")
-                    : String(localized: "EquatePlus: Der Datenabruf ist fehlgeschlagen. Bitte erneut versuchen.")
-                if let status { notice = (notice ?? "") + " (" + status + ")" }
+                if stage == "import",
+                   case .Bank("EQUATEPLUS_PROGRAM_MAPPING", let message)? = error as? CoreError {
+                    notice = message
+                } else {
+                    notice = stage == "import"
+                        ? String(localized: "EquatePlus: Die gelieferten Bestandsdaten konnten nicht verarbeitet werden. Die bisherigen Bestände bleiben erhalten.")
+                        : String(localized: "EquatePlus: Der Datenabruf ist fehlgeschlagen. Bitte erneut versuchen.")
+                    if let status { notice = (notice ?? "") + " (" + status + ")" }
+                }
             }
             await pin.checkpoint()
             running = false
