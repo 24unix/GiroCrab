@@ -134,7 +134,7 @@ enum HelpCatalog {
                 "de": """
                 - **comdirect:** Zugang über die comdirect-Schnittstelle; Zugangsdaten und die Freigabe per photoTAN/Push in der App bestätigen.
                 - **Trade Republic:** Anmeldung mit Telefonnummer und PIN, danach ein Bestätigungscode. Es werden Depot und Verrechnungskonto abgefragt.
-                - **Scalable Capital:** Anmeldung im Browserfenster von GiroCrab; Depot und Umsätze werden danach übernommen.
+                - **Scalable Capital:** Zuerst im Browser auf scalable.capital (nicht in der Scalable-App) unter Profil → Sicherheit → „Agentic Investing“ den Zugriff einschalten (sonst meldet die Seite „Aktivierung abgelehnt“). Dann Anmeldung im Browserfenster von GiroCrab; Depot und Umsätze werden danach übernommen.
                 - **Amex / Amazon Visa:** Über das Portal-Fenster anmelden oder Umsätze als CSV/PDF importieren.
 
                 Alle Zugangsdaten bleiben lokal im verschlüsselten Tresor.
@@ -142,7 +142,7 @@ enum HelpCatalog {
                 "en": """
                 - **comdirect:** Access via the comdirect interface; confirm credentials and the photoTAN/push approval in the app.
                 - **Trade Republic:** Sign in with phone number and PIN, then a confirmation code. Portfolio and settlement account are fetched.
-                - **Scalable Capital:** Sign in in GiroCrab's browser window; portfolio and transactions are imported afterwards.
+                - **Scalable Capital:** First switch on access in the browser on scalable.capital (not in the Scalable app) under Profile → Security → “Agentic Investing” (otherwise the page reports “Activation denied”). Then sign in in GiroCrab's browser window; portfolio and transactions are imported afterwards.
                 - **Amex / Amazon Visa:** Sign in via the portal window or import transactions as CSV/PDF.
 
                 All credentials stay local in the encrypted vault.
