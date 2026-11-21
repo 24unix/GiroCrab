@@ -181,6 +181,7 @@ struct AddBankSheet: View {
         switch step {
         case .bank:
             guard let s = selected else { return }
+            submit.reset()
             ways = (s.id == Self.manualFinTs.id || s.id == Self.rah10Bank.id) ? [s]
                 : Self.ways(to: s, in: searchBanks(query: s.name, livePsd2: model.livePsd2Banks, perGroupLimit: 12))
             step = s.id == Self.rah10Bank.id && !missingSettings.isEmpty ? .setup : .access
@@ -381,7 +382,12 @@ struct AddBankSheet: View {
                     Section {
                         Picker("Verbindung", selection: Binding(
                             get: { s.id },
-                            set: { id in if let w = ways.first(where: { $0.id == id }) { selected = w } }
+                            set: { id in
+                                guard let w = ways.first(where: { $0.id == id }), w.id != s.id else { return }
+                                // the next form reports itself; the last one's "Hinzufügen" must not stay
+                                submit.reset()
+                                selected = w
+                            }
                         )) {
                             ForEach(ways, id: \.id) { w in
                                 VStack(alignment: .leading, spacing: 2) {
