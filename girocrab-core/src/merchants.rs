@@ -1353,6 +1353,7 @@ impl MerchantRules {
     fn look_behind(
         &self,
         needle: &str,
+        own: bool,
         counterparty: &str,
         purpose: &str,
         t: &Texts,
@@ -1362,7 +1363,17 @@ impl MerchantRules {
                 .map(|x| x.1.to_string())
                 .unwrap_or_default()
         };
-        let (behind, wbehind) = (after(&t.cp), after(&t.wcp));
+        // An own search word matched as a whole word in `wcp`, which `cp` may spell
+        // differently ("paypal  europe" around a dropped legal form, long digit runs cut).
+        let (behind, wbehind) = if own {
+            let wbehind = word_starts(&t.wcp, needle)
+                .next()
+                .map(|i| t.wcp[i + needle.len()..].to_string())
+                .unwrap_or_default();
+            (normalise(&wbehind), wbehind)
+        } else {
+            (after(&t.cp), after(&t.wcp))
+        };
         let shop_in = |c: &CustomEntry, text: &str| {
             (c.kind() != K::PaymentService)
                 .then(|| c.longest_in(text, &t.wctx, 0))
@@ -1398,7 +1409,7 @@ impl MerchantRules {
         if let Some(c) = self.best_custom(|c| c.longest_in(&t.wcp, &t.wctx, 0)) {
             if c.kind() == K::PaymentService
                 && let Some(needle) = c.matched_in(&t.wcp, &t.wctx, 0)
-                && let Some(real) = self.look_behind(needle, counterparty, purpose, &t)
+                && let Some(real) = self.look_behind(needle, true, counterparty, purpose, &t)
             {
                 return real;
             }
@@ -1410,7 +1421,8 @@ impl MerchantRules {
         }
         if let Some(entry) = self.find_checked(&t.cp, &t.ctx) {
             if entry.kind == K::PaymentService
-                && let Some(real) = self.look_behind(entry.needles[0], counterparty, purpose, &t)
+                && let Some(real) =
+                    self.look_behind(entry.needles[0], false, counterparty, purpose, &t)
             {
                 return real;
             }
@@ -2524,6 +2536,20 @@ mod tests {
             true,
         );
         assert_eq!(r.resolve(cp, "Ihr Einkauf bei Kleiner Laden").key, "u:k");
+        // a search word across a dropped legal form (#1504 review)
+        let r = rules(
+            &[("p", "Mein PayPal", &["paypal europe"], "paypal")],
+            &["paypal"],
+            true,
+        );
+        assert_eq!(
+            MerchantResolver::resolve("PayPal GmbH Europe Spotify", "").key,
+            "spotify"
+        );
+        assert_eq!(r.resolve("PayPal GmbH Europe Spotify", "").key, "spotify");
+        // behind the whole-word match, not an earlier embedded one (#1519 review)
+        let cp = "NotPayPal GmbH Europe Spotify PayPal Europe";
+        assert_eq!(r.resolve(cp, "").key, "u:p");
     }
 
     #[test]
