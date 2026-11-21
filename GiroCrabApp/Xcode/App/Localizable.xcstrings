@@ -10360,6 +10360,17 @@
         }
       }
     },
+    "Der Tresor wurde während des Abrufs gewechselt – es wurde nichts übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The vault was switched during the fetch – nothing was imported."
+          }
+        }
+      }
+    },
     "Der Tresor-Schlüssel konnte nicht im Schlüsselbund gespeichert werden (Fehler %d). Der Tresor bleibt bis zum Beenden geöffnet – bitte GiroCrab nicht beenden, den Schlüsselbund prüfen (Schlüsselbundverwaltung) und den Vorgang wiederholen." : {
       "extractionState" : "manual",
       "localizations" : {

@@ -5,12 +5,18 @@ import GiroCrabCore
 // MARK: - Model glue (Amazon customer account: order history)
 
 extension AppModel {
-    /// Hands the scraped order JSON to the core. Returns true when orders were recognised.
+    /// Hands the scraped order JSON to the core, into the vault the fetch started
+    /// on (`pin`): its skip list filtered the orders. Returns true when orders were recognised.
     @discardableResult
-    func importAmazonOrders(_ c: BankConnection, json: String) -> Bool {
-        guard let vault else { return false }
+    func importAmazonOrders(_ c: BankConnection, json: String, into pin: VaultPin) async -> Bool {
+        guard isCurrent(pin) else {
+            showError(String(localized: "Amazon-Bestellungen konnten nicht übernommen werden"),
+                      String(localized: "Der Tresor wurde während des Abrufs gewechselt – es wurde nichts übernommen."))
+            return false
+        }
+        let id = c.id
         do {
-            let s = try vault.importAmazonOrders(connectionId: c.id, ordersJson: json)
+            let s = try await pin.run { try $0.importAmazonOrders(connectionId: id, ordersJson: json) }
             toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
             reloadAll()
             return true
@@ -387,11 +393,13 @@ struct AmazonWebSheet: View {
         running = true
         notice = nil
         progress = nil
+        // one vault for the whole job: the skip list and the import (#1035)
+        guard let pin = model.pinVault() else { running = false; return }
         task = Task {
             defer { running = false; progress = nil }
             do {
-                let json = try await scrape()
-                if model.importAmazonOrders(connection, json: json) { close() }
+                let json = try await scrape(pin)
+                if await model.importAmazonOrders(connection, json: json, into: pin) { close() }
             } catch is CancellationError {
                 notice = String(localized: "Abruf gestoppt – es wurde nichts übernommen.")
             } catch AmazonError.loggedOut {
@@ -419,7 +427,7 @@ struct AmazonWebSheet: View {
     }
 
     /// Order list (per year, newest first) -> order codes -> one detail page each.
-    private func scrape() async throws -> String {
+    private func scrape(_ pin: VaultPin) async throws -> String {
         let thisYear = Calendar.current.component(.year, from: Date())
         var codes: [String] = []
         /// Year of each order's list, for the panel.
@@ -438,7 +446,7 @@ struct AmazonWebSheet: View {
         if codes.isEmpty { throw AmazonError.noOrders }
         let connectionID = connection.id
         let days = UInt32(reread.rawValue)
-        let known = try await model.vaultOffMain { try $0.amazonOrdersToSkip(connectionId: connectionID, rereadDays: days) } ?? []
+        let known = try await pin.run { try $0.amazonOrdersToSkip(connectionId: connectionID, rereadDays: days) }
         let (toRead, skipped) = AmazonReread.split(codes, skip: Set(known))
         var orders: [[String: Any]] = []
         for (i, code) in toRead.enumerated() {
