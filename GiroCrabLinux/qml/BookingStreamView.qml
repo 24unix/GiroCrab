@@ -612,6 +612,25 @@ Rectangle {
             }
             onObjectRemoved: (index, menu) => rowMenu.removeMenu(menu)
         }
+        // OfflineBookingMenu (OfflineAccountsUI.swift, #679): edit / delete by hand, mirror into an offline account
+        AppMenuItem { id: editManualItem; readonly property bool shown: OfflineAccounts.isManuallyEditable(stream.menuBooking)
+                   visible: shown; height: shown ? implicitHeight : 0
+                   text: qsTr("Buchung bearbeiten …"); icon.name: SF.icon("square.and.pencil")
+                   onTriggered: OfflineAccounts.editManualBooking(stream.menuBooking) }
+        AppMenuItem { readonly property bool shown: OfflineAccounts.isManuallyEditable(stream.menuBooking)
+                   visible: shown; height: shown ? implicitHeight : 0
+                   text: qsTr("Buchung löschen …"); icon.name: SF.icon("trash")
+                   onTriggered: OfflineAccounts.deleting = stream.menuBooking }
+        Instantiator {
+            model: stream.menuBooking && OfflineAccounts.offlineAccounts.some(a => a.id !== stream.menuBooking.account_id) ? 1 : 0
+            delegate: OfflineMirrorMenu { booking: stream.menuBooking }
+            onObjectAdded: (index, menu) => {
+                let at = 0
+                for (let i = 0; i < rowMenu.count; ++i) if (rowMenu.itemAt(i) === editManualItem) at = i + 2
+                rowMenu.insertMenu(at, menu)
+            }
+            onObjectRemoved: (index, menu) => rowMenu.removeMenu(menu)
+        }
         AppMenuSeparator {}
         AppMenuItem {
             readonly property string who: stream.menuBooking ? (stream.menuBooking.counterparty || stream.menuBooking.merchant_name) : ""

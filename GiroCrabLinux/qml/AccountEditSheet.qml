@@ -31,7 +31,7 @@ Sheet {
         const newName = nameField.text.trim()
         if (newName === "") return
         const owner = ownerField.text.trim()
-        const kind = AppModel.accountKindChoices[kindBox.currentIndex].id
+        const kind = kindBox.visible ? AppModel.accountKindChoices[kindBox.currentIndex].id : a.kind
         const note = noteField.text.trim()
         close()
         if (newName !== a.name) AppModel.renameAccount(a.id, newName)
@@ -52,8 +52,10 @@ Sheet {
             TextField { id: nameField; Layout.fillWidth: true; onAccepted: sheet.save(); Sensitive {} }
             Text { text: qsTr("Name des Kontoinhabers"); font.pixelSize: Theme.body; color: Theme.text; Layout.alignment: Qt.AlignRight }
             TextField { id: ownerField; Layout.fillWidth: true; onAccepted: sheet.save(); Sensitive {} }
-            Text { text: qsTr("Kontoart"); font.pixelSize: Theme.body; color: Theme.text; Layout.alignment: Qt.AlignRight }
-            AppComboBox { id: kindBox; Layout.fillWidth: true; model: AppModel.accountKindChoices; textRole: "text" }
+            // an offline account is always cash (#679)
+            Text { visible: kindBox.visible; text: qsTr("Kontoart"); font.pixelSize: Theme.body; color: Theme.text; Layout.alignment: Qt.AlignRight }
+            AppComboBox { id: kindBox; visible: sheet.accountID === null || !OfflineAccounts.isOffline(sheet.accountID)
+                          Layout.fillWidth: true; model: AppModel.accountKindChoices; textRole: "text" }
         }
         ColumnLayout {
             Layout.fillWidth: true

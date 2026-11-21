@@ -20,6 +20,7 @@ QtObject {
         "paperplane": "mail-send", "arrow.triangle.2.circlepath": "view-refresh", "sidebar.trailing": "sidebar-collapse-right",
         "checkmark": "dialog-ok",   // light Breeze has "checkmark" only as an emblem (a filled badge)
         "checkmark.circle": "dialog-ok-apply", "repeat": "media-playlist-repeat",
+        "equal.circle": "document-equal",
         "clock": "clock", "tag": "tag", "note.text": "note", "pencil": "document-edit", "trash": "edit-delete",
         "paintpalette": "color-picker", "wand.and.stars": "tools-wizard", "arrow.triangle.branch": "split",
         "archivebox": "archive-insert", "gearshape": "settings-configure", "printer": "document-print",

@@ -447,6 +447,7 @@ Rectangle {
     AppMenu {
         id: addMenu
         AppMenuItem { text: qsTr("Neues Konto …"); icon.name: SF.icon("building.columns"); onTriggered: AppModel.showAddBank = true }
+        AppMenuItem { text: qsTr("Neues Offline-Konto …"); icon.name: SF.icon("banknote"); onTriggered: OfflineAccounts.openNewAccount() }
         AppMenuItem { text: qsTr("Neue Kontengruppe …"); icon.name: SF.icon("folder.badge.plus")
                       onTriggered: AppModel.groupDialog = { kind: "create", movingAccount: null, parent: null } }
         AppMenuSeparator {}
@@ -591,12 +592,23 @@ Rectangle {
         id: accountMenu
         readonly property var a: sidebar.menuAccount
         readonly property bool archived: a !== null && a.archived_unix !== null
+        /// takes manual bookings (#679): not archived, no bank connection
+        readonly property bool offline: a !== null && !archived && OfflineAccounts.isOffline(a.id)
+        // an offline account is always cash (#679): its entry of „Kontoart ändern …“ is left out
+        onAboutToShow: {
+            const cash = a !== null && OfflineAccounts.isOffline(a.id)
+            for (let i = 0; i < count; ++i) {
+                const it = itemAt(i)
+                if (it && it.subMenu === kindMenu) { it.visible = !cash; it.height = cash ? 0 : it.implicitHeight }
+            }
+        }
         // „Konto bearbeiten …“ (#639): name, owner, kind and note in one sheet
         AppMenuItem { text: qsTr("Konto bearbeiten …"); icon.name: SF.icon("square.and.pencil"); onTriggered: accountEditSheet.edit(accountMenu.a.id) }
         AppMenuItem { text: qsTr("Umbenennen …"); icon.name: SF.icon("pencil"); onTriggered: AppModel.groupDialog = { kind: "renameAccount", account: accountMenu.a } }
         AppMenuItem { text: qsTr("Symbol && Farbe …"); icon.name: SF.icon("paintpalette"); onTriggered: AppModel.iconColorTarget = { type: "account", id: accountMenu.a.id } }
         // WP3: CategoryChipToggle (#336, #604) – the tick follows the stored value
         CategoryChipToggle { account: accountMenu.a }
+        // an offline account is always cash (#679): no „Kontoart ändern …“
         AppMenu {
             id: kindMenu
             title: qsTr("Kontoart ändern …")
@@ -656,6 +668,15 @@ Rectangle {
                    visible: shown; height: shown ? implicitHeight : 0
                    text: qsTr("Startsaldo …"); icon.name: SF.icon("clock.arrow.circlepath")
                    onTriggered: AppModel.openOpeningBalance(accountMenu.a) }
+        // OfflineAccountMenuItems (OfflineAccountsUI.swift, #679)
+        AppMenuItem { readonly property bool shown: accountMenu.offline
+                   visible: shown; height: shown ? implicitHeight : 0
+                   text: qsTr("Neue Buchung …"); icon.name: SF.icon("plus")
+                   onTriggered: OfflineAccounts.openManualBooking(accountMenu.a.id) }
+        AppMenuItem { readonly property bool shown: accountMenu.offline
+                   visible: shown; height: shown ? implicitHeight : 0
+                   text: qsTr("Saldo korrigieren …"); icon.name: SF.icon("equal.circle")
+                   onTriggered: OfflineAccounts.openBalanceCorrection(accountMenu.a.id) }
         AppMenuItem {
             readonly property var conn: sidebar.menuConnectionOfAccount
             visible: conn !== null; height: visible ? implicitHeight : 0

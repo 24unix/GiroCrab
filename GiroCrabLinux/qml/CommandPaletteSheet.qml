@@ -45,6 +45,9 @@ Sheet {
         add(qsTr("Neue Hauptkategorie"), action, "plus.square", () => m.newCategoryRequest = { parent: null })
         add(qsTr("Neues Darlehen"), action, "car", () => m.openLoanEditor("create"))
         add(qsTr("Neues Sachwerte-Konto"), action, "diamond", () => m.createTangibleAccount())
+        add(qsTr("Neues Offline-Konto"), action, "banknote", () => OfflineAccounts.openNewAccount())
+        if (OfflineAccounts.canAddManualBooking)
+            add(qsTr("Neue Buchung"), action + " · " + Fmt.keys("Strg+Alt+N"), "plus", () => OfflineAccounts.openManualBooking())
         if (m.sidebarSelection.startsWith("account:")) {
             const accId = parseInt(m.sidebarSelection.slice(8))
             if (m.isTangible(accId)) add(qsTr("Sachwert hinzufügen"), action, "plus", () => m.openAssetEditor(accId))

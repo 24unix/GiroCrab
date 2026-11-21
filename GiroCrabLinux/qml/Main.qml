@@ -61,6 +61,7 @@ ApplicationWindow {
             Action { text: qsTr("Bank hinzufügen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.showAddBank = true }
             Action { text: qsTr("Neues Darlehen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openLoanEditor("create") }
             Action { text: qsTr("Neues Sachwerte-Konto …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.createTangibleAccount() }
+            Action { text: qsTr("Neues Offline-Konto …"); enabled: AppModel.isUnlocked; onTriggered: OfflineAccounts.openNewAccount() }
             Action { text: qsTr("Neue Hauptkategorie …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.newCategoryRequest = { parent: null } }
             AppMenuSeparator {}
             Action { text: qsTr("Vorhandene Daten importieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openMoneyMoneyImport() }
@@ -134,6 +135,13 @@ ApplicationWindow {
         }
         AppMenu {
             title: qsTr("B&uchung")
+            // Offline accounts (#679, #81): typed bookings
+            Action { text: qsTr("Neue Buchung …"); shortcut: "Ctrl+Alt+N"; enabled: OfflineAccounts.canAddManualBooking; onTriggered: OfflineAccounts.openManualBooking() }
+            Action { text: qsTr("Buchung bearbeiten …"); enabled: OfflineAccounts.isManuallyEditable(AppModel.selectedBooking)
+                     onTriggered: OfflineAccounts.editManualBooking(AppModel.selectedBooking) }
+            Action { text: qsTr("Buchung löschen …"); enabled: OfflineAccounts.isManuallyEditable(AppModel.selectedBooking)
+                     onTriggered: OfflineAccounts.deleting = AppModel.selectedBooking }
+            AppMenuSeparator {}
             // In the list, the single keys C and R do the same (kept for speed).
             Action { text: qsTr("Kategorisieren …"); shortcut: "Ctrl+Meta+C"; enabled: AppModel.selectedBooking !== null
                      onTriggered: AppModel.showCategorizer = true }
@@ -328,6 +336,9 @@ ApplicationWindow {
                 ToolTip.text: qsTr("Ansicht wählen (Strg+1, Strg+2, Strg+3)")
             }
             IconButton { symbol: "paperplane"; enabled: AppModel.canTransfer; onClicked: AppModel.openTransfer(); ToolTip.text: qsTr("Neue Überweisung (Strg+N)"); ToolTip.visible: hovered }
+            // MainToolbar › ToolbarItem(id: "newBooking") (#679)
+            IconButton { symbol: "plus"; enabled: OfflineAccounts.canAddManualBooking; onClicked: OfflineAccounts.openManualBooking()
+                         ToolTip.text: qsTr("Neue Buchung (Strg+Alt+N)"); ToolTip.visible: hovered; Accessible.name: qsTr("Neue Buchung") }
             // .disabled(bankingBlocksAll).help(gate message): the wrapper sees the hover of the disabled button
             Item {
                 implicitWidth: syncAllButton.implicitWidth; implicitHeight: syncAllButton.implicitHeight
@@ -554,6 +565,9 @@ ApplicationWindow {
     AssetActionSheet {}
     AssetClassificationSheet {}
     OpeningBalanceSheet {}
+    // Offline accounts (OfflineAccountsUI.swift › offlineAccountSheets)
+    Loader { active: OfflineAccounts.bookingRequest !== null; sourceComponent: Component { ManualBookingSheet {} } }
+    OfflineAccountSheets {}
 
     // MARK: account groups & command palette (AccountGroupsUI.swift, CommandPalette.swift)
     AccountGroupDialogs {}
