@@ -228,10 +228,14 @@ WebLoginFlow {
         seen.add(String(plan.id));
         const details = await get('planDetails/get',{$type:'EntityIdentifier',id:plan.id});
         if (!Array.isArray(details.entries)) throw new Error('EquatePlus: Unvollständige Programmdetails.');
-        plans.push({id:plan.id,name:clean(plan.name),details:clean(details)});
+        const module = plan.planModuleId;
+        if (!['string','number'].includes(typeof module) || !String(module).trim() ||
+            !['string','number'].includes(typeof details.planModuleId) || String(module) !== String(details.planModuleId))
+          throw new Error('EquatePlus: Programm ohne bestätigte dauerhafte Kennung.');
+        plans.push({id:plan.id,moduleId:module,name:clean(plan.name),details:clean(details)});
       }
       const now = new Date();
-      return JSON.stringify({version:1,date:new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10),
+      return JSON.stringify({version:2,date:new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10),
         user:{participant:{userId:user.participant?.userId},reportingCurrency:{code:user.reportingCurrency?.code}},plans});
     }
   };
@@ -322,7 +326,10 @@ WebLoginFlow {
         run(guard + collect, {}, gen)
             .then(snapshot => {
                 stage = "import"
-                return AppModel.corePromise("import_equateplus_snapshot", { connection_id: id, snapshot_json: snapshot })
+                const args = { connection_id: id, snapshot_json: snapshot }
+                return new Promise((resolve, reject) => {
+                    app.coreAsync("import_equateplus_snapshot", args, resolve, error => reject(app.parseCoreError(error)))
+                })
             })
             .then(s => {
                 // the import is stored even when the window was closed meanwhile: reload anyway
@@ -338,7 +345,9 @@ WebLoginFlow {
                 if (e !== cancelled) {
                     // never the raw error: it can include token-bearing URLs
                     const status = stage === "portal" ? httpStatus(e && e.message) : ""
-                    notice = (stage === "import"
+                    const mapping = stage === "import" && e && e.code === "EQUATEPLUS_PROGRAM_MAPPING"
+                        ? e.message : ""
+                    notice = mapping || (stage === "import"
                         ? qsTr("EquatePlus: Die gelieferten Bestandsdaten konnten nicht verarbeitet werden. Die bisherigen Bestände bleiben erhalten.")
                         : qsTr("EquatePlus: Der Datenabruf ist fehlgeschlagen. Bitte erneut versuchen."))
                         + (status ? " (" + status + ")" : "")

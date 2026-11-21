@@ -40,8 +40,8 @@ function portal(host = 'www.equateplus.com') {
       const u = new URL(url, 'https://' + host);
       calls.push({u, init});
       if (u.pathname.endsWith('user/get')) return json(profile);
-      if (u.pathname.endsWith('planSummary/get')) return json({entries: [{id: 'test-plan', name: 'Test Programm'}]});
-      if (u.pathname.endsWith('planDetails/get')) return json({name: 'Test Programm', secret: 'do not export',
+      if (u.pathname.endsWith('planSummary/get')) return json({entries: [{id: 'test-plan', planModuleId: 'test-module', name: 'Test Programm'}]});
+      if (u.pathname.endsWith('planDetails/get')) return json({name: 'Test Programm', planModuleId: 'test-module', secret: 'do not export',
         totals: [{type: 'TOTAL', quantity: {amount: 1.25}, value: {amount: 125}}],
         entries: [{vehicle: 'TEST', productType: 'RSU', marketPrice: {amount: 100, unit: {code: 'EUR'}}, canTrade: false,
           entries: [{VEHICLE: 'Test RSU', LOCKED_QTY: {amount: 1.25}}]}]});

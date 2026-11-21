@@ -43,6 +43,25 @@ fn save(db: &Connection, id: i64, rows: &[ConnectionAccountChoice]) -> CoreResul
     db.execute("INSERT INTO settings(key,value) VALUES (?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![key(db,id)?,raw])?;
     Ok(())
 }
+pub(super) fn rename_refs(db: &Connection, id: i64, refs: &[(String, String)]) -> CoreResult<()> {
+    if refs.is_empty() {
+        return Ok(());
+    }
+    let mut choices = load(db, id)?;
+    for (old, new) in refs {
+        if let Some(mut choice) = choices
+            .iter()
+            .find(|choice| &choice.account_ref == old)
+            .cloned()
+        {
+            choices.retain(|row| &row.account_ref != old && &row.account_ref != new);
+            choice.account_ref = new.clone();
+            choices.push(choice);
+        }
+    }
+    save(db, id, &choices)
+}
+
 fn normalized(value: &str) -> String {
     value
         .chars()

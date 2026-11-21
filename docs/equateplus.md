@@ -15,7 +15,12 @@ dem angemeldeten Produktionsstandort (`www.equateplus.com`,
 
 ## Bestände
 
-Jedes Programm erhält ein eigenes Depot mit stabiler Programm-ID. Verfügbare,
+Jedes Programm erhält ein eigenes Depot. Dessen Kennung verwendet die Teilnehmerkennung
+und `planModuleId`. Die sitzungsabhängige Plan-ID dient dem Abruf der Programmdetails.
+Vorhandene Depots behalten ihre Konto-ID, wenn die alte Plan-ID noch eindeutig zur aktuellen
+Sitzung passt. Ist eine Zuordnung nach einem Sitzungswechsel nicht möglich, stoppt der Abruf.
+In diesem Fall zuerst die alten Depots prüfen und archivieren. Neue Depots werden erst nach
+Bestätigung übernommen. Verfügbare,
 gesperrte und performancegebundene Bestände erscheinen getrennt; unklare
 Verfügbarkeit wird ausdrücklich gekennzeichnet. RSUs bleiben auch ohne Einstandskurs sichtbar.
 

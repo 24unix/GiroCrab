@@ -27,8 +27,8 @@ function portal(host='www.equateplus.com', options={}) {
       if (u.pathname.endsWith('user/get')) data = options.invalidProfile ? {loginRequired:true} : profile;
       else if (u.pathname.endsWith('documents/library')) data = {documents:[{id:'doc1',date:'2011-05-26T00:00:00',description:'Test',documentType:'Dividendenbestätigung',plan:null,
         url:'/services/statements/download?documentId=doc1',secret:'do not export'}]};
-      else if (u.pathname.endsWith('planSummary/get')) data = {entries:[{id:'test-plan',name:'Test Programm'}]};
-      else if (u.pathname.endsWith('planDetails/get')) data = {name:'Test Programm',csrfpId:'rotated-token',secret:'do not export',
+      else if (u.pathname.endsWith('planSummary/get')) data = {entries:[{id:'test-plan',planModuleId:'test-module',name:'Test Programm'}]};
+      else if (u.pathname.endsWith('planDetails/get')) data = {name:'Test Programm',planModuleId:'test-module',csrfpId:'rotated-token',secret:'do not export',
         totals:[{type:'TOTAL',quantity:{amount:1.25},value:{amount:125}}],
         entries:[{vehicle:'TEST',productType:'RSU',marketPrice:{amount:100,unit:{code:'EUR'}},canTrade:false,entries:[{VEHICLE:'Test RSU',LOCKED_QTY:{amount:1.25}}]}]};
       else data = {ok:true};
@@ -52,6 +52,8 @@ for (const host of ['www.equateplus.com','www.emea.equateplus.com','www.na.equat
   document.login = false;
   const snapshot = await c.__gcEquatePlus.collect();
   const data = JSON.parse(snapshot);
+  assert.equal(data.version,2);
+  assert.equal(data.plans[0].moduleId,"test-module");
   assert.equal(data.plans[0].details.entries[0].entries[0].LOCKED_QTY.amount,1.25);
   assert.equal(data.plans[0].details.totals[0].quantity.amount,1.25);
   assert.equal(data.plans[0].details.totals[0].type,'TOTAL');

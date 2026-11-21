@@ -205,6 +205,9 @@ pub(crate) fn store_fetch(
         if kind == ConnectorKind::Advanzia {
             super::advanzia::prepare_import(&tx, connection_id, &mut data)?;
         }
+        if kind == ConnectorKind::EquatePlus {
+            super::equateplus::prepare_import(&tx, connection_id, &mut data)?;
+        }
         let generic_bank_name = descriptor(kind).name;
         // No name from the bank: the connection's display name (the bank picked
         // when adding it, or renamed later) beats the generic "FinTS-Bank".
@@ -1020,6 +1023,13 @@ pub(crate) fn store_fetch(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(connection_id, (kind, data));
+        } else if kind == ConnectorKind::EquatePlus {
+            // A fresh snapshot supersedes any previously deferred program selection.
+            vault
+                .pending_account_fetches
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&connection_id);
         }
         // The catch-up after switching retrieval on again is done once a sync brings no new document
         // and left none out (a failed request, a limit).
