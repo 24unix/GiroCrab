@@ -46,9 +46,13 @@ fn info(entry: &Bank) -> FinTsBankInfo {
 }
 
 /// Keeps only the digits ("1005 0000" -> "10050000").
-fn digits(s: &str) -> String {
+pub(crate) fn digits(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_digit()).collect()
 }
+
+/// Bank code of the Miles & More credit cards (Deutsche Bank), used by the bank
+/// only for these cards (`docs/miles-and-more-connector.md`).
+pub(crate) const MILES_AND_MORE_BLZ: &str = "50070439";
 
 /// comdirect's bank codes (Bundesbank: "Commerzbank, GF comdirect"); the
 /// code of an account is in its IBAN. The FinTS login may need another one of

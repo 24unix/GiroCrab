@@ -1057,8 +1057,10 @@ mod tests {
                 c,
                 "DE10200411550123456789",
                 "DE10200411550123456789",
+                "",
                 "EUR",
                 crate::models::AccountKind::Checking,
+                &[],
             )
             .unwrap();
             assert_eq!(adopted, Some(acc));
@@ -1447,8 +1449,10 @@ mod tests {
             c,
             "dep-1",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, Some(depot));
@@ -1482,8 +1486,10 @@ mod tests {
                 c,
                 iban,
                 iban,
+                "",
                 "EUR",
                 crate::models::AccountKind::Checking,
+                &[],
             )
             .unwrap();
             assert_eq!(adopted, Some(giro));
@@ -1561,8 +1567,17 @@ mod tests {
             let db = a.db().unwrap();
             let iban = "DE10200411550123456789";
             let take = |ext: &str, iban: &str, kind| {
-                crate::importers::moneymoney_db::adopt_account(&db, c, ext, iban, "EUR", kind)
-                    .unwrap()
+                crate::importers::moneymoney_db::adopt_account(
+                    &db,
+                    c,
+                    ext,
+                    iban,
+                    "",
+                    "EUR",
+                    kind,
+                    &[],
+                )
+                .unwrap()
             };
             assert_eq!(
                 take("A1B2C3", iban, crate::models::AccountKind::Checking),
@@ -1689,8 +1704,10 @@ mod tests {
             c,
             "dep-1",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, Some(depot));
@@ -1710,11 +1727,35 @@ mod tests {
             c,
             "123456700-Depot",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, Some(depot));
+        // the takeover replaced the marker: a second depot of the same fetch
+        // does not land in the same account
+        let external_ref: String = db
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                [depot],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(external_ref, "123456700-Depot");
+        let second = crate::importers::moneymoney_db::adopt_account(
+            &db,
+            c,
+            "987654300-Depot",
+            "",
+            "",
+            "EUR",
+            crate::models::AccountKind::Brokerage,
+            &[],
+        )
+        .unwrap();
+        assert_ne!(second, Some(depot));
     }
 
     /// Two marked depots on the login: which one is which is unknown, so
@@ -1731,8 +1772,10 @@ mod tests {
             c,
             "123456700-Depot",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_eq!(adopted, None);
@@ -1758,8 +1801,10 @@ mod tests {
             c,
             "123456700-Depot",
             "",
+            "",
             "EUR",
             crate::models::AccountKind::Brokerage,
+            &[],
         )
         .unwrap();
         assert_ne!(adopted, Some(depot));

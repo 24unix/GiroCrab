@@ -94,6 +94,7 @@ The SEPA account list (`HKSPA`) is empty ("keine Einträge").
 | Add-form hints, required TAN medium, colour and monogram | `FinTsAddForm.swift`, `Formatting.swift` |
 | First-fetch period (90 days / 1 year / 2 years) in the settings | `SettingsView.swift` (core setting `sync.days_back`) |
 | Bank matrix row | `catalog.rs` (`BANK_MATRIX`), README regenerated with `scripts/sync_docs.py` |
+| Database import: card logins filed under a pseudo bank code get this bank code, a FinTS login named after the card, card numbers decide between several cards | `is_deutsche_bank_card_login`, `SrcBank::card_only`, `adopt_account`, `find_existing_accounts` in `importers/moneymoney_db.rs` |
 
 ### `HIKKU` version 1 as parsed
 
@@ -134,3 +135,7 @@ in the live test: every booking group returned was parsed (63 of 63 and 162 of 1
 
 - 2026-11-15 – First live test and implementation: TAN medium handling, `HKKKU`
   support, directory entry and UI hints, first-fetch period setting, approval wait fix.
+- 2026-11-18 – Database import (#1017): card logins stored under the pseudo bank code
+  "Miles & More Credit Card" are connected through this bank code; logins of the former
+  issuer keep no connector. Several cards on one login are matched by card number on
+  the first fetch.
