@@ -6,6 +6,10 @@ import QtQuick.Layouts
 // editor's icon button), sized to show every icon without scrolling.
 Popup {
     id: picker
+    // ReportDialogs.swift › capturablePopover (#384): drawn into the bug report picture
+    onOpened: ReportDialogs.track(picker)
+    onClosed: ReportDialogs.untrack(picker)
+    Component.onDestruction: ReportDialogs.untrack(picker)
     /// The icon the item shows now (its type default while none is chosen).
     property string current
     signal picked(string symbol)

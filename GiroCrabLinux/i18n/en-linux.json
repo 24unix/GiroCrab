@@ -91,7 +91,6 @@
   "Ein Bargeld-Konto ohne Bankanbindung. Die Buchungen tragen Sie selbst ein.": "A cash account without a bank connection. You enter the bookings yourself.",
   "Ein Tag bleibt und übernimmt die Buchungen der anderen. Um einen anderen zu behalten, klicken Sie ihn an.": "One tag stays and takes over the bookings of the others. To keep a different one, click it.",
   "Eine Sicherung läuft gerade. Bitte warten Sie, bis sie fertig ist.": "A backup is in progress. Please wait until it has finished.",
-  "Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann.": "Taking a new screenshot discards the annotations because the content may have shifted.",
   "Einrichtung läuft …": "Setting up…",
   "Entwickler-Schlüssel (GIROCRAB_NO_KEYCHAIN, Schlüsselbund unbenutzt)": "Developer key (GIROCRAB_NO_KEYCHAIN, keyring unused)",
   "Erkennt IBAN, Betrag, Empfänger und Zweck (⇧Strg+V; Strg+V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD, GiroCode) hierher ziehen.": "Detects IBAN, amount, recipient and purpose (⇧Ctrl+V; Ctrl+V outside text fields). Drop an invoice (PDF, ZUGFeRD, GiroCode) here.",

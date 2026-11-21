@@ -29,6 +29,7 @@ Item {
 
     Sheet {
         id: textAlert
+        reportCapturable: false   // an alert on the Mac (ReportDialogs.qml)
         property var current: null
         visible: root.needsText
         sheetWidth: 360

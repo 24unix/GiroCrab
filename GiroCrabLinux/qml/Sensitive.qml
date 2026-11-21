@@ -4,7 +4,8 @@ import QtQuick
 // personal data, `Sensitive { amounts: true }` on money (amounts, balances, sums, shares, chart
 // axis values and readouts; also text that mixes names and amounts, `[.personal, .amounts]`) and
 // `Sensitive { labels: true }` on category, group, budget and security names (hidden only on
-// request). While Hilfe › Problem melden captures the main window, in privacy mode (#719,
+// request). While Hilfe › Problem melden captures the main window and the dialogs over it (the
+// Settings window included, #384, ReportDialogs.qml), in privacy mode (#719,
 // PrivacyMode) or with `--redact[=labels]` / `--privacy[=all]` it covers its parent with an opaque box,
 // above the parent's own children (a text field's text, a chart's marks). A Text is covered
 // only where it draws glyphs, so a label that fills its row does not black out the row.

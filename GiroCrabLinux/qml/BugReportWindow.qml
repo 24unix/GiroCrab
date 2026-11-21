@@ -5,7 +5,8 @@ import QtQuick.Dialogs
 import QtCore
 
 // BugReportUI.swift › BugReportView: Hilfe › Problem melden … (#301). Its own window, so the
-// main window stays free to be captured. A screenshot of the main window with personal data
+// main window stays free to be captured. A screenshot of the main window, with the sheet or
+// popover over it and the Settings window drawn at their place (#384), personal data
 // drawn as opaque boxes (`Sensitive {}`), extra black boxes drawn with the mouse, a scrubbed
 // diagnostics block (BugReport.swift → src/bug_report.rs) and a prefilled GitHub issue.
 // Nothing leaves the computer until the user pastes the picture and submits the issue in
@@ -28,10 +29,14 @@ ApplicationWindow {
     }
     Shortcut { sequences: [StandardKey.Close]; onActivated: win.close() }
 
-    /// The main window and the item that is captured (toolbar and MainSplitView; sheets and
-    /// popups live in the overlay and are never part of the picture, like on the Mac).
+    /// The main window and the item that is captured (toolbar and MainSplitView). The sheets
+    /// and popovers over it live in the window's overlay and are drawn at their place
+    /// (ReportDialogs.qml, #384), like the Settings window while it is open (`settingsWindow`).
     property var mainWindow: null
     property Item captureItem: null
+    property var settingsWindow: null
+    /// The capture left out a dialog over the main window (an alert).
+    property bool dialogOmitted: false
 
     /// Off only in the demo vault (fictitious data).
     property bool autoRedact: true
@@ -63,7 +68,7 @@ ApplicationWindow {
         function onIsUnlockedChanged() { win.prepareDiagnostics() }
         function onIsDemoChanged() { win.prepareDiagnostics() }
     }
-    Component.onCompleted: { capture(); prepareDiagnostics() }
+    Component.onCompleted: { ReportDialogs.dismissPopovers(); capture(); prepareDiagnostics() }
 
     // MARK: capture (BugReport.captureMainWindow)
 
@@ -79,12 +84,13 @@ ApplicationWindow {
         deadline.token = t
         deadline.restart()
     }
-    function finishCapture(t, url, size) {
+    function finishCapture(t, url, size, omitted) {
         if (t !== token) return
         deadline.stop()
         AppModel.reportRedaction = 0
         base = url
         baseSize = size
+        dialogOmitted = url !== "" && omitted === true
         // Unit rectangles drawn on the old picture may now cover something else (the list
         // scrolled, the window was resized): start over.
         masks = []; undoStack = []; redoStack = []
@@ -105,14 +111,177 @@ ApplicationWindow {
                 win.finishCapture(t, "", Qt.size(0, 0))
                 return
             }
-            const dpr = w.screen ? w.screen.devicePixelRatio : 1
-            const size = Qt.size(Math.round(item.width * dpr), Math.round(item.height * dpr))
-            const started = item.grabToImage(result => {
-                if (t !== win.token || (AppModel.reportRedaction & win.redaction) !== win.redaction) return
-                const path = win.tempDir + "/capture-" + (++win.shot) + ".png"
-                win.finishCapture(t, result.saveToFile(path) ? "file://" + path : "", size)
-            }, size)
-            if (!started) win.finishCapture(t, "", Qt.size(0, 0))
+            win.snapshot(t, w, item)
+        }
+    }
+
+    // MARK: dialogs (ReportDialogs.swift, BugReport.dialogLayers / snapshot, #384)
+
+    /// `#aarrggbb` of a QML colour (the compositor takes it with alpha).
+    function argb(c) {
+        const h = v => ("0" + Math.round(v * 255).toString(16)).slice(-2)
+        return "#" + h(c.a) + h(c.r) + h(c.g) + h(c.b)
+    }
+    /// `item`'s rect in `ref`'s coordinates, moved by `offset`.
+    function rectIn(item, ref, offset) {
+        const r = item.mapToItem(ref, 0, 0, item.width, item.height)
+        return Qt.rect(r.x + offset.x, r.y + offset.y, r.width, r.height)
+    }
+    function intersect(a, b) {
+        const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y)
+        return Qt.rect(x, y, Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x),
+                       Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y))
+    }
+    /// The same rectangles in the same order: the geometry did not change between two looks.
+    function sameRects(a, b) {
+        if (a.length !== b.length) return false
+        for (let i = 0; i < a.length; ++i)
+            if (a[i].x !== b[i].x || a[i].y !== b[i].y || a[i].width !== b[i].width || a[i].height !== b[i].height)
+                return false
+        return true
+    }
+    function unite(a, b) {
+        const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y)
+        return Qt.rect(x, y, Math.max(a.x + a.width, b.x + b.width) - x, Math.max(a.y + a.height, b.y + b.height) - y)
+    }
+    /// A text field or text editor that takes input, a pop-up menu (ComboBox) or a web page
+    /// (a bank or portal login): what the user typed or picked there is personal more often
+    /// than not, so the capture covers it (BugReport.inputRects).
+    function isInput(d) {
+        return (d.cursorPosition !== undefined && d.readOnly === false)
+            || (d.displayText !== undefined && d.popup !== undefined && d.currentIndex !== undefined)
+            || typeof d.runJavaScript === "function"
+    }
+    /// The visible inputs inside `root`, each clipped to the clipping items it sits in (a
+    /// field scrolled out of its list must not cover what lies outside the list).
+    function inputRects(root, ref, offset) {
+        const out = []
+        const visit = (d, clip) => {
+            if (!d.visible || d.opacity <= 0) return
+            const r = rectIn(d, ref, offset)
+            if (isInput(d)) {
+                const c = clip ? intersect(r, clip) : r
+                if (c.width > 0 && c.height > 0) out.push(c)
+                return
+            }
+            const inner = d.clip ? (clip ? intersect(r, clip) : r) : clip
+            for (let i = 0; i < d.children.length; ++i) visit(d.children[i], inner)
+        }
+        visit(root, null)
+        return out
+    }
+    /// The layers over `window` in its overlay, bottom up: a registered dialog (sheet or
+    /// popover) with its inputs, the dim under a modal one, or `omitted` for a popup that is
+    /// not capturable (an alert, a menu, a non-native file dialog). The shared tool tip is no
+    /// dialog and stays out.
+    function overlayLayers(window, ref, offset) {
+        const overlay = window && window.contentItem ? window.contentItem.Overlay.overlay : null
+        if (!overlay) return []
+        const shared = scroll.ToolTip.toolTip
+        const tip = shared ? ReportDialogs.itemOf(shared) : null
+        const items = []
+        for (let i = 0; i < overlay.children.length; ++i) {
+            const c = overlay.children[i]
+            if (c.visible && c.opacity > 0 && c !== tip) items.push({ item: c, index: i })
+        }
+        // the overlay paints by z, then in child order
+        items.sort((a, b) => a.item.z - b.item.z || a.index - b.index)
+        return items.map(e => {
+            const c = e.item
+            const popup = ReportDialogs.popupFor(c)
+            if (popup) {
+                // the card's rounded corners (the grab has no alpha outside them)
+                const bg = popup.background
+                return { kind: "dialog", item: c, rect: rectIn(c, ref, offset), inputs: inputRects(c, ref, offset),
+                         measure: () => [rectIn(c, ref, offset)].concat(inputRects(c, ref, offset)),
+                         radius: bg && bg.radius !== undefined ? bg.radius : 0 }
+            }
+            // the overlay's dimmer under a modal popup: a plain coloured rectangle over all of it
+            if (c.color !== undefined && c.width >= overlay.width && c.height >= overlay.height)
+                return { kind: "dim", color: argb(Qt.rgba(c.color.r, c.color.g, c.color.b, c.color.a * c.opacity)),
+                         rect: rectIn(c, ref, offset) }
+            return { kind: "omitted" }
+        })
+    }
+    /// The Settings window, while it is open (the Mac draws its tracked window in front of the
+    /// main one). Its place relative to the main window is known on X11; Wayland does not tell
+    /// window positions (nor do windows that report the same place), so there it is drawn
+    /// centred over the main window.
+    function settingsLayers(main, item) {
+        const s = settingsWindow
+        // `captureItem`: the window's own content (its contentItem has no QML engine to grab with)
+        const content = s ? s.captureItem : null
+        if (!s || !s.visible || s.visibility === Window.Minimized || !content) return []
+        const origin = item.mapToItem(null, 0, 0)
+        const offset = Qt.platform.pluginName.startsWith("wayland") || (s.x === main.x && s.y === main.y)
+            ? Qt.point((item.width - s.width) / 2, (item.height - s.height) / 2)
+            : Qt.point(s.x - main.x - origin.x, s.y - main.y - origin.y)
+        return [{ kind: "window", item: content, rect: rectIn(content, content, offset), radius: 0,
+                  inputs: inputRects(content, content, offset),
+                  measure: () => [rectIn(content, content, offset)].concat(inputRects(content, content, offset)) }]
+            .concat(overlayLayers(s, content, offset))
+    }
+
+    /// Captures the main window and, bottom up, the dialogs over it; the first one that cannot
+    /// be drawn ends the stack (anything above it would sit on top of it), and the report then
+    /// says a dialog was left out. Fail closed: no picture at all when a picture fails.
+    function snapshot(t, w, item) {
+        const dpr = w.screen ? w.screen.devicePixelRatio : 1
+        const all = overlayLayers(w, item, Qt.point(0, 0)).concat(settingsLayers(w, item))
+        let layers = []
+        let pendingDims = []
+        let omitted = false
+        for (const l of all) {
+            if (l.kind === "omitted") { omitted = true; break }
+            if (l.kind === "dim") { pendingDims.push(l); continue }
+            layers = layers.concat(pendingDims, [l])
+            pendingDims = []
+        }
+        const coverInputs = redaction !== 0
+        const grabs = [{ kind: "base", item: item, rect: Qt.rect(0, 0, item.width, item.height) }]
+            .concat(layers.filter(l => l.kind !== "dim"))
+        let pending = grabs.length
+        let failed = false
+        const done = () => {
+            if (--pending > 0) return
+            if (failed || t !== token || (AppModel.reportRedaction & redaction) !== redaction) {
+                if (t === token && failed) finishCapture(t, "", Qt.size(0, 0))
+                return
+            }
+            const area = layers.reduce((a, l) => unite(a, l.rect), grabs[0].rect)
+            const px = r => ({ x: (r.x - area.x) * dpr, y: (r.y - area.y) * dpr, width: r.width * dpr, height: r.height * dpr })
+            const spec = { width: Math.ceil(area.width * dpr), height: Math.ceil(area.height * dpr),
+                           background: "#00000000", layers: [] }
+            spec.layers.push(Object.assign({ fill: argb(Theme.canvas), radius: 0 }, px(grabs[0].rect)))
+            spec.layers.push(Object.assign({ image: grabs[0].path }, px(grabs[0].rect)))
+            for (const l of layers) {
+                if (l.kind === "dim") {
+                    spec.layers.push(Object.assign({ fill: l.color, radius: 0 }, px(l.rect)))
+                    continue
+                }
+                spec.layers.push(Object.assign({ image: l.path, radius: l.radius * dpr }, px(l.rect)))
+                if (coverInputs)
+                    for (const r of l.inputs)
+                        spec.layers.push(Object.assign({ fill: argb(Theme.redactionFill), radius: 3 * dpr }, px(r)))
+            }
+            const path = tempDir + "/capture-" + (++shot) + ".png"
+            const ok = AppModel.run(() => AppModel.core("bug_report_compose_capture", { spec: spec, path: path })) === true
+            finishCapture(t, ok ? "file://" + path : "", Qt.size(spec.width, spec.height), omitted)
+        }
+        for (const g of grabs) {
+            const target = Qt.size(Math.max(1, Math.round(g.item.width * dpr)), Math.max(1, Math.round(g.item.height * dpr)))
+            // The covers are measured before the grab, which renders later: a field that moved in
+            // between (a list scrolled) could leave its cover. Measured again once the layer is
+            // rendered, any change drops the picture (fail closed) instead of showing it uncovered.
+            const before = g.measure ? [g.rect].concat(g.inputs) : []
+            const started = g.item.grabToImage(result => {
+                const path = tempDir + "/layer-" + (++shot) + ".png"
+                if (g.measure && !sameRects(before, g.measure())) failed = true
+                else if (result.saveToFile(path)) g.path = path
+                else failed = true
+                done()
+            }, target)
+            if (!started) { failed = true; done() }
         }
     }
     // BugReport.renderTimeout: no picture rather than a stuck "busy" state.
@@ -204,9 +373,19 @@ ApplicationWindow {
 
                 SettingsFormSection {
                     title: qsTr("Screenshot")
-                    footer: qsTr("Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann.")
+                    // #384: the main window stays usable next to this one
+                    footer: qsTr("Aufgenommen wird das Hauptfenster samt geöffnetem Dialog. Liegt das Problem woanders, wechsle dort zur betroffenen Ansicht oder öffne den Dialog und wähle dann „Neu aufnehmen“. Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann.")
                     Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.callout; color: Theme.secondary
                            text: qsTr("Ziehe mit der Maus Rechtecke über Stellen, die zusätzlich schwarz übermalt werden sollen.") }
+                    // the capture left out a dialog over the main window (an alert)
+                    RowLayout {
+                        visible: win.base !== "" && win.dialogOmitted && !win.capturing
+                        Layout.fillWidth: true
+                        spacing: 6
+                        SFIcon { symbol: "info.circle"; size: 14; color: Theme.secondary; Layout.alignment: Qt.AlignTop }
+                        Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.callout; color: Theme.secondary
+                               text: qsTr("Ein geöffneter Hinweis oder Bestätigungsdialog wird nicht aufgenommen; das Bild zeigt, was darunter liegt.") }
+                    }
                     // MaskCanvas
                     Item {
                         id: canvas

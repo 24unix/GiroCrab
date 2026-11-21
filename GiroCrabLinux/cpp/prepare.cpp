@@ -151,6 +151,63 @@ extern "C" bool girocrab_compose_report(const char *base, const double *masks, s
     return image.save(QString::fromUtf8(out), "PNG");
 }
 
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtGui/QColor>
+#include <QtGui/QPainterPath>
+
+// BugReport.snapshot (#384): the main window's picture with the dialogs over it, drawn at
+// their place on one canvas, bottom up. `spec` is JSON (pixels, origin top left):
+// { "width", "height", "background": "#rrggbb",
+//   "layers": [ { "image": path, "x", "y", "width", "height", "radius" }   a window or a dialog
+//             | { "fill": "#aarrggbb", "x", "y", "width", "height", "radius" } ] }  dim, covered input
+// Fail closed: a picture that cannot be read leaves no image at all.
+extern "C" bool girocrab_compose_capture(const char *spec, const char *out)
+{
+    const QJsonObject s = QJsonDocument::fromJson(QByteArray(spec)).object();
+    const int width = s.value(QStringLiteral("width")).toInt();
+    const int height = s.value(QStringLiteral("height")).toInt();
+    if (width <= 0 || height <= 0 || width > 32768 || height > 32768)
+        return false;
+    QImage canvas(width, height, QImage::Format_ARGB32_Premultiplied);
+    canvas.fill(QColor(s.value(QStringLiteral("background")).toString(QStringLiteral("#ffffff"))));
+    QPainter p(&canvas);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    for (const QJsonValue &v : s.value(QStringLiteral("layers")).toArray()) {
+        const QJsonObject l = v.toObject();
+        const QRectF r(l.value(QStringLiteral("x")).toDouble(), l.value(QStringLiteral("y")).toDouble(),
+                       l.value(QStringLiteral("width")).toDouble(), l.value(QStringLiteral("height")).toDouble());
+        if (l.contains(QStringLiteral("image"))) {
+            const QImage image(l.value(QStringLiteral("image")).toString());
+            if (image.isNull())
+                return false;
+            // a grabbed item has no alpha: what lies outside a card's rounded corners
+            // comes out black, so the corners are cut away again
+            const double radius = l.value(QStringLiteral("radius")).toDouble();
+            p.save();
+            if (radius > 0) {
+                QPainterPath clip;
+                clip.addRoundedRect(r, radius, radius);
+                p.setClipPath(clip);
+            }
+            p.drawImage(r, image);
+            p.restore();
+        } else {
+            const QColor color(l.value(QStringLiteral("fill")).toString());
+            if (!color.isValid())
+                return false;
+            const double radius = l.value(QStringLiteral("radius")).toDouble();
+            p.setPen(Qt::NoPen);
+            p.setBrush(color);
+            p.drawRoundedRect(r, radius, radius);
+        }
+    }
+    p.end();
+    return canvas.save(QString::fromUtf8(out), "PNG");
+}
+
 // BugReport.copyToPasteboard: the finished picture on the clipboard, so it
 // can be pasted into the issue.
 extern "C" bool girocrab_copy_image(const char *path)

@@ -339,12 +339,17 @@ QtObject {
     /// `--demo-sync`: "Alle abrufen" right away (simulated PIN / TAN dialogs).
     readonly property bool optionDemoSync: launchArgs.indexOf("--demo-sync") >= 0
     /// `--demo-sheet <name>`, `--demo-settings <tab>[:edit|add|remove]` (opened by presentLaunchOptions).
-    readonly property string demoSheet: launchValue("--demo-sheet")
+    /// `--demo-sheet report[:<sheet>]` (#384): `demoSheet` is the name without the `report:`
+    /// prefix (LaunchOptions.demoSheetName); the bug report opens over the view or that sheet.
+    readonly property string demoSheetOption: launchValue("--demo-sheet")
+    readonly property bool demoSheetOpensReport: demoSheetOption === "report" || demoSheetOption.startsWith("report:")
+    readonly property string demoSheet: demoSheetOption === "report" ? ""
+        : demoSheetOption.startsWith("report:") ? demoSheetOption.slice(7) : demoSheetOption
     readonly property string demoSettings: launchValue("--demo-settings")
     /// `--demo-seed` or GIROCRAB_DEMO_SEED=1|true|yes; `--screenshot`, `--demo-sync`,
     /// `--demo-sheet` and `--demo-settings` imply it (reproducible pictures).
     readonly property bool optionDemoSeed: launchArgs.indexOf("--demo-seed") >= 0 || vaultInfo.demo_seed === true
-        || screenshotMode || optionDemoSync || demoSheet !== "" || demoSettings !== ""
+        || screenshotMode || optionDemoSync || demoSheetOption !== "" || demoSettings !== ""
 
     // MARK: - Vault lifecycle
 
@@ -4144,7 +4149,14 @@ QtObject {
             }
         }
         if (demoSheet !== "" && !Payments.presentDemoSheet(demoSheet) && !DirectDebits.presentDemoSheet(demoSheet)) presentDemoSheet(demoSheet)
+        // `report[:<sheet>]` (RootView.swift): the bug report over the view or the demo sheet,
+        // once that is laid out; `--screenshot` then saves the report window
+        if (demoSheetOpensReport) {
+            screenshotWindow = qsTr("Problem melden")
+            demoReportTimer.start()
+        }
     }
+    property Timer demoReportTimer: Timer { interval: 1200; onTriggered: model.showBugReport = true }
     /// The one switch for `--demo-sheet <name>` (AppModel.swift › presentDemoSheet):
     /// opens that sheet pre-filled with fictional data.
     function presentDemoSheet(name) {

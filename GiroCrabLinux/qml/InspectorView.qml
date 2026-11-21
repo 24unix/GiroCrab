@@ -237,6 +237,10 @@ Rectangle {
                     onClicked: { nameField.text = rc.booking.counterparty; purposeField.text = rc.booking.purpose; editPopup.open() }
                     Popup {
                         id: editPopup
+                        // ReportDialogs.swift › capturablePopover (#384): drawn into the bug report picture
+                        onOpened: ReportDialogs.track(editPopup)
+                        onClosed: ReportDialogs.untrack(editPopup)
+                        Component.onDestruction: ReportDialogs.untrack(editPopup)
                         y: parent.height; x: parent.width - width
                         width: 340; padding: 14
                         ColumnLayout {
@@ -849,6 +853,7 @@ Rectangle {
         FolderDialog { id: exportFolder; title: qsTr("Ordner für die exportierten Belege wählen"); acceptLabel: qsTr("Exportieren")
                        onAccepted: AppModel.exportAllDocuments(AppModel.localPath(selectedFolder)) }
         Sheet {
+            reportCapturable: false   // a confirmation dialog on the Mac (ReportDialogs.qml)
             visible: dc.docToDelete !== null
             onClosed: dc.docToDelete = null
             sheetWidth: 380
