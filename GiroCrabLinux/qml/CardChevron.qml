@@ -16,6 +16,16 @@ Item {
     MouseArea { id: area; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                 onClicked: chevron.toggled() }
     ToolTip.visible: area.containsMouse; ToolTip.delay: 600; ToolTip.text: title
+    // a Button on the Mac: Tab reaches it, Space / Return toggles it
+    activeFocusOnTab: true
+    Keys.onSpacePressed: chevron.toggled()
+    Keys.onReturnPressed: chevron.toggled()
+    Keys.onEnterPressed: chevron.toggled()
+    Rectangle {
+        visible: chevron.activeFocus
+        anchors.fill: parent
+        radius: 4; color: "transparent"; border.width: 2; border.color: Theme.accent
+    }
     Accessible.role: Accessible.Button; Accessible.name: title
     Accessible.onPressAction: chevron.toggled()
 }

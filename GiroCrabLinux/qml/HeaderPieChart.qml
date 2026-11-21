@@ -14,9 +14,15 @@ Item {
     /// HeaderPieChart.rows (macOS): entries per legend column
     readonly property int rows: 3
 
-    /// HeaderPieSlices.Part of an account pie: { id, label, cents }, loaded.
-    property var expenseParts: []
-    readonly property var parts: isCategory ? subcategories(Number(AppModel.sidebarSelection.slice(9)), AppModel.categories) : expenseParts
+    /// AccountExpensePie.loaded: the account pie's parts ({ id, label, cents }) and the accounts
+    /// and period they were loaded for. Shown only while those match (Key.covers): an older
+    /// load of the same selection may stand in, another selection's never, also not after a
+    /// failed load.
+    property var loaded: null
+    readonly property string cover: isCategory ? "" : JSON.stringify([AppModel.historyRequest().ids, AppModel.periodRange()])
+    readonly property bool expensesShown: loaded !== null && loaded.cover === cover
+    readonly property var parts: isCategory ? subcategories(Number(AppModel.sidebarSelection.slice(9)), AppModel.categories)
+        : expensesShown ? loaded.parts : []
     readonly property var slices: fold(parts, limit)
     readonly property real total: slices.reduce((t, s) => t + s.cents, 0)
     readonly property string emptyText: isCategory ? qsTr("Keine Buchungen im Zeitraum") : qsTr("Keine kategorisierten Ausgaben im Zeitraum")
@@ -60,11 +66,13 @@ Item {
     onLoadKeyChanged: if (loadKey !== "") Qt.callLater(load)
     function load() {
         if (loadKey === "" || !AppModel.isUnlocked) return
+        let cover = ""
         AppModel.loadOffMain("headerPie", () => {
-            const r = AppModel.periodRange()
-            return [["list_categories_filtered", { date_from: r[0], date_to: r[1], account_ids: AppModel.historyRequest().ids,
+            const r = AppModel.periodRange(), ids = AppModel.historyRequest().ids
+            cover = JSON.stringify([ids, r])
+            return [["list_categories_filtered", { date_from: r[0], date_to: r[1], account_ids: ids,
                                                    checked: null, direction: "Expense" }]]
-        }, r => { pie.expenseParts = pie.expenses(r[0]) }, () => {})
+        }, r => { pie.loaded = { cover: cover, parts: pie.expenses(r[0]) } }, () => {})
     }
 
     // .contextMenu { ChartStyleInlinePicker() }
@@ -83,7 +91,7 @@ Item {
     Connections { target: Theme; function onDarkChanged() { canvas.requestPaint() } }
 
     Text {
-        visible: pie.total <= 0
+        visible: pie.total <= 0 && (pie.isCategory || pie.expensesShown)
         anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
         text: pie.emptyText; font.pixelSize: Theme.caption; color: Theme.secondary
     }

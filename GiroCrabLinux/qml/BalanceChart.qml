@@ -352,9 +352,10 @@ Item {
     }
     Accessible.role: Accessible.Chart
     Accessible.name: qsTr("Saldoverlauf")
-    Accessible.description: hovered < 0 || hovered >= count || (AppModel.effectiveRedaction & AppModel.redactAmounts) !== 0 ? ""
-        : isBars ? qsTr("%1: Ø %2, Ende %3").arg(title(hovered)).arg(Fmt.money(bars[hovered].average)).arg(Fmt.money(bars[hovered].closing))
-                 : title(hovered) + ": " + Fmt.money(points[hovered].balance_cents)
+    // the readout's element: the hovered one, else the day the list follows
+    Accessible.description: active < 0 || active >= count || (AppModel.effectiveRedaction & AppModel.redactAmounts) !== 0 ? ""
+        : isBars ? qsTr("%1: Ø %2, Ende %3").arg(title(active)).arg(Fmt.money(bars[active].average)).arg(Fmt.money(bars[active].closing))
+                 : title(active) + ": " + Fmt.money(points[active].balance_cents)
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true

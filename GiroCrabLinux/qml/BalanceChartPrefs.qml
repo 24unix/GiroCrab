@@ -57,10 +57,15 @@ QtObject {
     function setCategoryBarUnit(id) {
         if (categoryBarUnit === id) return
         categoryBarUnit = id
-        AppModel.reloadCategoryHistory()
+        reloadCategoryChart()
     }
     // the global choice changes the category chart while it follows it
-    onBarUnitChanged: if (categoryBarUnit === "auto") AppModel.reloadCategoryHistory()
+    onBarUnitChanged: if (categoryBarUnit === "auto") reloadCategoryChart()
+    /// A running selection load brings the category chart with the new unit (its older result
+    /// is dropped); without one the chart loads on its own (AppModel.reloadCategoryHistory).
+    function reloadCategoryChart() {
+        if (!AppModel.selectionLoadTakes(null)) AppModel.reloadCategoryHistory()
+    }
 
     /// BalanceBarUnit.resolved(dayCount:): days up to two months, months up to six years, years beyond.
     function resolvedUnit(dayCount) {

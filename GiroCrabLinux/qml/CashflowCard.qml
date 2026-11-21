@@ -56,7 +56,7 @@ Card {
             // folded: the latest period's net
             Text {
                 readonly property var last: card.rows.length ? card.rows[card.rows.length - 1] : null
-                readonly property int net: last ? last.income_cents - last.expense_cents : 0
+                readonly property real net: last ? last.income_cents - last.expense_cents : 0
                 visible: card.collapsed && last !== null
                 text: last ? card.label(last.key) + ": " + Fmt.money(net) : ""
                 font.pixelSize: Theme.subheadline + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
