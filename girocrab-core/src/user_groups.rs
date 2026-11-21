@@ -502,7 +502,7 @@ const LABEL_WINS: &str = "(bank_label_ms < ?3 OR (bank_label_ms = ?3 AND ?2 IS N
      AND (bank_label IS NULL OR bank_label < ?2)))";
 
 /// The bank label of a folded twin goes on to its bank account when it wins there.
-fn pass_bank_label_on(conn: &Connection, from: i64, to: i64) -> CoreResult<()> {
+pub(crate) fn pass_bank_label_on(conn: &Connection, from: i64, to: i64) -> CoreResult<()> {
     let (label, stamp): (Option<String>, i64) = conn.query_row(
         "SELECT bank_label, bank_label_ms FROM accounts WHERE id = ?1",
         [from],

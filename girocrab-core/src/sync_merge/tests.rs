@@ -4242,6 +4242,36 @@ fn bank_label_on_an_already_folded_twin_reaches_the_bank_account() {
     );
 }
 
+/// #1474 review: a label set on a twin that is still live goes with it when
+/// it is folded, like its note.
+#[test]
+fn bank_label_of_a_twin_goes_with_the_fold() {
+    let dir = temp_dir("twin-label-fold");
+    let a = open(&dir, "a.db");
+    let ca = comdirect(&a);
+    let twin = giro(&a, ca, MM_GIRO, &["mm-1", "mm-2"]);
+    let bank = giro(&a, ca, "API1", &["mm-1", "mm-2", "b1"]);
+    a.set_account_bank_label(twin, Some("Haushalt".into()))
+        .unwrap();
+    drop(a);
+    let a = open(&dir, "a.db");
+    assert_eq!(
+        n(
+            &a,
+            &format!("SELECT deleted_ms IS NOT NULL FROM accounts WHERE id = {twin}")
+        ),
+        1,
+        "the twin is folded"
+    );
+    assert_eq!(
+        text(
+            &a,
+            &format!("SELECT bank_label FROM accounts WHERE id = {bank}")
+        ),
+        "Haushalt"
+    );
+}
+
 /// Issue #94: a closed MoneyMoney account and its successor share the
 /// bookings MoneyMoney fetched again for the new one (`mm-` ids are content
 /// hashes). A few shared bookings do not make them the same account.

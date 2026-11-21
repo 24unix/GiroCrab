@@ -421,6 +421,8 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
     crate::depot_values::move_account(conn, twin, bank)?;
     // so does the user's note (newer edit wins, like a merge, #980)
     crate::user_groups::pass_note_on(conn, twin, bank)?;
+    // and the sidebar's bank label (#1467), the same way
+    crate::user_groups::pass_bank_label_on(conn, twin, bank)?;
     super::soft_delete_account(conn, twin)?;
     Ok(())
 }
