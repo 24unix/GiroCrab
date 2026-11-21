@@ -165,7 +165,10 @@ struct ReceiptCard: View {
                             .appFont(.caption, design: .monospaced).foregroundStyle(Theme.secondary)
                             .textSelection(.enabled)
                     }
-                    MerchantDomainRow(merchant: booking.merchant)
+                    // with the recognition off no logo shows, so there is no domain to set (#1373)
+                    if model.merchantRecognitionEnabled {
+                        MerchantDomainRow(merchant: booking.merchant)
+                    }
                 }
                 Spacer()
             }

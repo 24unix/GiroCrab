@@ -45,12 +45,14 @@ extension AppModel {
                     try vault.setSetting(key: key, value: value)
                     let entries = try vault.listSettings()
                     let provider = try vault.onlineLogoProvider()
-                    return SettingsSnapshot(entries: entries, logoProvider: provider)
+                    let recognition = try vault.merchantRecognitionEnabled()
+                    return SettingsSnapshot(entries: entries, logoProvider: provider, merchantRecognition: recognition)
                 }
                 // The vault may have been switched or locked meanwhile.
                 guard let self, self.vault === vault else { return }
                 self.settings = result.entries
                 self.logoProvider = result.logoProvider
+                self.merchantRecognitionEnabled = result.merchantRecognition
                 self.reloadProductIDState(vault)
                 self.enableBankingSettingSaved(key)
             } catch {
@@ -63,6 +65,7 @@ extension AppModel {
     private struct SettingsSnapshot: Sendable {
         let entries: [SettingEntry]
         let logoProvider: String
+        let merchantRecognition: Bool
     }
 
     /// Adds a bank login. While demo data is shown, the login goes into the

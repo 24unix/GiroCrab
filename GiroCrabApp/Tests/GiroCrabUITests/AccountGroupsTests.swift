@@ -507,10 +507,10 @@ final class AccountGroupsTests: XCTestCase {
         #endif
     }
 
-    /// GitHub #33: the merchant-logo tip's "Einstellungen …" opens "Allgemein" (section Händler-Logos).
+    /// GitHub #33: the merchant-logo tip's "Einstellungen …" opens "Händler" (section Händler-Logos, #1373).
     func testOpenSettingsOnLogoPane() {
-        model.openSettings(.general)
-        XCTAssertEqual(model.settingsTab, .general)
+        model.openSettings(.merchants)
+        XCTAssertEqual(model.settingsTab, .merchants)
         #if os(macOS)
         XCTAssertTrue(model.settingsRequested)
         #else

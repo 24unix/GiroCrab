@@ -139,6 +139,14 @@ public final class AppModel {
     /// (legacy "1"/"true" from the old toggle count as "google").
     var logoProvider = "off"
     var onlineLogos: Bool { logoProvider != "off" }
+    /// Händlererkennung (#1373, Einstellungen › Händler). Off, bookings show their counterparty
+    /// without merchant name or logo: no logo domain to edit, no logo tip.
+    var merchantRecognitionEnabled = true
+    /// Bumped when the merchant settings may have changed (own change, iCloud merge, sync):
+    /// Einstellungen › Händler reads its list again.
+    var merchantSettingsRevision = 0
+    /// Merchant setting changes queued so far; only the newest reloads the views (`changeMerchants`).
+    @ObservationIgnored var merchantWriteCount = 0
     /// Not observed: signets read it in their body (`cachedLogo`), and filling it
     /// must not re-render every signet on screen.
     @ObservationIgnored var logoCache: [String: (image: Image, pixels: Int)] = [:]

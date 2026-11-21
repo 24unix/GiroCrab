@@ -16,6 +16,7 @@ extension AppModel {
     func reloadAll() {
         invalidateTotals()
         assetClassificationVersion += 1
+        merchantSettingsRevision += 1
         let all = Perf.signposter.beginInterval("reloadAll")
         defer { Perf.signposter.endInterval("reloadAll", all) }
         reloadAccounts()
@@ -41,6 +42,7 @@ extension AppModel {
         // that still carry the pre-sync totals (#337), like `reloadAll` does
         invalidateTotals()
         assetClassificationVersion += 1
+        merchantSettingsRevision += 1
         reloadAccounts()
         refreshSidebarCounts()
         mirrorDocumentsIfEnabled()
@@ -51,6 +53,8 @@ extension AppModel {
         merchantStatsCache = [:]
         loadMerchantStats(keepShown: true)
         startSelectionLoad(keepingShown: true)
+        // merchant settings from another device may leave the merchant filter empty (#1373)
+        if merchantFocus != nil { Task { [weak self] in await self?.leaveStaleMerchantFocus() } }
     }
 
     func reloadAccounts() {
@@ -792,6 +796,7 @@ extension AppModel {
         runCore {
             settings = try vault.listSettings()
             logoProvider = try vault.onlineLogoProvider()
+            merchantRecognitionEnabled = try vault.merchantRecognitionEnabled()
         }
         reloadProductIDState(vault)
     }

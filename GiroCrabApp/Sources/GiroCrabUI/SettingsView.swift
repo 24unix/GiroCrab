@@ -5,7 +5,7 @@ import AppKit
 #endif
 
 /// Einstellungen: Bankzugänge, eigene FinTS-Produkt-ID und API-Schlüssel
-/// (im verschlüsselten SQLCipher-Tresor), Händler-Logos, Sicherheit.
+/// (im verschlüsselten SQLCipher-Tresor), Händlererkennung und -Logos, Sicherheit.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var showKeySheet = false
@@ -14,7 +14,7 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
             GeneralSettings()
-                .settingsPane(height: 600)   // "Sprache" … "Händler-Logos" + "Demo": scrolls
+                .settingsPane(height: 600)   // "Sprache" … "Dock und Menüleiste" + "Demo": scrolls
                 .tabItem { Label("Allgemein", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
@@ -22,6 +22,11 @@ struct SettingsView: View {
                 .disabled(!model.isUnlocked)
                 .tabItem { Label("Banken", systemImage: "building.columns") }
                 .tag(SettingsTab.banks)
+            MerchantRecognitionSettings()
+                .settingsPane(height: 640)   // the bundled list scrolls
+                .disabled(!model.isUnlocked)
+                .tabItem { Label("Händler", systemImage: "storefront") }
+                .tag(SettingsTab.merchants)
             #if os(macOS)
             DocumentFolderSettings()
                 .settingsPane(height: 420)
@@ -162,7 +167,6 @@ struct GeneralSettings: View {
             } header: { Text("Buchungen").appSectionHeader() }
             TransferSettingsSection()
             BalanceChartSettingsSection()
-            MerchantLogoSettingsSection()
             #if os(macOS)
             AutoSyncSettingsSection()
             DockAndMenuBarSettingsSection()
@@ -218,7 +222,7 @@ struct BalanceChartSettingsSection: View {
 
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
-    case general, banks, documents, security, externalAccess, updates
+    case general, banks, merchants, documents, security, externalAccess, updates
 
     /// `--demo-settings <name>` (screenshots).
     init?(demoName: String) {
@@ -226,7 +230,8 @@ enum SettingsTab: Hashable {
         case "general": self = .general
         case "banks": self = .banks
         case "credentials": self = .banks   // FinTS registration now lives under "Banken"
-        case "logos": self = .general   // merchant logos are a section of "Allgemein"
+        case "merchants": self = .merchants
+        case "logos": self = .merchants   // merchant logos are a section of "Händler" (#1373)
         case "documents": self = .documents
         case "security": self = .security
         case "external": self = .externalAccess
@@ -364,7 +369,8 @@ struct BankConnectionsSettings: View {
     }
 }
 
-/// Merchant logos from the internet (GitHub #33); needs an open vault.
+/// Merchant logos from the internet (GitHub #33), a section of Einstellungen › Händler
+/// (#1373); needs an open vault.
 struct MerchantLogoSettingsSection: View {
     @Environment(AppModel.self) private var model
 

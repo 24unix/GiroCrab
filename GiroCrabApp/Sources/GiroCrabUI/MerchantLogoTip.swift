@@ -56,7 +56,7 @@ struct MerchantLogoTipView: View {
                 model.saveSetting("merchants.online_logos", "duckduckgo")
                 tip.invalidate(reason: .actionPerformed)
             case MerchantLogoTip.ActionID.settings:
-                model.openSettings(.general)
+                model.openSettings(.merchants)
             default:
                 break
             }
@@ -71,7 +71,9 @@ private struct MerchantLogoTipEligibility: ViewModifier {
     @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
+        // with the recognition off no booking has a logo to show (#1373)
         let eligible = model.logoProvider == "off"
+            && model.merchantRecognitionEnabled
             && !model.dayGroups.isEmpty
             && (!model.isDemo || LaunchOptions.current.showTips)
         content

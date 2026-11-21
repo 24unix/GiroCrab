@@ -3250,6 +3250,17 @@
         }
       }
     },
+    "Aktie" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share"
+          }
+        }
+      }
+    },
     "Aktien" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4247,6 +4258,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "As Watermark"
+          }
+        }
+      }
+    },
+    "Als eigenen Händler bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit as custom merchant"
+          }
+        }
+      }
+    },
+    "Als eigenen Händler bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit as Custom Merchant…"
           }
         }
       }
@@ -5800,6 +5833,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remove selected rows (⌘Z undoes it)"
+          }
+        }
+      }
+    },
+    "Ausschalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch Off"
           }
         }
       }
@@ -8249,6 +8293,17 @@
         }
       }
     },
+    "Broker" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Broker"
+          }
+        }
+      }
+    },
     "Brutto · %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10316,6 +10371,17 @@
         }
       }
     },
+    "Der eingebaute Händler „%@“ wird wieder erkannt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The built-in merchant “%@” is recognised again."
+          }
+        }
+      }
+    },
     "Der eingegebene Name weicht vom Namen des Kontoinhabers ab. Übernehmen Sie den Namen, wenn das der richtige Empfänger ist." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10881,6 +10947,17 @@
         }
       }
     },
+    "Die Händlerliste konnte nicht geladen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The merchant list could not be loaded"
+          }
+        }
+      }
+    },
     "Die Kategorie wird samt ihren Unterkategorien und Regeln unwiderruflich gelöscht. Zugeordnete Buchungen bleiben erhalten und stehen danach ohne Kategorie da." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10932,6 +11009,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Choose the accounts for the menu bar under Settings › General."
+          }
+        }
+      }
+    },
+    "Die Kopie behält Logo, Farbe und Art von „%@“ und ersetzt den eingebauten Händler, solange es sie gibt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The copy keeps the logo, colour and kind of “%@” and replaces the built-in merchant as long as it exists."
           }
         }
       }
@@ -11308,6 +11396,17 @@
         }
       }
     },
+    "Die Änderung konnte nicht gespeichert werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The change could not be saved"
+          }
+        }
+      }
+    },
     "Die Überweisung konnte nicht storniert werden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11425,6 +11524,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Leave out this bank login and continue with the next one."
+          }
+        }
+      }
+    },
+    "Diesen Händler nicht mehr erkennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop recognising this merchant"
+          }
+        }
+      }
+    },
+    "Diesen Händler wieder erkennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recognise this merchant again"
           }
         }
       }
@@ -11912,6 +12033,17 @@
         }
       }
     },
+    "Drogerie" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drugstore"
+          }
+        }
+      }
+    },
     "Drucken" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12029,6 +12161,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EREF (end-to-end reference)"
+          }
+        }
+      }
+    },
+    "ETF" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ETF"
+          }
+        }
+      }
+    },
+    "ETF-Anbieter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ETF provider"
           }
         }
       }
@@ -12187,6 +12341,28 @@
         }
       }
     },
+    "Eigene Händler" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Merchants"
+          }
+        }
+      }
+    },
+    "Eigene Händler gehen den eingebauten vor. Gesucht wird zuerst in der Gegenseite; passen dort mehrere, gewinnt das längste Suchwort. Ein Suchwort passt nur als ganzes Wort (auch mehrere Wörter wie „muster shop“), Groß- und Kleinschreibung zählen nicht. Die Einstellungen gelten auf allen Geräten mit iCloud-Abgleich." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom merchants come before the built-in ones. The counterparty is searched first; if several match there, the longest search word wins. A search word only matches as a whole word (also several words such as “sample shop”), regardless of case. The settings apply on all devices that sync via iCloud."
+          }
+        }
+      }
+    },
     "Eigene Produktregistrierung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12253,6 +12429,28 @@
         }
       }
     },
+    "Eigenen Händler hinzufügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Custom Merchant…"
+          }
+        }
+      }
+    },
+    "Eigenen Händler löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete custom merchant"
+          }
+        }
+      }
+    },
     "Eigenen Tresor anzeigen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12271,6 +12469,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open Own Vault"
+          }
+        }
+      }
+    },
+    "Eigener Händler" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Merchant"
           }
         }
       }
@@ -12429,6 +12638,28 @@
         }
       }
     },
+    "Ein ausgeschalteter Händler wird nicht mehr erkannt; die Buchung zeigt dann den nächsten passenden Händler oder ihre Gegenseite. „Bearbeiten“ legt eine Kopie als eigenen Händler an, die den eingebauten ersetzt, solange es sie gibt; die Liste selbst bleibt unverändert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A merchant that is switched off is no longer recognised; the booking then shows the next matching merchant or its counterparty. “Edit” creates a copy as a custom merchant that replaces the built-in one as long as it exists; the list itself stays unchanged."
+          }
+        }
+      }
+    },
+    "Ein eigener Händler ersetzt ihn; löschen Sie die Kopie, um ihn wieder zu erkennen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A custom merchant replaces it; delete the copy to recognise it again."
+          }
+        }
+      }
+    },
     "Ein geöffneter Hinweis oder Bestätigungsdialog wird nicht aufgenommen; das Bild zeigt, was darunter liegt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12546,6 +12777,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Paste"
+          }
+        }
+      }
+    },
+    "Eingebaute Händler (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Built-in Merchants (%lld)"
+          }
+        }
+      }
+    },
+    "Eingebaute Händler (%lld, %lld ausgeschaltet)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Built-in Merchants (%1$lld, %2$lld switched off)"
           }
         }
       }
@@ -12748,6 +13001,17 @@
         }
       }
     },
+    "Einschalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch On"
+          }
+        }
+      }
+    },
     "Einstandskurs" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12924,6 +13188,17 @@
         }
       }
     },
+    "Elektronik" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Electronics"
+          }
+        }
+      }
+    },
     "Empfänger" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13085,6 +13360,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Closing balance"
+          }
+        }
+      }
+    },
+    "Energie & Versorgung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Energy & Utilities"
           }
         }
       }
@@ -13254,6 +13540,17 @@
         }
       }
     },
+    "Erkennt den Händler einer Buchung aus Gegenseite und Verwendungszweck und zeigt seinen Namen und sein Zeichen. Ausgeschaltet zeigen Buchungen die Gegenseite (ohne Gegenseite den Anfang des Verwendungszwecks), ohne Händlernamen und Logo. Was als Konsum, Investition oder wiederkehrende Zahlung zählt, ändert sich dadurch nicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recognises the merchant of a booking from its counterparty and purpose and shows its name and signet. When off, bookings show their counterparty (without one, the start of the purpose) without a merchant name or logo. What counts as consumption, investment or a recurring payment does not change."
+          }
+        }
+      }
+    },
     "Erneut prüfen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13338,6 +13635,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Replaces the GiroCrab starter categories – your vault has no transactions yet."
+          }
+        }
+      }
+    },
+    "Ersetzt durch eigenen Händler" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Replaced by a custom merchant"
           }
         }
       }
@@ -16449,6 +16757,50 @@
         }
       }
     },
+    "Händler" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merchants"
+          }
+        }
+      }
+    },
+    "Händler bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Merchant"
+          }
+        }
+      }
+    },
+    "Händler erkennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recognise merchants"
+          }
+        }
+      }
+    },
+    "Händler oder Suchwort suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search merchant or search word"
+          }
+        }
+      }
+    },
     "Händler suchen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16533,6 +16885,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Load merchant logos"
+          }
+        }
+      }
+    },
+    "Händlererkennung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merchant Recognition"
           }
         }
       }
@@ -18266,6 +18629,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No access anymore: %@"
+          }
+        }
+      }
+    },
+    "Kein eigener Händler passt zur Suche." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No custom merchant matches the search."
+          }
+        }
+      }
+    },
+    "Kein eingebauter Händler passt zur Suche." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No built-in merchant matches the search."
           }
         }
       }
@@ -20102,6 +20487,17 @@
         }
       }
     },
+    "Kopie von „%@“" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy of “%@”"
+          }
+        }
+      }
+    },
     "Kopieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20421,6 +20817,17 @@
         }
       }
     },
+    "Lebensmittelrettung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Food rescue"
+          }
+        }
+      }
+    },
     "Lege ein Mandat an oder importiere eine Mitgliederliste (CSV) oder eine SEPA-Lastschriftdatei." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20659,6 +21066,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last Year"
+          }
+        }
+      }
+    },
+    "Lieferdienst" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery"
           }
         }
       }
@@ -21114,6 +21532,17 @@
         }
       }
     },
+    "Mehrere Suchwörter mit Komma trennen; jedes passt nur als ganzes Wort. Gesucht wird zuerst in der Gegenseite, ohne Gegenseite im Verwendungszweck, bei Zahlungsdiensten auch dahinter (etwa „Ihr Einkauf bei …“)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Separate several search words with commas; each only matches as a whole word. The counterparty is searched first, the purpose if there is no counterparty, and with payment services also what comes after them (such as “Your purchase at …”)."
+          }
+        }
+      }
+    },
     "Mehrere Tags: nur Buchungen, die alle tragen. Anzahl und Summe gelten für den Zeitraum und die übrigen Filter der Liste." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21308,6 +21737,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Menu bar"
+          }
+        }
+      }
+    },
+    "Metzgerei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Butcher"
           }
         }
       }
@@ -22101,6 +22541,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Name and IBAN are taken from the selected account."
+          }
+        }
+      }
+    },
+    "Name und Suchwörter ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change name and search words"
           }
         }
       }
@@ -24311,6 +24762,17 @@
         }
       }
     },
+    "Onlineshop" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online shop"
+          }
+        }
+      }
+    },
     "Optional" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26057,6 +26519,17 @@
         }
       }
     },
+    "Restaurant" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurant"
+          }
+        }
+      }
+    },
     "Restbetrag: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26982,6 +27455,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Extra large"
+          }
+        }
+      }
+    },
+    "Seine Buchungen zeigen wieder den erkannten Händler oder ihre Gegenseite." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its bookings show the recognised merchant or their counterparty again."
           }
         }
       }
@@ -28164,6 +28648,17 @@
         }
       }
     },
+    "Streaming" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming"
+          }
+        }
+      }
+    },
     "Strom" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28362,6 +28857,17 @@
         }
       }
     },
+    "Suchwörter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search words"
+          }
+        }
+      }
+    },
     "Summe" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28545,6 +29051,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Totals filtered – %@"
+          }
+        }
+      }
+    },
+    "Supermarkt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supermarket"
           }
         }
       }
@@ -29066,6 +29583,17 @@
         }
       }
     },
+    "Tankstelle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fuel station"
+          }
+        }
+      }
+    },
     "Tastatur" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29172,6 +29700,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Phone"
+          }
+        }
+      }
+    },
+    "Telekommunikation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Telecommunications"
           }
         }
       }
@@ -33999,6 +34538,17 @@
         }
       }
     },
+    "z. B. muster gmbh, muster shop" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. sample ltd, sample shop"
+          }
+        }
+      }
+    },
     "zu groß" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -34527,6 +35077,28 @@
         }
       }
     },
+    "„%@“ als eigenen Händler" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” as Custom Merchant"
+          }
+        }
+      }
+    },
+    "„%@“ als eigenen Händler bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit “%@” as custom merchant"
+          }
+        }
+      }
+    },
     "„%@“ archiviert" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -34556,6 +35128,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Expand “%@”"
+          }
+        }
+      }
+    },
+    "„%@“ bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit “%@”…"
           }
         }
       }
