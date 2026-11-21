@@ -12,31 +12,52 @@
 //!
 //! The module also classifies every booking into a `FlowKind`, so ETF savings
 //! plans, Saveback and Round up never count as consumption ("Konsumausgaben").
+//!
+//! The user can switch the recognition off, switch off single bundled merchants
+//! and add own ones (#1373, Einstellungen › Händler): [`MerchantRules`] applies
+//! that per vault, `custom` stores and syncs it.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+pub mod custom;
+
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use crate::models::AccountKind;
 
-/// Entries kept by the merchant cache of [`MerchantResolver::resolve`].
+/// Entries kept by the merchant cache of [`MerchantRules::resolve`].
 const RESOLVE_CACHE_MAX: usize = 200_000;
 
-/// Counterparty → purpose → merchant, see [`MerchantResolver::resolve`]. Nested
+/// Counterparty → purpose → merchant, see [`MerchantRules::resolve`]. Nested
 /// so a lookup borrows both texts instead of building an owned key per booking.
 #[derive(Default)]
 struct ResolveCache {
     len: usize,
-    by_counterparty: HashMap<String, HashMap<String, Arc<MerchantInfo>>>,
+    by_counterparty: HashMap<String, HashMap<String, Resolved>>,
 }
 
-static RESOLVE_CACHE: OnceLock<Mutex<ResolveCache>> = OnceLock::new();
+/// A remembered merchant: the one shown and the bundled table's.
+#[derive(Clone)]
+struct Resolved {
+    info: Arc<MerchantInfo>,
+    bundled: BundledMerchant,
+}
 
-/// Forgets every remembered merchant. Its keys are booking texts in plain
-/// text, so the last vault to close calls this (#267).
+/// What the bundled table alone says about a booking, whatever the user changed
+/// (#1373). The analysis reads it: the flow (an ETF purchase stays an investment),
+/// the recurring series and the category suggestions. The user's changes rename
+/// bookings; they don't move them between "Konsum" and "Investition" or split the
+/// series of a subscription.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BundledMerchant {
+    pub(crate) key: Arc<str>,
+    pub(crate) kind: MerchantKind,
+}
+
+/// Forgets every merchant the bundled rules remembered. Its keys are booking texts
+/// in plain text, so the last vault to close calls this (#267); the own rules of a
+/// vault (and their cache) go with the vault.
 pub(crate) fn clear_resolve_cache() {
-    if let Some(c) = RESOLVE_CACHE.get() {
-        *c.lock().unwrap_or_else(|e| e.into_inner()) = ResolveCache::default();
-    }
+    MerchantRules::builtin().clear_cache();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -286,6 +307,38 @@ pub struct MerchantResolver;
 
 /// Lower-case, collapse separators, drop noise words and long digit runs.
 pub fn normalise(s: &str) -> String {
+    normalise_text(s, Some(5))
+}
+
+/// Legal forms and noise dropped from the texts before matching.
+const NOISE: &[&str] = &[
+    " sagt danke",
+    " gmbh & co. kg",
+    " gmbh & co kg",
+    " gmbh",
+    " se ",
+    " ag ",
+    " eg ",
+    " kg ",
+    " s.a.r.l.",
+    " s.a.",
+    " e.v.",
+];
+
+/// [`normalise`] for the user's own search words and the texts they are compared
+/// with (#1373): a digit run stays whole (the reference "123456" must not match
+/// "123459"), and spaces are collapsed again after the legal forms are dropped
+/// ("Muster GmbH Shop" matches "muster shop"). The bundled table keeps `normalise`,
+/// so its keys for the analysis do not move.
+pub(crate) fn normalise_words(s: &str) -> String {
+    let text = normalise_text(s, None);
+    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
+    format!(" {} ", words.join(" "))
+}
+
+/// Lower case, separators as spaces, runs of spaces collapsed, digit runs cut after
+/// `max_digits`, noise words dropped; padded with a space on both sides.
+fn normalise_text(s: &str, max_digits: Option<usize>) -> String {
     let lower = s.to_lowercase();
     let mut out = String::with_capacity(lower.len() + 2);
     out.push(' ');
@@ -300,7 +353,7 @@ pub fn normalise(s: &str) -> String {
         } else {
             digits = 0;
         }
-        if digits > 5 {
+        if max_digits.is_some_and(|max| digits > max) {
             continue;
         }
         if c == ' ' && out.ends_with(' ') {
@@ -309,19 +362,7 @@ pub fn normalise(s: &str) -> String {
         out.push(c);
     }
     let mut s = out;
-    for noise in [
-        " sagt danke",
-        " gmbh & co. kg",
-        " gmbh & co kg",
-        " gmbh",
-        " se ",
-        " ag ",
-        " eg ",
-        " kg ",
-        " s.a.r.l.",
-        " s.a.",
-        " e.v.",
-    ] {
+    for noise in NOISE {
         // `replace` allocates even without a match; most texts contain none.
         if s.contains(noise) {
             s = s.replace(noise, " ");
@@ -353,27 +394,31 @@ const SECURITIES_HINTS: &[&str] = &[
 /// its ISIN/WKN, a securities keyword, or the needle followed by a legal form
 /// ("Bayer AG").
 fn stock_confirmed(e: &Entry, text: &str, ctx: &str) -> bool {
-    if (!e.isin.is_empty() && ctx.contains(&e.isin.to_lowercase()))
-        || (!e.wkn.is_empty() && ctx.contains(&e.wkn.to_lowercase()))
-    {
-        return true;
-    }
-    if contains_any(ctx, SECURITIES_HINTS) {
-        return true;
-    }
-    e.needles.iter().any(|n| {
-        text.find(n.trim()).is_some_and(|p| {
-            let rest = text[p + n.trim().len()..].trim_start();
-            let word: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '.')
-                .collect();
-            matches!(
-                word.trim_end_matches('.'),
-                "ag" | "se" | "kgaa" | "inc" | "corp" | "plc"
-            )
+    securities_hint(e, ctx)
+        || e.needles.iter().any(|n| {
+            text.find(n.trim())
+                .is_some_and(|p| legal_form_at(text, p + n.trim().len()))
         })
-    })
+}
+
+/// ISIN/WKN of the entry or a securities keyword anywhere in the booking.
+fn securities_hint(e: &Entry, ctx: &str) -> bool {
+    (!e.isin.is_empty() && ctx.contains(&e.isin.to_lowercase()))
+        || (!e.wkn.is_empty() && ctx.contains(&e.wkn.to_lowercase()))
+        || contains_any(ctx, SECURITIES_HINTS)
+}
+
+/// A legal form of a listed company ("AG", "Inc") right after `text[end..]`.
+fn legal_form_at(text: &str, end: usize) -> bool {
+    let word: String = text[end..]
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '.')
+        .collect();
+    matches!(
+        word.trim_end_matches('.'),
+        "ag" | "se" | "kgaa" | "inc" | "corp" | "plc"
+    )
 }
 
 /// True when `needle` occurs in `text` at the start of a word. "Bausparkasse"
@@ -421,16 +466,41 @@ fn group_member(entry: &Entry, counterparty: &str) -> Option<MerchantInfo> {
     Some(info)
 }
 
-fn entry_by_key(key: &str) -> Option<&'static Entry> {
-    entries().iter().find(|e| e.key == key)
+/// [`needle_in`] for a search word the user typed (#1373): every position where it
+/// stands as a whole word in `text`, so "dm" does not catch "Dmitri" and a copy of
+/// "TIER" (bundled as `" tier "`) not "Tierarzt". An edge of the word that is no letter
+/// or digit ("(acc)") needs no boundary there. Overlapping occurrences count ("ab-ab"
+/// in "xab-ab-ab": the first fails, the second matches). Texts and words come from
+/// [`normalise_words`].
+fn word_starts<'a>(text: &'a str, needle: &'a str) -> impl Iterator<Item = usize> + 'a {
+    let open_start = needle.starts_with(|c: char| !c.is_alphanumeric());
+    let open_end = needle.ends_with(|c: char| !c.is_alphanumeric());
+    // an empty word would "match" everywhere (stored words never are, see `clean_needles`)
+    let mut from = if needle.is_empty() { text.len() + 1 } else { 0 };
+    std::iter::from_fn(move || {
+        while let Some(p) = text.get(from..)?.find(needle) {
+            let i = from + p;
+            from = i + text[i..].chars().next().map_or(1, char::len_utf8);
+            let start_ok = open_start
+                || text[..i]
+                    .chars()
+                    .next_back()
+                    .is_none_or(|c| !c.is_alphanumeric());
+            let end_ok = open_end
+                || text[i + needle.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !c.is_alphanumeric());
+            if start_ok && end_ok {
+                return Some(i);
+            }
+        }
+        None
+    })
 }
 
-/// Like `find`, but skips stock entries without securities evidence.
-fn find_checked(text: &str, ctx: &str) -> Option<&'static Entry> {
-    entries().iter().find(|e| {
-        e.needles.iter().any(|n| needle_in(text, n))
-            && (e.kind != K::Stock || stock_confirmed(e, text, ctx))
-    })
+fn entry_by_key(key: &str) -> Option<&'static Entry> {
+    entries().iter().find(|e| e.key == key)
 }
 
 /// Every domain of the curated dictionary (whitelist for the logo cache).
@@ -950,40 +1020,11 @@ fn behind_processor(counterparty: &str) -> Option<String> {
 }
 
 impl MerchantResolver {
-    /// Resolves the merchant of a booking from counterparty and purpose.
-    ///
-    /// The result only depends on the two texts, and the booking list asks
-    /// for every booking again on each reload, so results are remembered
-    /// while a vault is open (resolving ~19 000 bookings took about 270 ms
-    /// per reload; a remembered one is a hash lookup).
+    /// Resolves the merchant of a booking from counterparty and purpose with the
+    /// bundled table alone, without the user's changes of a vault (see
+    /// [`MerchantRules`]). Remembered like [`MerchantRules::resolve`].
     pub fn resolve(counterparty: &str, purpose: &str) -> MerchantInfo {
-        let cache = RESOLVE_CACHE.get_or_init(Default::default);
-        // The clone happens after the lock is released (an SVG path can be kilobytes).
-        let hit = cache
-            .lock()
-            .ok()
-            .and_then(|c| c.by_counterparty.get(counterparty)?.get(purpose).cloned());
-        if let Some(hit) = hit {
-            return MerchantInfo::clone(&hit);
-        }
-        let info = Arc::new(Self::resolve_uncached(counterparty, purpose));
-        if let Ok(mut c) = cache.lock() {
-            // bounded: far above any real booking count, cleared rather than evicted
-            if c.len >= RESOLVE_CACHE_MAX {
-                *c = ResolveCache::default();
-            }
-            let by_purpose = c
-                .by_counterparty
-                .entry(counterparty.to_string())
-                .or_default();
-            if by_purpose
-                .insert(purpose.to_string(), info.clone())
-                .is_none()
-            {
-                c.len += 1;
-            }
-        }
-        Arc::unwrap_or_clone(info)
+        MerchantRules::builtin().resolve(counterparty, purpose)
     }
 
     /// Empty merchant for a booking that is enriched right afterwards.
@@ -993,116 +1034,540 @@ impl MerchantResolver {
     }
 
     fn resolve_uncached(counterparty: &str, purpose: &str) -> MerchantInfo {
-        let cp = normalise(&without_mail_local_parts(counterparty));
-        let pu = normalise(&without_mail_local_parts(purpose));
-        // "PayPal *Spotify", "PayPal Europe ... Ihr Einkauf bei Spotify AB": look behind the processor.
-        let ctx = format!("{cp} {pu}");
-        if let Some(entry) = find_checked(&cp, &ctx) {
-            if entry.kind == K::PaymentService {
-                let behind = cp
-                    .split_once(entry.needles[0])
-                    .map(|x| x.1.to_string())
-                    .unwrap_or_default();
-                if let Some(real) = find_checked(&behind, &ctx)
-                    .or_else(|| find_checked(&pu, &ctx))
-                    .filter(|r| r.kind != K::PaymentService)
-                {
-                    return to_info(real);
+        MerchantRules::builtin().resolve_uncached(counterparty, purpose)
+    }
+}
+
+/// What the user changed about the merchant recognition (#1373), as the vault
+/// stores it (see [`custom`]). Equal settings give equal merchants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MerchantSettings {
+    /// Master switch. Off, every booking shows its cleaned counterparty (else the
+    /// start of its purpose) without a brand or logo; its signet keeps the calm
+    /// fallback colour of every merchant the table does not know.
+    pub(crate) enabled: bool,
+    /// Keys of bundled merchants the user switched off.
+    pub(crate) disabled: BTreeSet<String>,
+    /// The user's own merchants, oldest first.
+    pub(crate) custom: Vec<CustomSpec>,
+}
+
+impl Default for MerchantSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            disabled: BTreeSet::new(),
+            custom: Vec::new(),
+        }
+    }
+}
+
+/// One own merchant as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CustomSpec {
+    pub(crate) uuid: String,
+    pub(crate) name: String,
+    /// Normalised search words (`custom::clean_needles`).
+    pub(crate) needles: Vec<String>,
+    /// Key of the bundled merchant it was copied from, "" for none.
+    pub(crate) based_on: String,
+}
+
+/// Merchant key of an own merchant: stays the same across renames and devices.
+pub(crate) fn custom_key(uuid: &str) -> String {
+    format!("u:{uuid}")
+}
+
+/// An own merchant, ready for matching.
+struct CustomEntry {
+    key: String,
+    name: String,
+    needles: Vec<String>,
+    /// The bundled merchant it was copied from ("Bearbeiten" of a bundled one):
+    /// logo, colour, kind and the securities check come from there.
+    base: Option<&'static Entry>,
+}
+
+impl CustomEntry {
+    fn kind(&self) -> MerchantKind {
+        self.base.map_or(K::Unknown, |e| e.kind)
+    }
+
+    /// Its longest search word (of at least `min_len` characters) in `text`, `None` if
+    /// none matches. A copy of a stock entry keeps the bundled securities check, so a
+    /// surname ("Max Bayer") does not turn into the share: a securities hint, or a legal
+    /// form right after a whole-word match. `text` and `ctx` come from [`normalise_words`].
+    fn matched_in(&self, text: &str, ctx: &str, min_len: usize) -> Option<&str> {
+        let stock = self.base.filter(|e| e.kind == K::Stock);
+        let listed = stock.is_some_and(|e| securities_hint(e, ctx));
+        self.needles
+            .iter()
+            .filter(|n| n.chars().count() >= min_len)
+            .filter(|n| {
+                let mut at = word_starts(text, n);
+                if stock.is_none() || listed {
+                    at.next().is_some()
+                } else {
+                    at.any(|i| legal_form_at(text, i + n.len()))
                 }
-                // "PAYPAL *HAENDLER 1234567890" on card statements (#243): a shop
-                // the dictionary doesn't know is still named right behind the `*`.
-                if let Some(shop) = behind_processor(counterparty) {
-                    return Self::resolve_uncached(&shop, purpose);
-                }
+            })
+            .max_by_key(|n| n.chars().count())
+            .map(String::as_str)
+    }
+
+    /// Length of [`matched_in`](Self::matched_in), the measure among own merchants.
+    fn longest_in(&self, text: &str, ctx: &str, min_len: usize) -> Option<usize> {
+        self.matched_in(text, ctx, min_len)
+            .map(|n| n.chars().count())
+    }
+
+    fn info(&self) -> MerchantInfo {
+        let mut info = match self.base {
+            Some(e) => to_info(e),
+            None => MerchantInfo {
+                key: String::new(),
+                name: String::new(),
+                domain: String::new(),
+                monogram: String::new(),
+                color_hex: fallback_color(&self.name).to_string(),
+                sf_symbol: String::new(),
+                kind: K::Unknown,
+                known: false,
+                isin: String::new(),
+                wkn: String::new(),
+                asset_class: String::new(),
+                svg_path: String::new(),
+                icon_slug: String::new(),
+                domain_candidates: vec![],
+                domain_source: String::new(),
+                is_person: false,
+            },
+        };
+        // a renamed copy gets the initials of its new name, an unchanged one keeps
+        // the bundled monogram ("dm", "ING")
+        if info.name != self.name {
+            info.monogram = monogram(&self.name);
+        }
+        info.key = self.key.clone();
+        info.name = self.name.clone();
+        // A name the user typed, not a bundled brand: covered in bug report pictures,
+        // and a rule made from such a booking takes its pattern from the counterparty.
+        info.known = false;
+        info
+    }
+}
+
+/// The merchant recognition of one vault: the bundled table with the user's changes
+/// (#1373) and a cache of the merchants it resolved.
+///
+/// The vault builds it from its tables (`Vault::merchant_rules`) and keeps it while
+/// they stay the same, so a change, a merge or a restore starts a fresh cache.
+pub(crate) struct MerchantRules {
+    settings: MerchantSettings,
+    /// No user changes: the shared [`MerchantRules::builtin`].
+    bundled: bool,
+    /// Own merchants, oldest first (a tie goes to the older one).
+    custom: Vec<CustomEntry>,
+    cache: Mutex<ResolveCache>,
+}
+
+impl MerchantRules {
+    /// The bundled table without user changes. Every vault without changes shares it
+    /// (and its cache).
+    pub(crate) fn builtin() -> &'static Arc<MerchantRules> {
+        static BUILTIN: OnceLock<Arc<MerchantRules>> = OnceLock::new();
+        BUILTIN.get_or_init(|| Arc::new(Self::new(MerchantSettings::default())))
+    }
+
+    /// The rules for `settings`: the shared bundled ones when nothing is changed.
+    pub(crate) fn for_settings(settings: MerchantSettings) -> Arc<MerchantRules> {
+        if settings == MerchantSettings::default() {
+            Self::builtin().clone()
+        } else {
+            Arc::new(Self::new(settings))
+        }
+    }
+
+    fn new(settings: MerchantSettings) -> Self {
+        let custom = settings
+            .custom
+            .iter()
+            .map(|c| CustomEntry {
+                key: custom_key(&c.uuid),
+                name: c.name.clone(),
+                needles: c.needles.clone(),
+                base: entry_by_key(&c.based_on),
+            })
+            .collect();
+        Self {
+            bundled: settings == MerchantSettings::default(),
+            settings,
+            custom,
+            cache: Mutex::default(),
+        }
+    }
+
+    pub(crate) fn settings(&self) -> &MerchantSettings {
+        &self.settings
+    }
+
+    /// The master switch.
+    pub(crate) fn enabled(&self) -> bool {
+        self.settings.enabled
+    }
+
+    /// Whether the name of an own merchant or of a bundled one in use contains `term`
+    /// (lower case): the shown names that may be in no booking text (search, #1373).
+    pub(crate) fn names_contain(&self, term: &str) -> bool {
+        self.settings.enabled
+            && (self
+                .custom
+                .iter()
+                .any(|c| c.name.to_lowercase().contains(term))
+                || entries().iter().any(|e| {
+                    !self.settings.disabled.contains(e.key) && e.name.to_lowercase().contains(term)
+                }))
+    }
+
+    fn clear_cache(&self) {
+        *self.cache.lock().unwrap_or_else(PoisonError::into_inner) = ResolveCache::default();
+    }
+
+    /// Resolves the merchant of a booking from counterparty and purpose.
+    ///
+    /// The result only depends on the two texts, and the booking list asks
+    /// for every booking again on each reload, so results are remembered
+    /// while a vault is open (resolving ~19 000 bookings took about 270 ms
+    /// per reload; a remembered one is a hash lookup).
+    pub(crate) fn resolve(&self, counterparty: &str, purpose: &str) -> MerchantInfo {
+        MerchantInfo::clone(&self.lookup(counterparty, purpose).info)
+    }
+
+    /// [`resolve`](Self::resolve) and what the bundled table alone says.
+    pub(crate) fn resolve_with_bundled(
+        &self,
+        counterparty: &str,
+        purpose: &str,
+    ) -> (MerchantInfo, BundledMerchant) {
+        let hit = self.lookup(counterparty, purpose);
+        (MerchantInfo::clone(&hit.info), hit.bundled)
+    }
+
+    /// What the bundled table alone says, without copying the shown merchant.
+    pub(crate) fn bundled(&self, counterparty: &str, purpose: &str) -> BundledMerchant {
+        self.lookup(counterparty, purpose).bundled
+    }
+
+    fn lookup(&self, counterparty: &str, purpose: &str) -> Resolved {
+        let hit = self
+            .cache
+            .lock()
+            .ok()
+            .and_then(|c| c.by_counterparty.get(counterparty)?.get(purpose).cloned());
+        if let Some(hit) = hit {
+            return hit;
+        }
+        let info = self.resolve_uncached(counterparty, purpose);
+        let bundled = if self.bundled {
+            BundledMerchant {
+                key: info.key.as_str().into(),
+                kind: info.kind,
             }
-            if let Some((_, subs)) = SUB_BRANDS.iter().find(|(parent, _)| *parent == entry.key)
-                && let Some(sub) = subs
-                    .iter()
-                    .filter_map(|k| entry_by_key(k))
-                    .find(|sub| sub.needles.iter().any(|n| needle_in(&ctx, n)))
+        } else {
+            // from the shared cache: still warm from before the first change, so a
+            // reload after a change costs one cold resolve per booking, not two
+            Self::builtin().bundled(counterparty, purpose)
+        };
+        let hit = Resolved {
+            info: Arc::new(info),
+            bundled,
+        };
+        if let Ok(mut c) = self.cache.lock() {
+            // bounded: far above any real booking count, cleared rather than evicted
+            if c.len >= RESOLVE_CACHE_MAX {
+                *c = ResolveCache::default();
+            }
+            let by_purpose = c
+                .by_counterparty
+                .entry(counterparty.to_string())
+                .or_default();
+            if by_purpose
+                .insert(purpose.to_string(), hit.clone())
+                .is_none()
             {
-                return to_info(sub);
+                c.len += 1;
+            }
+        }
+        hit
+    }
+
+    /// The first bundled entry with a needle in `text` that the user did not switch
+    /// off; a stock entry only with securities evidence.
+    fn find_checked(&self, text: &str, ctx: &str) -> Option<&'static Entry> {
+        entries().iter().find(|e| {
+            e.needles.iter().any(|n| needle_in(text, n))
+                && (e.kind != K::Stock || stock_confirmed(e, text, ctx))
+                && !self.settings.disabled.contains(e.key)
+        })
+    }
+
+    /// The bundled entry `key` unless the user switched it off.
+    fn bundled_entry(&self, key: &str) -> Option<&'static Entry> {
+        entry_by_key(key).filter(|e| !self.settings.disabled.contains(e.key))
+    }
+
+    /// The own merchant with the longest search word `len` finds; a tie goes to the
+    /// older one, so the order the user created them in never matters otherwise.
+    fn best_custom(&self, len: impl Fn(&CustomEntry) -> Option<usize>) -> Option<&CustomEntry> {
+        let mut best: Option<(usize, &CustomEntry)> = None;
+        for c in &self.custom {
+            if let Some(l) = len(c)
+                && best.is_none_or(|(b, _)| l > b)
+            {
+                best = Some((l, c));
+            }
+        }
+        best.map(|(_, c)| c)
+    }
+
+    /// The sub-brand of the parent company `parent` that the booking names anywhere
+    /// (`ctx`): an own copy of it first, then the bundled one unless switched off.
+    fn sub_brand(&self, parent: &str, t: &Texts) -> Option<MerchantInfo> {
+        let (_, subs) = SUB_BRANDS.iter().find(|(p, _)| *p == parent)?;
+        if let Some(c) = self.best_custom(|c| {
+            c.base
+                .filter(|b| subs.contains(&b.key))
+                .and_then(|_| c.longest_in(&t.wctx, &t.wctx, 0))
+        }) {
+            return Some(c.info());
+        }
+        subs.iter()
+            .filter_map(|k| self.bundled_entry(k))
+            .find(|sub| sub.needles.iter().any(|n| needle_in(&t.ctx, n)))
+            .map(to_info)
+    }
+
+    /// What a payment processor (`needle` in the counterparty) collected for: an own or
+    /// bundled merchant behind its name or in the purpose, else the shop named right
+    /// after its `*` (#243). `None` when nothing is behind it.
+    fn look_behind(
+        &self,
+        needle: &str,
+        counterparty: &str,
+        purpose: &str,
+        t: &Texts,
+    ) -> Option<MerchantInfo> {
+        let after = |text: &str| {
+            text.split_once(needle)
+                .map(|x| x.1.to_string())
+                .unwrap_or_default()
+        };
+        let (behind, wbehind) = (after(&t.cp), after(&t.wcp));
+        let shop_in = |c: &CustomEntry, text: &str| {
+            (c.kind() != K::PaymentService)
+                .then(|| c.longest_in(text, &t.wctx, 0))
+                .flatten()
+        };
+        if let Some(c) = self
+            .best_custom(|c| shop_in(c, &wbehind))
+            .or_else(|| self.best_custom(|c| shop_in(c, &t.wpu)))
+        {
+            return Some(c.info());
+        }
+        if let Some(real) = self
+            .find_checked(&behind, &t.ctx)
+            .or_else(|| self.find_checked(&t.pu, &t.ctx))
+            .filter(|r| r.kind != K::PaymentService)
+        {
+            return Some(to_info(real));
+        }
+        // "PAYPAL *HAENDLER 1234567890" on card statements (#243): a shop the
+        // dictionary doesn't know is still named right behind the `*`.
+        behind_processor(counterparty).map(|shop| self.resolve_uncached(&shop, purpose))
+    }
+
+    fn resolve_uncached(&self, counterparty: &str, purpose: &str) -> MerchantInfo {
+        if !self.settings.enabled {
+            return unknown_merchant(counterparty, purpose, false);
+        }
+        // "PayPal *Spotify", "PayPal Europe ... Ihr Einkauf bei Spotify AB": look behind the processor.
+        let t = Texts::new(counterparty, purpose, !self.custom.is_empty());
+        // Own merchants come first wherever the bundled table looks (#1373). A copy keeps
+        // what its original does about matching: a copy of a payment processor still
+        // looks behind it, a copy of a sub-brand still wins over the parent company.
+        if let Some(c) = self.best_custom(|c| c.longest_in(&t.wcp, &t.wctx, 0)) {
+            if c.kind() == K::PaymentService
+                && let Some(needle) = c.matched_in(&t.wcp, &t.wctx, 0)
+                && let Some(real) = self.look_behind(needle, counterparty, purpose, &t)
+            {
+                return real;
+            }
+            // a copy of a parent company still yields to its sub-brands
+            if let Some(sub) = c.base.and_then(|b| self.sub_brand(b.key, &t)) {
+                return sub;
+            }
+            return c.info();
+        }
+        if let Some(entry) = self.find_checked(&t.cp, &t.ctx) {
+            if entry.kind == K::PaymentService
+                && let Some(real) = self.look_behind(entry.needles[0], counterparty, purpose, &t)
+            {
+                return real;
+            }
+            if let Some(sub) = self.sub_brand(entry.key, &t) {
+                return sub;
             }
             return group_member(entry, counterparty).unwrap_or_else(|| to_info(entry));
         }
-        if let Some(entry) = find_checked(&pu, &ctx).filter(|e| {
+        // Only the parent company is switched off: the sub-brand it names is still on
+        // ("Telekom Deutschland GmbH", purpose "congstar …").
+        if let Some(sub) = SUB_BRANDS
+            .iter()
+            .filter(|(parent, _)| self.settings.disabled.contains(*parent))
+            .filter(|(parent, _)| {
+                entry_by_key(parent).is_some_and(|e| e.needles.iter().any(|n| needle_in(&t.cp, n)))
+            })
+            .find_map(|(parent, _)| self.sub_brand(parent, &t))
+        {
+            return sub;
+        }
+        // The purpose names securities and payment processors; anything else only
+        // when there is no counterparty, and then not with a short word (" TK ", #1133).
+        let no_counterparty = counterparty.trim().is_empty();
+        if let Some(c) = self.best_custom(|c| {
+            if matches!(c.kind(), K::Etf | K::Crypto | K::Stock | K::PaymentService) {
+                c.longest_in(&t.wpu, &t.wctx, 0)
+            } else if no_counterparty {
+                c.longest_in(&t.wpu, &t.wctx, 4)
+            } else {
+                None
+            }
+        }) {
+            return c.info();
+        }
+        if let Some(entry) = self.find_checked(&t.pu, &t.ctx).filter(|e| {
             matches!(e.kind, K::Etf | K::Crypto | K::Stock | K::PaymentService)
-                || (counterparty.trim().is_empty()
+                || (no_counterparty
                     && e.needles
                         .iter()
-                        .any(|n| n.trim().len() >= 4 && needle_in(&pu, n)))
+                        .any(|n| n.trim().len() >= 4 && needle_in(&t.pu, n)))
         }) {
             return to_info(entry);
         }
-        let name = {
-            let n = clean_name(counterparty);
-            if n.is_empty() {
-                clean_name(
-                    purpose
-                        .split_whitespace()
-                        .take(3)
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                        .as_str(),
-                )
-            } else {
-                n
-            }
-        };
-        let key_base: String = normalise(&name)
-            .trim()
-            .chars()
-            .map(|c| if c.is_alphanumeric() { c } else { '-' })
-            .collect();
-        let hash = key_base
-            .bytes()
-            .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
-        let raw = if counterparty.trim().is_empty() {
-            name.clone()
+        unknown_merchant(counterparty, purpose, true)
+    }
+}
+
+/// A booking's texts, normalised for the bundled table (`cp`, `pu`, `ctx`, see
+/// [`normalise`]) and for the user's own search words (`w…`, see [`normalise_words`];
+/// empty while there are no own merchants).
+struct Texts {
+    cp: String,
+    pu: String,
+    ctx: String,
+    wcp: String,
+    wpu: String,
+    wctx: String,
+}
+
+impl Texts {
+    fn new(counterparty: &str, purpose: &str, own: bool) -> Self {
+        let counterparty = without_mail_local_parts(counterparty);
+        let purpose = without_mail_local_parts(purpose);
+        let (cp, pu) = (normalise(&counterparty), normalise(&purpose));
+        let (wcp, wpu) = if own {
+            (normalise_words(&counterparty), normalise_words(&purpose))
         } else {
-            counterparty.to_string()
+            (String::new(), String::new())
         };
-        // Strict whitelist: a domain only for curated brands (handled above)
-        // or companies with an explicit legal suffix – never for persons.
-        let company = has_legal_suffix(&raw);
-        let person = !company && looks_like_person(&raw);
-        let candidates = if company {
-            heuristic_domains(&raw)
-        } else {
-            vec![]
-        };
-        MerchantInfo {
-            key: format!("x:{key_base}"),
-            monogram: if person {
-                person_initials(&raw)
-            } else {
-                monogram(&name)
-            },
-            name,
-            domain: candidates.first().cloned().unwrap_or_default(),
-            domain_source: if person {
-                "person".into()
-            } else if candidates.is_empty() {
-                String::new()
-            } else {
-                "company".into()
-            },
-            is_person: person,
-            domain_candidates: candidates,
-            color_hex: if person {
-                "#64748B".to_string()
-            } else {
-                FALLBACK_COLORS[(hash as usize) % FALLBACK_COLORS.len()].to_string()
-            },
-            sf_symbol: String::new(),
-            kind: K::Unknown,
-            known: false,
-            isin: String::new(),
-            wkn: String::new(),
-            asset_class: String::new(),
-            svg_path: String::new(),
-            icon_slug: String::new(),
+        Self {
+            ctx: format!("{cp} {pu}"),
+            wctx: format!("{wcp} {wpu}"),
+            cp,
+            pu,
+            wcp,
+            wpu,
         }
+    }
+}
+
+/// Calm colour of a merchant without a brand colour, the same for the same name.
+fn fallback_color(key_base: &str) -> &'static str {
+    let hash = key_base
+        .bytes()
+        .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+    FALLBACK_COLORS[(hash as usize) % FALLBACK_COLORS.len()]
+}
+
+/// A merchant the table does not name: the cleaned counterparty, else the start of
+/// the purpose. `logos` false (recognition switched off, #1373): no guessed company
+/// domain either, so no logo.
+fn unknown_merchant(counterparty: &str, purpose: &str, logos: bool) -> MerchantInfo {
+    let name = {
+        let n = clean_name(counterparty);
+        if n.is_empty() {
+            clean_name(
+                purpose
+                    .split_whitespace()
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .as_str(),
+            )
+        } else {
+            n
+        }
+    };
+    let key_base: String = normalise(&name)
+        .trim()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect();
+    let raw = if counterparty.trim().is_empty() {
+        name.clone()
+    } else {
+        counterparty.to_string()
+    };
+    // Strict whitelist: a domain only for curated brands (handled above)
+    // or companies with an explicit legal suffix – never for persons.
+    let company = has_legal_suffix(&raw);
+    let person = !company && looks_like_person(&raw);
+    let candidates = if company && logos {
+        heuristic_domains(&raw)
+    } else {
+        vec![]
+    };
+    MerchantInfo {
+        key: format!("x:{key_base}"),
+        monogram: if person {
+            person_initials(&raw)
+        } else {
+            monogram(&name)
+        },
+        name,
+        domain: candidates.first().cloned().unwrap_or_default(),
+        domain_source: if person {
+            "person".into()
+        } else if candidates.is_empty() {
+            String::new()
+        } else {
+            "company".into()
+        },
+        is_person: person,
+        domain_candidates: candidates,
+        color_hex: if person {
+            "#64748B".to_string()
+        } else {
+            fallback_color(&key_base).to_string()
+        },
+        sf_symbol: String::new(),
+        kind: K::Unknown,
+        known: false,
+        isin: String::new(),
+        wkn: String::new(),
+        asset_class: String::new(),
+        svg_path: String::new(),
+        icon_slug: String::new(),
     }
 }
 
@@ -1140,6 +1605,28 @@ pub fn classify(
     top_category: &str,
     account_kind: AccountKind,
 ) -> FlowKind {
+    classify_by_kind(
+        amount_cents,
+        counterparty,
+        purpose,
+        booking_text,
+        merchant.kind,
+        top_category,
+        account_kind,
+    )
+}
+
+/// [`classify`] with the merchant kind alone (the bundled table's, see
+/// [`BundledMerchant`]).
+pub(crate) fn classify_by_kind(
+    amount_cents: i64,
+    counterparty: &str,
+    purpose: &str,
+    booking_text: &str,
+    merchant_kind: MerchantKind,
+    top_category: &str,
+    account_kind: AccountKind,
+) -> FlowKind {
     let t = normalise(&format!("{counterparty} {purpose} {booking_text}"));
     if contains_any(
         &t,
@@ -1148,7 +1635,7 @@ pub fn classify(
         return FlowKind::Perk;
     }
     if top_category == "Sparen & Investieren"
-        || matches!(merchant.kind, K::Etf | K::Crypto | K::Stock)
+        || matches!(merchant_kind, K::Etf | K::Crypto | K::Stock)
         || contains_any(
             &t,
             &[
@@ -1819,6 +2306,341 @@ mod tests {
         assert_eq!(
             resolve_merchant("".into(), "service@paypal.de".into()).name,
             "PayPal"
+        );
+    }
+
+    /// Rules with own merchants (`(uuid, name, needles, based_on)`, oldest first),
+    /// switched-off bundled keys and the master switch.
+    fn rules(
+        custom: &[(&str, &str, &[&str], &str)],
+        disabled: &[&str],
+        enabled: bool,
+    ) -> MerchantRules {
+        MerchantRules::new(MerchantSettings {
+            enabled,
+            disabled: disabled.iter().map(|k| k.to_string()).collect(),
+            custom: custom
+                .iter()
+                .map(|(uuid, name, needles, based_on)| CustomSpec {
+                    uuid: uuid.to_string(),
+                    name: name.to_string(),
+                    needles: needles.iter().map(|n| n.to_string()).collect(),
+                    based_on: based_on.to_string(),
+                })
+                .collect(),
+        })
+    }
+
+    #[test]
+    fn own_merchants_come_before_bundled_ones() {
+        let r = rules(
+            &[("a", "Meine Bank", &["volksbank mittelhessen"], "")],
+            &[],
+            true,
+        );
+        let m = r.resolve("VOLKSBANK MITTELHESSEN EG", "Bargeldauszahlung");
+        assert_eq!((m.key.as_str(), m.name.as_str()), ("u:a", "Meine Bank"));
+        assert_eq!(m.kind, K::Unknown);
+        assert!(!m.known && m.svg_path.is_empty() && m.domain_candidates.is_empty());
+        // another member bank still goes to the bundled group entry
+        assert_eq!(r.resolve("Volksbank Kassel", "").key, "volksbank");
+        // without changes the shared bundled rules answer as before
+        assert_eq!(
+            MerchantRules::builtin()
+                .resolve("VOLKSBANK MITTELHESSEN EG", "")
+                .key,
+            "volksbank"
+        );
+    }
+
+    #[test]
+    fn switched_off_entries_fall_through_and_keep_the_flow() {
+        let cp = "MSCI World USD (Acc)";
+        assert_eq!(MerchantResolver::resolve(cp, "").key, "etf-core-msci-world");
+        let r = rules(&[], &["etf-core-msci-world"], true);
+        let (m, bundled) = r.resolve_with_bundled(cp, "");
+        assert_ne!(m.key, "etf-core-msci-world");
+        assert!(!m.name.contains("iShares"), "{}", m.name);
+        // the flow still reads the bundled kind: an ETF purchase stays an investment
+        assert_eq!(bundled.kind, K::Etf);
+        assert_eq!(&*bundled.key, "etf-core-msci-world");
+        // an own merchant for it, as in #1373
+        let r = rules(
+            &[(
+                "b",
+                "MSCI World (anderer Anbieter)",
+                &["msci world usd"],
+                "",
+            )],
+            &["etf-core-msci-world"],
+            true,
+        );
+        let (m, bundled) = r.resolve_with_bundled(cp, "Sparplan");
+        assert_eq!(m.name, "MSCI World (anderer Anbieter)");
+        assert_eq!(bundled.kind, K::Etf);
+    }
+
+    #[test]
+    fn switched_off_sub_brand_leaves_the_parent() {
+        let cp = "Fraenk - eine Marke der Telekom Deutschland GmbH";
+        assert_eq!(MerchantResolver::resolve(cp, "").key, "fraenk");
+        assert_eq!(rules(&[], &["fraenk"], true).resolve(cp, "").key, "telekom");
+    }
+
+    #[test]
+    fn recognition_off_shows_the_counterparty_without_logo() {
+        let r = rules(&[("a", "Eigener", &["rewe"], "")], &[], false);
+        let (m, bundled) = r.resolve_with_bundled("REWE Markt GmbH", "Einkauf");
+        assert_eq!(m.name, "REWE Markt");
+        assert!(m.key.starts_with("x:"), "{}", m.key);
+        assert!(!m.known && m.svg_path.is_empty() && m.icon_slug.is_empty());
+        assert!(m.domain.is_empty() && m.domain_candidates.is_empty());
+        assert_eq!(&*bundled.key, "rewe");
+        assert_eq!(bundled.kind, K::Supermarket);
+        // a company is not looked up online either
+        let m = r.resolve("Muster Handwerk GmbH", "");
+        assert!(m.domain_candidates.is_empty() && m.domain_source.is_empty());
+        // a private person keeps the initials circle
+        assert!(r.resolve("Laura Schneider", "").is_person);
+        // without a counterparty the start of the purpose
+        assert_eq!(
+            r.resolve("", "Spotify Premium Familie").name,
+            "Spotify Premium Familie"
+        );
+    }
+
+    #[test]
+    fn the_longest_own_search_word_wins_a_tie_goes_to_the_older() {
+        let r = rules(
+            &[
+                ("old", "Amazon allgemein", &["amazon"], ""),
+                ("new", "Amazon Prime", &["amazon prime"], ""),
+                ("same", "Amazon doppelt", &["amazon"], ""),
+            ],
+            &[],
+            true,
+        );
+        assert_eq!(r.resolve("Amazon Prime Video", "").key, "u:new");
+        assert_eq!(r.resolve("AMAZON EU S.A R.L.", "").key, "u:old");
+    }
+
+    #[test]
+    fn own_search_words_match_whole_words() {
+        let r = rules(
+            &[
+                ("a", "Drogerie", &["dm"], ""),
+                ("b", "Bäcker", &["back"], ""),
+                ("c", "Fonds", &["msci world usd (acc)"], ""),
+            ],
+            &[],
+            true,
+        );
+        assert_eq!(r.resolve("DM Fil. 1234", "").key, "u:a");
+        assert_ne!(r.resolve("Dmitri Petrov", "").key, "u:a");
+        assert_ne!(r.resolve("Adm Verwaltung", "").key, "u:a");
+        assert_eq!(r.resolve("Back Shop Muster", "").key, "u:b");
+        assert_ne!(r.resolve("Backstube Muster", "").key, "u:b");
+        assert_ne!(r.resolve("Rueckback Muster", "").key, "u:b");
+        // an edge that is no letter needs no boundary
+        assert_eq!(r.resolve("Core MSCI World USD (Acc)", "").key, "u:c");
+        // a rejected hit does not hide a later overlapping one
+        let r = rules(&[("o", "Overlap", &["ab-ab"], "")], &[], true);
+        assert_eq!(r.resolve("xab-ab-ab", "").key, "u:o");
+        assert_eq!(word_starts(" xab-ab-ab ", "ab-ab").collect::<Vec<_>>(), [5]);
+        assert_eq!(
+            word_starts(" muster ", "").count(),
+            0,
+            "an empty word matches nothing"
+        );
+    }
+
+    #[test]
+    fn a_copy_of_a_padded_needle_stays_a_whole_word() {
+        // bundled as " tier ": the copy must not start to catch "Tierarzt" (#1373 review)
+        let tier = entry_by_key("tier").expect("tier in the table");
+        assert!(tier.needles.contains(&" tier "));
+        let r = rules(&[("t", "TIER Scooter", &["tier"], "tier")], &["tier"], true);
+        assert_eq!(r.resolve("TIER Mobility SE", "").key, "u:t");
+        assert!(!r.resolve("Tierarztpraxis Muster", "").key.starts_with("u:"));
+    }
+
+    #[test]
+    fn a_copy_of_a_sub_brand_still_wins_over_the_parent() {
+        let (cp, pu) = ("Telekom Deutschland GmbH", "congstar Kd-Nr 4711");
+        assert_eq!(MerchantResolver::resolve(cp, pu).key, "congstar");
+        let r = rules(
+            &[("c", "Mein Handyvertrag", &["congstar"], "congstar")],
+            &["congstar"],
+            true,
+        );
+        assert_eq!(r.resolve(cp, pu).name, "Mein Handyvertrag");
+        // a plain Telekom booking stays Telekom
+        assert_eq!(r.resolve(cp, "Rechnung 11/2026").key, "telekom");
+    }
+
+    #[test]
+    fn a_copy_of_a_parent_company_still_yields_to_its_sub_brands() {
+        let r = rules(
+            &[("t", "Mein Telekom", &["telekom"], "telekom")],
+            &["telekom"],
+            true,
+        );
+        let fraenk = "Fraenk - eine Marke der Telekom Deutschland GmbH";
+        assert_eq!(r.resolve(fraenk, "").key, "fraenk");
+        assert_eq!(
+            r.resolve("Telekom Deutschland GmbH", "congstar Kd-Nr 4711")
+                .key,
+            "congstar"
+        );
+        assert_eq!(
+            r.resolve("Telekom Deutschland GmbH", "Rechnung 11/2026")
+                .key,
+            "u:t"
+        );
+    }
+
+    #[test]
+    fn a_copy_of_a_payment_processor_still_looks_behind_it() {
+        let r = rules(
+            &[("p", "Mein PayPal", &["paypal"], "paypal")],
+            &["paypal"],
+            true,
+        );
+        let cp = "PayPal Europe S.a.r.l. et Cie S.C.A";
+        assert_eq!(r.resolve(cp, "Ihr Einkauf bei Spotify AB").key, "spotify");
+        assert_eq!(
+            r.resolve("PAYPAL *HAENDLER MUSTER 1234567890", "").name,
+            "Haendler Muster"
+        );
+        // nothing behind it: the copy's own name
+        assert_eq!(r.resolve(cp, "Rueckzahlung").name, "Mein PayPal");
+        // an own merchant behind it
+        let r = rules(
+            &[
+                ("p", "Mein PayPal", &["paypal"], "paypal"),
+                ("k", "Kleiner Laden", &["kleiner laden"], ""),
+            ],
+            &["paypal"],
+            true,
+        );
+        assert_eq!(r.resolve(cp, "Ihr Einkauf bei Kleiner Laden").key, "u:k");
+    }
+
+    #[test]
+    fn own_merchants_in_the_purpose_follow_the_bundled_rules() {
+        let r = rules(&[("a", "Kleiner Laden", &["kleiner laden"], "")], &[], true);
+        // behind a payment processor
+        let m = r.resolve(
+            "PayPal Europe S.a.r.l. et Cie S.C.A",
+            "Ihr Einkauf bei Kleiner Laden",
+        );
+        assert_eq!(m.key, "u:a");
+        // without a counterparty
+        assert_eq!(r.resolve("", "Kartenzahlung Kleiner Laden").key, "u:a");
+        // not when a counterparty names someone else
+        assert_ne!(
+            r.resolve("Max Mustermann", "Geschenk Kleiner Laden").key,
+            "u:a"
+        );
+        // a short word never from the purpose alone (" TK ", #1133)
+        let r = rules(&[("t", "Kasse", &["tk"], "")], &[], true);
+        assert_ne!(r.resolve("", "WP-Abrechnung TK Depot").key, "u:t");
+    }
+
+    #[test]
+    fn a_copy_keeps_logo_colour_and_kind() {
+        let r = rules(
+            &[("c", "Mein Supermarkt", &["rewe"], "rewe")],
+            &["rewe"],
+            true,
+        );
+        let m = r.resolve("REWE SAGT DANKE 4711", "");
+        let rewe = MerchantResolver::resolve("REWE SAGT DANKE 4711", "");
+        assert_eq!(
+            (m.key.as_str(), m.name.as_str()),
+            ("u:c", "Mein Supermarkt")
+        );
+        assert_eq!(m.monogram, "MS");
+        assert_eq!(
+            (m.kind, &m.color_hex, &m.svg_path),
+            (rewe.kind, &rewe.color_hex, &rewe.svg_path)
+        );
+        assert_eq!(m.domain_source, "dictionary");
+        assert!(!m.known, "a typed name is covered in bug reports");
+        // unchanged name: the bundled monogram stays
+        let r = rules(
+            &[("d", "dm-drogerie markt", &["dm drogerie"], "dm")],
+            &["dm"],
+            true,
+        );
+        assert_eq!(r.resolve("DM Drogerie Markt", "").monogram, "dm");
+        // a copy of a securities entry is found in the purpose like the original
+        let r = rules(
+            &[("e", "Mein ETF", &["core msci world"], "etf-core-msci-world")],
+            &[],
+            true,
+        );
+        assert_eq!(
+            r.resolve("Depotbank", "Sparplan Core MSCI World").key,
+            "u:e"
+        );
+    }
+
+    #[test]
+    fn a_copy_of_a_share_keeps_the_securities_check() {
+        let r = rules(
+            &[("s", "Bayer-Aktie", &["bayer"], "stock-bayer")],
+            &[],
+            true,
+        );
+        assert_ne!(r.resolve("Max Bayer", "Anteil Abendessen").key, "u:s");
+        assert_eq!(r.resolve("Bayer AG", "Dividende 2025").key, "u:s");
+    }
+
+    #[test]
+    fn own_rules_remember_their_merchants_apart_from_the_bundled_ones() {
+        let r = rules(&[("a", "Eigener Markt", &["rewe"], "")], &[], true);
+        for _ in 0..2 {
+            assert_eq!(r.resolve("REWE Markt", "").key, "u:a");
+            assert_eq!(MerchantResolver::resolve("REWE Markt", "").key, "rewe");
+        }
+        assert_eq!(
+            r.resolve("REWE Markt", ""),
+            r.resolve_uncached("REWE Markt", "")
+        );
+        assert_eq!(&*r.bundled("REWE Markt", "").key, "rewe");
+    }
+
+    #[test]
+    fn own_search_words_review_cases() {
+        // overlapping occurrences: the first "ab-ab" fails its left edge, the second counts
+        let r = rules(&[("o", "Overlap", &["ab-ab"], "")], &[], true);
+        assert_eq!(r.resolve("xab-ab-ab", "").key, "u:o");
+        // a reference keeps all its digits
+        let r = rules(&[("d", "Vertrag", &["123456"], "")], &[], true);
+        assert_eq!(r.resolve("Vertrag 123456", "").key, "u:d");
+        assert_ne!(r.resolve("Vertrag 123459", "").key, "u:d");
+        // a legal form in the middle leaves one space between the words
+        let r = rules(&[("m", "Shop", &["muster shop"], "")], &[], true);
+        assert_eq!(r.resolve("Muster GmbH Shop", "").key, "u:m");
+        // a copy of a share checks the legal form at a whole-word match only
+        let r = rules(
+            &[("s", "Bayer-Aktie", &["bayer"], "stock-bayer")],
+            &[],
+            true,
+        );
+        assert_ne!(r.resolve("ABayerInc, Max Bayer", "Geschenk").key, "u:s");
+        // only the parent company is switched off: its sub-brand still shows
+        let r = rules(&[], &["telekom"], true);
+        assert_eq!(
+            r.resolve("Telekom Deutschland GmbH", "congstar Kd-Nr 4711")
+                .key,
+            "congstar"
+        );
+        assert!(
+            r.resolve("Telekom Deutschland GmbH", "Festnetz")
+                .key
+                .starts_with("x:")
         );
     }
 }

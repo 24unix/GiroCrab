@@ -294,6 +294,18 @@ fn english(de: &str) -> Option<&'static str> {
         "Der Dokumentenabruf ist für diesen Zugang ausgeschaltet." => {
             "Document retrieval is switched off for this connection."
         }
+        "Der Name des Händlers fehlt." => "The merchant name is missing.",
+        "Der Name des Händlers ist länger als 80 Zeichen." => {
+            "The merchant name is longer than 80 characters."
+        }
+        "Diesen Händler gibt es in der eingebauten Liste nicht." => {
+            "This merchant is not in the built-in list."
+        }
+        "Diesen eigenen Händler gibt es nicht mehr." => "This custom merchant no longer exists.",
+        "Ein Suchwort ist länger als 60 Zeichen." => "A search word is longer than 60 characters.",
+        "Mindestens ein Suchwort mit zwei oder mehr Buchstaben oder Ziffern angeben." => {
+            "Enter at least one search word with two or more letters or digits."
+        }
         "Der Name des Tags fehlt." => "The tag name is missing.",
         "Der Name des Tags ist länger als 64 Zeichen." => {
             "The tag name is longer than 64 characters."

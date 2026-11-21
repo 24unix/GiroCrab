@@ -176,18 +176,31 @@ const MERCHANT_SEP: &str = "|m:";
 /// An IBAN shared by several known merchants (a payment service, a card clearing
 /// account) keeps them apart: `-iban:X|m:apple` (#615). Merchants guessed from the
 /// counterparty name (`x:…`) are left out, so a payee's spelling can't split a series.
+///
+/// An enriched booking carries its key in `recurrence_key`, built from the bundled
+/// merchant ([`series_key_with`]); a booking without one is keyed by its `merchant`.
 pub fn series_key(b: &Booking) -> String {
+    if !b.recurrence_key.is_empty() {
+        return b.recurrence_key.clone();
+    }
+    series_key_with(b, &b.merchant.key)
+}
+
+/// [`series_key`] with the given merchant key. The booking list passes the bundled
+/// table's key, so the user's merchant changes (#1373) rename a series but never
+/// split or join one, and decisions stored under its key keep applying.
+pub(crate) fn series_key_with(b: &Booking, merchant_key: &str) -> String {
     let dir = if b.amount_cents < 0 { '-' } else { '+' };
     if !b.counterparty_iban.trim().is_empty() {
         let iban = normalize_iban(&b.counterparty_iban);
-        let m = &b.merchant.key;
+        let m = merchant_key;
         if !m.is_empty() && !m.starts_with("x:") {
             return format!("{dir}iban:{iban}{MERCHANT_SEP}{m}");
         }
         return format!("{dir}iban:{iban}");
     }
-    if !b.merchant.key.is_empty() {
-        return format!("{dir}m:{}", b.merchant.key);
+    if !merchant_key.is_empty() {
+        return format!("{dir}m:{merchant_key}");
     }
     let name = b.counterparty.trim().to_lowercase();
     if name.is_empty() {

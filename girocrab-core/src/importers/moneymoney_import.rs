@@ -24,7 +24,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::fnv::fnv1a64;
 use crate::i18n::{tr, trf};
 use crate::iban::{normalize_iban, validate_iban};
-use crate::merchants::{FlowKind, MerchantResolver};
+use crate::merchants::{FlowKind, MerchantResolver, MerchantRules};
 use crate::models::*;
 use crate::money::parse_cents;
 use crate::text::parse_bool_loose;
@@ -1643,7 +1643,7 @@ pub(crate) fn merge_synced_tax_twins(conn: &Connection, account_id: i64) -> Core
     Ok(())
 }
 
-fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
+fn sample(r: &MmRow, i: i64, account_id: i64, merchants: &MerchantRules) -> Booking {
     let mut b = Booking {
         id: -(i + 1),
         account_id,
@@ -1695,7 +1695,7 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
     // preview of an import: no connection yet, a payment service reads as before
     let paypal = b.account_kind == AccountKind::PaymentService;
     // Preview names are imported user text, never built-in category roles.
-    enrich(&mut b, paypal, "");
+    enrich(&mut b, merchants, paypal, "");
     b.is_salary = crate::salary::salary_signal(&b);
     b
 }
@@ -1716,6 +1716,8 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         // before the dry run, which may add a provisional archive account
         let suggested_account_id = suggest_account(&tx, &decode(&data), &rows, &file_name)?;
+        // the samples look like the booking list: with the user's merchant changes (#1373)
+        let merchants = self.merchant_rules(&tx)?;
         let st = run(&tx, &rows, &file_name, target_account_id, true, true)?;
         let mut cats: Vec<String> = rows
             .iter()
@@ -1736,7 +1738,7 @@ impl Vault {
                 .iter()
                 .take(6)
                 .enumerate()
-                .map(|(i, r)| sample(r, i as i64, target_account_id.unwrap_or(0)))
+                .map(|(i, r)| sample(r, i as i64, target_account_id.unwrap_or(0), &merchants))
                 .collect(),
             suggested_account_name: account_name_from_file(&file_name),
             suggested_account_id,

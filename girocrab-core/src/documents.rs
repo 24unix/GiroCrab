@@ -378,10 +378,13 @@ pub fn best_match<'a>(bookings: &'a [Booking], text: &str) -> Option<(&'a Bookin
             score += 5;
         }
         let name_hit = {
-            let n = b.merchant.name.to_lowercase();
+            // The bundled merchant, as a receipt names the brand: a name the user gave
+            // the booking (#1373) is in no receipt and must not link one.
+            let m = crate::merchants::MerchantResolver::resolve(&b.counterparty, &b.purpose);
+            let n = m.name.to_lowercase();
             let first = n.split_whitespace().next().unwrap_or("").to_string();
             (!first.is_empty() && first.len() >= 3 && lower.contains(&first))
-                || lower.contains(&b.merchant.key.replace('-', " "))
+                || lower.contains(&m.key.replace('-', " "))
         };
         if name_hit {
             score += 3;
@@ -417,13 +420,20 @@ fn label(b: &Booking) -> String {
     )
 }
 
-fn row_to_info(r: &rusqlite::Row) -> rusqlite::Result<DocumentInfo> {
+/// `merchants`: the vault's merchant recognition, so the booking reads as in the list (#1373).
+fn row_to_info(
+    r: &rusqlite::Row,
+    merchants: &crate::merchants::MerchantRules,
+) -> rusqlite::Result<DocumentInfo> {
     let cp: Option<String> = r.get(12)?;
     let amount: Option<i64> = r.get(13)?;
     let date: Option<String> = r.get(14)?;
+    let purpose: Option<String> = r.get(16)?;
     let booking_label = match (cp, amount, date) {
         (Some(cp), Some(a), Some(d)) => {
-            let m = crate::merchants::MerchantResolver::resolve(&cp, "");
+            // as the booking list names it: the purpose decides behind payment services,
+            // and without a counterparty
+            let m = merchants.resolve(&cp, purpose.as_deref().unwrap_or(""));
             format!("{} · {} · {}", m.name, format_cents(a, "EUR".into()), d)
         }
         _ => String::new(),
@@ -450,7 +460,7 @@ fn row_to_info(r: &rusqlite::Row) -> rusqlite::Result<DocumentInfo> {
 /// `ON DELETE SET NULL` did): `t` and `da` only join live rows.
 const SELECT_INFO: &str = "SELECT d.id, t.id, COALESCE(da.id, t.account_id), d.title, d.doc_type, d.mime_type, d.file_name,
         length(d.pdf_bytes), d.source_url, COALESCE(NULLIF(d.doc_date,''), t.booking_date, ''), d.created_at, a.name,
-        t.counterparty, t.amount_cents, t.booking_date, d.seen_at IS NOT NULL
+        t.counterparty, t.amount_cents, t.booking_date, d.seen_at IS NOT NULL, t.purpose
    FROM booking_documents d
    LEFT JOIN transactions t ON t.id = d.booking_id AND t.deleted_ms IS NULL
    LEFT JOIN accounts da ON da.id = d.account_id AND da.deleted_ms IS NULL
@@ -489,7 +499,7 @@ fn truncate_chars(s: &mut String, max: usize) {
 impl Vault {
     /// The bookings `best_match` can accept for `text`: those with one of its
     /// amounts, or (for a name hit) booked within `CLOSE_DAYS` of one of its dates.
-    fn bookings_for_matching(&self, text: &str) -> CoreResult<Vec<Booking>> {
+    pub(crate) fn bookings_for_matching(&self, text: &str) -> CoreResult<Vec<Booking>> {
         // Inlined values, all built here from integers and parsed dates. Two IN
         // lists keep the SQL flat however many amounts and dates a long PDF names.
         let amounts: Vec<i64> = amounts_in(text).iter().flat_map(|a| [*a, -a]).collect();
@@ -545,11 +555,12 @@ impl Vault {
         booking_id: i64,
     ) -> Result<Vec<DocumentInfo>, CoreError> {
         let db = self.db()?;
+        let merchants = self.merchant_rules(&db)?;
         let mut st = db.prepare(&format!(
             "{SELECT_INFO} WHERE d.booking_id = ?1 AND t.id IS NOT NULL ORDER BY d.doc_date DESC, d.id DESC"
         ))?;
         let rows = st
-            .query_map([booking_id], row_to_info)?
+            .query_map([booking_id], |r| row_to_info(r, &merchants))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -559,6 +570,7 @@ impl Vault {
         filter: DocumentFilter,
     ) -> Result<Vec<DocumentInfo>, CoreError> {
         let db = self.db()?;
+        let merchants = self.merchant_rules(&db)?;
         let mut st = db.prepare(&list_all_documents_sql())?;
         let search = filter
             .search
@@ -573,7 +585,7 @@ impl Vault {
                     filter.unlinked_only as i64,
                     filter.connection_id
                 ],
-                row_to_info,
+                |r| row_to_info(r, &merchants),
             )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)

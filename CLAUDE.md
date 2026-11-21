@@ -17,7 +17,8 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
   `moneymoney_import.rs` (CSV/XML/CAMT/MT940 exports), `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import),
   `amazon_orders.rs`
 - `girocrab-core/src/tags.rs` – booking tags (#228): schema step, `impl Vault` API, booking tag loading; `tags/merge.rs` (iCloud merge of tags and tag sets), `tags/tests.rs`
-- `girocrab-core/src/merchants.rs` – merchant matching
+- `girocrab-core/src/merchants.rs` – merchant matching (`MerchantRules`: the bundled table with the user's changes, per vault);
+  `merchants/custom.rs` – the user's merchant settings (#1373): master switch, switched-off bundled merchants, own merchants, iCloud merge
 - `girocrab-core/src/recipients.rs` – known recipients of the transfer form (one per IBAN, cached), hidden IBANs + merge (#978)
 - `girocrab-core/src/documents.rs` – booking documents / PDF text extraction
 - `girocrab-core/src/text.rs` – text helpers (mojibake repair etc.)

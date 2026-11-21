@@ -1,7 +1,7 @@
 //! Writes a fixture vault for the schema upgrade tests
 //! (`girocrab-core/tests/schema_fixtures.rs`): demo data (connections,
-//! accounts, categories, rules, bookings), a user group and a manual loan, so
-//! every table that matters has rows.
+//! accounts, categories, rules, bookings), a user group, a manual loan and own
+//! merchants, so every table that matters has rows.
 //!
 //! Usage: cargo run -q -p girocrab-core --example make_fixture_vault
 //!
@@ -41,6 +41,21 @@ fn main() {
             interest_rate_ppm: Some(39_900),
             match_expr: String::new(),
         })
+        .unwrap();
+        // merchant recognition (#1373): an own merchant and a copy that replaces its original
+        v.save_custom_merchant(
+            None,
+            "Fixture-Händler".into(),
+            vec!["fixture laden".into()],
+            None,
+        )
+        .unwrap();
+        v.save_custom_merchant(
+            None,
+            "Fixture-Supermarkt".into(),
+            vec!["rewe fixture".into()],
+            Some("rewe".into()),
+        )
         .unwrap();
     }
     // Compact, leave WAL mode (no -wal/-shm files) and read the version.

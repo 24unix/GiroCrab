@@ -8,7 +8,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::connectors::read_body_limited;
 use crate::error::CoreError;
-use crate::merchants::{FlowKind, MerchantResolver};
+use crate::merchants::{FlowKind, MerchantRules};
 use crate::models::*;
 use crate::vault::{LIVE_BOOKINGS_SQL, Vault, sql_int_list};
 
@@ -142,13 +142,14 @@ impl Vault {
         // the cashflow card. The booking list itself is never narrowed by this.
         // One guard for both reads, so a merge committing in between cannot mix
         // old amounts with new eligibility.
-        let all: Vec<Booking> = {
+        let (all, merchants): (Vec<Booking>, _) = {
             let db = self.db()?;
             let allowed = crate::user_groups::total_account_ids(&db)?;
-            all_bookings(self, &db, BookingScope::All)?
+            let all = all_bookings(self, &db, BookingScope::All)?
                 .into_iter()
                 .filter(|b| allowed.contains(&b.account_id))
-                .collect()
+                .collect();
+            (all, self.merchant_rules(&db)?)
         };
 
         // Monthly flows
@@ -206,9 +207,20 @@ impl Vault {
                 && b.amount_cents < 0
                 && b.booking_date.as_str() >= first_month.as_str()
             {
+                // One plan per security of the bundled table: the user's merchant
+                // changes (#1373) rename a plan but never join or split one. The plan
+                // shows the booking's merchant under that key (its id in the grid).
+                let key = merchants
+                    .bundled(&b.counterparty, &b.purpose)
+                    .key
+                    .to_string();
                 plans
-                    .entry(b.merchant.key.clone())
-                    .or_insert_with(|| (b.merchant.clone(), Vec::new()))
+                    .entry(key.clone())
+                    .or_insert_with(|| {
+                        let mut shown = b.merchant.clone();
+                        shown.key = key;
+                        (shown, Vec::new())
+                    })
                     .1
                     .push(b);
             }
@@ -280,17 +292,22 @@ impl Vault {
         end_offset_months: u32,
     ) -> Result<InvestmentDashboard, CoreError> {
         let transactions = self.list_security_transactions(account_id)?;
-        let currency: String = self.db()?.query_row(
-            "SELECT currency FROM accounts WHERE id = ?1",
-            [account_id],
-            |r| r.get(0),
-        )?;
+        let (currency, merchants) = {
+            let db = self.db()?;
+            let currency: String = db.query_row(
+                "SELECT currency FROM accounts WHERE id = ?1",
+                [account_id],
+                |r| r.get(0),
+            )?;
+            (currency, self.merchant_rules(&db)?)
+        };
         let months_list = last_months_ending(months, end_offset_months);
         let plans = plans_from_security_transactions(
             &transactions,
             &months_list,
             crate::dates::today(),
             &currency,
+            &merchants,
         );
         let total_monthly = plans
             .iter()
@@ -433,7 +450,7 @@ impl Vault {
     /// Merchant history over all accounts and, with `account_id`, over the
     /// bookings `list_transactions` shows for that account (a loan's linked
     /// bookings included). The merchant is no SQL column, so this reads every
-    /// booking once, but only the columns `MerchantResolver` needs: no full
+    /// booking once, but only the columns the merchant rules need: no full
     /// enrichment, no `BookingFinisher`, no tags (#591). When the list's booking
     /// classes are cached, only the merchant's own bookings are read.
     fn merchant_history_for(
@@ -442,6 +459,8 @@ impl Vault {
         account_id: Option<i64>,
     ) -> Result<(MerchantStats, Option<MerchantStats>), CoreError> {
         let db = self.db()?;
+        // the keys of the list: with the user's merchant changes (#1373)
+        let merchants = self.merchant_rules(&db)?;
         let ids: Option<String> = self.cached_booking_classes(&db).map(|classes| {
             let ids: Vec<i64> = classes
                 .iter()
@@ -466,7 +485,7 @@ impl Vault {
             let mut rows = stmt.query(rusqlite::params_from_iter(&ids))?;
             while let Some(r) = rows.next()? {
                 let (counterparty, purpose): (String, String) = (r.get(3)?, r.get(4)?);
-                let m = MerchantResolver::resolve(&counterparty, &purpose);
+                let m = merchants.resolve(&counterparty, &purpose);
                 if m.key == merchant_key {
                     matches.push((r.get(0)?, r.get(1)?, r.get(2)?, m.name));
                 }
@@ -492,7 +511,7 @@ impl Vault {
                 account_ids: vec![account_id],
                 ..Default::default()
             };
-            let (cte, where_sql, args, _) = Vault::filter_clauses(&db, &filter)?;
+            let (cte, where_sql, args, _) = self.filter_clauses(&db, &filter)?;
             let sql = format!(
                 "{cte}SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id \
                  LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL \
@@ -1035,6 +1054,7 @@ fn plans_from_security_transactions(
     months_list: &[String],
     today: Date,
     currency: &str,
+    merchants: &MerchantRules,
 ) -> Vec<SavingsPlan> {
     let first_month = months_list.first().cloned().unwrap_or_default();
     let last_month = months_list.last().cloned().unwrap_or_default();
@@ -1071,7 +1091,7 @@ fn plans_from_security_transactions(
         })
         .map(|(key, v)| {
             let latest = v.iter().max_by_key(|t| t.booking_date.clone()).unwrap();
-            let mut merchant = MerchantResolver::resolve(&latest.name, "Sparplan");
+            let mut merchant = merchants.resolve(&latest.name, "Sparplan");
             merchant.key = format!("security:{key}");
             let mut per_month: HashMap<String, i64> = HashMap::new();
             for t in &v {
@@ -1143,7 +1163,8 @@ mod depot_plan_tests {
             // a plan that stopped long before the grid
             buy("2025-01-02", "IE4", "Delta", 2500, "Sparplan ausgeführt"),
         ];
-        let plans = plans_from_security_transactions(&tx, &months, today, "EUR");
+        let plans =
+            plans_from_security_transactions(&tx, &months, today, "EUR", MerchantRules::builtin());
         assert_eq!(plans.len(), 2);
         // largest rate first: Beta 100 €, then Alpha with its latest 75 €
         assert_eq!(plans[0].merchant.name, "Beta");
@@ -1193,13 +1214,15 @@ mod depot_plan_tests {
                 "Sparplan ausgeführt",
             )),
         ];
-        let plans = plans_from_security_transactions(&tx, &months, today, "EUR");
+        let plans =
+            plans_from_security_transactions(&tx, &months, today, "EUR", MerchantRules::builtin());
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].merchant.name, "Alpha");
         assert_eq!(plans[0].monthly_cents, 5000);
         assert_eq!(plans[0].total_invested_cents, 10000);
         // a dollar depot shows its own executions only
-        let usd_plans = plans_from_security_transactions(&tx, &months, today, "USD");
+        let usd_plans =
+            plans_from_security_transactions(&tx, &months, today, "USD", MerchantRules::builtin());
         assert_eq!(usd_plans.len(), 2);
         assert!(usd_plans.iter().all(|p| p.total_invested_cents <= 9900));
     }
@@ -1226,7 +1249,8 @@ mod depot_plan_tests {
             buy("2026-10-10", "IE3", "Gamma", 7000, text),
             buy("2026-11-10", "IE3", "Gamma", 7000, text),
         ];
-        let plans = plans_from_security_transactions(&tx, &months, today, "EUR");
+        let plans =
+            plans_from_security_transactions(&tx, &months, today, "EUR", MerchantRules::builtin());
         let rate = |name: &str| {
             plans
                 .iter()
@@ -1251,7 +1275,13 @@ mod depot_plan_tests {
         assert_eq!(days("Gamma"), vec![10]);
         // the same running month, one execution fewer is no gap once the month is over
         let december = jiff::civil::date(2026, 12, 2);
-        let later = plans_from_security_transactions(&tx, &months, december, "EUR");
+        let later = plans_from_security_transactions(
+            &tx,
+            &months,
+            december,
+            "EUR",
+            MerchantRules::builtin(),
+        );
         assert_eq!(
             later
                 .iter()
@@ -1286,7 +1316,8 @@ mod depot_plan_tests {
             // a plan that began after the page
             buy("2026-10-10", "IE2", "Beta", 3000, text),
         ];
-        let plans = plans_from_security_transactions(&tx, &months, today, "EUR");
+        let plans =
+            plans_from_security_transactions(&tx, &months, today, "EUR", MerchantRules::builtin());
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].merchant.name, "Alpha");
         assert_eq!(plans[0].monthly_cents, 5000);

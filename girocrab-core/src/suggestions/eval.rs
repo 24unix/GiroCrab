@@ -9,7 +9,6 @@ use super::{
     Limits, SuggestionBasis, Target, Vote, day_number, merchant_key, normalize_iban, similar,
 };
 use crate::error::CoreError;
-use crate::merchants::MerchantResolver;
 use crate::vault::Vault;
 
 /// One booking with its true category.
@@ -74,6 +73,7 @@ impl Vault {
         let (cases, skipped) = {
             let db = self.db()?;
             let own = Vault::own_ibans(&db)?;
+            let merchants = self.merchant_rules(&db)?;
             let mut stmt = db.prepare(
                 "SELECT t.id, t.account_id, t.booking_date, t.amount_cents, t.counterparty,
                         t.counterparty_iban, t.purpose, t.category_id, t.booking_text
@@ -108,7 +108,7 @@ impl Vault {
                 rows
             {
                 let iban = normalize_iban(&iban);
-                let merchant = merchant_key(&MerchantResolver::resolve(&counterparty, &purpose));
+                let merchant = merchant_key(&merchants.bundled(&counterparty, &purpose));
                 match merchant {
                     Some(merchant) if !own.contains(&iban) => cases.push(Case {
                         target: Target {
