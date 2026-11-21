@@ -17,19 +17,25 @@ Sheet {
     padding: 0
     // Esc: leaves the search field (clearing it), then clears the selection, then closes the sheet
     closePolicy: Popup.NoAutoClose
-    onOpened: tagList.forceActiveFocus()
+    // the rule column (#580); the rule list loads lazily
+    onOpened: { tagList.forceActiveFocus(); AppModel.reloadRules() }
 
     /// The selected tag ids as a set ({ id: true }).
     property var selection: ({})
     /// Shift-click extends from here (index in `shown`).
     property int anchorIndex: -1
     property string search: ""
+    /// Only tags no rule adds yet (#580).
+    property bool withoutRule: false
+    /// The rules that add the tag `id` (#580), in rule order (AppModel+Tags.swift › rules(addingTag:)).
+    function rulesAdding(id) { return AppModel.rules.filter(r => r.tag_ids && r.tag_ids.indexOf(id) >= 0) }
 
     readonly property var shown: {
         const q = search.trim()
-        if (q === "") return TagManager.ordered
+        const base = withoutRule ? TagManager.ordered.filter(t => rulesAdding(t.id).length === 0) : TagManager.ordered
+        if (q === "") return base
         const lower = q.toLowerCase(), loose = TagsModel.lookAlikeKey(q)
-        return TagManager.ordered.filter(t => t.name.toLowerCase().indexOf(lower) >= 0
+        return base.filter(t => t.name.toLowerCase().indexOf(lower) >= 0
                                           || (loose !== "" && TagsModel.lookAlikeKey(t.name).indexOf(loose) >= 0))
     }
     readonly property var selectedIDs: Object.keys(selection).map(Number)
@@ -37,7 +43,7 @@ Sheet {
     /// Merging needs at least two selected tags; the sheet then asks which one stays.
     readonly property bool canMerge: selectedIDs.length > 1
     /// Drag to reorder; not while searching (the list is only a part then).
-    readonly property bool movable: search === ""
+    readonly property bool movable: search === "" && !withoutRule
 
     function select(ids) { const s = {}; for (const id of ids) s[id] = true; selection = s }
     /// A click: alone, Strg toggles, Umschalt extends (List(selection:) on macOS, ⌘ → Strg).
@@ -113,6 +119,14 @@ Sheet {
             spacing: 12
             Text { text: qsTr("Tags verwalten"); font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.text }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 12 }
+            CheckBox {
+                text: qsTr("Ohne Regel")
+                checked: sheet.withoutRule
+                onToggled: sheet.withoutRule = checked
+                ToolTip.visible: hovered
+                ToolTip.delay: 600
+                ToolTip.text: qsTr("Nur Tags zeigen, die noch keine Regel vergibt")
+            }
             Rectangle {
                 Layout.preferredWidth: 200 * Theme.textScale
                 implicitHeight: searchRow.implicitHeight + 6
@@ -168,6 +182,8 @@ Sheet {
             Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.topMargin: 10; Layout.bottomMargin: 2
             Text { text: qsTr("Tag"); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.secondary }
             Item { Layout.fillWidth: true }
+            Text { text: qsTr("Regeln"); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.secondary
+                   horizontalAlignment: Text.AlignRight; Layout.minimumWidth: 56 * Theme.textScale }
             Text { text: qsTr("Buchungen"); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.secondary }
         }
         ListView {
@@ -323,6 +339,20 @@ Sheet {
                 font.pixelSize: Theme.body; color: Theme.text
                 wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
                 Sensitive {}
+            }
+            // TagRuleCount (#580): how many rules add the tag; the tooltip names them. „–“ = none yet.
+            Text {
+                readonly property var rules: sheet.rulesAdding(row.modelData.id)
+                text: rules.length ? rules.length : "–"
+                font.pixelSize: Theme.callout; font.features: { "tnum": 1 }
+                color: rules.length ? Theme.secondary : Theme.tertiary
+                horizontalAlignment: Text.AlignRight
+                Layout.minimumWidth: 56 * Theme.textScale
+                Accessible.name: rules.length ? qsTr("%1 Regeln").arg(rules.length) : qsTr("Keine Regel")
+                HoverHandler { id: ruleCountHover }
+                ToolTip.visible: ruleCountHover.hovered
+                ToolTip.delay: 600
+                ToolTip.text: rules.length ? qsTr("Vergeben von: %1").arg(rules.map(r => r.name).join(", ")) : qsTr("Keine Regel vergibt diesen Tag")
             }
             // TagBookingCount (#228, part 3): hovering (or clicking) it shows the bookings per account
             Item {

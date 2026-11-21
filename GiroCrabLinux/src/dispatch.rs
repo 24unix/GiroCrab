@@ -1631,6 +1631,10 @@ vault_methods! {
     merge_tag_into(source, target) set_booking_tags(booking_id, tag_ids)
     // --- Tag-Filter und Auswertung (AppModel+Tags, TagFilterUI, TagManagerView, #778) ---
     tag_totals(filter) tag_account_counts(tag_id)
+    // --- Regeln vergeben Tags (AppModel+Tags, RuleEditorView, #580) ---
+    rule_tag_counts()
+    // --- Kategorie-Vorschläge (AppModel+Loading, BookingDetailView, BookingListView, #664) ---
+    suggest_categories(booking_ids)
     // --- Anlageklassen (AssetClassificationUI, DepotMetrics) ---
     classified_assets(account_id)
     set_asset_class_override(security_key, value) set_instrument_override(security_key, value)
@@ -2130,6 +2134,112 @@ mod tests {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
+    }
+
+    /// Kategorie-Vorschläge (#664, CategorySuggestions.qml) and Regeln vergeben Tags (#580,
+    /// RuleEditorView.qml / RuleForm.qml / TagManagerSheet.qml): suggestions only for
+    /// uncategorised bookings, with the basis as its enum name; a tag-only rule (category 0)
+    /// keeps its `tag_ids` through `save_rule` / `list_rules` and gets a `rule_tag_counts` row.
+    #[test]
+    fn suggestion_and_rule_tag_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-suggest-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        assert_eq!(
+            call("suggest_categories", json!({ "booking_ids": [] })),
+            json!([])
+        );
+        let filter = json!({
+            "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": null, "date_from": null, "date_to": null,
+            "limit": 0, "offset": 0, "scope": "All", "merchant_key": null, "direction": "All",
+            "checked": null, "whole_days": false, "tag_ids": [], "untagged_only": false });
+        let list =
+            |f: &Value| call("list_transactions", json!({ "filter": f }))["transactions"].clone();
+        // nothing decides yet: no booking of the demo has a clear history of its own
+        let page = list(&filter);
+        let all = page.as_array().unwrap();
+        // three bookings at one merchant: two chosen by hand, the third without a category
+        let key = all
+            .iter()
+            .find(|b| b["merchant"]["name"] == json!("REWE"))
+            .expect("demo has REWE bookings")["merchant"]["key"]
+            .clone();
+        let rewe: Vec<&Value> = all
+            .iter()
+            .filter(|b| b["merchant"]["key"] == key)
+            .take(3)
+            .collect();
+        assert_eq!(rewe.len(), 3, "demo has REWE bookings");
+        let category = rewe[0]["category_id"].clone();
+        for b in &rewe[..2] {
+            call(
+                "set_transaction_category",
+                json!({ "transaction_id": b["id"], "category_id": category }),
+            );
+        }
+        call(
+            "set_transaction_category",
+            json!({ "transaction_id": rewe[2]["id"], "category_id": null }),
+        );
+        let page = list(&filter);
+        let all = page.as_array().unwrap();
+        let ids: Vec<i64> = all.iter().map(|b| b["id"].as_i64().unwrap()).collect();
+        let found = call("suggest_categories", json!({ "booking_ids": ids }));
+        let found = found.as_array().unwrap();
+        for s in found {
+            let b = all.iter().find(|b| b["id"] == s["booking_id"]).unwrap();
+            assert!(
+                b["category_id"].is_null(),
+                "only uncategorised bookings: {s}"
+            );
+            assert!(s["category_id"].is_i64());
+            assert!(["Iban", "Merchant", "Similar"].contains(&s["basis"].as_str().unwrap()));
+            assert!(s["support"].as_u64().unwrap() >= 2);
+            assert!(s["considered"].as_u64() >= s["support"].as_u64());
+        }
+        let s = found
+            .iter()
+            .find(|s| s["booking_id"] == rewe[2]["id"])
+            .expect("a suggestion for the uncategorised REWE booking");
+        assert_eq!(s["category_id"], category);
+        // a rule that only adds a tag
+        let tag = call("list_tags", json!({}))[0]["id"].clone();
+        let id = call(
+            "save_rule",
+            json!({ "rule": {
+                "id": 0, "name": "Nur Tag", "category_id": 0, "field": "Any", "match_kind": "Keyword",
+                "pattern": "a", "case_sensitive": false, "min_amount_cents": null, "max_amount_cents": null,
+                "account_ids": [], "priority": 999, "enabled": true, "match_count": 0, "tag_ids": [tag] } }),
+        );
+        call("apply_rules", json!({ "only_uncategorized": false }));
+        let rules = call("list_rules", json!({}));
+        let saved = rules
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == id)
+            .unwrap()
+            .clone();
+        assert_eq!(saved["category_id"], json!(0));
+        assert_eq!(saved["tag_ids"], json!([tag]));
+        let counts = call("rule_tag_counts", json!({}));
+        let row = counts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["rule_id"] == id)
+            .unwrap()
+            .clone();
+        assert!(row["booking_count"].as_u64().unwrap() > 0);
+        drop(v);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Händler-Historie (#299): the merchant's stats over all accounts and in one account.

@@ -751,7 +751,11 @@ Rectangle {
                             Layout.minimumWidth: br.isSingleLine ? Math.min(Math.ceil(implicitWidth), Math.max(0, br.nameLineWidth - 30)) : 0
                             Sensitive {}
                         }
-                        SFIcon { id: docIcon; visible: br.booking && br.booking.document_count > 0; symbol: "doc.text.fill"; size: 11; color: Theme.withAlpha(Theme.accent, 0.8) }
+                        SFIcon { id: docIcon; visible: br.booking && br.booking.document_count > 0; symbol: "doc.text.fill"; size: 11; color: Theme.withAlpha(Theme.accent, 0.8)
+                                 // BookingListView.swift › BookingRow: .help (#675)
+                                 HoverHandler { id: docHover }
+                                 ToolTip.visible: docHover.hovered && docIcon.visible; ToolTip.delay: 500
+                                 ToolTip.text: br.booking ? qsTr("%1 Beleg(e) – Leertaste für Vorschau").arg(br.booking.document_count) : "" }
                         SFIcon { id: repeatIcon; visible: br.booking !== null && AppModel.recurringSeries(br.booking) !== null; symbol: "repeat"; size: 11 }
                         // Keep the name and amount first. Show the category only when its
                         // complete label fits (ViewThatFits); the purpose yields first.
@@ -941,6 +945,18 @@ Rectangle {
         SFIcon { symbol: none ? "questionmark.folder" : (booking.category_symbol || "tag.fill"); size: 11; color: parent.tint }
         Text { text: none ? SidebarModel.uncategorizedLabel : booking.category_name; font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; color: parent.tint; elide: Text.ElideRight
                Sensitive { labels: true } }   // also a custom „Ohne Kategorie“ label (#597)
+        // BookingListView.swift › BookingSuggestionHint (#664): the history's suggestion behind
+        // „Ohne Kategorie“, in the secondary colour so it never reads as assigned
+        readonly property var suggested: none ? CategorySuggestions.category(CategorySuggestions.forBooking(booking)) : null
+        RowLayout {
+            visible: parent.suggested !== null
+            Layout.leftMargin: 4
+            spacing: 3
+            Accessible.name: parent.suggested ? qsTr("Vorschlag: %1").arg(AppModel.masking(parent.suggested.name, AppModel.redactLabels)) : ""
+            SFIcon { symbol: "clock.arrow.circlepath"; size: 11; color: Theme.secondary }
+            Text { text: parent.parent.suggested ? parent.parent.suggested.name : ""; font.pixelSize: Theme.callout + 1; color: Theme.secondary; elide: Text.ElideRight
+                   Sensitive { labels: true } }
+        }
     }
 
     // Onboarding.swift › EmptyVaultCard: the personal vault has no accounts yet.

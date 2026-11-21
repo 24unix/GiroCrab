@@ -20,6 +20,10 @@ AppMenu {
     readonly property var current: assigned.length === 1 ? assigned[0] : null
     title: qsTr("Kategorie")
     icon.name: SF.icon("tag")
+    /// The history's suggestion (#664) for a single uncategorised booking, with its category.
+    readonly property var suggestion: targets.length === 1 && booking && booking.category_id === null
+                                      ? CategorySuggestions.forBooking(booking) : null
+    readonly property var suggested: CategorySuggestions.category(suggestion)
 
     /// Picking the checked category again changes nothing (it would turn a rule's category manual).
     function pick(id) {
@@ -41,11 +45,11 @@ AppMenu {
         for (const o of created) o.destroy()
         built = []
         created = []
-        fill(root, AppModel.categoryTree, true)
+        fill(root, AppModel.categoryTree, true, leading)
         dirty = false
     }
     // CategoryMenuItems: nested menus for categories with sub-categories, ticks on leaves
-    function fill(menu, nodes, top) {
+    function fill(menu, nodes, top, offset) {
         nodes.forEach((n, i) => {
             const c = n.category
             if (n.children) {
@@ -53,7 +57,7 @@ AppMenu {
                 created.push(sub)
                 sub.icon.name = SF.icon(c.sf_symbol)
                 fill(sub, n.children, false)
-                if (top) { menu.insertMenu(i, sub); built.push({ menu: true, obj: sub }) } else menu.addMenu(sub)
+                if (top) { menu.insertMenu(offset + i, sub); built.push({ menu: true, obj: sub }) } else menu.addMenu(sub)
             } else {
                 const item = itemComponent.createObject(null, { text: AppModel.menuText(c.name), checkable: true, categoryID: c.id })
                 created.push(item)
@@ -63,11 +67,21 @@ AppMenu {
                     item.checked = Qt.binding(() => root.current === item.categoryID)   // the click flipped it
                     root.pick(item.categoryID)
                 })
-                if (top) { menu.insertItem(i, item); built.push({ menu: false, obj: item }) } else menu.addItem(item)
+                if (top) { menu.insertItem(offset + i, item); built.push({ menu: false, obj: item }) } else menu.addItem(item)
             }
         })
     }
 
+    /// Entries declared before the tree (the suggestion and its divider).
+    readonly property int leading: 2
+    // „Vorschlag übernehmen: …“ (BookingCategoryMenu.swift, #664); hidden without a suggestion
+    AppMenuItem {
+        visible: root.suggested !== null; height: visible ? implicitHeight : 0
+        text: root.suggested ? qsTr("Vorschlag übernehmen: %1").arg(AppModel.menuText(root.suggested.name)) : ""
+        icon.name: SF.icon("clock.arrow.circlepath")
+        onTriggered: AppModel.setCategoryFor(root.targets, root.suggested.id)
+    }
+    AppMenuSeparator { visible: root.suggested !== null; height: visible ? implicitHeight : 0 }
     AppMenuSeparator {}
     AppMenuItem {
         text: root.targets.length > 1 ? qsTr("%1 Buchungen kategorisieren …").arg(root.targets.length) : qsTr("Kategorisieren …")

@@ -36,6 +36,24 @@ Sheet {
     // a rule that only sets tags (#580) has no category (id 0)
     function categoryName(id) { if (id === 0) return qsTr("Nur Tags"); const c = AppModel.categoryByID(id); return c ? c.path : "?" }
     function tagNames(ids) { return TagsModel.tags.filter(t => ids.indexOf(t.id) >= 0).map(t => "#" + t.name).join(" ") }
+
+    // MARK: tag counts (#580): matching bookings that carry all of a rule's tags, off the GUI thread
+    /// rule id → count; absent: no tags, paused, or not counted yet.
+    property var tagCounts: ({})
+    /// Changes whenever the counts may have: a rule's tags, state or hits, or a tag's bookings.
+    readonly property string tagCountsKey: {
+        if (!visible) return ""
+        const key = []
+        for (const r of AppModel.rules) if (r.tag_ids && r.tag_ids.length)
+            key.push([r.id, r.enabled ? 1 : 0, r.match_count, r.pattern, r.field, r.match_kind].concat(r.tag_ids).join(","))
+        for (const t of TagsModel.tags) key.push(t.id + ":" + t.booking_count)
+        return key.join(";")
+    }
+    onTagCountsKeyChanged: if (tagCountsKey !== "") AppModel.loadOffMain("ruleTagCounts", () => [["rule_tag_counts"]], r => {
+        const map = {}
+        for (const row of r[0]) if (map[row.rule_id] === undefined) map[row.rule_id] = row.booking_count
+        editor.tagCounts = map
+    }, () => {})
     function select(rule) { selection = rule.id; draft = Object.assign({}, rule) }
     function newRule() { selection = null; draft = AppModel.newRuleDraft(null) }
     function save(rule) {
@@ -174,7 +192,7 @@ Sheet {
                             required property int index
                             readonly property bool selected: editor.selection === modelData.id
                             readonly property int rank: AppModel.rules.findIndex(r => r.id === modelData.id) + 1
-                            width: ListView.view.width; height: 44
+                            width: ListView.view.width; height: Math.max(rr.modelData.tag_ids && rr.modelData.tag_ids.length ? 58 : 44, ruleText.implicitHeight + 12)
                             opacity: list.dragID === modelData.id ? 0.5 : 1
                             Rectangle {
                                 anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 6
@@ -221,22 +239,18 @@ Sheet {
                                 SFIcon { symbol: rr.modelData.enabled ? "wand.and.stars" : "pause.circle"; size: 16
                                          color: rr.modelData.enabled ? Theme.readable(editor.color(rr.modelData)) : Theme.secondary
                                          Accessible.name: rr.modelData.enabled ? "" : qsTr("Pausiert") }
-                                ColumnLayout {
+                                ColumnLayout { id: ruleText
                                     spacing: 1; Layout.fillWidth: true
                                     // rule names are mostly payees ("Miete Müller")
-                                    Text { text: rr.modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+                                    Text { text: rr.modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                                           wrapMode: Text.Wrap; maximumLineCount: 2; Sensitive {} }   // lineLimit(2) (#650)
                                     Text { text: "→ " + editor.categoryName(rr.modelData.category_id); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
-                                           Sensitive { labels: true } }
+                                           wrapMode: Text.Wrap; maximumLineCount: 2; Sensitive { labels: true } }
                                     // tag names are always covered in a report (#228)
                                     Text { visible: (rr.modelData.tag_ids || []).length > 0; text: editor.tagNames(rr.modelData.tag_ids || [])
                                            font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                                 }
-                                Rectangle {
-                                    implicitWidth: cnt.implicitWidth + 12; implicitHeight: cnt.implicitHeight + 2; radius: height / 2
-                                    color: Theme.withAlpha(Theme.secondary, 0.15)
-                                    Accessible.name: qsTr("%1 Treffer").arg(rr.modelData.match_count)
-                                    Text { id: cnt; anchors.centerIn: parent; text: rr.modelData.match_count; font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.text }
-                                }
+                                RuleCountBadge { rule: rr.modelData; tagged: editor.tagCounts[rr.modelData.id] ?? null }
                             }
                         }
                     }
@@ -271,6 +285,34 @@ Sheet {
                 }
             }
         }
+    }
+
+    // RuleEditorView.swift › RuleCountBadge (#580): bookings the rule categorised and, for a rule
+    // that adds tags, its matching bookings that carry all of them – "8", "1 | 3", "– | 2". Which
+    // rule gave a tag is not stored, so the second number counts every matching booking with them.
+    component RuleCountBadge: Rectangle {
+        id: badge
+        property var rule
+        /// null: no tags, paused, or not counted yet.
+        property var tagged: null
+        readonly property string categorised: rule.category_id === 0 ? "" : String(rule.match_count)
+        readonly property string label: categorised !== "" && tagged !== null ? categorised + " | " + tagged
+            : categorised !== "" ? categorised : tagged !== null ? "– | " + tagged : ""
+        readonly property string explanation: {
+            const parts = []
+            if (rule.category_id !== 0) parts.push(qsTr("Von dieser Regel kategorisiert: %1").arg(rule.match_count))
+            if (tagged !== null) parts.push(qsTr("Passend und mit ihren Tags: %1").arg(tagged))
+            return parts.join("\n")
+        }
+        visible: label !== ""
+        implicitWidth: cnt.implicitWidth + 12; implicitHeight: cnt.implicitHeight + 2; radius: height / 2
+        color: Theme.withAlpha(Theme.secondary, 0.15)
+        Accessible.name: explanation
+        Text { id: cnt; anchors.centerIn: parent; text: badge.label; font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.text }
+        HoverHandler { id: badgeHover }
+        ToolTip.visible: badgeHover.hovered
+        ToolTip.delay: 600
+        ToolTip.text: explanation
     }
 
     // the context menu of a rule row

@@ -31,7 +31,11 @@ ColumnLayout {
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: insp.m ? insp.m.debtor_name : ""
                    font.pixelSize: Theme.title3; font.weight: Font.DemiBold; color: Theme.text; Sensitive {} }
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.callout; color: Theme.secondary
-                   text: insp.m ? DirectDebits.schemeTitle(insp.m.scheme) + " · " + DirectDebits.statusText(insp.m) : "" }
+                   text: insp.m ? DirectDebits.schemeTitle(insp.m.scheme) + " · " + DirectDebits.typeText(insp.m) + " · " + DirectDebits.statusText(insp.m) : ""
+                   // .help(m.typeHelp) (#673)
+                   HoverHandler { id: typeHover }
+                   ToolTip.visible: typeHover.hovered && insp.m !== null; ToolTip.delay: 500
+                   ToolTip.text: insp.m ? DirectDebits.typeHelp(insp.m) : "" }
         }
     }
 

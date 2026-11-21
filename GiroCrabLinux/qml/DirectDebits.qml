@@ -57,6 +57,12 @@ QtObject {
     function schemeTitle(s) { return s === "Cor1" ? qsTr("COR1") : s === "B2b" ? qsTr("Firmenlastschrift") : qsTr("Basislastschrift") }
     function sequenceText(seq) { return seq === "OOFF" ? qsTr("Einmalig") : seq === "RCUR" ? qsTr("Folgeeinzug") : qsTr("Erster Einzug") }
     function statusText(m) { return m.active ? sequenceText(m.next_sequence) : qsTr("Inaktiv") }
+    /// Mandate.typeText / typeHelp (#673): the abbreviations banks print on direct debits.
+    function typeText(m) { return m.one_off ? qsTr("Einmalmandat (EM)") : qsTr("Dauermandat (AM)") }
+    function typeHelp(m) {
+        return m.one_off ? qsTr("EM = Einmalmandat: gilt nur für eine einzelne Lastschrift.")
+                         : qsTr("AM = Dauermandat: gilt für wiederkehrende Lastschriften.")
+    }
 
     /// reloadMandates: list, creditor ID, suggestion and open returns off the GUI thread.
     function reload() {

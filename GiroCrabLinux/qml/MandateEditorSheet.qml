@@ -62,7 +62,10 @@ Sheet {
                     }
                     FormRow {
                         label: qsTr("Einmaliges Mandat")
-                        Switch { checked: !!sheet.d && sheet.d.oneOff; onToggled: sheet.set({ oneOff: checked }) }
+                        Switch { checked: !!sheet.d && sheet.d.oneOff; onToggled: sheet.set({ oneOff: checked })
+                                 // .help (#673)
+                                 ToolTip.visible: hovered; ToolTip.delay: 500
+                                 ToolTip.text: qsTr("EM = Einmalmandat (eine einzelne Lastschrift), AM = Dauermandat (wiederkehrende Lastschriften).") }
                     }
                     FormRow {
                         label: qsTr("Aktiv")

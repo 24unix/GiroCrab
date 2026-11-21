@@ -33,10 +33,11 @@ Item {
         { id: "Purpose", title: qsTr("Verwendungszweck") }, { id: "BookingText", title: qsTr("Buchungstext") },
         { id: "CounterpartyIban", title: qsTr("IBAN") }
     ]
-    // a rule that only adds tags (#580, made in the Mac app) keeps showing that choice; setting
-    // tags on rules is not in the Linux UI yet, so new rules always need a category
-    readonly property var categoryOptions: (rule && rule.category_id === 0 ? [{ id: 0, title: qsTr("Keine (nur Tags)") }] : [])
+    // a rule may only add tags (#580): „Keine (nur Tags)“ = category 0, then a divider
+    readonly property var categoryOptions: [{ id: 0, title: qsTr("Keine (nur Tags)") }, { id: -1, separator: true }]
         .concat(AppModel.categories.map(c => ({ id: c.id, title: "    ".repeat(c.depth) + c.name })))
+    /// Neither a category nor a tag: the rule would do nothing (#580).
+    readonly property bool lacksTarget: rule !== null && rule.category_id === 0 && !(rule.tag_ids && rule.tag_ids.length)
 
     ColumnLayout {
         anchors.fill: parent
@@ -67,13 +68,30 @@ Item {
                             textRole: "title"
                             currentIndex: form.rule ? form.categoryOptions.findIndex(o => o.id === form.rule.category_id) : -1
                             onActivated: i => form.set("category_id", form.categoryOptions[i].id)
+                            Sensitive { labels: true }
                         }
+                    }
+                    // RuleTagsUI.swift › RuleTagsField (#580)
+                    RuleTagsField {
+                        Layout.fillWidth: true
+                        tagIds: form.rule && form.rule.tag_ids ? form.rule.tag_ids : []
+                        onPicked: ids => form.set("tag_ids", ids)
                     }
                     FormRow {
                         label: qsTr("Aktiv")
                         Item { Layout.fillWidth: true }
                         Switch { checked: form.rule ? form.rule.enabled : false; onToggled: form.set("enabled", checked) }
                     }
+                }
+                // the section's footer (.leadingFooter())
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 32; Layout.rightMargin: 32
+                    wrapMode: Text.WordWrap; font.pixelSize: Theme.caption
+                    color: form.lacksTarget ? Theme.warning : Theme.secondary
+                    text: form.lacksTarget
+                          ? qsTr("Die Regel braucht eine Kategorie oder mindestens einen Tag.")
+                          : qsTr("Tags werden nur hinzugefügt, nie entfernt. Jede passende Regel gibt ihre Tags dazu; die Kategorie kommt von der ersten passenden Regel mit Kategorie.")
                 }
 
                 FormSection {
@@ -197,7 +215,8 @@ Item {
                             Text { text: Fmt.medium(pr.modelData.booking_date); color: Theme.secondary; font.pixelSize: Theme.callout + 1; font.features: { "tnum": 1 } }
                             Text { text: pr.modelData.counterparty; color: Theme.text; font.pixelSize: Theme.callout + 1; elide: Text.ElideRight; Layout.fillWidth: true }
                             SFIcon {
-                                visible: pr.modelData.category_source === "Manual"; symbol: "hand.raised.fill"; size: 12
+                                // a tag-only rule (#580) also tags a booking categorised by hand
+                                visible: pr.modelData.category_source === "Manual" && form.rule.category_id !== 0; symbol: "hand.raised.fill"; size: 12
                                 HoverHandler { id: mh }
                                 ToolTip.visible: mh.hovered
                                 ToolTip.text: qsTr("Manuell zugeordnet – die Regel ändert das nicht")
@@ -226,6 +245,7 @@ Item {
                 highlighted: true
                 // not while the live preview is still pending (it may turn out invalid)
                 enabled: form.rule !== null && form.rule.pattern.trim() !== "" && !previewTimer.running && form.preview.error === ""
+                         && !form.lacksTarget
                 onClicked: form.saveRequested(form.rule)
             }
         }

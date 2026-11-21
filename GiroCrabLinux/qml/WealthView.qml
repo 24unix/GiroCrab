@@ -904,9 +904,18 @@ Rectangle {
                     spacing: 8
                     SFIcon { symbol: modelData.sf_symbol; size: 15; color: lc.tint; Layout.preferredWidth: 20 }
                     ColumnLayout { spacing: 1; Layout.fillWidth: true
-                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
-                        Text { visible: modelData.bank_name !== ""; text: modelData.bank_name; font.pixelSize: Theme.caption2; color: Theme.secondary
-                               elide: Text.ElideRight; Layout.fillWidth: true } }
+                        // the name in up to two lines, below „Bank · Inhaber“ (#587)
+                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; Layout.fillWidth: true
+                               wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Sensitive {} }
+                        RowLayout {
+                            visible: modelData.bank_name !== "" || modelData.owner !== ""
+                            Layout.fillWidth: true; spacing: 4
+                            Text { visible: modelData.bank_name !== ""; text: modelData.bank_name; font.pixelSize: Theme.caption2; color: Theme.secondary
+                                   elide: Text.ElideRight; Layout.fillWidth: modelData.owner === ""; Layout.minimumWidth: 0 }
+                            Text { visible: modelData.bank_name !== "" && modelData.owner !== ""; text: "·"; font.pixelSize: Theme.caption2; color: Theme.secondary }
+                            Text { visible: modelData.owner !== ""; text: modelData.owner; font.pixelSize: Theme.caption2; color: Theme.secondary
+                                   elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 0; Sensitive {} }
+                        } }
                     Text { text: Fmt.money(modelData.balance_cents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text; Sensitive { amounts: true } }
                     TapHandler { cursorShape: Qt.PointingHandCursor; onTapped: AppModel.sidebarSelection = "account:" + modelData.id }
                 }
