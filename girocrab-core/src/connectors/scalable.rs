@@ -630,13 +630,13 @@ const M_2FA_VALIDATE: &str = r#"mutation Validate2faOnLogin($input: Validate2faO
 /// connector cannot detect that and tells the user up front (#787).
 fn login_message(uri: &str, user_code: &str) -> String {
     trf(
-        "Öffnen Sie {0} und bestätigen Sie dort den Code {1}. Danach wartet GiroCrab automatisch auf die Freigabe. Erscheint dort „Aktivierung abgelehnt – Wir können Ihr Gerät nicht aktivieren“, schalten Sie zuerst auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ den Zugriff ein und starten Sie die Anmeldung neu.",
+        "Öffnen Sie {0} und bestätigen Sie dort den Code {1}. Danach wartet GiroCrab automatisch auf die Freigabe. Erscheint dort „Aktivierung abgelehnt – Wir können Ihr Gerät nicht aktivieren“, schalten Sie zuerst im Browser auf scalable.capital (nicht in der Scalable-App) unter Profil → Sicherheit → „Agentic Investing“ den Zugriff ein und starten Sie die Anmeldung neu.",
         &[&uri, &user_code],
     )
 }
 
 fn denied_message() -> String {
-    tr("Die Anmeldung wurde im Browser abgelehnt. Prüfen Sie, ob auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ der Zugriff eingeschaltet ist, und starten Sie die Anmeldung neu.").into()
+    tr("Die Anmeldung wurde im Browser abgelehnt. Prüfen Sie, ob im Browser auf scalable.capital (nicht in der Scalable-App) unter Profil → Sicherheit → „Agentic Investing“ der Zugriff eingeschaltet ist, und starten Sie die Anmeldung neu.").into()
 }
 
 impl ScalableConnector {

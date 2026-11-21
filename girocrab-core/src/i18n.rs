@@ -951,8 +951,8 @@ fn english(de: &str) -> Option<&'static str> {
             "OAuth device login + GraphQL API of the official CLI"
         }
         "(nicht nötig – Anmeldung im Browser)" => "(not needed – sign in in the browser)",
-        "Vorher auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ den CLI-Zugriff einschalten. Die Anmeldung läuft im Browser und muss alle 7 Tage erneuert werden. Nur Lesezugriff." => {
-            "First enable CLI access on scalable.capital under Profile → Security → “Agentic Investing”. You sign in in the browser; the login has to be renewed every 7 days. Read-only."
+        "Vorher im Browser auf scalable.capital (nicht in der Scalable-App) unter Profil → Sicherheit → „Agentic Investing“ den CLI-Zugriff einschalten. Die Anmeldung läuft im Browser und muss alle 7 Tage erneuert werden. Nur Lesezugriff." => {
+            "First enable CLI access in the browser on scalable.capital (not in the Scalable app) under Profile → Security → “Agentic Investing”. You sign in in the browser; the login has to be renewed every 7 days. Read-only."
         }
         "Keine Scalable-Sitzung – bitte anmelden." => "No Scalable session – please sign in.",
         "Scalable-Sitzung abgelaufen ({0}) – bitte erneut anmelden." => {
@@ -965,15 +965,15 @@ fn english(de: &str) -> Option<&'static str> {
             "Scalable Capital: could not start the login ({0}: {1})."
         }
         "Bei Scalable Capital im Browser anmelden" => "Sign in to Scalable Capital in the browser",
-        "Öffnen Sie {0} und bestätigen Sie dort den Code {1}. Danach wartet GiroCrab automatisch auf die Freigabe. Erscheint dort „Aktivierung abgelehnt – Wir können Ihr Gerät nicht aktivieren“, schalten Sie zuerst auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ den Zugriff ein und starten Sie die Anmeldung neu." => {
-            "Open {0} and confirm the code {1} there. GiroCrab then waits for the approval automatically. If it shows “Activation denied – We are not able to activate your device”, first switch on access under Profile → Security → “Agentic Investing” on scalable.capital and start the login again."
+        "Öffnen Sie {0} und bestätigen Sie dort den Code {1}. Danach wartet GiroCrab automatisch auf die Freigabe. Erscheint dort „Aktivierung abgelehnt – Wir können Ihr Gerät nicht aktivieren“, schalten Sie zuerst im Browser auf scalable.capital (nicht in der Scalable-App) unter Profil → Sicherheit → „Agentic Investing“ den Zugriff ein und starten Sie die Anmeldung neu." => {
+            "Open {0} and confirm the code {1} there. GiroCrab then waits for the approval automatically. If it shows “Activation denied – We are not able to activate your device”, first switch on access in the browser on scalable.capital (not in the Scalable app) under Profile → Security → “Agentic Investing”, and start the login again."
         }
         "Browser-Anmeldung" => "Browser login",
         "Die Browser-Anmeldung ist abgelaufen – bitte erneut starten." => {
             "The browser login expired – please start again."
         }
-        "Die Anmeldung wurde im Browser abgelehnt. Prüfen Sie, ob auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ der Zugriff eingeschaltet ist, und starten Sie die Anmeldung neu." => {
-            "The login was declined in the browser. Check that access is switched on under Profile → Security → “Agentic Investing” on scalable.capital, and start the login again."
+        "Die Anmeldung wurde im Browser abgelehnt. Prüfen Sie, ob im Browser auf scalable.capital (nicht in der Scalable-App) unter Profil → Sicherheit → „Agentic Investing“ der Zugriff eingeschaltet ist, und starten Sie die Anmeldung neu." => {
+            "The login was declined in the browser. Check that access is switched on in the browser on scalable.capital (not in the Scalable app) under Profile → Security → “Agentic Investing”, and start the login again."
         }
         "Anmeldung in der Scalable-App freigeben" => "Approve the login in the Scalable app",
         "Scalable Capital hat eine Freigabe-Anfrage an Ihr verknüpftes Gerät gesendet. Bitte dort bestätigen." => {
