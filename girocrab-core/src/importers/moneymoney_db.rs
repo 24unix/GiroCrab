@@ -2324,7 +2324,36 @@ pub(crate) fn adopt_account(
                 .collect::<Result<_, _>>()?;
             Ok((ids.len() == 1).then(|| ids[0]))
         };
-        match single("AND replace(IFNULL(iban, ''), ' ', '') = ''")? {
+        // the other way reports a marked account under another reference
+        // (FinTS `<number>-Depot`, REST its depot id): the only live one of
+        // its kind and currency is it, deleted leftovers and archived ones
+        // (the switch marks those too) don't count
+        let marked = {
+            let mut st = conn.prepare(
+                "SELECT id FROM accounts WHERE connection_id = ?1 AND kind = ?2
+                   AND external_ref LIKE ?4 || '%' AND deleted_ms IS NULL
+                   AND archived_unix IS NULL
+                   AND replace(IFNULL(iban, ''), ' ', '') = ''
+                   AND (?3 = '' OR upper(IFNULL(currency, '')) IN ('', ?3)) LIMIT 2",
+            )?;
+            let ids: Vec<i64> = st
+                .query_map(
+                    params![
+                        connection_id,
+                        kind.as_str(),
+                        currency,
+                        crate::vault::connections::SWITCH_MARK
+                    ],
+                    |r| r.get(0),
+                )?
+                .collect::<Result<_, _>>()?;
+            (ids.len() == 1).then(|| ids[0])
+        };
+        let found = match marked {
+            Some(id) => Some(id),
+            None => single("AND replace(IFNULL(iban, ''), ' ', '') = ''")?,
+        };
+        match found {
             Some(id) => Some(id),
             // Connectors that omit the IBAN (e.g. Amazon Visa web login, Trade Republic
             // clearing account) may still adopt a single imported account of the same kind
