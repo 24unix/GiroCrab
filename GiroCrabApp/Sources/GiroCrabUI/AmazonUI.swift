@@ -17,6 +17,12 @@ extension AppModel {
         let id = c.id
         do {
             let s = try await pin.run { try $0.importAmazonOrders(connectionId: id, ordersJson: json) }
+            // committed into the pinned vault, but another one is shown now: no toast,
+            // no reload and the sheet stays (not a failure either)
+            guard isCurrent(pin) else {
+                AppModel.debugLog("amazon import finished after the vault was switched")
+                return false
+            }
             toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
             reloadAll()
             return true
