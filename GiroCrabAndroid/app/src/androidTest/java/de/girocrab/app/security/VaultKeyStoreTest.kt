@@ -123,6 +123,26 @@ class VaultKeyStoreTest {
         assertEquals(VaultKeyStore.State.Invalidated, store().state())
     }
 
+    /**
+     * The way out of `Invalidated`: the dead Keystore entry has to go, otherwise every later setup
+     * fails on the same alias. Afterwards the vault comes back from a backup.
+     */
+    @Test
+    fun resetForNewSetupAfterLostKeyAllowsAFreshStart() {
+        val stored = store()
+        stored.storeWrapped(ByteArray(VaultKeyStore.VAULT_KEY_BYTES) { 3 }, stored.setupCipher())
+        deleteAlias()
+
+        assertEquals(VaultKeyStore.State.Invalidated, store().state())
+
+        store().resetForNewSetup()
+        assertEquals(VaultKeyStore.State.NotSetUp, store().state())
+
+        val fresh = store()
+        fresh.storeWrapped(ByteArray(VaultKeyStore.VAULT_KEY_BYTES) { 9 }, fresh.setupCipher())
+        assertEquals(VaultKeyStore.State.Ready, store().state())
+    }
+
     @Test
     fun tamperedCiphertextFailsToUnwrap() {
         val s = store()

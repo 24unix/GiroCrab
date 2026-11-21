@@ -81,6 +81,25 @@ class NativeVaultTest {
         }
     }
 
+    /**
+     * A failed query must not look like an empty vault: `0` accounts and "the binding could not be
+     * reached" have to be distinguishable, otherwise the test above asserts nothing.
+     */
+    @Test
+    fun garbageFileFailsInsteadOfReportingZeroAccounts() {
+        val path = File(dir, "garbage.sqlcipher").path
+        File(path).writeBytes(ByteArray(4096) { 7 })
+
+        assertThrows(Exception::class.java) {
+            val handle = handle(opener.open(path, randomKey()), "open returned no handle")
+            try {
+                handle.accountCount
+            } finally {
+                handle.close()
+            }
+        }
+    }
+
     @Test
     fun shortKeyIsRefusedBeforeTheCoreIsTouched() {
         val path = File(dir, "short-key.sqlcipher").path
