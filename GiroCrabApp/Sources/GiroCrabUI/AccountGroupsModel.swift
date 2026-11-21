@@ -33,7 +33,7 @@ extension Account {
             return true
         }
         let terms = q.split(whereSeparator: \.isWhitespace).map { String($0).lowercased() }
-        let text = [name, owner, bankName].map { $0.lowercased() }
+        let text = [name, owner, bankName, sidebarBankName].map { $0.lowercased() }
         return terms.allSatisfy { term in
             let compactTerm = term.filter { !$0.isWhitespace }
             return text.contains { $0.contains(term) }
