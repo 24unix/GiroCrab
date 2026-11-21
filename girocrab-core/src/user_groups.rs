@@ -495,6 +495,28 @@ pub(crate) fn merge_note_from(
     )? as u32)
 }
 
+/// When a bank label `?2` with stamp `?3` wins over an account's own (#1467):
+/// a newer stamp, or on an equal one the later in the order bank name (NULL),
+/// hidden (`''`), text.
+const LABEL_WINS: &str = "(bank_label_ms < ?3 OR (bank_label_ms = ?3 AND ?2 IS NOT NULL
+     AND (bank_label IS NULL OR bank_label < ?2)))";
+
+/// The bank label of a folded twin goes on to its bank account when it wins there.
+fn pass_bank_label_on(conn: &Connection, from: i64, to: i64) -> CoreResult<()> {
+    let (label, stamp): (Option<String>, i64) = conn.query_row(
+        "SELECT bank_label, bank_label_ms FROM accounts WHERE id = ?1",
+        [from],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    conn.execute(
+        &format!(
+            "UPDATE accounts SET bank_label = ?2, bank_label_ms = ?3 WHERE id = ?1 AND {LABEL_WINS}"
+        ),
+        params![to, label, stamp],
+    )?;
+    Ok(())
+}
+
 /// The note of account `from` merged into account `to` (a folded twin's note
 /// goes to its bank account).
 pub(crate) fn pass_note_on(conn: &Connection, from: i64, to: i64) -> CoreResult<()> {
@@ -608,12 +630,20 @@ pub(crate) fn merge_attached(
               WHERE id = ?1 AND (?4 OR total_ms < ?3 OR (total_ms = ?3 AND include_in_total < ?2))",
             params![id, in_total, total_ms, fresh],
         )? as u32;
-        // the sidebar's bank label (#1467): like the name, the newer edit wins
-        changed += tx.execute(
-            "UPDATE accounts SET bank_label = ?2, bank_label_ms = ?3
-              WHERE id = ?1 AND (?4 OR bank_label_ms < ?3)",
+        // the sidebar's bank label (#1467): the newer edit wins; an equal stamp
+        // takes the later choice in a fixed order (bank name, hidden, text), so
+        // every device ends up with the same one. Edited on a twin folded here,
+        // it goes on to the bank account, like the note.
+        let label_rows = tx.execute(
+            &format!("UPDATE accounts SET bank_label = ?2, bank_label_ms = ?3 WHERE id = ?1 AND (?4 OR {LABEL_WINS})"),
             params![id, label, label_ms, fresh],
-        )? as u32;
+        )?;
+        if label_rows > 0
+            && let Some(bank) = crate::sync_merge::twins::folded_into(tx, id)?
+        {
+            pass_bank_label_on(tx, id, bank)?;
+        }
+        changed += label_rows as u32;
         // only a user's choice travels; the type's default stays local
         changed += tx.execute(
             "UPDATE accounts SET sf_symbol = ?2, symbol_ms = ?3 WHERE id = ?1 AND symbol_ms < ?3",

@@ -105,4 +105,14 @@ final class AccountEditTests: XCTestCase {
         model.saveAccountEdits(other, name: other.name, owner: other.owner, kind: other.kind, note: other.note, bankLabel: "X")
         XCTAssertEqual(model.accountsWithOwnBankLabel(connectionID: login), 1, "another login's account doesn't count")
     }
+
+    /// #1467 review: the sidebar search finds an account by the label it shows, and still by its bank.
+    func testSidebarSearchFindsTheShownBankLabel() throws {
+        let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        let original = try XCTUnwrap(model.allAccounts.first { !$0.bankName.isEmpty })
+        model.saveAccountEdits(original, name: original.name, owner: original.owner, kind: original.kind, note: original.note, bankLabel: "Haushaltskasse")
+        let saved = try XCTUnwrap(model.account(for: original.id))
+        XCTAssertTrue(saved.matchesSidebarSearch("haushaltskasse"))
+        XCTAssertTrue(saved.matchesSidebarSearch(original.bankName))
+    }
 }

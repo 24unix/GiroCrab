@@ -23,7 +23,7 @@ extension Account {
             .filter { !$0.isEmpty }
     }
 
-    /// Name, Kontoinhaber, bank, IBAN or account number. Spaces in IBANs /
+    /// Name, Kontoinhaber, bank (or its label), IBAN or account number. Spaces in IBANs /
     /// Kontonummern are ignored so "DE89 3704 …" finds the stored value.
     func matchesSidebarSearch(_ raw: String) -> Bool {
         let q = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -33,6 +33,7 @@ extension Account {
             return true
         }
         let terms = q.split(whereSeparator: \.isWhitespace).map { String($0).lowercased() }
+        // the bank as stored and as the sidebar shows it (#1467)
         let text = [name, owner, bankName, sidebarBankName].map { $0.lowercased() }
         return terms.allSatisfy { term in
             let compactTerm = term.filter { !$0.isWhitespace }

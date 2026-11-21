@@ -1651,6 +1651,31 @@ fn bank_label_syncs_both_ways() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// #1467 review: two devices that chose differently under the same stamp end
+/// up with the same choice (a fixed order: bank name, hidden, then the text).
+#[test]
+fn bank_labels_with_equal_stamps_converge() {
+    let dir = temp_dir("bank-label-tie");
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    seed(&a);
+    seed(&b);
+    for (v, label) in [(&a, "Haushalt"), (&b, "")] {
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE accounts SET bank_label = ?1, bank_label_ms = 5000 WHERE name = 'Giro'",
+                [label],
+            )
+            .unwrap();
+    }
+    sync_both_ways(&a, &b);
+    sync_both_ways(&a, &b);
+    assert_eq!(bank_label(&a, "Giro"), bank_label(&b, "Giro"));
+    assert_eq!(bank_label(&a, "Giro").as_deref(), Some("Haushalt"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// #980: notes moved out of the settings on two devices have no edit time:
 /// neither text is lost, every device ends up with the same one, further
 /// merges change nothing, and the first edit after that wins as usual.
