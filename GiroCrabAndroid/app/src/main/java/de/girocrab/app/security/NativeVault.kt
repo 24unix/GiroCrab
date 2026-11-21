@@ -37,8 +37,7 @@ class NativeVaultOpener {
             "master key must be $MASTER_KEY_BYTES bytes, was ${key.size}"
         }
         val resolved = entry ?: return null
-        val method = resolved.vaultClass.getMethod("open", String::class.java, ByteArray::class.java)
-        val handle = method.invoke(resolved.receiver, path, key) ?: return null
+        val handle = resolved.openMethod.invoke(resolved.receiver, path, key) ?: return null
         return Handle(handle)
     }
 
@@ -53,21 +52,23 @@ class NativeVaultOpener {
      * UniFFI does not do that. So the receiver is either the class itself or its `Companion`
      * instance — resolved by looking for the method, not by guessing.
      */
-    private class Entry(val vaultClass: Class<*>, val receiver: Any?)
+    /**
+     * The method is resolved together with its receiver: looking it up on the class while the
+     * receiver is the `Companion` throws `NoSuchMethodException` at call time (found the hard
+     * way in CI).
+     */
+    private class Entry(val openMethod: java.lang.reflect.Method, val receiver: Any?)
 
     private val entry: Entry? by lazy {
-        val cls = runCatching { Class.forName(VAULT_CLASS) }.getOrNull()
-        when {
-            cls == null -> null
-            hasOpen(cls) -> Entry(cls, null)
-            else -> runCatching { cls.getField("Companion").get(null) }.getOrNull()
-                ?.takeIf { hasOpen(it.javaClass) }
-                ?.let { companion -> Entry(cls, companion) }
-        }
+        val cls = runCatching { Class.forName(VAULT_CLASS) }.getOrNull() ?: return@lazy null
+        findOpen(cls)?.let { return@lazy Entry(it, null) }
+        val companion = runCatching { cls.getField("Companion").get(null) }.getOrNull()
+            ?: return@lazy null
+        findOpen(companion.javaClass)?.let { Entry(it, companion) }
     }
 
-    private fun hasOpen(target: Class<*>): Boolean =
-        runCatching { target.getMethod("open", String::class.java, ByteArray::class.java) }.isSuccess
+    private fun findOpen(target: Class<*>): java.lang.reflect.Method? =
+        runCatching { target.getMethod("open", String::class.java, ByteArray::class.java) }.getOrNull()
 
     private class Handle(private val vault: Any) : OwnVault {
         override val accountCount: Int
