@@ -68,7 +68,10 @@ class VaultKeyStore(
      * wrapped file cannot be opened, and reporting [State.Ready] there would be a lie.
      */
     fun state(): State {
-        if (!wrappedFile.isFile || wrappedFile.length() <= HEADER_BYTES) return State.NotSetUp
+        // A missing file means "never set up"; a file that is too short to be a v1 record means
+        // the stored copy is broken — that is not the same thing and must not look like a fresh start.
+        if (!wrappedFile.isFile) return State.NotSetUp
+        if (wrappedFile.length() < MIN_BLOB_BYTES) return State.Invalidated
         val header = try {
             readHeader()
         } catch (_: IllegalStateException) {
@@ -97,8 +100,16 @@ class VaultKeyStore(
      * Cipher to hand to `BiometricPrompt` while setting up: the prompt authenticates it and
      * [storeWrapped] then encrypts the freshly generated vault key with it.
      */
-    fun setupCipher(): Cipher =
+    fun setupCipher(): Cipher = try {
         Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, createOrGetKey()) }
+    } catch (e: KeyPermanentlyInvalidatedException) {
+        // Reusing the dead alias would fail forever; wiping it silently would throw away the only
+        // wrapped copy. The caller decides: resetForNewSetup() and restore from a backup.
+        throw IllegalStateException(
+            "Der Geräteschlüssel ist ungültig. Erst resetForNewSetup() aufrufen und die Sicherung einspielen.",
+            e,
+        )
+    }
 
     /**
      * Wraps [vaultKey] with the authenticated [cipher] and writes it atomically.
@@ -154,6 +165,16 @@ class VaultKeyStore(
         return plain
     }
 
+    /**
+     * Drops both the wrapped key and the Keystore entry — the only way out of [State.Invalidated]:
+     * an invalidated key can never be used again, so keeping it only blocks every later setup.
+     * Afterwards the vault has to come back from a backup (#1428, 2.6).
+     */
+    fun resetForNewSetup() {
+        clearWrapped()
+        runCatching { keyStore.deleteEntry(alias) }
+    }
+
     /** Drops the wrapped key. The Keystore entry stays; [state] returns [State.NotSetUp] afterwards. */
     fun clearWrapped() {
         wrappedFile.delete()
@@ -166,7 +187,7 @@ class VaultKeyStore(
 
     private fun readHeader(): Header {
         val blob = wrappedFile.readBytes()
-        check(blob.size > HEADER_BYTES + GCM_IV_BYTES) { "wrapped key is ${blob.size} bytes, too short" }
+        check(blob.size >= MIN_BLOB_BYTES) { "wrapped key is ${blob.size} bytes, too short" }
         check(blob[0] == FORMAT_VERSION) { "unknown wrapped key format ${blob[0]}" }
         val ivSize = blob[1].toInt() and 0xFF
         check(ivSize == GCM_IV_BYTES) { "IV length $ivSize, expected $GCM_IV_BYTES" }
@@ -220,6 +241,9 @@ class VaultKeyStore(
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val FORMAT_VERSION: Byte = 1
         private const val HEADER_BYTES = 2
+
+        /** 2 header + 12 IV + 32 key + 16 GCM tag: anything shorter cannot be a v1 record. */
+        private const val MIN_BLOB_BYTES = HEADER_BYTES + GCM_IV_BYTES + VAULT_KEY_BYTES + 16
 
         /**
          * Nothing has to be stored before the Keystore key exists: the setup path creates it.

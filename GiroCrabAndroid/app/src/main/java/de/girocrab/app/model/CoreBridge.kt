@@ -1,5 +1,7 @@
 package de.girocrab.app.model
 
+import de.girocrab.app.security.NativeVaultOpener
+import de.girocrab.app.security.OwnVault
 import java.time.LocalDate
 import org.json.JSONObject
 import kotlin.random.Random
@@ -13,20 +15,23 @@ interface CoreBridge {
     /** True when the native core is linked and can open a real vault. */
     val nativeAvailable: Boolean
 
-    /** Opens the user's own vault. Returns null when native core is unavailable or the vault is empty/locked. */
-    fun openOwnVault(): VaultSnapshot?
+    /**
+     * Opens the user's own vault at [path] with the raw 32-byte master key (#1428, 2.3).
+     * Returns null when the native core is not linked. Reading the data into a [VaultSnapshot]
+     * is the mapper's job (#1429, 3.1) — this call only proves the vault opens.
+     */
+    fun openOwnVault(path: String, key: ByteArray): OwnVault?
 
     /** Demo data (always available). */
     fun demoSnapshot(): VaultSnapshot
 }
 
-class DefaultCoreBridge : CoreBridge {
-    override val nativeAvailable: Boolean = runCatching {
-        Class.forName("uniffi.girocrab_core.Vault")
-    }.isSuccess
+class DefaultCoreBridge(
+    private val opener: NativeVaultOpener = NativeVaultOpener(),
+) : CoreBridge {
+    override val nativeAvailable: Boolean get() = opener.available
 
-    // TODO(parity): map uniffi Vault -> VaultSnapshot once bindings are generated.
-    override fun openOwnVault(): VaultSnapshot? = null
+    override fun openOwnVault(path: String, key: ByteArray): OwnVault? = opener.open(path, key)
 
     override fun demoSnapshot(): VaultSnapshot = DemoData.build()
 }
