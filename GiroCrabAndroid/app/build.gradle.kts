@@ -15,6 +15,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -60,4 +61,8 @@ dependencies {
 
     // UniFFI Kotlin bindings load the native library through JNA (AAR ships libjnidispatch).
     implementation("net.java.dev.jna:jna:5.15.0@aar")
+
+    // Instrumented tests: Keystore round-trips need a real device/emulator.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
