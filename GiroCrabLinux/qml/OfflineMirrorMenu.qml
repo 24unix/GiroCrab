@@ -15,7 +15,7 @@ AppMenu {
     onAboutToShow: rebuild()
     function rebuild() {
         for (const it of dynamicItems) { removeItem(it); it.destroy() }
-        const items = targets.map(a => entry.createObject(null, { text: AppModel.menuText(a.name), account: a }))
+        const items = targets.map(a => entry.createObject(null, { text: AppModel.menuText(AppModel.masking(a.name)), account: a }))
         items.forEach((it, i) => insertItem(i, it))
         dynamicItems = items
     }

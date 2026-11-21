@@ -680,7 +680,7 @@ Rectangle {
         AppMenuItem {
             readonly property var conn: sidebar.menuConnectionOfAccount
             visible: conn !== null; height: visible ? implicitHeight : 0
-            text: conn ? qsTr("%1 abrufen").arg(AppModel.menuText(accountMenu.a.name)) : ""
+            text: conn ? qsTr("%1 abrufen").arg(AppModel.menuText(AppModel.masking(accountMenu.a.name))) : ""
             icon.name: SF.icon("arrow.triangle.2.circlepath")
             enabled: conn !== null && AppModel.bankingGate(conn) === null
             onTriggered: AppModel.requestSync(conn)

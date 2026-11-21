@@ -62,6 +62,8 @@ QtObject {
     /// Everything a changed booking or balance shows up in.
     function reloadAfterManualChange() {
         AppModel.reloadAccounts(); AppModel.reloadBookings(); AppModel.reloadHistory(); AppModel.reloadCategories()
+        // a manual booking can start or end a recurring payment and changes the planning (#1514)
+        AppModel.refreshRecurring(); AppModel.reloadPlanning()
     }
 
     /// Creates (`bookingId` null) or changes a booking; returns its id. Throws on a core error.
